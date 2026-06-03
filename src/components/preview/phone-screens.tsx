@@ -854,3 +854,109 @@ export function PhoneSeoLink({
     </div>
   );
 }
+
+// ── Operator notification preview ─────────────────────────────────────────────
+
+type NotificationEvent = "delivery" | "pickup" | "waiter";
+
+const NOTIFICATION_META: Record<
+  NotificationEvent,
+  { badge: string; badgeColor: string; title: string; body: string[]; total?: string }
+> = {
+  delivery: {
+    badge: "🟢 НОВЫЙ ЗАКАЗ · ДОСТАВКА",
+    badgeColor: "text-emerald-400",
+    title: "Заказ #1024",
+    body: ["Маргарита ×1", "Кола ×2"],
+    total: "5 200 ₸",
+  },
+  pickup: {
+    badge: "🟢 НОВЫЙ ЗАКАЗ · САМОВЫВОЗ",
+    badgeColor: "text-emerald-400",
+    title: "Заказ #1025",
+    body: ["Пепперони Фреш ×1"],
+    total: "4 500 ₸",
+  },
+  waiter: {
+    badge: "🔔 ВЫЗОВ ОФИЦИАНТА",
+    badgeColor: "text-blue-400",
+    title: "Стол 4",
+    body: ["Гость просит помощи"],
+  },
+};
+
+export function PhoneNotification({
+  event,
+  channelType,
+  contact,
+}: {
+  event: NotificationEvent;
+  channelType: "telegram" | "whatsapp";
+  contact: string;
+}) {
+  const meta = NOTIFICATION_META[event];
+  const isTelegram = channelType === "telegram";
+  const bgMain = isTelegram ? "bg-[#17212b]" : "bg-[#0a1014]";
+  const bgBubble = isTelegram ? "bg-[#182533]" : "bg-[#1a2229]";
+  const headerBg = isTelegram ? "bg-[#17212b]" : "bg-[#202c33]";
+  const accentColor = isTelegram ? "#5288c1" : "#00a884";
+  const appLabel = isTelegram ? "Telegram" : "WhatsApp";
+
+  return (
+    <div className={cn("flex h-full flex-col", bgMain)}>
+      {/* Chat header */}
+      <div className={cn("flex items-center gap-2.5 px-3 py-2.5", headerBg)}>
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black text-white"
+          style={{ backgroundColor: accentColor }}
+        >
+          {contact.replace("@", "").slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[12px] font-bold text-white">{contact}</div>
+          <div className="text-[10px] text-white/40">{appLabel} · бот-интеграция</div>
+        </div>
+      </div>
+
+      {/* Date separator */}
+      <div className="my-3 flex items-center justify-center">
+        <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] text-white/40">
+          Сегодня
+        </span>
+      </div>
+
+      {/* Message bubble */}
+      <div className="px-3">
+        <div className={cn("rounded-2xl rounded-tl-sm p-3", bgBubble)}>
+          {/* Badge */}
+          <div className={cn("text-[10px] font-black uppercase tracking-wide", meta.badgeColor)}>
+            {meta.badge}
+          </div>
+
+          {/* Divider */}
+          <div className="my-2 border-t border-white/10" />
+
+          {/* Order title */}
+          <div className="text-[13px] font-bold text-white">{meta.title}</div>
+
+          {/* Items */}
+          <div className="mt-1 space-y-0.5">
+            {meta.body.map((line) => (
+              <div key={line} className="text-[12px] text-white/70">{line}</div>
+            ))}
+          </div>
+
+          {/* Total */}
+          {meta.total && (
+            <div className="mt-2 text-[13px] font-black text-white">
+              Сумма: {meta.total}
+            </div>
+          )}
+
+          {/* Timestamp */}
+          <div className="mt-2 text-right text-[9px] text-white/30">14:32 ✓✓</div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -142,16 +142,6 @@ function ChannelDrawer({
             </p>
           </div>
 
-          <div>
-            <Label>Тестовое превью уведомления</Label>
-            <div className="mt-2 rounded-2xl border border-border bg-zinc-50 p-4">
-              <div className="mb-2 flex items-center gap-2 text-xs font-bold text-zinc-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {CHANNEL_LABELS[type]} · {contact.trim() || placeholder}
-              </div>
-              <div className="rounded-xl bg-white p-3 shadow-sm">{meta.preview}</div>
-            </div>
-          </div>
         </div>
 
         <div className="border-t border-border px-6 py-4">
@@ -184,16 +174,26 @@ function OrderChannel({
   warningTitle,
   warningDesc,
   onConfigure,
+  onHover,
+  onLeave,
 }: {
   label: string;
   routeText: string | null;
   warningTitle: string;
   warningDesc: string;
   onConfigure: () => void;
+  onHover?: () => void;
+  onLeave?: () => void;
 }) {
   if (!routeText) {
     return (
-      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+      <div
+        className="rounded-2xl border border-amber-300 bg-amber-50 p-4 transition"
+        onMouseEnter={onHover}
+        onFocus={onHover}
+        onMouseLeave={onLeave}
+        onBlur={onLeave}
+      >
         <div className="flex items-start gap-2.5">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
           <div>
@@ -209,7 +209,13 @@ function OrderChannel({
   }
 
   return (
-    <div className="rounded-2xl border border-border p-4">
+    <div
+      className="rounded-2xl border border-border p-4 transition hover:border-zinc-300"
+      onMouseEnter={onHover}
+      onFocus={onHover}
+      onMouseLeave={onLeave}
+      onBlur={onLeave}
+    >
       <div className="text-xs font-black uppercase tracking-wide text-zinc-400">{label}</div>
       <div className="mt-1 flex items-center justify-between gap-3">
         <div className="font-semibold text-zinc-950">{routeText}</div>
@@ -230,6 +236,8 @@ function MethodSection({
   comment,
   routeText,
   onConfigure,
+  onChannelHover,
+  onChannelLeave,
 }: {
   title: string;
   description: string;
@@ -239,6 +247,8 @@ function MethodSection({
   comment: ReactNode;
   routeText: string | null;
   onConfigure: () => void;
+  onChannelHover?: () => void;
+  onChannelLeave?: () => void;
 }) {
   return (
     <SectionCard>
@@ -269,6 +279,8 @@ function MethodSection({
             warningTitle="Заказы не будут приниматься"
             warningDesc="Укажите канал получения заказов."
             onConfigure={onConfigure}
+            onHover={onChannelHover}
+            onLeave={onChannelLeave}
           />
         </div>
       )}
@@ -301,6 +313,9 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
   const focusDelivery = () => setPreviewScenario("delivery");
   const focusPickup = () => setPreviewScenario("pickup");
   const focusServiceFee = () => setPreviewScenario("serviceFee");
+  const focusNotifDelivery = () => setPreviewScenario("notification-delivery");
+  const focusNotifPickup = () => setPreviewScenario("notification-pickup");
+  const focusNotifWaiter = () => setPreviewScenario("notification-waiter");
 
   return (
     <PageScroll>
@@ -325,6 +340,8 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
             }
             routeText={formatRoute("delivery")}
             onConfigure={() => setDrawerEvent("delivery")}
+            onChannelHover={focusNotifDelivery}
+            onChannelLeave={focusDelivery}
           />
         </div>
 
@@ -347,6 +364,8 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
             }
             routeText={formatRoute("pickup")}
             onConfigure={() => setDrawerEvent("pickup")}
+            onChannelHover={focusNotifPickup}
+            onChannelLeave={focusPickup}
           />
         </div>
 
@@ -414,21 +433,23 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
         </div>
 
         {/* Вызов официанта */}
-        <SectionCard>
-          <h2 className="text-xl font-black">Вызов официанта</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Гость может позвать официанта прямо из витрины.
-          </p>
-          <div className="mt-5">
-            <OrderChannel
-              label="Куда отправлять вызовы"
-              routeText={formatRoute("waiter")}
-              warningTitle="Вызовы не будут приходить"
-              warningDesc="Укажите канал для вызовов официанта."
-              onConfigure={() => setDrawerEvent("waiter")}
-            />
-          </div>
-        </SectionCard>
+        <div onMouseEnter={focusNotifWaiter} onFocus={focusNotifWaiter}>
+          <SectionCard>
+            <h2 className="text-xl font-black">Вызов официанта</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Гость может позвать официанта прямо из витрины.
+            </p>
+            <div className="mt-5">
+              <OrderChannel
+                label="Куда отправлять вызовы"
+                routeText={formatRoute("waiter")}
+                warningTitle="Вызовы не будут приходить"
+                warningDesc="Укажите канал для вызовов официанта."
+                onConfigure={() => setDrawerEvent("waiter")}
+              />
+            </div>
+          </SectionCard>
+        </div>
       </PageContent>
 
       {drawerEvent && (

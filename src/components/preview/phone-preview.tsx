@@ -28,6 +28,7 @@ import {
   PhoneDish,
   PhoneHome,
   PhoneMenuScreen,
+  PhoneNotification,
   PhoneSectionsScreen,
   PhoneServiceFeeConsent,
   PhoneSeoLink,
@@ -35,6 +36,7 @@ import {
   PhoneWaiterScreen,
   type PreviewTab,
 } from "@/components/preview/phone-screens";
+import { useOrderRouting } from "@/contexts/order-routing-context";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -94,6 +96,7 @@ export function PhonePreview({
     pickupComment,
     pickupAddress,
   } = useAppSettings();
+  const { routes } = useOrderRouting();
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
@@ -125,7 +128,34 @@ export function PhonePreview({
   let showBottomNav = false;
   let overlay: ReactNode = null;
 
-  if (scenario === "seoLink") {
+  if (scenario === "notification-delivery") {
+    const r = routes.delivery;
+    screen = (
+      <PhoneNotification
+        event="delivery"
+        channelType={r?.type ?? "telegram"}
+        contact={r?.contact || "@channel"}
+      />
+    );
+  } else if (scenario === "notification-pickup") {
+    const r = routes.pickup;
+    screen = (
+      <PhoneNotification
+        event="pickup"
+        channelType={r?.type ?? "telegram"}
+        contact={r?.contact || "@channel"}
+      />
+    );
+  } else if (scenario === "notification-waiter") {
+    const r = routes.waiter;
+    screen = (
+      <PhoneNotification
+        event="waiter"
+        channelType={r?.type ?? "telegram"}
+        contact={r?.contact || "@channel"}
+      />
+    );
+  } else if (scenario === "seoLink") {
     screen = <PhoneSeoLink title={seoTitle} description={seoDescription} />;
   } else if (scenario === "age") {
     screen = <PhoneAgeGate />;
@@ -270,7 +300,11 @@ export function PhonePreview({
         <div className="flex h-full flex-col items-center overflow-hidden px-4 py-6">
           <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {scenario === "seoLink" ? "Ссылка в мессенджерах" : "Превью гостя"}
+            {scenario === "seoLink"
+              ? "Ссылка в мессенджерах"
+              : scenario === "notification-delivery" || scenario === "notification-pickup" || scenario === "notification-waiter"
+                ? "Уведомление оператора"
+                : "Превью гостя"}
           </div>
           <div style={{ width: PHONE_W * scale, height: PHONE_H * scale }} className="shrink-0">
             <div

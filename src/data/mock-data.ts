@@ -29,6 +29,9 @@ export type PreviewScenario =
   | "age"
   | "serviceFee"
   | "seoLink"
+  | "notification-delivery"
+  | "notification-pickup"
+  | "notification-waiter"
   | null;
 
 /** Где гость видит блок рекомендаций (для превью на странице «Рекомендации»). */
