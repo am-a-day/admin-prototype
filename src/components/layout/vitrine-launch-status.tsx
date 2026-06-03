@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, ChevronRight, Circle, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Circle } from "lucide-react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { cn } from "@/lib/utils";
 import type { SectionId } from "@/data/mock-data";
