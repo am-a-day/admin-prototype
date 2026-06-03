@@ -18,6 +18,13 @@ import {
 
 export type SectionId = "analytics" | "storefront" | "qr" | "management" | "am";
 
+export const MOCK_USER = {
+  name: "Амадей Щербаков",
+  shortName: "Амадей",
+  initials: "АШ",
+  email: "amadey@kimchi-astana.kz",
+} as const;
+
 export type UserRole = "owner" | "am";
 export type StoreTabId = "home" | "catalog" | "upsell" | "appearance" | "about";
 export type ManageTabId = "order-settings" | "order-history" | "billing" | "account" | "io" | "seo";

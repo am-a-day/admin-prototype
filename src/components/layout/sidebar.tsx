@@ -19,12 +19,11 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { AccountMenu } from "@/components/layout/account-menu";
-import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { OrgMenu } from "@/components/layout/account-menu";
+import { UserMenu } from "@/components/layout/user-menu";
 import { VitrineLaunchRailDot, VitrineLaunchStatus } from "@/components/layout/vitrine-launch-status";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
-import { usePlan } from "@/contexts/plan-context";
 
 export type SidebarMode = "full" | "rail" | "topbar";
 
@@ -285,47 +284,6 @@ function NavList({
   );
 }
 
-// ── Plan status row (Lite / Ultra only) ───────────────────────────────────────
-
-function PlanStatusRow({
-  onNavigate,
-  compact = false,
-}: {
-  onNavigate: (section: SectionId, tab: string) => void;
-  compact?: boolean;
-}) {
-  const { planId, expiresLabel } = usePlan();
-  if (planId === "Zero") return null;
-
-  const label = `${planId} · ${expiresLabel}`;
-
-  if (compact) {
-    return (
-      <button
-        type="button"
-        onClick={() => onNavigate("management", "billing")}
-        title={label}
-        className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-      >
-        <span className="text-[8px] font-black leading-none text-zinc-500">{planId[0]}</span>
-        <span className="pointer-events-none absolute left-11 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-          {label}
-        </span>
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => onNavigate("management", "billing")}
-      className="flex w-full items-center rounded-lg px-2 py-1.5 text-left transition hover:bg-zinc-100"
-    >
-      <span className="text-xs font-medium text-zinc-500">{label}</span>
-    </button>
-  );
-}
-
 // ── Shared drawer (used by rail and topbar) ───────────────────────────────────
 
 function NavDrawer({
@@ -376,7 +334,7 @@ function NavDrawer({
       >
         <div className="flex items-center justify-between px-3 py-3">
           <div className="flex items-center gap-2">
-            <AccountMenu onNavigate={handleNavigate} />
+            <OrgMenu onNavigate={handleNavigate} />
             <span className="truncate text-sm font-black">{RESTAURANT_NAME}</span>
           </div>
           <button
@@ -389,9 +347,8 @@ function NavDrawer({
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
         <VitrineLaunchStatus onNavigate={handleNavigate} />
-        <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
-          <PlanStatusRow onNavigate={handleNavigate} />
-          <LanguageSwitcher />
+        <div className="border-t border-border px-2 py-1.5">
+          <UserMenu onNavigate={handleNavigate} />
         </div>
       </div>
     </>
@@ -410,14 +367,13 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
     <>
       <div className="flex items-center gap-2 px-2.5 py-3">
-        <AccountMenu onNavigate={onNavigate} />
+        <OrgMenu onNavigate={onNavigate} />
         <span className="truncate text-sm font-black tracking-tight">{RESTAURANT_NAME}</span>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
       <VitrineLaunchStatus onNavigate={onNavigate} />
-      <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
-        <PlanStatusRow onNavigate={onNavigate} />
-        <LanguageSwitcher compact={false} />
+      <div className="border-t border-border px-2 py-1.5">
+        <UserMenu onNavigate={onNavigate} />
       </div>
     </>
   );
@@ -438,7 +394,7 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
         onNavigate={onNavigate}
       />
       <div className="flex flex-col items-center gap-1 py-2">
-        <AccountMenu onNavigate={onNavigate} />
+        <OrgMenu onNavigate={onNavigate} />
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -451,8 +407,7 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
       <div className="flex flex-col items-center gap-0.5 border-t border-border py-1.5">
         <VitrineLaunchRailDot />
-        <PlanStatusRow compact onNavigate={onNavigate} />
-        <LanguageSwitcher />
+        <UserMenu compact onNavigate={onNavigate} />
       </div>
     </>
   );
