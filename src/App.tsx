@@ -1,5 +1,7 @@
 import { useState, useEffect, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Sidebar, TopBar, type SidebarMode } from "@/components/layout/sidebar";
+import { ContentHeader } from "@/components/layout/content-header";
+import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
@@ -29,6 +31,26 @@ import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace"
 import { CatalogWorkspace } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace } from "@/features/storefront/home-workspace";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
+
+type PageMeta = { title: string; description?: string; showLanguage?: boolean };
+
+const PAGE_META: Record<string, PageMeta> = {
+  "storefront:home":       { title: "Главная",           description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
+  "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
+  "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
+  "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
+  "storefront:about":      { title: "О заведении",        description: "Информация о заведении и публичное представление.", showLanguage: true },
+  "management:order-settings": { title: "Настройка заказов", description: "Доставка, самовывоз и способы оплаты." },
+  "management:order-history":  { title: "История заказов",   description: "Все входящие заказы — доставка и самовывоз." },
+  "management:billing":    { title: "Тарифы",             description: "Текущий план, ограничения и возможности следующего." },
+  "management:account":    { title: "Аккаунт",            description: "Данные заведения, владелец и доступы." },
+  "management:io":         { title: "Импорт / экспорт",   description: "Загрузка и выгрузка меню, данных и настроек." },
+  "management:seo":        { title: "SEO",                 description: "Метатеги, заголовок и описание для поисковиков." },
+  "analytics:scans":       { title: "Сканирования",       description: "Количество сканирований QR-кода и переходов." },
+  "analytics:orders":      { title: "Заказы",             description: "Выручка, средний чек и динамика по времени." },
+  "analytics:likes":       { title: "Лайки",              description: "Лайки гостей по блюдам и разделам меню." },
+  "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
+};
 
 function AppShell() {
   const [section, setSection] = useState<SectionId>("storefront");
@@ -266,6 +288,13 @@ function AppShell() {
     section === "storefront" ||
     (section === "management" && manageTab === "order-settings");
 
+  const metaKey =
+    section === "storefront" ? `storefront:${storeTab}` :
+    section === "management" ? `management:${manageTab}` :
+    section === "analytics"  ? `analytics:${analyticsTab}` :
+    "qr";
+  const pageMeta = PAGE_META[metaKey] ?? { title: "" };
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-zinc-950">
       {navMode === "topbar" && (
@@ -273,7 +302,13 @@ function AppShell() {
       )}
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Sidebar section={section} activeTab={activeTab} onNavigate={navigate} mode={navMode} dragging={previewDragging} />
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <ContentHeader
+            title={pageMeta.title}
+            description={pageMeta.description}
+            showLanguage={pageMeta.showLanguage}
+          />
+          <div className="flex min-h-0 min-w-0 flex-1">
         <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
         {previewVisible && (
           <PhonePreview
@@ -299,6 +334,7 @@ function AppShell() {
             onExpand={() => setPreviewCollapsed(false)}
           />
         )}
+          </div>
         </div>
       </div>
       <DraftToast />
@@ -312,7 +348,9 @@ export default function App() {
       <OrderRoutingProvider>
         <PlanProvider>
           <PublishProvider>
-            <AppShell />
+            <HeaderActionsProvider>
+              <AppShell />
+            </HeaderActionsProvider>
           </PublishProvider>
         </PlanProvider>
       </OrderRoutingProvider>

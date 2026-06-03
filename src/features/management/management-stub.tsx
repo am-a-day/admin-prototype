@@ -1,5 +1,5 @@
 import { Check, X } from "lucide-react";
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { SectionCard } from "@/components/workspace/section-card";
 import { managementStubCopy, type ManageTabId, type PlanId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
@@ -142,13 +142,8 @@ function BillingWorkspace() {
   const nextPlan = NEXT_PLAN[planId];
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-3xl space-y-6">
-        <PageTitle
-          title="Тарифы"
-          description="Текущий план, ограничения и возможности следующего тарифа."
-        />
-
+    <PageScroll>
+      <PageContent>
         {planId === "Ultra" ? (
           /* Ultra — максимальный тариф */
           <div className="max-w-sm">
@@ -194,8 +189,8 @@ function BillingWorkspace() {
             </p>
           </SectionCard>
         )}
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }
 
@@ -211,9 +206,8 @@ export function ManagementStub({ tabId }: ManagementStubProps) {
   const copy = managementStubCopy[tabId];
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <PageTitle title={copy.title} description={copy.description} />
+    <PageScroll>
+      <PageContent>
         <SectionCard>
           <ul className="space-y-3">
             {copy.bullets.map((bullet) => (
@@ -227,7 +221,7 @@ export function ManagementStub({ tabId }: ManagementStubProps) {
             ))}
           </ul>
         </SectionCard>
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }

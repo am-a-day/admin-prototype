@@ -10,7 +10,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { AddTile, DishTile } from "@/components/workspace/section-card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -312,15 +312,8 @@ export function HomeWorkspace({
   }, [homeFocus]);
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-5xl">
-        <PageTitle
-          title="Главная"
-          description="Соберите первый экран витрины: баннеры, ключевые разделы и позиции, которые стоит продвигать гостям."
-          action="Показать на витрине"
-          showContentLanguage
-        />
-
+    <PageScroll>
+      <PageContent className="space-y-8">
         {/* 1 — Баннеры (главный блок) */}
         <section
           id="home-hero"
@@ -436,7 +429,7 @@ export function HomeWorkspace({
             ))}
           </div>
         </section>
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }

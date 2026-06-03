@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { EmptyState, SectionCard } from "@/components/workspace/section-card";
 import type { AnalyticsTabId } from "@/data/mock-data";
 
@@ -25,16 +25,15 @@ const ANALYTICS_TABS: Record<AnalyticsTabId, { title: string; description: strin
 export function AnalyticsPage({ tab }: { tab: AnalyticsTabId }) {
   const meta = ANALYTICS_TABS[tab];
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <PageTitle title={meta.title} description={meta.description} />
+    <PageScroll>
+      <PageContent>
         <EmptyState
           icon={meta.icon}
           title="Раздел в разработке"
           description="В прототипе проверяем навигацию и витрину. Аналитика без превью гостя."
         />
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }
 
@@ -59,12 +58,8 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function OrderHistoryPage() {
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <PageTitle
-          title="История заказов"
-          description="Все входящие заказы — доставка и самовывоз."
-        />
+    <PageScroll>
+      <PageContent>
         <SectionCard>
           <div className="divide-y divide-border">
             {MOCK_ORDERS.map((order) => (
@@ -91,25 +86,21 @@ export function OrderHistoryPage() {
             ))}
           </div>
         </SectionCard>
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }
 
 export function QRPage() {
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl">
-        <PageTitle
-          title="QR"
-          description="Генерация и управление QR-кодами для столов, доставки и самовывоза."
-        />
+    <PageScroll>
+      <PageContent>
         <EmptyState
           icon="🔳"
           title="Раздел в разработке"
           description="QR-меню и столы — отдельный сценарий без mobile preview."
         />
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }

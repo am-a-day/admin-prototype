@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { AccountMenu } from "@/components/layout/account-menu";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
-import { VitrineStatus } from "@/components/layout/vitrine-status";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
@@ -252,7 +251,6 @@ function NavDrawer({
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
         <div className="border-t border-border px-2 py-2 flex flex-col gap-1">
-          <VitrineStatus />
           <PlanStatusRow onNavigate={handleNavigate} />
           <LanguageSwitcher />
         </div>
@@ -278,7 +276,6 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
       <div className="border-t border-border px-2 py-2 flex flex-col gap-1">
-        <VitrineStatus compact={false} />
         <PlanStatusRow onNavigate={onNavigate} />
         <LanguageSwitcher compact={false} />
       </div>
@@ -313,7 +310,6 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
       <div className="flex flex-col items-center gap-1 border-t border-border py-2">
-        <VitrineStatus />
         <PlanStatusRow compact onNavigate={onNavigate} />
         <LanguageSwitcher />
       </div>

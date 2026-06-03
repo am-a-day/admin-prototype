@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { SectionCard } from "@/components/workspace/section-card";
 import { Switch } from "@/components/ui/switch";
 import { usePublish } from "@/contexts/publish-context";
@@ -39,13 +39,8 @@ export function AppearanceWorkspace() {
   };
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-5xl space-y-8">
-        <PageTitle
-          title="Оформление"
-          description="Только визуальный стиль витрины: карточки, цвет, фон и оформление меню."
-          action="Сбросить стиль"
-        />
+    <PageScroll>
+      <PageContent className="space-y-8">
         <SectionCard>
           <h2 className="text-xl font-black">Стиль карточек</h2>
           <p className="mt-1 text-sm text-muted-foreground">Выберите, как блюда будут выглядеть в меню.</p>
@@ -193,7 +188,7 @@ export function AppearanceWorkspace() {
             ))}
           </div>
         </SectionCard>
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }

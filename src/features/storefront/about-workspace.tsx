@@ -1,7 +1,7 @@
 import { Plus, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { Field, FormTextArea, SectionCard } from "@/components/workspace/section-card";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
@@ -42,14 +42,8 @@ export function AboutWorkspace({
   };
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <PageTitle
-          title="О заведении"
-          description="Информация о заведении и публичное представление витрины."
-          showContentLanguage={tab === "info"}
-        />
-
+    <PageScroll>
+      <PageContent>
         {/* Tab bar */}
         <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 w-fit">
           {(["info", "seo"] as Tab[]).map((t) => (
@@ -213,7 +207,7 @@ export function AboutWorkspace({
             </SectionCard>
           </div>
         )}
-      </div>
-    </main>
+      </PageContent>
+    </PageScroll>
   );
 }

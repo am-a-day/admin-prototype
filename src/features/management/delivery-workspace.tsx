@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { PageTitle } from "@/components/workspace/page-title";
+import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { SectionCard } from "@/components/workspace/section-card";
 import { LocalizedTextArea } from "@/components/workspace/localized-textarea";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -303,13 +303,8 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
   const focusServiceFee = () => setPreviewScenario("serviceFee");
 
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-white p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <PageTitle
-          title="Настройка заказов"
-          description="Доставка и самовывоз настраиваются целиком: канал получения — обязательная часть способа, а не отдельный раздел."
-        />
-
+    <PageScroll>
+      <PageContent>
         <div onMouseEnter={focusDelivery} onFocus={focusDelivery}>
           <MethodSection
             title="Доставка"
@@ -434,7 +429,7 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
             />
           </div>
         </SectionCard>
-      </div>
+      </PageContent>
 
       {drawerEvent && (
         <ChannelDrawer
@@ -454,6 +449,6 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
           }}
         />
       )}
-    </main>
+    </PageScroll>
   );
 }
