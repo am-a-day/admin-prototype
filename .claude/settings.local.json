@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"/Users/trazo/Downloads/tasko-admin-prototype-v2 2/.claude\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx tsc *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(awk '{print $2, $11, $12, $13}')",
+      "Bash(perl -0pi -e 's/onClick=\\\\{addBanner\\\\}/onClick={handleAddBanner}/g' features/storefront/home-workspace.tsx)",
+      "Bash(perl -0pi -e 's/\\\\n\\\\s*pageKey=\"\\(home|catalog|about|upsell|appearance|delivery\\)\"//g' features/storefront/home-workspace.tsx features/storefront/catalog-workspace.tsx features/storefront/about-workspace.tsx features/storefront/upsell-workspace.tsx features/storefront/appearance-workspace.tsx features/management/delivery-workspace.tsx)",
+      "Bash(cd \"/Users/trazo/Downloads/tasko-admin-prototype-v2 2/src\" && rm -f contexts/notifications-context.tsx contexts/../features/management/notifications-workspace.tsx features/management/notifications-workspace.tsx components/preview/notification-preview-panel.tsx data/notifications-data.ts && echo \"deleted\" && ls contexts features/management components/preview | grep -i notif || echo \"no notif files remain\")",
+      "Bash(Select-String -Pattern \"scripts\" -A 10)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p \"D:/tasko-admin-prototype-v2 2/.claude\")",
+      "Bash(npx vite *)",
+      "PowerShell($port5173 = \\(Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue\\).OwningProcess; $port5174 = \\(Get-NetTCPConnection -LocalPort 5174 -ErrorAction SilentlyContinue\\).OwningProcess; $port5175 = \\(Get-NetTCPConnection -LocalPort 5175 -ErrorAction SilentlyContinue\\).OwningProcess; @\\($port5173, $port5174, $port5175\\) | Where-Object { $_ } | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Write-Output \"killed\")",
+      "Bash(Get-Content \"D:\\\\tasko-admin-prototype-v2 2\\\\src\\\\components\\\\preview\\\\phone-screens.tsx\")",
+      "Bash(Measure-Object -Line)",
+      "Bash(vercel --version)",
+      "Bash(chmod +x /Users/trazo/Desktop/admin-prototype/node_modules/.bin/vite)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -sv http://localhost:5173)",
+      "Bash(jobs)",
+      "Bash(node_modules/.bin/vite --host 0.0.0.0)",
+      "Bash(rm -rf node_modules package-lock.json && npm install 2>&1 | tail -5)"
+    ]
+  }
+}
