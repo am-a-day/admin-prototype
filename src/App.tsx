@@ -2,6 +2,7 @@ import { useState, useEffect, type MouseEvent as ReactMouseEvent, type ReactNode
 import { Sidebar, TopBar, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader } from "@/components/layout/content-header";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
+import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
@@ -348,9 +349,11 @@ export default function App() {
       <OrderRoutingProvider>
         <PlanProvider>
           <PublishProvider>
-            <HeaderActionsProvider>
-              <AppShell />
-            </HeaderActionsProvider>
+            <VitrineLaunchProvider>
+              <HeaderActionsProvider>
+                <AppShell />
+              </HeaderActionsProvider>
+            </VitrineLaunchProvider>
           </PublishProvider>
         </PlanProvider>
       </OrderRoutingProvider>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AccountMenu } from "@/components/layout/account-menu";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { VitrineLaunchRailDot, VitrineLaunchStatus } from "@/components/layout/vitrine-launch-status";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
@@ -221,7 +222,6 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
 }) {
-  const { planId } = usePlan();
   return (
     <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-0.5" : "px-2 space-y-1.5 pb-2 pt-1")}>
       {NAV_GROUPS.map((group) => (
@@ -264,27 +264,6 @@ function NavList({
                 </button>
               );
             })}
-            {group.trailingCta && planId === "Zero" && (
-              <button
-                type="button"
-                onClick={() => onNavigate(group.trailingCta!.section, group.trailingCta!.tab)}
-                title={compact ? group.trailingCta.label : undefined}
-                className={cn(
-                  "group relative flex items-center rounded-md transition",
-                  compact
-                    ? "h-8 w-8 justify-center text-blue-500 hover:bg-blue-50"
-                    : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium text-blue-600 hover:bg-blue-50/60",
-                )}
-              >
-                <Sparkles size={compact ? 16 : 13} className="shrink-0 text-blue-500" />
-                {!compact && <span className="truncate">{group.trailingCta.label}</span>}
-                {compact && (
-                  <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-                    {group.trailingCta.label}
-                  </span>
-                )}
-              </button>
-            )}
           </div>
         </div>
       ))}
@@ -409,6 +388,7 @@ function NavDrawer({
           </button>
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
+        <VitrineLaunchStatus onNavigate={handleNavigate} />
         <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
           <PlanStatusRow onNavigate={handleNavigate} />
           <LanguageSwitcher />
@@ -434,6 +414,7 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
         <span className="truncate text-sm font-black tracking-tight">{RESTAURANT_NAME}</span>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
+      <VitrineLaunchStatus onNavigate={onNavigate} />
       <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
         <PlanStatusRow onNavigate={onNavigate} />
         <LanguageSwitcher compact={false} />
@@ -469,6 +450,7 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
       <div className="flex flex-col items-center gap-0.5 border-t border-border py-1.5">
+        <VitrineLaunchRailDot />
         <PlanStatusRow compact onNavigate={onNavigate} />
         <LanguageSwitcher />
       </div>
