@@ -144,12 +144,12 @@ function MoreMenu({
         title="Ещё"
         className={cn(
           "group relative flex items-center rounded-lg transition",
-          compact ? "h-9 w-9 justify-center" : "w-full gap-2 px-2 py-1.5 text-left text-[13px] font-medium",
+          compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
           isMoreActive
-            ? "bg-blue-50 text-blue-700"
+            ? "bg-zinc-100 text-zinc-950"
             : open
               ? "bg-zinc-100 text-zinc-950"
-              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950",
+              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
         )}
       >
         <Ellipsis size={compact ? 17 : 15} className="shrink-0" />
@@ -223,16 +223,16 @@ function NavList({
 }) {
   const { planId } = usePlan();
   return (
-    <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-1" : "px-2 space-y-4 pb-3 pt-1")}>
+    <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-0.5" : "px-2 space-y-1.5 pb-2 pt-1")}>
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
           {!compact && (
-            <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+            <div className="mb-0.5 mt-3 first:mt-0 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
               {group.title}
             </div>
           )}
-          {compact && <div className="my-1 h-px bg-border" />}
-          <div className="space-y-0.5">
+          {compact && <div className="my-0.5 h-px bg-border" />}
+          <div className="space-y-px">
             {group.items.map((item) => {
               const Icon = item.icon;
               const active = section === item.section && activeTab === item.tab;
@@ -243,21 +243,21 @@ function NavList({
                   onClick={() => onNavigate(item.section, item.tab)}
                   title={compact ? item.label : undefined}
                   className={cn(
-                    "group relative flex items-center rounded-lg transition",
+                    "group relative flex items-center rounded-md transition",
                     compact
-                      ? "h-9 w-9 justify-center"
-                      : "w-full gap-2 px-2 py-1.5 text-left text-[13px]",
+                      ? "h-8 w-8 justify-center"
+                      : "w-full gap-2 px-2 py-[5px] text-left text-[13px]",
                     active
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950",
-                    active && !compact && "font-bold",
+                      ? "bg-zinc-100 text-zinc-950"
+                      : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+                    active && !compact && "font-semibold",
                     !active && !compact && "font-medium",
                   )}
                 >
-                  <Icon size={compact ? 17 : 15} className="shrink-0" />
+                  <Icon size={compact ? 16 : 14} className="shrink-0" />
                   {!compact && <span className="truncate">{item.label}</span>}
                   {compact && (
-                    <span className="pointer-events-none absolute left-11 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
+                    <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
                       {item.label}
                     </span>
                   )}
@@ -270,16 +270,16 @@ function NavList({
                 onClick={() => onNavigate(group.trailingCta!.section, group.trailingCta!.tab)}
                 title={compact ? group.trailingCta.label : undefined}
                 className={cn(
-                  "group relative flex items-center rounded-lg transition",
+                  "group relative flex items-center rounded-md transition",
                   compact
-                    ? "h-9 w-9 justify-center text-blue-500 hover:bg-blue-50"
-                    : "w-full gap-2 px-2 py-1.5 text-left text-[13px] font-medium text-blue-600 hover:bg-blue-50/60",
+                    ? "h-8 w-8 justify-center text-blue-500 hover:bg-blue-50"
+                    : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium text-blue-600 hover:bg-blue-50/60",
                 )}
               >
-                <Sparkles size={compact ? 17 : 13} className="shrink-0 text-blue-500" />
+                <Sparkles size={compact ? 16 : 13} className="shrink-0 text-blue-500" />
                 {!compact && <span className="truncate">{group.trailingCta.label}</span>}
                 {compact && (
-                  <span className="pointer-events-none absolute left-11 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
+                  <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
                     {group.trailingCta.label}
                   </span>
                 )}
@@ -290,9 +290,9 @@ function NavList({
       ))}
 
       {/* ── «Ещё» separator + button ── */}
-      {compact && <div className="my-1 h-px bg-border" />}
+      {compact && <div className="my-0.5 h-px bg-border" />}
       {!compact && (
-        <div className="mb-1 mt-1 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+        <div className="mb-0.5 mt-3 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
           Инструменты
         </div>
       )}
@@ -409,7 +409,7 @@ function NavDrawer({
           </button>
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
-        <div className="border-t border-border px-2 py-2 flex flex-col gap-1">
+        <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
           <PlanStatusRow onNavigate={handleNavigate} />
           <LanguageSwitcher />
         </div>
@@ -434,7 +434,7 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
         <span className="truncate text-sm font-black tracking-tight">{RESTAURANT_NAME}</span>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
-      <div className="border-t border-border px-2 py-2 flex flex-col gap-1">
+      <div className="border-t border-border px-2 py-1.5 flex flex-col gap-0.5">
         <PlanStatusRow onNavigate={onNavigate} />
         <LanguageSwitcher compact={false} />
       </div>
@@ -468,7 +468,7 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
         </button>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
-      <div className="flex flex-col items-center gap-1 border-t border-border py-2">
+      <div className="flex flex-col items-center gap-0.5 border-t border-border py-1.5">
         <PlanStatusRow compact onNavigate={onNavigate} />
         <LanguageSwitcher />
       </div>
