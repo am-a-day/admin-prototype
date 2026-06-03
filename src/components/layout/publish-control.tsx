@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Loader2, UploadCloud } from "lucide-react";
 import { usePublish } from "@/contexts/publish-context";
+import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { cn } from "@/lib/utils";
 
 function lastChangeLabel(ts: number, now: number): string {
@@ -15,11 +16,16 @@ function lastChangeLabel(ts: number, now: number): string {
   return hours === 1 ? "час назад" : `${hours} ч назад`;
 }
 
+/**
+ * Publish control — lives in the organization block (sidebar), active only.
+ * Before vitrine activation there is no "publish" — launch handles that.
+ */
 export function PublishControl() {
   const { status, totalChanges, changeList, lastChangeAt, publish } = usePublish();
+  const { stage } = useVitrineLaunch();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const isDraft = status === "draft";
@@ -51,10 +57,13 @@ export function PublishControl() {
     return () => window.clearInterval(id);
   }, [open]);
 
+  // Publish exists only after the vitrine is activated by the manager.
+  if (stage !== "active") return null;
+
   const handleToggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setPopupPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+      setPos({ top: rect.bottom + 6, left: rect.left });
     }
     setOpen((v) => !v);
   };
@@ -66,32 +75,27 @@ export function PublishControl() {
 
   return (
     <>
-      {/* Status pill + optional publish button */}
-      <div className="flex items-center gap-2">
-        {/* Status indicator — always visible */}
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={handleToggle}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition",
-            isDraft
-              ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-              : isPublishing || isSaving
-                ? "bg-blue-50 text-blue-700"
-                : "text-zinc-500 hover:bg-zinc-100",
-            open && (isDraft ? "bg-amber-100" : "bg-zinc-100"),
-          )}
-          title={isDraft ? "Есть неопубликованные изменения" : "Витрина опубликована"}
-        >
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={handleToggle}
+        className={cn(
+          "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition",
+          isDraft
+            ? "bg-amber-50 hover:bg-amber-100"
+            : "hover:bg-zinc-100",
+          open && (isDraft ? "bg-amber-100" : "bg-zinc-100"),
+        )}
+      >
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold">
           {isPublishing || isSaving ? (
-            <Loader2 size={12} className="animate-spin" />
+            <Loader2 size={11} className="animate-spin text-blue-600" />
           ) : isDraft ? (
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
           ) : (
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           )}
-          <span>
+          <span className={isDraft ? "text-amber-800" : "text-zinc-500"}>
             {isPublishing
               ? "Публикация…"
               : isSaving
@@ -104,26 +108,18 @@ export function PublishControl() {
                       : `${totalChanges} изменений`
                   : "Опубликовано"}
           </span>
-        </button>
-
-        {/* Publish CTA — only when there are unpublished changes */}
+        </span>
         {isDraft && !isPublishing && (
-          <button
-            type="button"
-            onClick={handlePublish}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95"
-          >
-            <UploadCloud size={13} />
+          <span className="shrink-0 rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
             Опубликовать
-          </button>
+          </span>
         )}
-      </div>
+      </button>
 
-      {/* Popover — opens below the status pill */}
       {open && createPortal(
         <div
           id="publish-popup"
-          style={{ top: popupPos.top, right: popupPos.right }}
+          style={{ top: pos.top, left: pos.left }}
           className="fixed z-[200] w-[300px] rounded-2xl border border-border bg-white p-4 shadow-xl shadow-zinc-300/40"
         >
           {!hasChanges && !isPublishing ? (
@@ -164,10 +160,7 @@ export function PublishControl() {
                     className="flex items-center justify-between rounded-lg px-1 py-1.5 text-sm"
                   >
                     <span className="text-zinc-700">{entry.label}</span>
-                    <span className="text-xs font-semibold text-zinc-500">
-                      {entry.count}{" "}
-                      {entry.count === 1 ? "изм." : "изм."}
-                    </span>
+                    <span className="text-xs font-semibold text-zinc-500">{entry.count} изм.</span>
                   </div>
                 ))}
               </div>

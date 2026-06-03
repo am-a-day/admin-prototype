@@ -21,7 +21,10 @@ import {
 } from "lucide-react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
-import { VitrineLaunchRailDot, VitrineLaunchStatus } from "@/components/layout/vitrine-launch-status";
+import { PlanStatusLine } from "@/components/layout/plan-status-card";
+import { VitrineStatusLine } from "@/components/layout/org-status";
+import { PublishControl } from "@/components/layout/publish-control";
+import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 
@@ -68,6 +71,60 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+// ── Circular progress for launch nav item ────────────────────────────────────
+
+function CircularProgress({
+  value,
+  total,
+  size = 16,
+}: {
+  value: number;
+  total: number;
+  size?: number;
+}) {
+  const r = size / 2 - 2;
+  const circ = 2 * Math.PI * r;
+  const pct = total > 0 ? value / total : 0;
+  const offset = circ * (1 - pct);
+  const complete = value >= total;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="-rotate-90 shrink-0"
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="text-zinc-200"
+      />
+      {pct > 0 && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className={cn(
+            "transition-all duration-500",
+            complete ? "text-emerald-500" : "text-blue-500",
+          )}
+        />
+      )}
+    </svg>
+  );
+}
 
 // ── «Ещё» items ───────────────────────────────────────────────────────────────
 
@@ -221,8 +278,56 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
 }) {
+  const { stage, requiredCompletedCount, requiredTotalCount } = useVitrineLaunch();
+  const showLaunchItem = stage !== "active";
+  const launchActive = section === "storefront" && activeTab === "launch";
+
   return (
     <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-0.5" : "px-2 space-y-1.5 pb-2 pt-1")}>
+
+      {/* ── Запуск витрины (only before activation) ── */}
+      {showLaunchItem && (
+        <div className={compact ? "" : "mb-1"}>
+          <button
+            type="button"
+            onClick={() => onNavigate("storefront", "launch")}
+            title={compact ? `Запуск витрины · ${requiredCompletedCount}/${requiredTotalCount}` : undefined}
+            className={cn(
+              "group relative flex items-center rounded-md transition",
+              compact
+                ? "h-8 w-8 justify-center"
+                : "w-full gap-2.5 px-2 py-1.5 text-left",
+              launchActive
+                ? "bg-zinc-100 text-zinc-950"
+                : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+            )}
+          >
+            <CircularProgress value={requiredCompletedCount} total={requiredTotalCount} size={compact ? 17 : 15} />
+            {!compact && (
+              <div className="min-w-0 flex-1">
+                <div className={cn(
+                  "truncate text-[13px]",
+                  launchActive ? "font-semibold text-zinc-950" : "font-medium text-zinc-700",
+                )}>
+                  Запуск витрины
+                </div>
+                <div className="text-[11px] text-zinc-400">
+                  {requiredCompletedCount === requiredTotalCount
+                    ? "Готова к запуску"
+                    : `${requiredCompletedCount} из ${requiredTotalCount} обязательных`}
+                </div>
+              </div>
+            )}
+            {compact && (
+              <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
+                Запуск витрины · {requiredCompletedCount}/{requiredTotalCount}
+              </span>
+            )}
+          </button>
+          {!compact && <div className="mt-1.5 h-px bg-border" />}
+        </div>
+      )}
+
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
           {!compact && (
@@ -286,18 +391,20 @@ function NavList({
 
 // ── Shared drawer (used by rail and topbar) ───────────────────────────────────
 
-function NavDrawer({
+export function NavDrawer({
   open,
   onClose,
   section,
   activeTab,
   onNavigate,
+  onResetCatalog,
 }: {
   open: boolean;
   onClose: () => void;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
+  onResetCatalog?: () => void;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -332,21 +439,18 @@ function NavDrawer({
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between px-3 py-3">
-          <div className="flex items-center gap-2">
-            <OrgMenu onNavigate={handleNavigate} />
-            <span className="truncate text-sm font-black">{RESTAURANT_NAME}</span>
-          </div>
+        <div className="relative">
+          <OrgBlock onNavigate={handleNavigate} onResetCatalog={onResetCatalog} />
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+            className="absolute right-2.5 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
           >
             <X size={15} />
           </button>
         </div>
+        <div className="h-px bg-border" />
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
-        <VitrineLaunchStatus onNavigate={handleNavigate} />
         <div className="border-t border-border px-2 py-1.5">
           <UserMenu onNavigate={handleNavigate} />
         </div>
@@ -361,17 +465,38 @@ type NavProps = {
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
+  onResetCatalog?: () => void;
 };
 
-function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
+/** Organization block — name, vitrine status, plan, publish (full sidebar / drawer). */
+function OrgBlock({
+  onNavigate,
+  onResetCatalog,
+}: {
+  onNavigate: (section: SectionId, tab: string) => void;
+  onResetCatalog?: () => void;
+}) {
   return (
-    <>
-      <div className="flex items-center gap-2 px-2.5 py-3">
-        <OrgMenu onNavigate={onNavigate} />
+    <div className="px-2.5 pt-3 pb-2.5">
+      <div className="flex items-center gap-2">
+        <OrgMenu onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
         <span className="truncate text-sm font-black tracking-tight">{RESTAURANT_NAME}</span>
       </div>
+      <div className="mt-2 space-y-1 pl-0.5">
+        <VitrineStatusLine />
+        <PlanStatusLine onNavigate={onNavigate} />
+        <PublishControl />
+      </div>
+    </div>
+  );
+}
+
+function FullSidebar({ section, activeTab, onNavigate, onResetCatalog }: NavProps) {
+  return (
+    <>
+      <OrgBlock onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
+      <div className="h-px bg-border" />
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
-      <VitrineLaunchStatus onNavigate={onNavigate} />
       <div className="border-t border-border px-2 py-1.5">
         <UserMenu onNavigate={onNavigate} />
       </div>
@@ -381,32 +506,14 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
 
 // ── Rail sidebar (icons + hamburger that opens drawer) ────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
+function RailSidebar({ section, activeTab, onNavigate, onResetCatalog }: NavProps) {
   return (
     <>
-      <NavDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        section={section}
-        activeTab={activeTab}
-        onNavigate={onNavigate}
-      />
-      <div className="flex flex-col items-center gap-1 py-2">
-        <OrgMenu onNavigate={onNavigate} />
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950"
-          title="Меню"
-        >
-          <Menu size={18} />
-        </button>
+      <div className="flex flex-col items-center py-2">
+        <OrgMenu variant="rail" onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
       <div className="flex flex-col items-center gap-0.5 border-t border-border py-1.5">
-        <VitrineLaunchRailDot />
         <UserMenu compact onNavigate={onNavigate} />
       </div>
     </>
@@ -420,7 +527,7 @@ type SidebarProps = NavProps & {
   dragging?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode, dragging }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, onResetCatalog, mode, dragging }: SidebarProps) {
   if (mode === "topbar") return null;
 
   const isRail = mode === "rail";
@@ -428,15 +535,15 @@ export function Sidebar({ section, activeTab, onNavigate, mode, dragging }: Side
   return (
     <aside
       className={cn(
-        "flex shrink-0 flex-col border-r border-border bg-white overflow-hidden",
+        "flex shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm",
         !dragging && "transition-[width] duration-300 ease-out",
-        isRail ? "w-11" : "w-48",
+        isRail ? "w-12" : "w-48",
       )}
     >
       {isRail ? (
-        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
+        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
       ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
       )}
     </aside>
   );

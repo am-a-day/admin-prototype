@@ -30,7 +30,8 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(cat /tmp/vite-check.log 2>/dev/null | head -15)"
     ]
   }
 }

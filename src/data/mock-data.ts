@@ -26,7 +26,7 @@ export const MOCK_USER = {
 } as const;
 
 export type UserRole = "owner" | "am";
-export type StoreTabId = "home" | "catalog" | "upsell" | "appearance" | "about";
+export type StoreTabId = "home" | "catalog" | "upsell" | "appearance" | "about" | "launch";
 export type ManageTabId = "order-settings" | "order-history" | "billing" | "account" | "io" | "seo";
 export type AnalyticsTabId = "scans" | "orders" | "likes";
 export type PreviewScenario =
@@ -36,6 +36,7 @@ export type PreviewScenario =
   | "age"
   | "serviceFee"
   | "seoLink"
+  | "catalog-empty"
   | "notification-delivery"
   | "notification-pickup"
   | "notification-waiter"

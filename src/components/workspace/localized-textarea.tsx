@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
+import { TranslationIndicator } from "@/components/workspace/translation-indicator";
 
 const LANGUAGE_GENITIVE: Record<LanguageCode, string> = {
   ru: "русского",
@@ -26,20 +27,29 @@ export function LocalizedTextArea({
   rows = 4,
   onEffectiveValueChange,
 }: LocalizedTextAreaProps) {
-  const { contentLanguage } = useAppSettings();
+  const { contentLanguage, setContentLanguage } = useAppSettings();
   const [translations, setTranslations] = useState<Translations>(initialTranslations);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingFocus = useRef(false);
 
   const currentValue = translations[contentLanguage] ?? "";
   const isEmpty = currentValue.trim() === "";
-
   const fallbackValue = translations[fallbackLang] ?? "";
 
   useEffect(() => {
     onEffectiveValueChange?.(isEmpty ? fallbackValue : currentValue);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentValue, fallbackValue, isEmpty]);
+
+  // Focus this field after a language pick from the indicator popover
+  useEffect(() => {
+    if (pendingFocus.current) {
+      textareaRef.current?.focus();
+      pendingFocus.current = false;
+    }
+  }, [contentLanguage]);
+
   const fallbackLabel = LANGUAGES.find((l) => l.code === fallbackLang)?.short ?? fallbackLang.toUpperCase();
-  const currentShort = LANGUAGES.find((l) => l.code === contentLanguage)?.short ?? contentLanguage.toUpperCase();
 
   const handleChange = (value: string) => {
     setTranslations((prev) => ({ ...prev, [contentLanguage]: value }));
@@ -49,17 +59,29 @@ export function LocalizedTextArea({
     setTranslations((prev) => ({ ...prev, [contentLanguage]: fallbackValue }));
   };
 
+  const handlePickLanguage = (lang: LanguageCode) => {
+    pendingFocus.current = true;
+    if (lang === contentLanguage) {
+      textareaRef.current?.focus();
+      pendingFocus.current = false;
+    } else {
+      setContentLanguage(lang);
+    }
+  };
+
   const showCopyAction =
     isEmpty && contentLanguage !== fallbackLang && fallbackValue.trim() !== "";
 
   return (
     <div className="rounded-2xl border border-border bg-zinc-50 px-4 py-3">
       {/* Label row */}
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-          {currentShort}
-        </span>
+        <TranslationIndicator
+          translations={translations}
+          fieldLabel={label}
+          onPickLanguage={handlePickLanguage}
+        />
       </div>
 
       {isEmpty ? (
@@ -79,6 +101,7 @@ export function LocalizedTextArea({
           )}
           {/* Hidden textarea to still allow typing directly */}
           <textarea
+            ref={textareaRef}
             rows={rows}
             value=""
             onChange={(e) => handleChange(e.target.value)}
@@ -88,6 +111,7 @@ export function LocalizedTextArea({
         </div>
       ) : (
         <textarea
+          ref={textareaRef}
           rows={rows}
           value={currentValue}
           onChange={(e) => handleChange(e.target.value)}

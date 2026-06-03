@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { Smartphone } from "lucide-react";
+import { PanelRightClose, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
@@ -26,6 +26,7 @@ import {
   PhoneCatalog,
   PhoneCheckout,
   PhoneDish,
+  PhoneCatalogEmpty,
   PhoneHome,
   PhoneMenuScreen,
   PhoneNotification,
@@ -60,8 +61,10 @@ type PhonePreviewProps = {
   width: number;
   collapsed: boolean;
   dragging: boolean;
+  resizable?: boolean;
   onStartResize: (e: MouseEvent) => void;
   onExpand: () => void;
+  onCollapse: () => void;
 };
 
 const PHONE_W = 292;
@@ -87,14 +90,17 @@ export function PhonePreview({
   width,
   collapsed,
   dragging,
+  resizable = false,
   onStartResize,
   onExpand,
+  onCollapse,
 }: PhonePreviewProps) {
   const {
     serviceFeeRequireConsent,
     deliveryComment,
     pickupComment,
     pickupAddress,
+    contentLanguageShort,
   } = useAppSettings();
   const { routes } = useOrderRouting();
 
@@ -227,6 +233,8 @@ export function PhonePreview({
         />
       );
     }
+  } else if (scenario === "catalog-empty") {
+    screen = <PhoneCatalogEmpty />;
   } else if (activeTab === "catalog") {
     screen = <PhoneCatalog selectedDishId={selectedDishId} />;
   } else if (activeTab === "upsell") {
@@ -273,8 +281,8 @@ export function PhonePreview({
         !dragging && "transition-[width] duration-300 ease-out",
       )}
     >
-      {/* Ручка перетаскивания */}
-      {!collapsed && (
+      {/* Ручка перетаскивания — только в экспериментальном режиме */}
+      {!collapsed && resizable && (
         <div
           onMouseDown={onStartResize}
           className="group absolute left-0 top-0 z-30 flex h-full w-2.5 -translate-x-1/2 cursor-col-resize items-center justify-center"
@@ -298,13 +306,24 @@ export function PhonePreview({
         </button>
       ) : (
         <div className="flex h-full flex-col items-center overflow-hidden px-4 py-6">
-          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="mb-3 flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {scenario === "seoLink"
-              ? "Ссылка в мессенджерах"
-              : scenario === "notification-delivery" || scenario === "notification-pickup" || scenario === "notification-waiter"
-                ? "Уведомление оператора"
-                : "Превью гостя"}
+            <span className="truncate">
+              {scenario === "seoLink"
+                ? "Ссылка в мессенджерах"
+                : scenario === "notification-delivery" || scenario === "notification-pickup" || scenario === "notification-waiter"
+                  ? "Уведомление оператора"
+                  : <>Превью гостя <span className="text-zinc-400">· {contentLanguageShort}</span></>}
+            </span>
+            <button
+              type="button"
+              onClick={onCollapse}
+              title="Скрыть превью"
+              className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-bold normal-case tracking-normal text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <PanelRightClose size={13} />
+              Скрыть
+            </button>
           </div>
           <div style={{ width: PHONE_W * scale, height: PHONE_H * scale }} className="shrink-0">
             <div

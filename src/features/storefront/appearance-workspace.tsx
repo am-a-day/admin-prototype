@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { SectionCard } from "@/components/workspace/section-card";
 import { Switch } from "@/components/ui/switch";
 import { usePublish } from "@/contexts/publish-context";
@@ -41,6 +42,11 @@ export function AppearanceWorkspace() {
   return (
     <PageScroll>
       <PageContent className="space-y-8">
+        <LaunchPageHint
+          checkId="appearance"
+          title="Выберите стиль витрины"
+          description="Оформление формирует первое впечатление — выберите стиль карточек, цвета и фон."
+        />
         <SectionCard>
           <h2 className="text-xl font-black">Стиль карточек</h2>
           <p className="mt-1 text-sm text-muted-foreground">Выберите, как блюда будут выглядеть в меню.</p>

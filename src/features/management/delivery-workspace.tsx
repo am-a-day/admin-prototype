@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { SectionCard } from "@/components/workspace/section-card";
 import { LocalizedTextArea } from "@/components/workspace/localized-textarea";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -320,6 +321,11 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
   return (
     <PageScroll>
       <PageContent>
+        <LaunchPageHint
+          checkId="ordering"
+          title="Настройте приём заказов"
+          description="Выберите, как гости смогут заказывать: доставка, самовывоз или вызов официанта. Это необязательно — пропустите, если витрина нужна только для просмотра меню."
+        />
         <div onMouseEnter={focusDelivery} onFocus={focusDelivery}>
           <MethodSection
             title="Доставка"

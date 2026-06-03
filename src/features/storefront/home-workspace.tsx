@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { AddTile, DishTile } from "@/components/workspace/section-card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -314,6 +315,11 @@ export function HomeWorkspace({
   return (
     <PageScroll>
       <PageContent className="space-y-8">
+        <LaunchPageHint
+          checkId="home"
+          title="Настройте главный экран витрины"
+          description="Добавьте баннеры, ключевые разделы и продвигаемые позиции — это первое, что увидят гости."
+        />
         {/* 1 — Баннеры (главный блок) */}
         <section
           id="home-hero"

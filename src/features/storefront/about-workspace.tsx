@@ -2,6 +2,7 @@ import { Plus, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { Field, FormTextArea, SectionCard } from "@/components/workspace/section-card";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
@@ -44,6 +45,11 @@ export function AboutWorkspace({
   return (
     <PageScroll>
       <PageContent>
+        <LaunchPageHint
+          checkId="about"
+          title="Заполните информацию о заведении"
+          description="Добавьте описание, контакты и график работы — всё, что поможет гостям узнать о вас больше."
+        />
         {/* Tab bar */}
         <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 w-fit">
           {(["info", "seo"] as Tab[]).map((t) => (

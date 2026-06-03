@@ -960,3 +960,38 @@ export function PhoneNotification({
     </div>
   );
 }
+
+// ── Empty catalog preview ─────────────────────────────────────────────────────
+
+export function PhoneCatalogEmpty() {
+  return (
+    <div className="flex h-full flex-col bg-white">
+      {/* Restaurant header */}
+      <div className="px-4 pb-3 pt-8">
+        <div className="text-[15px] font-black text-zinc-900">{RESTAURANT_NAME}</div>
+        <div className="text-[11px] text-zinc-400">Корейская кухня</div>
+      </div>
+      {/* Search bar */}
+      <div className="mx-4 mb-4 flex h-8 items-center rounded-xl bg-zinc-100 px-3">
+        <Search size={11} className="mr-1.5 shrink-0 text-zinc-300" />
+        <span className="text-[11px] text-zinc-300">Поиск по меню…</span>
+      </div>
+      {/* Section tabs skeleton */}
+      <div className="mb-4 flex gap-2 px-4">
+        {[72, 56, 64].map((w) => (
+          <div key={w} className="h-6 animate-pulse rounded-full bg-zinc-100" style={{ width: w }} />
+        ))}
+      </div>
+      {/* Empty state */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-8 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100">
+          <LayoutGrid size={22} className="text-zinc-300" />
+        </div>
+        <div className="text-[13px] font-bold text-zinc-500">Меню пока пустое</div>
+        <p className="text-[11px] leading-4 text-zinc-400">
+          Создайте раздел и добавьте позиции, чтобы гости увидели меню
+        </p>
+      </div>
+    </div>
+  );
+}

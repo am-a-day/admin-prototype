@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
@@ -14,26 +15,43 @@ export type LaunchStage = "preparing" | "ready" | "pending" | "active";
 export type LaunchCheck = {
   id: string;
   label: string;
+  description: string;
+  actionLabel?: string;
   done: boolean;
-  /** Куда переходить при клике на незавершённый шаг */
   section?: SectionId;
   tab?: string;
+  isAddressStep?: boolean;
+  /** true = blocks sending to launch; false = recommended, not blocking */
+  required: boolean;
 };
 
 type VitrineLaunchContextValue = {
   stage: LaunchStage;
   checks: LaunchCheck[];
-  completedCount: number;
-  totalCount: number;
-  /** Показывать подтверждающий modal после "Отправить на запуск" */
+  /** Required-only progress */
+  requiredCompletedCount: number;
+  requiredTotalCount: number;
   confirmVisible: boolean;
   dismissConfirm: () => void;
   sendForLaunch: () => void;
-  /** Для демо: симулировать активацию менеджером */
   simulateActivation: () => void;
-  /** Компактное / развёрнутое состояние карточки ожидания */
   pendingCollapsed: boolean;
   collapsePending: () => void;
+  address: string;
+  setAddress: (v: string) => void;
+  markVisited: (tab: string) => void;
+  resetLaunch: () => void;
+  hoveredStepId: string | null;
+  setHoveredStepId: (id: string | null) => void;
+};
+
+const INITIAL_VISITED: Record<string, boolean> = {
+  catalog: false,
+  home: false,
+  appearance: false,
+  about: false,
+  upsell: false,
+  ordering: false,
 };
 
 const VitrineLaunchContext = createContext<VitrineLaunchContextValue | null>(null);
@@ -42,73 +60,170 @@ export function VitrineLaunchProvider({ children }: { children: ReactNode }) {
   const { planId } = usePlan();
   const { deliveryEnabled, pickupEnabled } = useAppSettings();
 
+  const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>(INITIAL_VISITED);
+  const [address, setAddressState] = useState("");
+  const [stageOverride, setStageOverride] = useState<LaunchStage | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [pendingCollapsed, setPendingCollapsed] = useState(false);
+  const [hoveredStepId, setHoveredStepId] = useState<string | null>(null);
+
+  const markVisited = useCallback((tab: string) => {
+    setVisitedTabs((prev) =>
+      tab in prev && !prev[tab] ? { ...prev, [tab]: true } : prev,
+    );
+  }, []);
+
+  const setAddress = useCallback((v: string) => setAddressState(v), []);
+
+  const resetLaunch = useCallback(() => {
+    setVisitedTabs(INITIAL_VISITED);
+    setAddressState("");
+    setStageOverride(null);
+    setConfirmVisible(false);
+    setPendingCollapsed(false);
+  }, []);
+
   const checks: LaunchCheck[] = useMemo(() => [
+    // ── Required for launch ───────────────────────────────────────────
     {
-      id: "dishes",
-      label: "Добавлены позиции в каталог",
-      done: true, // mock data always has dishes
+      id: "catalog",
+      label: "Добавьте минимум 2 раздела и 5 позиций",
+      description: "Заполните каталог, чтобы гостям было что выбрать в меню.",
+      actionLabel: "Перейти в каталог",
+      done: visitedTabs.catalog,
+      section: "storefront",
+      tab: "catalog",
+      required: true,
     },
     {
-      id: "storefront",
-      label: "Настроен внешний вид",
-      done: true, // mock data has storefront configured
-    },
-    {
-      id: "ordering",
-      label: "Настроен приём заказов",
-      done: deliveryEnabled || pickupEnabled,
-      section: "management",
-      tab: "order-settings",
+      id: "address",
+      label: "Укажите желаемый веб-адрес",
+      description: "Выберите адрес, по которому гости будут открывать витрину после активации.",
+      done: address.trim().length > 0,
+      isAddressStep: true,
+      required: true,
     },
     {
       id: "plan",
-      label: "Выбран тариф",
+      label: "Выберите тариф",
+      description: "Выберите тариф, на котором будет работать витрина.",
+      actionLabel: "Выбрать тариф",
       done: planId !== "Zero",
       section: "management",
       tab: "billing",
+      required: true,
     },
-  ], [planId, deliveryEnabled, pickupEnabled]);
+    // ── Improvements (recommended, not blocking) ──────────────────────
+    {
+      id: "home",
+      label: "Настройте главный экран",
+      description: "Добавьте баннеры, ключевые разделы и продвигаемые позиции.",
+      actionLabel: "Настроить главную",
+      done: visitedTabs.home,
+      section: "storefront",
+      tab: "home",
+      required: false,
+    },
+    {
+      id: "appearance",
+      label: "Настройте внешний вид",
+      description: "Выберите стиль, цвета и оформление витрины.",
+      actionLabel: "Перейти к оформлению",
+      done: visitedTabs.appearance,
+      section: "storefront",
+      tab: "appearance",
+      required: false,
+    },
+    {
+      id: "about",
+      label: "Заполните информацию о заведении",
+      description: "Добавьте описание, контакты, график работы — всё, что увидит гость.",
+      actionLabel: "Заполнить информацию",
+      done: visitedTabs.about,
+      section: "storefront",
+      tab: "about",
+      required: false,
+    },
+    {
+      id: "upsell",
+      label: "Добавьте рекомендации",
+      description: "Свяжите блюда, которые хорошо сочетаются между собой.",
+      actionLabel: "Настроить рекомендации",
+      done: visitedTabs.upsell,
+      section: "storefront",
+      tab: "upsell",
+      required: false,
+    },
+    // ── Ordering (optional section) ───────────────────────────────────
+    {
+      id: "ordering",
+      label: "Настройте доставку и самовывоз",
+      description: "Выберите способы получения заказа и куда будут приходить уведомления.",
+      actionLabel: "Настроить заказы",
+      done: visitedTabs.ordering && (deliveryEnabled || pickupEnabled),
+      section: "management",
+      tab: "order-settings",
+      required: false,
+    },
+    {
+      id: "waiter",
+      label: "Настройте вызов официанта",
+      description: "Позвольте гостям позвать официанта прямо из витрины.",
+      actionLabel: "Настроить вызов",
+      done: false, // prototype — waiter config not yet implemented
+      section: "management",
+      tab: "order-settings",
+      required: false,
+    },
+  ], [visitedTabs, address, planId, deliveryEnabled, pickupEnabled]);
 
-  const completedCount = checks.filter((c) => c.done).length;
-  const allDone = completedCount === checks.length;
+  const requiredChecks = checks.filter((c) => c.required);
+  const requiredCompletedCount = requiredChecks.filter((c) => c.done).length;
+  const requiredTotalCount = requiredChecks.length;
+  const allRequiredDone = requiredCompletedCount === requiredTotalCount;
 
-  // Derive initial stage from data — can be overridden by user actions
-  const [stageOverride, setStageOverride] = useState<LaunchStage | null>(null);
-
-  // Initial stage: Zero plan without all checks → preparing, else active for demo
-  const derivedStage: LaunchStage = allDone ? "ready" : "preparing";
+  const derivedStage: LaunchStage = allRequiredDone ? "ready" : "preparing";
   const stage = stageOverride ?? derivedStage;
 
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [pendingCollapsed, setPendingCollapsed] = useState(false);
-
-  const sendForLaunch = () => {
+  const sendForLaunch = useCallback(() => {
     setStageOverride("pending");
     setConfirmVisible(true);
     setPendingCollapsed(false);
-  };
+  }, []);
 
-  const dismissConfirm = () => setConfirmVisible(false);
-
-  const simulateActivation = () => {
+  const dismissConfirm = useCallback(() => setConfirmVisible(false), []);
+  const simulateActivation = useCallback(() => {
     setStageOverride("active");
     setConfirmVisible(false);
-  };
+  }, []);
+  const collapsePending = useCallback(() => setPendingCollapsed(true), []);
 
-  const collapsePending = () => setPendingCollapsed(true);
-
-  const value = useMemo<VitrineLaunchContextValue>(() => ({
-    stage,
-    checks,
-    completedCount,
-    totalCount: checks.length,
-    confirmVisible,
-    dismissConfirm,
-    sendForLaunch,
-    simulateActivation,
-    pendingCollapsed,
-    collapsePending,
-  }), [stage, checks, completedCount, confirmVisible, pendingCollapsed]);
+  const value = useMemo<VitrineLaunchContextValue>(
+    () => ({
+      stage,
+      checks,
+      requiredCompletedCount,
+      requiredTotalCount,
+      confirmVisible,
+      dismissConfirm,
+      sendForLaunch,
+      simulateActivation,
+      pendingCollapsed,
+      collapsePending,
+      address,
+      setAddress,
+      markVisited,
+      resetLaunch,
+      hoveredStepId,
+      setHoveredStepId,
+    }),
+    [
+      stage, checks, requiredCompletedCount, requiredTotalCount,
+      confirmVisible, dismissConfirm, sendForLaunch, simulateActivation,
+      pendingCollapsed, collapsePending, address, setAddress,
+      markVisited, resetLaunch, hoveredStepId, setHoveredStepId,
+    ],
+  );
 
   return (
     <VitrineLaunchContext.Provider value={value}>
