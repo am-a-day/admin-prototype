@@ -4,12 +4,13 @@ import {
   ArrowUpRight,
   ChevronDown,
   FlaskConical,
+  LayoutDashboard,
   MonitorSmartphone,
   Store,
 } from "lucide-react";
 import { RESTAURANT_NAME, STOREFRONT_URL, type PlanId, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
-import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
+import { useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { useLayoutMode, type LayoutVersion } from "@/contexts/layout-mode-context";
 import { usePublish } from "@/contexts/publish-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
@@ -37,7 +38,7 @@ function MenuItem({ icon: Icon, label, external, onClick }: MenuItemProps) {
   );
 }
 
-/** Organisation / vitrine context menu — top of sidebar */
+/** Organisation / vitrine context menu — triggered from header or sidebar */
 export function OrgMenu({
   onNavigate,
   onResetCatalog,
@@ -45,32 +46,16 @@ export function OrgMenu({
 }: {
   onNavigate: (section: SectionId, tab: string) => void;
   onResetCatalog?: () => void;
-  variant?: "full" | "rail";
+  /** "full" = T avatar (sidebar), "rail" = T avatar with dot, "text" = inline org name (header) */
+  variant?: "full" | "rail" | "text";
 }) {
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
-  const { resetLaunch } = useVitrineLaunch();
+  const { stage, resetLaunch, forceStage } = useVitrineLaunch();
   const { layoutVersion, setLayoutVersion, resizablePreview, setResizablePreview } = useLayoutMode();
   const planStatus = usePlanStatus();
   const vitrine = useVitrineStatus();
-  const { totalChanges, changeList, publish, status: publishStatus } = usePublish();
+  const { totalChanges, injectDemoChanges } = usePublish();
 
-  const planLine =
-    planStatus.kind === "none"
-      ? "Тариф не выбран"
-      : planStatus.kind === "pending"
-        ? `${planStatus.planId} · ожидает активации`
-        : planStatus.kind === "expired"
-          ? "Подписка закончилась"
-          : `${planStatus.planId} · ${planStatus.expiryLabel}`;
-
-  const planCta =
-    planStatus.kind === "none" ? "Выбрать тариф" :
-    planStatus.kind === "pending" ? "Изменить тариф" :
-    planStatus.kind === "expired" ? "Продлить доступ" :
-    planStatus.kind === "expiring" ? "Продлить тариф" :
-    "Продлить";
-
-  const showPublish = vitrine.isActive && totalChanges > 0;
   const railWarn = planStatus.kind === "expiring" || planStatus.kind === "expired";
 
   const [open, setOpen] = useState(false);
@@ -99,7 +84,13 @@ export function OrgMenu({
   const handleToggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setPopupPos({ top: rect.top, left: rect.right + 8 });
+      if (variant === "text") {
+        // Open below for inline header trigger
+        setPopupPos({ top: rect.bottom + 4, left: rect.left });
+      } else {
+        // Open to the right for sidebar triggers
+        setPopupPos({ top: rect.top, left: rect.right + 8 });
+      }
     }
     setOpen((v) => !v);
   };
@@ -108,40 +99,49 @@ export function OrgMenu({
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={handleToggle}
-        className={cn(
-          "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-black text-white transition hover:opacity-90",
-          open && "ring-2 ring-blue-500/30 ring-offset-2",
-        )}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        title={variant === "rail" ? `${RESTAURANT_NAME} · ${vitrine.label}` : RESTAURANT_NAME}
-      >
-        T
-        {variant === "rail" && (
-          <>
-            {/* Vitrine status dot */}
-            <span
-              className={cn(
-                "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white",
-                vitrine.dot,
+      {variant === "text" ? (
+        /* Inline header trigger: "● Kimchi Astana ▾" */
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={handleToggle}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-2 py-1 transition",
+            open ? "bg-zinc-100" : "hover:bg-zinc-100",
+          )}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          title={RESTAURANT_NAME}
+        >
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", vitrine.dot)} />
+          <span className="text-sm font-bold text-zinc-950">{RESTAURANT_NAME}</span>
+          <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
+        </button>
+      ) : (
+        /* Avatar trigger for sidebar (full / rail) */
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={handleToggle}
+          className={cn(
+            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-black text-white transition hover:opacity-90",
+            open && "ring-2 ring-blue-500/30 ring-offset-2",
+          )}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          title={variant === "rail" ? `${RESTAURANT_NAME} · ${vitrine.label}` : RESTAURANT_NAME}
+        >
+          T
+          {variant === "rail" && (
+            <>
+              <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white", vitrine.dot)} />
+              {railWarn && (
+                <span className={cn("absolute -right-1 -top-1 h-2 w-2 rounded-full border border-white", planStatus.kind === "expired" ? "bg-orange-500" : "bg-amber-400")} />
               )}
-            />
-            {/* Subscription warning badge */}
-            {railWarn && (
-              <span
-                className={cn(
-                  "absolute -right-1 -top-1 h-2 w-2 rounded-full border border-white",
-                  planStatus.kind === "expired" ? "bg-orange-500" : "bg-amber-400",
-                )}
-              />
-            )}
-          </>
-        )}
-      </button>
+            </>
+          )}
+        </button>
+      )}
 
       {open && createPortal(
         <div
@@ -160,75 +160,15 @@ export function OrgMenu({
               </div>
               <div className="mt-0.5 flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", vitrine.dot)} />
-                <span className="text-xs font-semibold text-zinc-600">{vitrine.label}</span>
+                <span className="text-xs text-zinc-500">{vitrine.label}</span>
               </div>
+              {vitrine.isActive && (
+                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{vitrine.webAddress}</div>
+              )}
             </div>
           </div>
 
-          {/* Details grid */}
-          <div className="mx-2.5 mb-1 mt-1 space-y-2 rounded-xl bg-zinc-50 px-3 py-2.5">
-            {vitrine.isActive && (
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Адрес</div>
-                <div className="font-mono text-[12px] text-zinc-700">{vitrine.webAddress}</div>
-              </div>
-            )}
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Тариф</div>
-              <div
-                className={cn(
-                  "text-[12px] font-semibold",
-                  planStatus.kind === "expired" ? "text-orange-600" :
-                  planStatus.kind === "expiring" ? "text-amber-600" : "text-zinc-700",
-                )}
-              >
-                {planLine}
-              </div>
-              {planStatus.kind === "pending" && (
-                <div className="text-[11px] text-zinc-400">Активируется после проверки менеджером</div>
-              )}
-              {(planStatus.kind === "active" || planStatus.kind === "expiring") && (
-                <div className="text-[11px] text-zinc-400">{planStatus.daysLeftPhrase}</div>
-              )}
-              <button
-                type="button"
-                onClick={() => { onNavigate("management", "billing"); close(); }}
-                className="mt-1 text-[12px] font-bold text-blue-600 hover:underline"
-              >
-                {planCta} →
-              </button>
-            </div>
-          </div>
-
-          {/* Publish (active + has changes) */}
-          {showPublish && (
-            <div className="mx-2.5 mb-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                <span className="text-[12px] font-bold text-amber-800">
-                  Неопубликованные изменения
-                </span>
-              </div>
-              <div className="mt-1.5 space-y-0.5">
-                {changeList.map((c) => (
-                  <div key={c.page} className="flex items-center justify-between text-[11px]">
-                    <span className="text-zinc-600">{c.label}</span>
-                    <span className="font-semibold text-zinc-400">{c.count} изм.</span>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => { publish(); close(); }}
-                disabled={publishStatus === "publishing"}
-                className="mt-2 w-full rounded-lg bg-blue-600 py-1.5 text-[12px] font-bold text-white transition hover:bg-blue-700 disabled:bg-blue-400"
-              >
-                Опубликовать изменения
-              </button>
-            </div>
-          )}
-
-          <div className="my-1.5 border-t border-border" />
+          <div className="my-1 border-t border-border" />
 
           <MenuItem
             icon={Store}
@@ -241,6 +181,11 @@ export function OrgMenu({
             label="Открыть табло"
             external
             onClick={() => { window.open(`https://${STOREFRONT_URL}/board`, "_blank"); close(); }}
+          />
+          <MenuItem
+            icon={LayoutDashboard}
+            label="Управление витриной"
+            onClick={() => { onNavigate("storefront", "launch"); close(); }}
           />
 
           <div className="my-1.5 border-t border-border" />
@@ -260,7 +205,123 @@ export function OrgMenu({
           </button>
           {demoOpen && (
             <div className="mx-1 mb-1 rounded-xl border border-border bg-zinc-50 px-3 py-2.5 space-y-3">
-              {/* Layout version A/B */}
+
+              {/* ── Витрина ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Витрина
+                </div>
+                <div className="flex gap-1">
+                  {([
+                    ["preparing", "Готовится"],
+                    ["pending",   "Ожидает"],
+                    ["active",    "Активна"],
+                  ] as [LaunchStage, string][]).map(([s, label]) => {
+                    const isActive = s === "active" ? stage === "active" : s === "pending" ? stage === "pending" : (stage === "preparing" || stage === "ready");
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          if (s === "preparing") { resetLaunch(); onResetCatalog?.(); }
+                          else forceStage(s);
+                        }}
+                        className={cn(
+                          "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                          isActive
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Изменения (только когда активна) ── */}
+              {stage === "active" && (
+                <div>
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                    Изменения
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => injectDemoChanges()}
+                    className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                  >
+                    <span>Неопубликованные изменения</span>
+                    <span
+                      className={cn(
+                        "relative h-4 w-7 shrink-0 rounded-full transition",
+                        totalChanges > 0 ? "bg-blue-600" : "bg-zinc-300",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                          totalChanges > 0 ? "left-3.5" : "left-0.5",
+                        )}
+                      />
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {/* ── Подписка ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Подписка
+                </div>
+                <div className="flex gap-1">
+                  {([
+                    [18, "Активна"],
+                    [5,  "Скоро кончится"],
+                    [0,  "Закончилась"],
+                  ] as [number, string][]).map(([d, label]) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDaysLeftDemo(d)}
+                      className={cn(
+                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                        daysLeft === d
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Тариф ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Тариф
+                </div>
+                <div className="flex gap-1">
+                  {(["Zero", "Lite", "Ultra"] as PlanId[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPlanId(p)}
+                      className={cn(
+                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                        planId === p
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Лейаут ── */}
               <div>
                 <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
                   Лейаут
@@ -286,52 +347,8 @@ export function OrgMenu({
                   ))}
                 </div>
               </div>
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Тариф
-                </div>
-                <div className="flex gap-1">
-                  {(["Zero", "Lite", "Ultra"] as PlanId[]).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPlanId(p)}
-                      className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
-                        planId === p
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
-                      )}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* Days-left demo (subscription states) */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Дней до окончания
-                </div>
-                <div className="flex gap-1">
-                  {[18, 5, 0].map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setDaysLeftDemo(d)}
-                      className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
-                        daysLeft === d
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
-                      )}
-                    >
-                      {d === 0 ? "Истёк" : d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* Resizable preview experiment */}
+
+              {/* ── Превью ── */}
               <div>
                 <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
                   Превью
@@ -357,19 +374,7 @@ export function OrgMenu({
                   </span>
                 </button>
               </div>
-              {/* Reset launch */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Запуск витрины
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { resetLaunch(); onResetCatalog?.(); close(); }}
-                  className="w-full rounded-lg border border-border bg-white py-1 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50"
-                >
-                  Сбросить к первому запуску
-                </button>
-              </div>
+
             </div>
           )}
         </div>,

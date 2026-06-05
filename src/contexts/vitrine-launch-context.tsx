@@ -11,6 +11,7 @@ import { useAppSettings } from "@/contexts/app-settings-context";
 import type { SectionId } from "@/data/mock-data";
 
 export type LaunchStage = "preparing" | "ready" | "pending" | "active";
+export type LaunchTabId = "quick" | "improve" | "orders" | "manager" | "tour";
 
 export type LaunchCheck = {
   id: string;
@@ -41,8 +42,16 @@ type VitrineLaunchContextValue = {
   setAddress: (v: string) => void;
   markVisited: (tab: string) => void;
   resetLaunch: () => void;
+  /** Prototype tool: directly set stage override (null = derive from checks) */
+  forceStage: (s: LaunchStage | null) => void;
   hoveredStepId: string | null;
   setHoveredStepId: (id: string | null) => void;
+  /** Which local tab is active inside the launch workspace */
+  activeLaunchTab: LaunchTabId;
+  setActiveLaunchTab: (tab: LaunchTabId) => void;
+  /** Whether the user dismissed the launch page (only possible after activation) */
+  launchDismissed: boolean;
+  dismissLaunch: () => void;
 };
 
 const INITIAL_VISITED: Record<string, boolean> = {
@@ -66,6 +75,8 @@ export function VitrineLaunchProvider({ children }: { children: ReactNode }) {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [pendingCollapsed, setPendingCollapsed] = useState(false);
   const [hoveredStepId, setHoveredStepId] = useState<string | null>(null);
+  const [activeLaunchTab, setActiveLaunchTabState] = useState<LaunchTabId>("quick");
+  const [launchDismissed, setLaunchDismissed] = useState(false);
 
   const markVisited = useCallback((tab: string) => {
     setVisitedTabs((prev) =>
@@ -74,6 +85,8 @@ export function VitrineLaunchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setAddress = useCallback((v: string) => setAddressState(v), []);
+  const setActiveLaunchTab = useCallback((tab: LaunchTabId) => setActiveLaunchTabState(tab), []);
+  const dismissLaunch = useCallback(() => setLaunchDismissed(true), []);
 
   const resetLaunch = useCallback(() => {
     setVisitedTabs(INITIAL_VISITED);
@@ -81,6 +94,13 @@ export function VitrineLaunchProvider({ children }: { children: ReactNode }) {
     setStageOverride(null);
     setConfirmVisible(false);
     setPendingCollapsed(false);
+    setActiveLaunchTabState("quick");
+    setLaunchDismissed(false);
+  }, []);
+
+  const forceStage = useCallback((s: LaunchStage | null) => {
+    setStageOverride(s);
+    setConfirmVisible(false);
   }, []);
 
   const checks: LaunchCheck[] = useMemo(() => [
@@ -214,14 +234,20 @@ export function VitrineLaunchProvider({ children }: { children: ReactNode }) {
       setAddress,
       markVisited,
       resetLaunch,
+      forceStage,
       hoveredStepId,
       setHoveredStepId,
+      activeLaunchTab,
+      setActiveLaunchTab,
+      launchDismissed,
+      dismissLaunch,
     }),
     [
       stage, checks, requiredCompletedCount, requiredTotalCount,
       confirmVisible, dismissConfirm, sendForLaunch, simulateActivation,
       pendingCollapsed, collapsePending, address, setAddress,
-      markVisited, resetLaunch, hoveredStepId, setHoveredStepId,
+      markVisited, resetLaunch, forceStage, hoveredStepId, setHoveredStepId,
+      activeLaunchTab, setActiveLaunchTab, launchDismissed, dismissLaunch,
     ],
   );
 

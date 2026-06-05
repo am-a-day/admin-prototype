@@ -56,6 +56,8 @@ type PublishContextValue = {
   lastChangeAt: number | null;
   registerChange: (page: PageKey) => void;
   publish: () => void;
+  /** Prototype tool: inject mock unpublished changes for demo. */
+  injectDemoChanges: () => void;
   // UX-эксперимент
   saveMode: SaveMode;
   setSaveMode: (mode: SaveMode) => void;
@@ -136,6 +138,11 @@ export function PublishProvider({ children }: { children: ReactNode }) {
     }, 1500);
   }, []);
 
+  const injectDemoChanges = useCallback(() => {
+    setChanges({ home: 1, catalog: 1, upsell: 0, appearance: 0, about: 1, "order-settings": 0 });
+    setLastChangeAt(Date.now());
+  }, []);
+
   const value = useMemo<PublishContextValue>(
     () => ({
       status,
@@ -145,6 +152,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       lastChangeAt,
       registerChange,
       publish,
+      injectDemoChanges,
       saveMode,
       setSaveMode,
       toast,
@@ -157,6 +165,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       lastChangeAt,
       registerChange,
       publish,
+      injectDemoChanges,
       saveMode,
       toast,
     ],

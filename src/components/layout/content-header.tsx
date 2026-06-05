@@ -1,25 +1,12 @@
-import type { ReactNode } from "react";
-import { AlertTriangle, PanelLeft, PanelLeftClose } from "lucide-react";
-import { ContentLanguageBadge } from "@/components/workspace/content-language-badge";
-import { useHeaderActionsSlot } from "@/contexts/header-actions-context";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
+import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
+import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { cn } from "@/lib/utils";
 
-type ContentHeaderProps = {
-  title: string;
-  description?: string;
-  showLanguage?: boolean;
-  /** Second-level sub-page tabs (rail layout only) */
-  tabs?: ReactNode;
-  /** Unified sidebar toggle (sidebar layout only) */
-  onToggleSidebar?: () => void;
-  /** Whether the inline sidebar is currently expanded (controls toggle icon) */
-  sidebarExpanded?: boolean;
-  /** Navigate to billing/renew */
-  onRenewPlan?: () => void;
-};
+// ── Plan warning strip ────────────────────────────────────────────────────────
 
-/** Slim subscription warning — only when expiring soon or expired. */
 function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   const status = usePlanStatus();
   if (status.kind !== "expiring" && status.kind !== "expired") return null;
@@ -34,7 +21,7 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 border-b px-4 py-1.5 sm:px-5",
+        "flex items-center gap-2 border-b px-5 py-1.5",
         expired ? "border-orange-200 bg-orange-50" : "border-amber-200 bg-amber-50",
       )}
     >
@@ -60,48 +47,139 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   );
 }
 
+// ── Content language switcher ─────────────────────────────────────────────────
+
+function PageLangSwitcher() {
+  const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (document.getElementById("page-lang-popup")?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        className={cn(
+          "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm transition",
+          open
+            ? "bg-zinc-100 text-zinc-700"
+            : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600",
+        )}
+        title="Язык контента"
+      >
+        <span className="text-xs font-medium">Контент: {contentLanguageShort}</span>
+        <ChevronDown size={10} className={cn("shrink-0 transition", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div
+          id="page-lang-popup"
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[200] w-44 rounded-xl border border-border bg-white p-2 shadow-xl shadow-zinc-200/60"
+        >
+          <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+            Язык контента
+          </div>
+          <p className="mb-1.5 px-2 text-[10px] leading-4 text-zinc-400">
+            Версия меню и витрины для редактирования.
+          </p>
+          {LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => { setContentLanguage(lang.code as LanguageCode); setOpen(false); }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition",
+                contentLanguage === lang.code
+                  ? "bg-blue-50 font-semibold text-blue-700"
+                  : "text-zinc-600 hover:bg-zinc-50",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", contentLanguage === lang.code ? "bg-blue-600" : "bg-transparent")} />
+              {lang.label}
+              <span className="ml-auto text-xs text-zinc-400">{lang.short}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Content header (page header) ──────────────────────────────────────────────
+
+type ContentHeaderProps = {
+  title?: string;
+  description?: string;
+  showLanguage?: boolean;
+  /** Second-level sub-page tabs (rail layout only) */
+  tabs?: ReactNode;
+  /** Navigate to billing on plan warning CTA */
+  onRenewPlan?: () => void;
+};
+
 export function ContentHeader({
   title,
   description,
-  showLanguage = false,
+  showLanguage,
   tabs,
-  onToggleSidebar,
-  sidebarExpanded = false,
   onRenewPlan,
 }: ContentHeaderProps) {
-  const actions = useHeaderActionsSlot();
+  const hasHeader = !!(title || description || showLanguage || tabs);
 
   return (
     <div className="shrink-0">
       <PlanWarningStrip onRenew={onRenewPlan} />
-      <header className="border-b border-border bg-white px-4 pt-3 pb-0 sm:px-5">
-        <div className="flex items-center justify-between gap-4 pb-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            {onToggleSidebar && (
-              <button
-                type="button"
-                onClick={onToggleSidebar}
-                title={sidebarExpanded ? "Свернуть навигацию" : "Открыть навигацию"}
-                aria-label={sidebarExpanded ? "Свернуть навигацию" : "Открыть навигацию"}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-              >
-                {sidebarExpanded ? <PanelLeftClose size={17} /> : <PanelLeft size={17} />}
-              </button>
-            )}
-            <div className="min-w-0">
-              <h1 className="truncate text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
-              {description && (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>
+      {hasHeader && (
+        <div className="border-b border-border bg-white px-5 pb-3 pt-4">
+          {/* Title row */}
+          {(title || showLanguage) && (
+            <div className="flex items-center gap-2">
+              {title && (
+                <h1 className="text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
+              )}
+              {showLanguage && (
+                <>
+                  <span className="text-xs text-zinc-300">·</span>
+                  <PageLangSwitcher />
+                </>
               )}
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {actions}
-            {showLanguage && <ContentLanguageBadge />}
-          </div>
+          )}
+          {/* Description */}
+          {description && (
+            <p className={cn("text-sm text-zinc-500", title && "mt-1")}>{description}</p>
+          )}
+          {/* Tabs (rail layout) */}
+          {tabs && <div className={cn("-mx-1", (title || description) && "mt-3")}>{tabs}</div>}
         </div>
-        {tabs && <div className="-mx-1 pb-2">{tabs}</div>}
-      </header>
+      )}
     </div>
   );
 }

@@ -19,11 +19,6 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { OrgMenu } from "@/components/layout/account-menu";
-import { UserMenu } from "@/components/layout/user-menu";
-import { PlanStatusLine } from "@/components/layout/plan-status-card";
-import { VitrineStatusLine } from "@/components/layout/org-status";
-import { PublishControl } from "@/components/layout/publish-control";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
@@ -278,8 +273,8 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
 }) {
-  const { stage, requiredCompletedCount, requiredTotalCount } = useVitrineLaunch();
-  const showLaunchItem = stage !== "active";
+  const { stage, requiredCompletedCount, requiredTotalCount, launchDismissed } = useVitrineLaunch();
+  const showLaunchItem = stage !== "active" && !launchDismissed;
   const launchActive = section === "storefront" && activeTab === "launch";
 
   return (
@@ -397,14 +392,12 @@ export function NavDrawer({
   section,
   activeTab,
   onNavigate,
-  onResetCatalog,
 }: {
   open: boolean;
   onClose: () => void;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
-  onResetCatalog?: () => void;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -439,21 +432,18 @@ export function NavDrawer({
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="relative">
-          <OrgBlock onNavigate={handleNavigate} onResetCatalog={onResetCatalog} />
+        <div className="flex items-center justify-between px-3 py-3">
+          <span className="text-sm font-black tracking-tight text-zinc-950">{RESTAURANT_NAME}</span>
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-2.5 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
           >
             <X size={15} />
           </button>
         </div>
         <div className="h-px bg-border" />
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
-        <div className="border-t border-border px-2 py-1.5">
-          <UserMenu onNavigate={handleNavigate} />
-        </div>
       </div>
     </>
   );
@@ -468,55 +458,17 @@ type NavProps = {
   onResetCatalog?: () => void;
 };
 
-/** Organization block — name, vitrine status, plan, publish (full sidebar / drawer). */
-function OrgBlock({
-  onNavigate,
-  onResetCatalog,
-}: {
-  onNavigate: (section: SectionId, tab: string) => void;
-  onResetCatalog?: () => void;
-}) {
+function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
-    <div className="px-2.5 pt-3 pb-2.5">
-      <div className="flex items-center gap-2">
-        <OrgMenu onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
-        <span className="truncate text-sm font-black tracking-tight">{RESTAURANT_NAME}</span>
-      </div>
-      <div className="mt-2 space-y-1 pl-0.5">
-        <VitrineStatusLine />
-        <PlanStatusLine onNavigate={onNavigate} />
-        <PublishControl />
-      </div>
-    </div>
+    <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
   );
 }
 
-function FullSidebar({ section, activeTab, onNavigate, onResetCatalog }: NavProps) {
-  return (
-    <>
-      <OrgBlock onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
-      <div className="h-px bg-border" />
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
-      <div className="border-t border-border px-2 py-1.5">
-        <UserMenu onNavigate={onNavigate} />
-      </div>
-    </>
-  );
-}
+// ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-// ── Rail sidebar (icons + hamburger that opens drawer) ────────────────────────
-
-function RailSidebar({ section, activeTab, onNavigate, onResetCatalog }: NavProps) {
+function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
-    <>
-      <div className="flex flex-col items-center py-2">
-        <OrgMenu variant="rail" onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
-      </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
-      <div className="flex flex-col items-center gap-0.5 border-t border-border py-1.5">
-        <UserMenu compact onNavigate={onNavigate} />
-      </div>
-    </>
+    <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
   );
 }
 
@@ -527,26 +479,13 @@ type SidebarProps = NavProps & {
   dragging?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, onResetCatalog, mode, dragging }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode }: SidebarProps) {
   if (mode === "topbar") return null;
-
   const isRail = mode === "rail";
-
-  return (
-    <aside
-      className={cn(
-        "flex shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm",
-        !dragging && "transition-[width] duration-300 ease-out",
-        isRail ? "w-12" : "w-48",
-      )}
-    >
-      {isRail ? (
-        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
-      ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
-      )}
-    </aside>
-  );
+  // No own container — parent left column provides bg, width, and border
+  return isRail
+    ? <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
+    : <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />;
 }
 
 // ── TopBar (small viewport — replaces sidebar entirely) ───────────────────────

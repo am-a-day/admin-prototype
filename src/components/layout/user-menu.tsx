@@ -6,17 +6,20 @@ import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { cn } from "@/lib/utils";
 
-/** User account menu — bottom of sidebar */
+/** User account menu — bottom of sidebar or in app header */
 export function UserMenu({
   compact = false,
+  placement = "up",
   onNavigate,
 }: {
   compact?: boolean;
+  /** "up" opens above button (sidebar), "down" opens below (header) */
+  placement?: "up" | "down";
   onNavigate: (section: SectionId, tab: string) => void;
 }) {
   const { uiLanguage, setUiLanguage } = useAppSettings();
   const [open, setOpen] = useState(false);
-  const [popupPos, setPopupPos] = useState({ bottom: 0, left: 0 });
+  const [popupPos, setPopupPos] = useState({ top: 0, bottom: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -40,11 +43,20 @@ export function UserMenu({
   const handleToggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      // Open upward: anchor to the top of the trigger button
-      setPopupPos({
-        bottom: window.innerHeight - rect.top + 6,
-        left: compact ? rect.right + 8 : rect.left,
-      });
+      if (placement === "down") {
+        setPopupPos({
+          top: rect.bottom + 6,
+          bottom: 0,
+          left: Math.max(8, rect.right - 256),
+        });
+      } else {
+        // Open upward: anchor to the top of the trigger button
+        setPopupPos({
+          top: 0,
+          bottom: window.innerHeight - rect.top + 6,
+          left: compact ? rect.right + 8 : rect.left,
+        });
+      }
     }
     setOpen((v) => !v);
   };
@@ -94,7 +106,11 @@ export function UserMenu({
       {open && createPortal(
         <div
           id="user-menu-popup"
-          style={{ bottom: popupPos.bottom, left: popupPos.left }}
+          style={
+            placement === "down"
+              ? { top: popupPos.top, left: popupPos.left }
+              : { bottom: popupPos.bottom, left: popupPos.left }
+          }
           className="fixed z-[200] w-64 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
         >
           {/* User header */}

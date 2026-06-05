@@ -1,4 +1,4 @@
-import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
+import { useVitrineLaunch, type LaunchTabId } from "@/contexts/vitrine-launch-context";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { banners } from "@/data/mock-data";
 import {
@@ -35,13 +35,22 @@ function resolveScreen(
   checks: { id: string; done: boolean }[],
   hoveredId: string | null,
   stage: string,
+  activeTab: LaunchTabId,
 ): ScreenId {
   if (stage === "active") return "active";
   if (stage === "pending") return "pending";
 
   const done = (id: string) => checks.find((c) => c.id === id)?.done ?? false;
 
-  // Hover preview — show what this step unlocks
+  // Non-quick tabs show context-appropriate screens
+  if (activeTab === "improve") {
+    return done("appearance") ? "appearance" : done("home") ? "home" : done("catalog") ? "catalog" : "empty";
+  }
+  if (activeTab === "orders") return "ordering";
+  if (activeTab === "manager") return done("catalog") ? "catalog" : "empty";
+  if (activeTab === "tour") return done("catalog") ? "catalog" : "empty";
+
+  // Quick tab: hover preview takes precedence
   if (hoveredId) {
     if (hoveredId === "catalog") return done("catalog") ? "catalog" : "empty";
     if (hoveredId === "address" || hoveredId === "plan") return done("plan") ? "ready" : done("catalog") ? "catalog" : "empty";
@@ -59,16 +68,23 @@ function resolveScreen(
   return "empty";
 }
 
-const SCREEN_META: Record<ScreenId, { label: string; labelCls: string; hint: (address?: string) => string }> = {
+type ScreenMeta = { label: string; labelCls: string; hint: (address?: string, activeTab?: LaunchTabId) => string };
+
+const SCREEN_META: Record<ScreenId, ScreenMeta> = {
   empty: {
     label: "Витрина пока пустая",
     labelCls: "text-zinc-400",
-    hint: () => "Добавьте первые позиции, чтобы гости увидели меню.",
+    hint: (_a, tab) =>
+      tab === "tour" ? "Перейдите в Каталог, чтобы добавить первые позиции." :
+      "Добавьте первые позиции, чтобы гости увидели меню.",
   },
   catalog: {
     label: "Меню заполняется",
     labelCls: "text-zinc-500",
-    hint: () => "Гости увидят ваши блюда и смогут сделать выбор.",
+    hint: (_a, tab) =>
+      tab === "improve" ? "Настройте главную и оформление, чтобы витрина стала привлекательнее." :
+      tab === "tour" ? "Здесь гости смотрят меню и выбирают блюда." :
+      "Гости увидят ваши блюда и смогут сделать выбор.",
   },
   home: {
     label: "Главный экран настроен",
@@ -81,9 +97,9 @@ const SCREEN_META: Record<ScreenId, { label: string; labelCls: string; hint: (ad
     hint: () => "Витрина выглядит в вашем фирменном стиле.",
   },
   ordering: {
-    label: "Приём заказов настроен",
+    label: "Приём заказов",
     labelCls: "text-zinc-500",
-    hint: () => "Гости смогут оформить доставку или самовывоз.",
+    hint: () => "Гости смогут оформить доставку или самовывоз прямо из витрины.",
   },
   ready: {
     label: "Готова к запуску",
@@ -143,10 +159,10 @@ function EmptyScreen() {
 // ── Launch phone preview panel ───────────────────────────────────────────────
 
 export function LaunchPhonePreview() {
-  const { checks, stage, address, hoveredStepId } = useVitrineLaunch();
+  const { checks, stage, address, hoveredStepId, activeLaunchTab } = useVitrineLaunch();
   const { deliveryComment } = useAppSettings();
 
-  const screenId = resolveScreen(checks, hoveredStepId, stage);
+  const screenId = resolveScreen(checks, hoveredStepId, stage, activeLaunchTab);
   const meta = SCREEN_META[screenId];
 
   let screenContent: React.ReactNode;
@@ -236,12 +252,12 @@ export function LaunchPhonePreview() {
             {meta.label}
           </div>
           <p className="text-[11px] leading-[1.5] text-zinc-400">
-            {meta.hint(address.trim() || undefined)}
+            {meta.hint(address.trim() || undefined, activeLaunchTab)}
           </p>
         </div>
 
-        {/* Hover tip */}
-        {stage !== "active" && stage !== "pending" && (
+        {/* Hover tip — only on quick tab */}
+        {activeLaunchTab === "quick" && stage !== "active" && stage !== "pending" && (
           <p className="mt-4 text-center text-[10px] leading-[1.6] text-zinc-300">
             Наведите на шаг, чтобы увидеть превью.
           </p>
