@@ -42,6 +42,9 @@ export type SaveMode = "toast" | "rail";
 
 export type PublishStatus = "published" | "saving" | "draft" | "publishing";
 
+/** Staged apply flow for the «change model» experiment. */
+export type ApplyPhase = "idle" | "saving" | "updating" | "done" | "error";
+
 type ToastState = { id: number; text: string } | null;
 
 type ChangeEntry = { page: PageKey; label: string; count: number };
@@ -58,6 +61,18 @@ type PublishContextValue = {
   publish: () => void;
   /** Prototype tool: inject mock unpublished changes for demo. */
   injectDemoChanges: () => void;
+  // ── «Change model» experiment — staged apply (save → update storefront) ──
+  applyPhase: ApplyPhase;
+  /** Run the staged apply: saving → updating → done | error. */
+  apply: (opts?: { failUpdate?: boolean }) => void;
+  /** Retry the storefront update after an error. */
+  retryUpdate: () => void;
+  /** Discard unsaved edits (Save + Live «Отменить»). */
+  discardChanges: () => void;
+  /** Счётчик «подёргиваний» save bar — растёт при попытке уйти без сохранения. */
+  saveNudge: number;
+  /** Заблокировать переход и привлечь внимание к save bar (shake + flash). */
+  nudgeSave: () => void;
   // UX-эксперимент
   saveMode: SaveMode;
   setSaveMode: (mode: SaveMode) => void;
@@ -83,8 +98,11 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const [lastChangeAt, setLastChangeAt] = useState<number | null>(null);
   const [saveMode, setSaveMode] = useState<SaveMode>("toast");
   const [toast, setToast] = useState<ToastState>(null);
+  const [applyPhase, setApplyPhase] = useState<ApplyPhase>("idle");
+  const [saveNudge, setSaveNudge] = useState(0);
   const savingTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
+  const applyTimers = useRef<number[]>([]);
 
   const registerChange = useCallback(
     (page: PageKey) => {
@@ -143,6 +161,60 @@ export function PublishProvider({ children }: { children: ReactNode }) {
     setLastChangeAt(Date.now());
   }, []);
 
+  // ── Staged apply ──────────────────────────────────────────────────────────
+  const clearApplyTimers = () => {
+    applyTimers.current.forEach((t) => window.clearTimeout(t));
+    applyTimers.current = [];
+  };
+
+  const finishUpdateSuccess = useCallback(() => {
+    setChanges(emptyChanges());
+    setLastChangeAt(null);
+    setPublishVersion((v) => v + 1);
+    setApplyPhase("done");
+    applyTimers.current.push(
+      window.setTimeout(() => setApplyPhase("idle"), 1600),
+    );
+  }, []);
+
+  const apply = useCallback(
+    (opts?: { failUpdate?: boolean }) => {
+      clearApplyTimers();
+      setApplyPhase("saving");
+      applyTimers.current.push(
+        window.setTimeout(() => setApplyPhase("updating"), 750),
+      );
+      applyTimers.current.push(
+        window.setTimeout(() => {
+          if (opts?.failUpdate) {
+            setApplyPhase("error"); // changes kept — guests still on old version
+          } else {
+            finishUpdateSuccess();
+          }
+        }, 1650),
+      );
+    },
+    [finishUpdateSuccess],
+  );
+
+  const retryUpdate = useCallback(() => {
+    clearApplyTimers();
+    setApplyPhase("updating");
+    applyTimers.current.push(
+      window.setTimeout(() => finishUpdateSuccess(), 950),
+    );
+  }, [finishUpdateSuccess]);
+
+  const discardChanges = useCallback(() => {
+    clearApplyTimers();
+    setChanges(emptyChanges());
+    setLastChangeAt(null);
+    setApplyPhase("idle");
+    setPublishVersion((v) => v + 1); // re-arm the change tracker
+  }, []);
+
+  const nudgeSave = useCallback(() => setSaveNudge((n) => n + 1), []);
+
   const value = useMemo<PublishContextValue>(
     () => ({
       status,
@@ -153,6 +225,12 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       registerChange,
       publish,
       injectDemoChanges,
+      applyPhase,
+      apply,
+      retryUpdate,
+      discardChanges,
+      saveNudge,
+      nudgeSave,
       saveMode,
       setSaveMode,
       toast,
@@ -166,6 +244,12 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       registerChange,
       publish,
       injectDemoChanges,
+      applyPhase,
+      apply,
+      retryUpdate,
+      discardChanges,
+      saveNudge,
+      nudgeSave,
       saveMode,
       toast,
     ],

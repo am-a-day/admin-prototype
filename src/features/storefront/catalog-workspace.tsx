@@ -198,7 +198,8 @@ function PopulatedWorkspace({ selectedDishId }: { selectedDishId: string }) {
         </aside>
 
         {/* Editor area */}
-        <div className="min-w-0 flex-1 overflow-y-auto p-8">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto p-8">
           <div className="mx-auto max-w-3xl space-y-6">
             <div className="overflow-hidden rounded-[28px] border border-border bg-white">
               <div className="flex">
@@ -241,6 +242,7 @@ function PopulatedWorkspace({ selectedDishId }: { selectedDishId: string }) {
                 </div>
               </div>
             </SectionCard>
+          </div>
           </div>
         </div>
       </div>

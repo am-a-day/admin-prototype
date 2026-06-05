@@ -198,9 +198,9 @@ function MoreMenu({
           "group relative flex items-center rounded-lg transition",
           compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
           isMoreActive
-            ? "bg-zinc-100 text-zinc-950"
+            ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
             : open
-              ? "bg-zinc-100 text-zinc-950"
+              ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
         )}
       >
@@ -244,7 +244,7 @@ function MoreMenu({
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition",
                   active
-                    ? "bg-blue-50 font-bold text-blue-700"
+                    ? "bg-zinc-100 font-bold text-zinc-900"
                     : "font-medium text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950",
                 )}
               >
@@ -288,12 +288,12 @@ function NavList({
             onClick={() => onNavigate("storefront", "launch")}
             title={compact ? `Запуск витрины · ${requiredCompletedCount}/${requiredTotalCount}` : undefined}
             className={cn(
-              "group relative flex items-center rounded-md transition",
+              "group relative flex items-center rounded-lg transition",
               compact
                 ? "h-8 w-8 justify-center"
                 : "w-full gap-2.5 px-2 py-1.5 text-left",
               launchActive
-                ? "bg-zinc-100 text-zinc-950"
+                ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
                 : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
             )}
           >
@@ -342,12 +342,12 @@ function NavList({
                   onClick={() => onNavigate(item.section, item.tab)}
                   title={compact ? item.label : undefined}
                   className={cn(
-                    "group relative flex items-center rounded-md transition",
+                    "group relative flex items-center rounded-lg transition",
                     compact
                       ? "h-8 w-8 justify-center"
                       : "w-full gap-2 px-2 py-[5px] text-left text-[13px]",
                     active
-                      ? "bg-zinc-100 text-zinc-950"
+                      ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
                       : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
                     active && !compact && "font-semibold",
                     !active && !compact && "font-medium",

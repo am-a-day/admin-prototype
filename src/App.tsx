@@ -11,7 +11,7 @@ import { PhonePreview } from "@/components/preview/phone-preview";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider } from "@/contexts/plan-context";
-import { PublishProvider, type PageKey } from "@/contexts/publish-context";
+import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import {
@@ -61,9 +61,20 @@ const PAGE_META: Record<string, PageMeta> = {
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
 };
 
+// Контекстная подпись кнопки сохранения для каждой редактируемой страницы.
+const SAVE_LABELS: Partial<Record<PageKey, string>> = {
+  home: "Сохранить главную",
+  catalog: "Сохранить позицию",
+  upsell: "Сохранить рекомендации",
+  appearance: "Сохранить оформление",
+  about: "Сохранить данные заведения",
+  "order-settings": "Сохранить настройки",
+};
+
 function AppShell() {
   const { markVisited, launchDismissed } = useVitrineLaunch();
-  const { layoutVersion, resizablePreview } = useLayoutMode();
+  const { layoutVersion, resizablePreview, changeModel } = useLayoutMode();
+  const { totalChanges, nudgeSave } = usePublish();
   const [section, setSection] = useState<SectionId>("storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>("launch");
   const [storeAboutTab, setStoreAboutTab] = useState<"info" | "seo">("info");
@@ -88,7 +99,7 @@ function AppShell() {
   const [homeFocus, setHomeFocus] = useState<"hero" | "sections" | null>(null);
 
   // Ресайзируемая панель превью
-  const [previewWidth, setPreviewWidth] = useState(360);
+  const [previewWidth, setPreviewWidth] = useState(420);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [previewDragging, setPreviewDragging] = useState(false);
 
@@ -131,7 +142,7 @@ function AppShell() {
         setPreviewCollapsed(true);
       } else {
         setPreviewCollapsed(false);
-        setPreviewWidth(Math.min(560, Math.max(248, intended)));
+        setPreviewWidth(Math.min(460, Math.max(380, intended)));
       }
     };
     const onUp = () => {
@@ -239,11 +250,24 @@ function AppShell() {
     setPreviewScenario(null);
   };
 
+  // ── Save + Live: guard навигации ──────────────────────────────────────────
+  // Уход со страницы при несохранённых изменениях блокируется, а save bar в
+  // шапке контента «подёргивается» (shake + жёлтая вспышка).
+  const requestNav = (fn: () => void) => {
+    if (changeModel === "save-live" && totalChanges > 0) {
+      nudgeSave();
+    } else {
+      fn();
+    }
+  };
+  const guardedNavigate = (next: SectionId, tab: string) =>
+    requestNav(() => navigate(next, tab));
+
   let content: ReactNode = null;
 
   if (section === "storefront") {
     if (storeTab === "launch") {
-      content = <LaunchWorkspace onNavigate={navigate} />;
+      content = <LaunchWorkspace onNavigate={guardedNavigate} />;
     }
     if (storeTab === "home") {
       content = (
@@ -376,7 +400,7 @@ function AppShell() {
           <Sidebar
             section={section}
             activeTab={activeTab}
-            onNavigate={navigate}
+            onNavigate={guardedNavigate}
             mode={inlineSidebarMode}
           />
         </div>
@@ -386,7 +410,7 @@ function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         <AppHeaderRight
-          onNavigate={navigate}
+          onNavigate={guardedNavigate}
           onResetCatalog={() => setCatalogPhase("empty")}
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
@@ -400,7 +424,7 @@ function AppShell() {
             onClose={() => setNavDrawerOpen(false)}
             section={section}
             activeTab={activeTab}
-            onNavigate={navigate}
+            onNavigate={guardedNavigate}
           />
         )}
 
@@ -410,7 +434,7 @@ function AppShell() {
             <WorkAreaRail
               section={section}
               activeTab={activeTab}
-              onNavigate={navigate}
+              onNavigate={guardedNavigate}
               onResetCatalog={() => setCatalogPhase("empty")}
             />
           )}
@@ -420,11 +444,12 @@ function AppShell() {
             <ContentHeader
               title={pageMeta.title}
               description={pageMeta.description}
-              showLanguage={pageMeta.showLanguage}
-              onRenewPlan={() => navigate("management", "billing")}
+              showLanguage={pageMeta.showLanguage && !previewVisible}
+              saveLabel={pageKey ? (SAVE_LABELS[pageKey] ?? "Сохранить") : "Сохранить"}
+              onRenewPlan={() => guardedNavigate("management", "billing")}
               tabs={
                 isRailLayout ? (
-                  <WorkAreaTabs section={section} activeTab={activeTab} onNavigate={navigate} />
+                  <WorkAreaTabs section={section} activeTab={activeTab} onNavigate={guardedNavigate} />
                 ) : undefined
               }
             />
@@ -441,14 +466,15 @@ function AppShell() {
                   recommendationTexts={recommendationTexts}
                   upsellSurface={upsellSurface}
                   highlightUpsell={upsellFocused}
-                  onNavHomeHero={navHomeHero}
-                  onNavHomeSections={navHomeSections}
-                  onNavUpsell={navUpsellPage}
-                  onNavAbout={navAbout}
-                  onNavCatalogDish={navCatalogDish}
+                  onNavHomeHero={() => requestNav(navHomeHero)}
+                  onNavHomeSections={() => requestNav(navHomeSections)}
+                  onNavUpsell={() => requestNav(navUpsellPage)}
+                  onNavAbout={() => requestNav(navAbout)}
+                  onNavCatalogDish={(id) => requestNav(() => navCatalogDish(id))}
+                  onNavOrders={() => requestNav(openOrderAcceptance)}
                   seoTitle={seoTitle}
                   seoDescription={seoDescription}
-                  width={resizablePreview ? previewWidth : 360}
+                  width={resizablePreview ? previewWidth : 420}
                   collapsed={previewCollapsed}
                   dragging={previewDragging}
                   resizable={resizablePreview}

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, Loader2, UploadCloud } from "lucide-react";
 import { usePublish } from "@/contexts/publish-context";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
+import { useLayoutMode } from "@/contexts/layout-mode-context";
 import { cn } from "@/lib/utils";
 
 function lastChangeLabel(ts: number, now: number): string {
@@ -23,6 +24,7 @@ function lastChangeLabel(ts: number, now: number): string {
 export function PublishControl() {
   const { status, totalChanges, changeList, lastChangeAt, publish } = usePublish();
   const { stage } = useVitrineLaunch();
+  const { changeModel } = useLayoutMode();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -59,6 +61,8 @@ export function PublishControl() {
 
   // Publish exists only after the vitrine is activated by the manager.
   if (stage !== "active") return null;
+  // Save + Live Preview model has no global publish control.
+  if (changeModel === "save-live") return null;
 
   const handleToggle = () => {
     if (!open && btnRef.current) {

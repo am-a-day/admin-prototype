@@ -1,7 +1,9 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { PanelRightClose, Smartphone } from "lucide-react";
+import { AlertTriangle, Check, Loader2, PanelRightClose, Pencil, RotateCcw, Smartphone, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useLayoutMode } from "@/contexts/layout-mode-context";
+import { usePublish } from "@/contexts/publish-context";
 import {
   categories,
   dishes,
@@ -38,6 +40,7 @@ import {
   type PreviewTab,
 } from "@/components/preview/phone-screens";
 import { useOrderRouting } from "@/contexts/order-routing-context";
+import { ContentLanguageControl } from "@/components/preview/content-language-control";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -54,6 +57,7 @@ type PhonePreviewProps = {
   onNavUpsell: () => void;
   onNavAbout: () => void;
   onNavCatalogDish: (id: string) => void;
+  onNavOrders: () => void;
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
@@ -85,6 +89,7 @@ export function PhonePreview({
   onNavUpsell,
   onNavAbout,
   onNavCatalogDish,
+  onNavOrders,
   seoTitle = "",
   seoDescription = "",
   width,
@@ -100,13 +105,19 @@ export function PhonePreview({
     deliveryComment,
     pickupComment,
     pickupAddress,
-    contentLanguageShort,
   } = useAppSettings();
   const { routes } = useOrderRouting();
+  const { changeModel, simulateUpdateError } = useLayoutMode();
+  const { totalChanges, applyPhase, apply, retryUpdate } = usePublish();
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  // В Save + Live превью — свободный браузер: открытая в нём карточка блюда
+  // не уводит админку, а показывает floating-кнопку перехода.
+  const [previewDishId, setPreviewDishId] = useState<string | null>(null);
+
+  const isSaveModel = changeModel === "save-live";
 
   // При возврате на админ-вкладку «Главная» сбрасываем состояние навигации превью.
   useEffect(() => {
@@ -114,6 +125,7 @@ export function PhonePreview({
       setPreviewTab("home");
       setMenuCategory(null);
       setAboutOpen(false);
+      setPreviewDishId(null);
     }
   }, [activeTab]);
 
@@ -181,7 +193,13 @@ export function PhonePreview({
     screen = <PhoneCheckout method="delivery" comment={deliveryComment} />;
   } else if (browsing && previewBanner) {
     showBottomNav = true;
-    if (previewTab === "home") {
+    if (isSaveModel && previewDishId) {
+      // Карточка блюда, открытая внутри превью (Save + Live).
+      const pd = getDish(previewDishId);
+      screen = (
+        <PhoneDish dish={pd} recommended={getRecommendedDishes(pd)} title={recommendationTexts.dish} />
+      );
+    } else if (previewTab === "home") {
       screen = (
         <PhoneHome
           banner={previewBanner}
@@ -207,7 +225,10 @@ export function PhonePreview({
           category={cat}
           onPickCategory={setMenuCategory}
           onBack={() => setMenuCategory(null)}
-          onPickDish={onNavCatalogDish}
+          onPickDish={(id) => {
+            if (isSaveModel) setPreviewDishId(id); // остаёмся в превью
+            else onNavCatalogDish(id); // Publish model — прежнее поведение
+          }}
         />
       );
     } else if (previewTab === "waiter") {
@@ -273,6 +294,120 @@ export function PhonePreview({
   const safeWidth = Number.isFinite(width) ? width : 360;
   const scale = Math.min(1, Math.max(MIN_SCALE, (safeWidth - 40) / PHONE_W));
 
+  // ── «Change model» experiment ──────────────────────────────────────────────
+  const isGuestPreview =
+    scenario !== "seoLink" &&
+    scenario !== "notification-delivery" &&
+    scenario !== "notification-pickup" &&
+    scenario !== "notification-waiter";
+  const hasChanges = totalChanges > 0;
+  const draftMode = isGuestPreview && hasChanges && applyPhase === "idle";
+
+  // Header label / caption
+  // Короткий статус-бейдж над телефоном (только Save + Live).
+  let badgeText: string | null = null;
+  let badgeTone = "";
+  if (isSaveModel && isGuestPreview) {
+    if (applyPhase === "saving" || applyPhase === "updating") {
+      badgeText = "Обновляем витрину";
+      badgeTone = "bg-blue-100 text-blue-700";
+    } else if (applyPhase === "done") {
+      badgeText = "Гости уже видят";
+      badgeTone = "bg-emerald-100 text-emerald-700";
+    } else if (applyPhase === "error") {
+      badgeText = "Витрина не обновилась";
+      badgeTone = "bg-orange-100 text-orange-700";
+    } else if (draftMode) {
+      badgeText = "Будет после сохранения";
+      badgeTone = "bg-amber-100 text-amber-700";
+    }
+  }
+  // Пояснение под телефоном — только для не-гостевых сценариев.
+  const scenarioCaption = !isGuestPreview
+    ? "Превью переключается на сценарий, который сейчас редактируется."
+    : "";
+
+  const runApply = () => apply({ failUpdate: simulateUpdateError });
+
+  // ── Floating admin CTA (Save + Live): переход в админку по явному действию ──
+  // Свободная навигация внутри телефона не уводит со страницы — это делает кнопка.
+  let ctaLabel: string | null = null;
+  let ctaAction: (() => void) | null = null;
+  if (isSaveModel && browsing && applyPhase === "idle") {
+    if (aboutOpen) {
+      ctaLabel = "Поменять информацию о заведении";
+      ctaAction = onNavAbout;
+    } else if (previewDishId) {
+      ctaLabel = "Редактировать позицию";
+      ctaAction = () => onNavCatalogDish(previewDishId);
+    } else if (previewTab === "cart") {
+      ctaLabel = "Настроить заказы";
+      ctaAction = onNavOrders;
+    }
+  }
+  const floatingCta = ctaLabel && ctaAction && (
+    <div className="absolute inset-x-0 bottom-[70px] z-40 flex justify-center px-3">
+      <button
+        type="button"
+        onClick={ctaAction}
+        className="flex items-center gap-1.5 rounded-full bg-zinc-900/95 px-4 py-2 text-[12px] font-bold text-white shadow-lg shadow-zinc-900/30 backdrop-blur transition hover:bg-zinc-800"
+      >
+        <Pencil size={12} />
+        {ctaLabel}
+      </button>
+    </div>
+  );
+
+  // Overlay shown inside the phone during the apply flow
+  const applyOverlay = applyPhase !== "idle" && (
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/90 px-6 text-center backdrop-blur-[2px]">
+      {applyPhase === "saving" && (
+        <>
+          <Loader2 size={26} className="animate-spin text-blue-600" />
+          <div className="text-sm font-bold text-zinc-800">
+            {/* In Save + Live the form already shows «Сохраняем…»;
+                the preview's job is to show the storefront updating. */}
+            {isSaveModel ? "Обновляем витрину…" : "Сохраняем…"}
+          </div>
+        </>
+      )}
+      {applyPhase === "updating" && (
+        <>
+          <Loader2 size={26} className="animate-spin text-blue-600" />
+          <div className="text-sm font-bold text-zinc-800">Обновляем витрину…</div>
+        </>
+      )}
+      {applyPhase === "done" && (
+        <>
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check size={24} strokeWidth={3} />
+          </div>
+          <div className="text-sm font-bold text-zinc-800">
+            {isSaveModel ? "Сохранено · изменения видны гостям" : "Витрина обновлена"}
+          </div>
+        </>
+      )}
+      {applyPhase === "error" && (
+        <>
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+            <AlertTriangle size={22} strokeWidth={2.5} />
+          </div>
+          <div className="text-sm font-bold text-zinc-800">
+            Изменения сохранены, но витрина не обновилась
+          </div>
+          <button
+            type="button"
+            onClick={retryUpdate}
+            className="mt-1 flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-1.5 text-[13px] font-bold text-white transition hover:bg-zinc-700"
+          >
+            <RotateCcw size={13} />
+            Повторить обновление
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <aside
       style={{ width: collapsed ? 44 : safeWidth }}
@@ -293,38 +428,63 @@ export function PhonePreview({
       )}
 
       {collapsed ? (
-        <button
-          type="button"
-          onClick={onExpand}
-          className="flex h-full w-full flex-col items-center justify-center gap-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
-          title="Показать превью"
-        >
-          <Smartphone size={18} />
-          <span className="text-xs font-bold uppercase tracking-wide [writing-mode:vertical-rl]">
-            Превью
-          </span>
-        </button>
+        <div className="flex h-full w-full flex-col items-center gap-3 py-3">
+          {/* Доступ к языку контента сохраняется и в свёрнутом превью */}
+          <div className="flex flex-col items-center gap-0.5 text-zinc-500">
+            <Smartphone size={14} />
+            <ContentLanguageControl compact />
+          </div>
+          <button
+            type="button"
+            onClick={onExpand}
+            className="flex flex-1 w-full flex-col items-center justify-center gap-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            title="Показать превью"
+          >
+            <span className="text-xs font-bold uppercase tracking-wide [writing-mode:vertical-rl]">
+              Превью
+            </span>
+          </button>
+        </div>
       ) : (
         <div className="flex h-full flex-col items-center overflow-hidden px-4 py-6">
-          <div className="mb-3 flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            <span className="truncate">
-              {scenario === "seoLink"
-                ? "Ссылка в мессенджерах"
-                : scenario === "notification-delivery" || scenario === "notification-pickup" || scenario === "notification-waiter"
-                  ? "Уведомление оператора"
-                  : <>Превью гостя <span className="text-zinc-400">· {contentLanguageShort}</span></>}
-            </span>
+          <div className="mb-3 flex w-full items-center">
+            <ContentLanguageControl />
             <button
               type="button"
               onClick={onCollapse}
               title="Скрыть превью"
-              className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-bold normal-case tracking-normal text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+              className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
             >
-              <PanelRightClose size={13} />
-              Скрыть
+              <PanelRightClose size={15} />
             </button>
           </div>
+          {badgeText && (
+            <div className="mb-2 flex w-full justify-center">
+              <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-bold", badgeTone)}>
+                {badgeText}
+              </span>
+            </div>
+          )}
+
+          {/* Draft strip — только Publish model (статус + «Обновить витрину»).
+              В Save + Live состояние формы показывает нижняя save bar, а превью
+              остаётся спокойным режимом просмотра. */}
+          {draftMode && !isSaveModel && (
+            <div className="mb-3 flex w-full items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+              <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-amber-800">
+                {`${totalChanges} ${totalChanges === 1 ? "неопубликованное изменение" : totalChanges < 5 ? "неопубликованных изменения" : "неопубликованных изменений"}`}
+              </span>
+              <button
+                type="button"
+                onClick={runApply}
+                className="flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-blue-700"
+              >
+                <UploadCloud size={11} />
+                Обновить витрину
+              </button>
+            </div>
+          )}
           <div style={{ width: PHONE_W * scale, height: PHONE_H * scale }} className="shrink-0">
             <div
               style={{ width: PHONE_W, height: PHONE_H, transform: `scale(${scale})`, transformOrigin: "top left" }}
@@ -338,19 +498,24 @@ export function PhonePreview({
                     active={previewTab}
                     onSelect={(t) => {
                       setPreviewTab(t);
+                      setPreviewDishId(null);
                       if (t !== "menu") setMenuCategory(null);
                     }}
                   />
                 )}
               </div>
               {overlay}
+              {floatingCta}
+              {applyOverlay}
             </div>
           </div>
-          <p className="mt-3 max-w-[250px] text-center text-xs leading-5 text-zinc-500">
-            {showBottomNav
-              ? "Нажмите на элемент витрины, чтобы открыть его настройки."
-              : "Превью переключается на сценарий, который сейчас редактируется."}
-          </p>
+          {(showBottomNav || scenarioCaption) && (
+            <p className="mt-3 max-w-[250px] text-center text-xs leading-5 text-zinc-500">
+              {showBottomNav
+                ? "Нажмите на элемент витрины, чтобы открыть его настройки."
+                : scenarioCaption}
+            </p>
+          )}
         </div>
       )}
     </aside>

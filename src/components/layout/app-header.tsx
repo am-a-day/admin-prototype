@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, Menu, PanelLeft, PanelLeftClose, UploadCloud } from "lucide-react";
+import { Bell, Check, ChevronDown, Loader2, Menu, PanelLeft, PanelLeftClose, UploadCloud } from "lucide-react";
 import { createPortal } from "react-dom";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
@@ -7,6 +7,7 @@ import { usePlanStatus } from "@/lib/use-plan-status";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { usePublish } from "@/contexts/publish-context";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
+import { useLayoutMode } from "@/contexts/layout-mode-context";
 import { type SectionId } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils";
 function PlanBadge({ onNavigate }: { onNavigate: (s: SectionId, t: string) => void }) {
   const status = usePlanStatus();
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ function PlanBadge({ onNavigate }: { onNavigate: (s: SectionId, t: string) => vo
   const toggle = () => {
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
     }
     setOpen((v) => !v);
   };
@@ -72,7 +73,7 @@ function PlanBadge({ onNavigate }: { onNavigate: (s: SectionId, t: string) => vo
       {open && createPortal(
         <div
           id="plan-badge-popup"
-          style={{ top: pos.top, left: pos.left }}
+          style={{ top: pos.top, right: pos.right }}
           className="fixed z-[200] w-56 rounded-xl border border-border bg-white p-3 shadow-xl shadow-zinc-200/60"
         >
           <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">Подписка</div>
@@ -119,11 +120,97 @@ function PlanBadge({ onNavigate }: { onNavigate: (s: SectionId, t: string) => vo
   );
 }
 
+// ── Notifications bell with popover ───────────────────────────────────────────
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Прототип: системные события захардкожены.
+  const items = [
+    {
+      title: "Есть несохранённые изменения",
+      body: "Сохраните данные, чтобы гости увидели обновлённую версию.",
+    },
+    {
+      title: "Подписка действует до 21 июня",
+      body: "Продлите доступ заранее, чтобы витрина не отключилась.",
+    },
+  ];
+  const unread = items.length > 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (document.getElementById("notif-popup")?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        title="Уведомления"
+        aria-expanded={open}
+        className={cn(
+          "relative flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700",
+          open && "bg-zinc-100 text-zinc-700",
+        )}
+      >
+        <Bell size={16} />
+        {unread && (
+          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-orange-500 ring-2 ring-white" />
+        )}
+      </button>
+
+      {open && createPortal(
+        <div
+          id="notif-popup"
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-[200] w-80 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
+        >
+          <div className="px-2 py-1.5 text-sm font-black text-zinc-950">Уведомления</div>
+          <div className="space-y-0.5">
+            {items.map((it) => (
+              <div key={it.title} className="rounded-xl px-2 py-2 transition hover:bg-zinc-50">
+                <div className="text-[13px] font-bold text-zinc-900">{it.title}</div>
+                <p className="mt-0.5 text-xs leading-5 text-zinc-500">{it.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 // ── Publish button ────────────────────────────────────────────────────────────
 
 function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
   const { status, totalChanges, publish } = usePublish();
   const { stage } = useVitrineLaunch();
+  const { changeModel } = useLayoutMode();
 
   // On the launch page itself, suppress the launch CTA — the page already shows it
   if (!isLaunchPage) {
@@ -138,6 +225,9 @@ function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
       return <span className="text-xs text-zinc-400">Менеджер проверяет витрину</span>;
     }
   }
+
+  // Save + Live Preview model has no global publish — saving happens next to the form.
+  if (changeModel === "save-live") return null;
 
   const hasChanges = totalChanges > 0;
   const isPublishing = status === "publishing" || status === "saving";
@@ -261,15 +351,15 @@ export function AppHeaderRight({
         {/* Center: org name */}
         <OrgMenu variant="text" onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
 
-        {/* Right meta: plan */}
-        <div className="flex items-center justify-start min-w-0">
-          <PlanBadge onNavigate={onNavigate} />
-        </div>
+        {/* Right meta: spacer (plan moved to the right cluster) */}
+        <div className="min-w-0" />
       </div>
 
-      {/* ── Right: publish + account ── */}
+      {/* ── Right: publish + plan chip + notifications + account ── */}
       <div className="flex shrink-0 items-center gap-2">
         <PublishButton isLaunchPage={isLaunchPage} />
+        <PlanBadge onNavigate={onNavigate} />
+        <NotificationBell />
         <Sep />
         <UserMenu compact placement="down" onNavigate={onNavigate} />
       </div>

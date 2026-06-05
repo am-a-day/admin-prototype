@@ -80,3 +80,17 @@ textarea {
 .scrollbar-none {
   scrollbar-width: none;
 }
+
+/* Save bar attention nudge — shake when navigation is blocked by unsaved changes */
+@keyframes save-nudge {
+  0%, 100% { transform: translateX(0); }
+  12% { transform: translateX(-5px); }
+  28% { transform: translateX(5px); }
+  44% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  76% { transform: translateX(-2px); }
+  88% { transform: translateX(2px); }
+}
+.animate-save-nudge {
+  animation: save-nudge 0.5s ease-in-out;
+}
