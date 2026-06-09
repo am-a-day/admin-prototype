@@ -2,6 +2,7 @@ import { Loader2, Menu } from "lucide-react";
 import { SidebarSimple } from "@phosphor-icons/react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
+import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { usePublish } from "@/contexts/publish-context";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { type SectionId } from "@/data/mock-data";
@@ -54,12 +55,10 @@ function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
 export type AppHeaderRightProps = {
   onNavigate: (section: SectionId, tab: string) => void;
   onResetCatalog?: () => void;
-  /** Show hamburger for mobile / no inline sidebar */
   showHamburger?: boolean;
   onOpenMobileMenu?: () => void;
-  /** Collapse / expand the inline sidebar */
   onToggleSidebar?: () => void;
-  /** Suppress launch CTAs when user is already on the launch page */
+  sidebarCollapsed?: boolean;
   isLaunchPage?: boolean;
 };
 
@@ -69,17 +68,16 @@ export function AppHeaderRight({
   showHamburger,
   onOpenMobileMenu,
   onToggleSidebar,
+  sidebarCollapsed,
   isLaunchPage,
 }: AppHeaderRightProps) {
   return (
-    <header className="flex h-[59px] shrink-0 items-center px-4">
+    <header className="flex h-[59px] shrink-0 items-center px-3 gap-1">
 
-      {/* ── Left: brand + sidebar toggle ── */}
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="select-none text-[15px] font-black tracking-tight text-zinc-900">
-          TASKO
-        </span>
-        {showHamburger ? (
+      {/* ── Left: sidebar toggle (desktop) OR logo+hamburger (mobile) ── */}
+      {showHamburger ? (
+        <div className="flex shrink-0 items-center gap-2 mr-1">
+          <TaskoLogo className="text-zinc-900" />
           <button
             type="button"
             onClick={onOpenMobileMenu}
@@ -88,17 +86,17 @@ export function AppHeaderRight({
           >
             <Menu size={18} />
           </button>
-        ) : onToggleSidebar ? (
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            className="flex h-7 items-center justify-center rounded-lg px-1.5 text-zinc-500 transition hover:bg-zinc-200/70 hover:text-zinc-700"
-            title="Свернуть навигацию"
-          >
-            <SidebarSimple size={20} />
-          </button>
-        ) : null}
-      </div>
+        </div>
+      ) : onToggleSidebar ? (
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          title={sidebarCollapsed ? "Развернуть sidebar" : "Свернуть sidebar"}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
+        >
+          <SidebarSimple size={18} mirrored={sidebarCollapsed} />
+        </button>
+      ) : null}
 
       {/* ── Center: organization ── */}
       <div className="flex min-w-0 flex-1 items-center justify-center">

@@ -2,13 +2,19 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
+  Check,
   ChevronDown,
   FlaskConical,
   LayoutDashboard,
   MonitorSmartphone,
+  Plus,
   Store,
 } from "lucide-react";
-import { RESTAURANT_NAME, STOREFRONT_URL, type PlanId, type SectionId } from "@/data/mock-data";
+import {
+  RESTAURANT_NAME, RESTAURANT_INITIALS, RESTAURANT_ADDRESS, STOREFRONT_URL,
+  MOCK_VITRINES, CURRENT_VITRINE_ID,
+  type PlanId, type SectionId,
+} from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
 import { useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { usePublish } from "@/contexts/publish-context";
@@ -58,6 +64,7 @@ export function OrgMenu({
 
   const [open, setOpen] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
+  const [selectedVitrineId, setSelectedVitrineId] = useState(CURRENT_VITRINE_ID);
   const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -98,23 +105,32 @@ export function OrgMenu({
   return (
     <>
       {variant === "text" ? (
-        /* Inline header trigger: "● Kimchi Astana ▾" */
+        /* Inline header trigger: [KA] Kimchi Astana · Абая, 10 ˅ */
         <button
           ref={btnRef}
           type="button"
           onClick={handleToggle}
           className={cn(
-            "flex items-center gap-1.5 rounded-lg px-2 py-1 transition",
+            "flex items-center gap-2 rounded-lg px-2 py-1.5 transition",
             open ? "bg-zinc-100" : "hover:bg-zinc-100",
           )}
           aria-expanded={open}
           aria-haspopup="dialog"
-          title={RESTAURANT_NAME}
+          title={`${RESTAURANT_NAME} · ${RESTAURANT_ADDRESS || vitrine.webAddress}`}
         >
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-[#5600ab] text-[11px] font-medium leading-none text-white">
-            {RESTAURANT_NAME.charAt(0)}
+          {/* Avatar */}
+          <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-zinc-900 text-[10px] font-bold leading-none text-white">
+            {RESTAURANT_INITIALS}
+          </div>
+          {/* Org name */}
+          <span className="text-[13px] font-medium text-zinc-900">{RESTAURANT_NAME}</span>
+          {/* Separator */}
+          <span className="text-[13px] text-zinc-300" aria-hidden>·</span>
+          {/* Address or URL */}
+          <span className="max-w-[160px] truncate text-[13px] text-zinc-400">
+            {RESTAURANT_ADDRESS || vitrine.webAddress}
           </span>
-          <span className="text-sm font-normal text-black">{RESTAURANT_NAME}</span>
+          {/* Chevron */}
           <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
         </button>
       ) : (
@@ -147,29 +163,33 @@ export function OrgMenu({
         <div
           id="org-menu-popup"
           style={{ top: popupPos.top, left: popupPos.left }}
-          className="fixed z-[200] w-68 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
+          className="fixed z-[200] w-[380px] rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
         >
-          {/* Org header */}
-          <div className="flex items-center gap-3 px-2.5 py-2">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-black text-white">
-              T
-            </div>
-            <div className="min-w-0">
-              <div className="truncate font-bold leading-tight text-zinc-950">
-                {RESTAURANT_NAME}
+          {/* ── Current vitrine header ── */}
+          {(() => {
+            const current = MOCK_VITRINES.find((v) => v.id === selectedVitrineId) ?? MOCK_VITRINES[0];
+            const subtitle = [current.address, current.url].filter(Boolean).join(" · ");
+            return (
+              <div className="flex items-center gap-3 px-2.5 py-2.5">
+                <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white", current.avatarColor)}>
+                  {current.initials}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[14px] font-semibold leading-tight text-zinc-950">
+                    {current.name}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", vitrine.dot)} />
+                    <span className="truncate text-[12px] text-zinc-500">{subtitle}</span>
+                  </div>
+                </div>
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5">
-                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", vitrine.dot)} />
-                <span className="text-xs text-zinc-500">{vitrine.label}</span>
-              </div>
-              {vitrine.isActive && (
-                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{vitrine.webAddress}</div>
-              )}
-            </div>
-          </div>
+            );
+          })()}
 
           <div className="my-1 border-t border-border" />
 
+          {/* ── Quick actions ── */}
           <MenuItem
             icon={Store}
             label="Открыть витрину"
@@ -187,6 +207,53 @@ export function OrgMenu({
             label="Управление витриной"
             onClick={() => { onNavigate("storefront", "launch"); close(); }}
           />
+
+          <div className="my-1.5 border-t border-border" />
+
+          {/* ── Vitrine switcher ── */}
+          <div className="px-2.5 pb-1 pt-0.5">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+              Витрины
+            </div>
+          </div>
+          <div className="max-h-[220px] overflow-y-auto">
+            {MOCK_VITRINES.map((v) => {
+              const isSelected = v.id === selectedVitrineId;
+              const subtitle = [v.address, v.url].filter(Boolean).join(" · ");
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => { setSelectedVitrineId(v.id); close(); }}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition",
+                    isSelected ? "bg-zinc-50" : "hover:bg-zinc-50",
+                  )}
+                >
+                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white", v.avatarColor)}>
+                    {v.initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className={cn("truncate text-[13px] leading-snug", isSelected ? "font-semibold text-zinc-950" : "font-medium text-zinc-700")}>
+                      {v.name}
+                    </div>
+                    <div className="truncate text-[11px] text-zinc-400">{subtitle}</div>
+                  </div>
+                  {isSelected && (
+                    <Check size={14} className="shrink-0 text-zinc-500" strokeWidth={2.5} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => { close(); }}
+            className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium text-zinc-400 transition hover:bg-zinc-50 hover:text-zinc-700"
+          >
+            <Plus size={14} className="shrink-0" />
+            Добавить витрину
+          </button>
 
           <div className="my-1.5 border-t border-border" />
 
@@ -294,6 +361,47 @@ export function OrgMenu({
                       {label}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* ── Виджет тарифа (быстрое переключение состояний) ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Виджет тарифа
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {([
+                    ["beforeLaunch", "До запуска"],
+                    ["active",       "Активен"],
+                    ["expiring",     "Истекает"],
+                    ["expired",      "Истёк"],
+                  ] as [string, string][]).map(([state, label]) => {
+                    const isCurrent =
+                      state === "beforeLaunch" ? (stage === "preparing" || stage === "ready") :
+                      state === "active"       ? (stage === "active" && daysLeft >= 14) :
+                      state === "expiring"     ? (stage === "active" && daysLeft > 0 && daysLeft < 14) :
+                      state === "expired"      ? (stage === "active" && daysLeft <= 0) : false;
+                    return (
+                      <button
+                        key={state}
+                        type="button"
+                        onClick={() => {
+                          if (state === "beforeLaunch") { setPlanId("Lite"); resetLaunch(); onResetCatalog?.(); }
+                          else if (state === "active")   { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(18); }
+                          else if (state === "expiring") { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(3); }
+                          else if (state === "expired")  { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(0); }
+                        }}
+                        className={cn(
+                          "rounded-lg border py-1 text-[11px] font-semibold transition",
+                          isCurrent
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

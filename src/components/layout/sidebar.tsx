@@ -18,12 +18,17 @@ import {
   House,
   MagicWand,
   Package,
+  PushPin,
   Scan,
   Swatches,
   ThumbsUp,
   type Icon,
 } from "@phosphor-icons/react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
+import { PlanWidget } from "@/components/layout/plan-widget";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { TaskoLogo } from "@/components/ui/tasko-logo";
+import { MiniLogo } from "@/components/ui/mini-logo";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 
@@ -193,29 +198,23 @@ function MoreMenu({
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={handleToggle}
-        title="Ещё"
-        className={cn(
-          "group relative flex items-center rounded-lg transition",
-          compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
-          isMoreActive
-            ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-            : open
+      <Tooltip label="Ещё" disabled={!compact}>
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={handleToggle}
+          className={cn(
+            "flex items-center rounded-lg transition",
+            compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
+            isMoreActive || open
               ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
-        )}
-      >
-        <Ellipsis size={compact ? 17 : 15} className="shrink-0" />
-        {!compact && <span>Ещё</span>}
-        {compact && (
-          <span className="pointer-events-none absolute left-11 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-            Ещё
-          </span>
-        )}
-      </button>
+          )}
+        >
+          <Ellipsis size={compact ? 17 : 15} className="shrink-0" />
+          {!compact && <span>Ещё</span>}
+        </button>
+      </Tooltip>
 
       {open && createPortal(
         <div
@@ -287,42 +286,41 @@ function NavList({
       {/* ── Запуск витрины (only before activation) ── */}
       {showLaunchItem && (
         <div className={compact ? "" : "mb-1"}>
-          <button
-            type="button"
-            onClick={() => onNavigate("storefront", "launch")}
-            title={compact ? `Запуск витрины · ${requiredCompletedCount}/${requiredTotalCount}` : undefined}
-            className={cn(
-              "group relative flex items-center rounded-lg transition",
-              compact
-                ? "h-8 w-8 justify-center"
-                : "w-full gap-2.5 px-2 py-1.5 text-left",
-              launchActive
-                ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-                : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
-            )}
+          <Tooltip
+            label={`Запуск витрины · ${requiredCompletedCount}/${requiredTotalCount}`}
+            disabled={!compact}
           >
-            <CircularProgress value={requiredCompletedCount} total={requiredTotalCount} size={compact ? 17 : 15} />
-            {!compact && (
-              <div className="min-w-0 flex-1">
-                <div className={cn(
-                  "truncate text-[13px]",
-                  launchActive ? "font-semibold text-zinc-950" : "font-medium text-zinc-700",
-                )}>
-                  Запуск витрины
+            <button
+              type="button"
+              onClick={() => onNavigate("storefront", "launch")}
+              className={cn(
+                "flex items-center rounded-lg transition",
+                compact
+                  ? "h-8 w-8 justify-center"
+                  : "w-full gap-2.5 px-2 py-1.5 text-left",
+                launchActive
+                  ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
+                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+              )}
+            >
+              <CircularProgress value={requiredCompletedCount} total={requiredTotalCount} size={compact ? 17 : 15} />
+              {!compact && (
+                <div className="min-w-0 flex-1">
+                  <div className={cn(
+                    "truncate text-[13px]",
+                    launchActive ? "font-semibold text-zinc-950" : "font-medium text-zinc-700",
+                  )}>
+                    Запуск витрины
+                  </div>
+                  <div className="text-[11px] text-zinc-400">
+                    {requiredCompletedCount === requiredTotalCount
+                      ? "Готова к запуску"
+                      : `${requiredCompletedCount} из ${requiredTotalCount} обязательных`}
+                  </div>
                 </div>
-                <div className="text-[11px] text-zinc-400">
-                  {requiredCompletedCount === requiredTotalCount
-                    ? "Готова к запуску"
-                    : `${requiredCompletedCount} из ${requiredTotalCount} обязательных`}
-                </div>
-              </div>
-            )}
-            {compact && (
-              <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-                Запуск витрины · {requiredCompletedCount}/{requiredTotalCount}
-              </span>
-            )}
-          </button>
+              )}
+            </button>
+          </Tooltip>
           {!compact && <div className="mt-1.5 h-px bg-border" />}
         </div>
       )}
@@ -340,29 +338,24 @@ function NavList({
               const Icon = item.icon;
               const active = section === item.section && activeTab === item.tab;
               return (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => onNavigate(item.section, item.tab)}
-                  title={compact ? item.label : undefined}
-                  className={cn(
-                    "group relative flex items-center rounded-[7px] font-normal transition",
-                    compact
-                      ? "h-8 w-8 justify-center"
-                      : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
-                    active
-                      ? "bg-white text-[#1c1917] shadow-sm"
-                      : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
-                  )}
-                >
-                  <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
-                  {!compact && <span className="truncate">{item.label}</span>}
-                  {compact && (
-                    <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-                      {item.label}
-                    </span>
-                  )}
-                </button>
+                <Tooltip key={item.label} label={item.label} disabled={!compact}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(item.section, item.tab)}
+                    className={cn(
+                      "flex items-center rounded-[7px] font-normal transition",
+                      compact
+                        ? "h-8 w-8 justify-center"
+                        : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
+                      active
+                        ? "bg-white text-[#1c1917] shadow-sm"
+                        : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
+                    )}
+                  >
+                    <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
+                    {!compact && <span className="truncate">{item.label}</span>}
+                  </button>
+                </Tooltip>
               );
             })}
           </div>
@@ -458,11 +451,19 @@ type NavProps = {
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
   onResetCatalog?: () => void;
+  onToggleSidebar?: () => void;
 };
 
 function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
-    <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Header row: logo only (toggle is in app header) */}
+      <div className="flex h-[59px] shrink-0 items-center px-4">
+        <TaskoLogo className="text-zinc-900" />
+      </div>
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
+      <PlanWidget onNavigate={onNavigate} compact={false} />
+    </div>
   );
 }
 
@@ -470,7 +471,71 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
 
 function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
-    <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Header row: mini logo, aligns with app header height */}
+      <div className="flex h-[59px] shrink-0 items-center justify-center">
+        <MiniLogo className="text-zinc-900" />
+      </div>
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
+      <PlanWidget onNavigate={onNavigate} compact={true} />
+    </div>
+  );
+}
+
+// ── Hover overlay (portal, fixed, appears when rail is hovered) ───────────────
+
+function OverlayNav({
+  section,
+  activeTab,
+  onNavigate,
+  top,
+  visible,
+  onPin,
+  setRef,
+  onPointerEnter,
+  onPointerLeave,
+}: {
+  section: SectionId;
+  activeTab: string | null;
+  onNavigate: (s: SectionId, t: string) => void;
+  top: number;
+  visible: boolean;
+  onPin: () => void;
+  setRef: (el: HTMLDivElement | null) => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+}) {
+  return createPortal(
+    <div
+      ref={setRef}
+      style={{
+        top,
+        left: 0,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateX(0)" : "translateX(-6px)",
+        transition: "opacity 180ms ease-out, transform 180ms ease-out",
+      }}
+      className="fixed bottom-0 z-[200] flex w-48 flex-col bg-[#f5f5f4] border-r border-[#e7e5e4] shadow-[2px_0_20px_rgba(0,0,0,0.10)]"
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
+      {/* Header row: logo + pin */}
+      <div className="flex h-[59px] shrink-0 items-center gap-2 px-4">
+        <TaskoLogo className="flex-1 text-zinc-900" />
+        <Tooltip label="Закрепить sidebar" side="left">
+          <button
+            type="button"
+            onClick={onPin}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/70 hover:text-zinc-600"
+          >
+            <PushPin size={17} />
+          </button>
+        </Tooltip>
+      </div>
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
+      <PlanWidget onNavigate={onNavigate} compact={false} />
+    </div>,
+    document.body,
   );
 }
 
@@ -481,13 +546,130 @@ type SidebarProps = NavProps & {
   dragging?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode }: SidebarProps) {
-  if (mode === "topbar") return null;
+export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode }: SidebarProps) {
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [overlayMounted, setOverlayMounted] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [overlayTop, setOverlayTop] = useState(0);
+  const railRef = useRef<HTMLDivElement>(null);
+  const overlayEl = useRef<HTMLDivElement | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isRail = mode === "rail";
-  // No own container — parent left column provides bg, width, and border
-  return isRail
-    ? <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
-    : <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />;
+
+  const cancelClose = () => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+  };
+  const cancelOpen = () => {
+    if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
+  };
+  const scheduleClose = () => {
+    cancelOpen();
+    cancelClose();
+    closeTimer.current = setTimeout(() => setHoverOpen(false), 220);
+  };
+  const scheduleOpen = (top: number) => {
+    cancelClose();
+    cancelOpen();
+    openTimer.current = setTimeout(() => {
+      setOverlayTop(top);
+      setHoverOpen(true);
+    }, 120);
+  };
+
+  // Mount/visible two-state for smooth enter + exit animation
+  useEffect(() => {
+    if (hoverOpen) {
+      setOverlayMounted(true);
+      const id = requestAnimationFrame(() => setOverlayVisible(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      setOverlayVisible(false);
+      const t = setTimeout(() => setOverlayMounted(false), 220);
+      return () => clearTimeout(t);
+    }
+  }, [hoverOpen]);
+
+  useEffect(() => {
+    if (!hoverOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setHoverOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hoverOpen]);
+
+  useEffect(() => {
+    if (!hoverOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (railRef.current?.contains(e.target as Node)) return;
+      if (overlayEl.current?.contains(e.target as Node)) return;
+      setHoverOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [hoverOpen]);
+
+  useEffect(() => { if (!isRail) setHoverOpen(false); }, [isRail]);
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    if (openTimer.current) clearTimeout(openTimer.current);
+  }, []);
+
+  const handlePin = () => { setHoverOpen(false); onToggleSidebar?.(); };
+
+  if (mode === "topbar") return null;
+
+  return (
+    <TooltipProvider>
+      {isRail ? (
+        <div
+          ref={railRef}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          onPointerEnter={(e) => {
+            if (e.pointerType !== "mouse") return;
+            cancelClose();
+            if (!hoverOpen) {
+              const r = railRef.current?.getBoundingClientRect();
+              scheduleOpen(r?.top ?? 0);
+            }
+          }}
+          onPointerLeave={(e) => {
+            if (e.pointerType !== "mouse") return;
+            scheduleClose();
+          }}
+        >
+          <RailSidebar
+            section={section}
+            activeTab={activeTab}
+            onNavigate={onNavigate}
+            onToggleSidebar={onToggleSidebar}
+          />
+        </div>
+      ) : (
+        <FullSidebar
+          section={section}
+          activeTab={activeTab}
+          onNavigate={onNavigate}
+          onToggleSidebar={onToggleSidebar}
+        />
+      )}
+
+      {isRail && overlayMounted && (
+        <OverlayNav
+          section={section}
+          activeTab={activeTab}
+          onNavigate={onNavigate}
+          top={overlayTop}
+          visible={overlayVisible}
+          onPin={handlePin}
+          setRef={(el) => { overlayEl.current = el; }}
+          onPointerEnter={() => { cancelClose(); cancelOpen(); }}
+          onPointerLeave={scheduleClose}
+        />
+      )}
+    </TooltipProvider>
+  );
 }
 
 // ── TopBar (small viewport — replaces sidebar entirely) ───────────────────────

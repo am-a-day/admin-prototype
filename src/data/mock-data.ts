@@ -60,8 +60,35 @@ export const DEFAULT_RECOMMENDATION_TEXTS: RecommendationTexts = {
 export type PlanId = "Zero" | "Lite" | "Ultra";
 
 export const RESTAURANT_NAME = "Kimchi Astana";
+/** Short initials shown in the avatar chip in the header (1–2 chars). */
+export const RESTAURANT_INITIALS = "АБ";
+/** Physical address of the location — shown in header next to org name. Falls back to STOREFRONT_URL if empty. */
+export const RESTAURANT_ADDRESS = "Абая, 10";
 export const CURRENT_PLAN: PlanId = "Zero";
 export const STOREFRONT_URL = "kimchi.tasko.app";
+
+/** A single vitrine entry shown in the org switcher. */
+export type MockVitrine = {
+  id: string;
+  /** 1–2 char initials derived from address or URL slug */
+  initials: string;
+  /** Tailwind bg color class for the avatar */
+  avatarColor: string;
+  name: string;
+  /** Physical address, e.g. "Абая, 10". Empty string if none. */
+  address: string;
+  /** Public URL slug, e.g. "kimchi-abaya.tsqr.me" */
+  url: string;
+};
+
+export const MOCK_VITRINES: MockVitrine[] = [
+  { id: "abaya",    initials: "АБ", avatarColor: "bg-zinc-900",    name: "Kimchi Astana", address: "Абая, 10",      url: "kimchi-abaya.tsqr.me"    },
+  { id: "mega",     initials: "MS", avatarColor: "bg-violet-700",  name: "Kimchi Astana", address: "Mega Silk Way", url: "kimchi-mega.tsqr.me"     },
+  { id: "delivery", initials: "ДО", avatarColor: "bg-blue-700",    name: "Kimchi Astana", address: "Доставка",      url: "kimchi-delivery.tsqr.me" },
+];
+
+/** ID of the vitrine currently being edited (mock). */
+export const CURRENT_VITRINE_ID = "abaya";
 
 /** Лимит блюд и текущее использование для тарифа Zero. */
 export const ZERO_DISH_LIMIT = 100;

@@ -2,7 +2,6 @@ import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
-import { PlanWidget } from "@/components/layout/plan-widget";
 import { ContentHeader } from "@/components/layout/content-header";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
@@ -331,50 +330,53 @@ function AppShell() {
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#f5f5f4] text-zinc-950">
+    <div className="flex h-screen overflow-hidden bg-[#f5f5f4] text-zinc-950">
 
-      {/* ── Full-width global header ──────────────────────────────────────────── */}
-      <AppHeaderRight
-        onNavigate={guardedNavigate}
-        onResetCatalog={() => setCatalogPhase("empty")}
-        showHamburger={!showInlineSidebar}
-        onOpenMobileMenu={() => setNavDrawerOpen(true)}
-        onToggleSidebar={wide ? toggleNav : undefined}
-        isLaunchPage={isLaunchPage}
-      />
+      {/* ── Left: full-height sidebar ─────────────────────────────────────────── */}
+      {showInlineSidebar && (
+        <div
+          className={cn(
+            "flex shrink-0 flex-col transition-[width] duration-300 ease-out",
+            inlineSidebarMode === "rail" ? "w-12" : "w-48",
+          )}
+        >
+          <Sidebar
+            section={section}
+            activeTab={activeTab}
+            onNavigate={guardedNavigate}
+            mode={inlineSidebarMode}
+            onToggleSidebar={wide ? toggleNav : undefined}
+          />
+        </div>
+      )}
 
-      {/* ── Body: sidebar + white work container ─────────────────────────────── */}
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      {/* ── Right: header + work area ────────────────────────────────────────── */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-        {/* Left nav column (transparent — sits on the app's gray bg) */}
-        {showInlineSidebar && (
-          <div
-            className={cn(
-              "flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-out",
-              inlineSidebarMode === "rail" ? "w-12" : "w-44",
-            )}
-          >
-            <Sidebar
-              section={section}
-              activeTab={activeTab}
-              onNavigate={guardedNavigate}
-              mode={inlineSidebarMode}
-            />
-            {inlineSidebarMode === "full" && <PlanWidget onNavigate={guardedNavigate} />}
-          </div>
-        )}
-
-        {/* Overlay nav drawer (mobile / narrow screens) */}
-        <NavDrawer
-          open={navDrawerOpen}
-          onClose={() => setNavDrawerOpen(false)}
-          section={section}
-          activeTab={activeTab}
+        <AppHeaderRight
           onNavigate={guardedNavigate}
+          onResetCatalog={() => setCatalogPhase("empty")}
+          showHamburger={!showInlineSidebar}
+          onOpenMobileMenu={() => setNavDrawerOpen(true)}
+          onToggleSidebar={wide ? toggleNav : undefined}
+          sidebarCollapsed={inlineSidebarMode === "rail"}
+          isLaunchPage={isLaunchPage}
         />
 
-        {/* Work area */}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden gap-2 pb-3 pr-3 pl-1">
+        {/* ── Body ─────────────────────────────────────────────────────────── */}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+
+          {/* Overlay nav drawer (mobile / narrow screens) */}
+          <NavDrawer
+            open={navDrawerOpen}
+            onClose={() => setNavDrawerOpen(false)}
+            section={section}
+            activeTab={activeTab}
+            onNavigate={guardedNavigate}
+          />
+
+          {/* Work area */}
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden gap-2 pb-3 pr-3 pl-1">
           {/* Single white container: editor + preview, split by a vertical line */}
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
 
@@ -417,6 +419,8 @@ function AppShell() {
               />
             )}
           </div>
+        </div>
+
         </div>
 
       </div>
