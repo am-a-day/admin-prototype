@@ -52,15 +52,15 @@ export function ContentLanguageControl({ compact = false }: { compact?: boolean 
         title="Язык контента"
         aria-expanded={open}
         className={cn(
-          "flex items-center gap-1 rounded-md font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900",
+          "flex items-center gap-0.5 rounded-md font-normal text-black transition hover:bg-zinc-100",
           open && "bg-zinc-100",
-          compact ? "px-1.5 py-1 text-[11px]" : "px-1.5 py-1 text-[11px]",
+          compact ? "px-1 py-0.5 text-[14px]" : "px-1.5 py-1 text-[13px]",
         )}
       >
         <span className="normal-case tracking-normal">
           {compact ? contentLanguageShort : currentLabel}
         </span>
-        <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
+        <ChevronDown size={12} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
       </button>
 
       {open && createPortal(

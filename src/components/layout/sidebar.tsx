@@ -2,23 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3,
-  Building2,
-  ClipboardList,
   Ellipsis,
   FileSearch,
-  Home,
   Import,
-  LayoutGrid,
   Menu,
-  Palette,
   QrCode,
-  ShoppingBag,
-  Sparkles,
   Tag,
-  Truck,
   X,
 } from "lucide-react";
+import {
+  ClipboardText,
+  ClockCounterClockwise,
+  Coins,
+  ForkKnife,
+  House,
+  MagicWand,
+  Package,
+  Scan,
+  Swatches,
+  ThumbsUp,
+  type Icon,
+} from "@phosphor-icons/react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { cn } from "@/lib/utils";
 import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
@@ -29,7 +33,7 @@ type NavItem = {
   label: string;
   section: SectionId;
   tab: string;
-  icon: LucideIcon;
+  icon: Icon;
 };
 
 type NavGroup = {
@@ -42,27 +46,27 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Витрина",
     items: [
-      { label: "Главная", section: "storefront", tab: "home", icon: Home },
-      { label: "Каталог", section: "storefront", tab: "catalog", icon: LayoutGrid },
-      { label: "Рекомендации", section: "storefront", tab: "upsell", icon: Sparkles },
-      { label: "Оформление", section: "storefront", tab: "appearance", icon: Palette },
-      { label: "О заведении", section: "storefront", tab: "about", icon: Building2 },
+      { label: "Главная", section: "storefront", tab: "home", icon: House },
+      { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
+      { label: "Рекомендации", section: "storefront", tab: "upsell", icon: MagicWand },
+      { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
+      { label: "О заведении", section: "storefront", tab: "about", icon: ClipboardText },
     ],
     trailingCta: { label: "Улучшить тариф", section: "management", tab: "billing" },
   },
   {
     title: "Заказы",
     items: [
-      { label: "История заказов", section: "management", tab: "order-history", icon: ClipboardList },
-      { label: "Настройка заказов", section: "management", tab: "order-settings", icon: Truck },
+      { label: "Прием заказов", section: "management", tab: "order-settings", icon: Package },
+      { label: "История заказов", section: "management", tab: "order-history", icon: ClockCounterClockwise },
     ],
   },
   {
     title: "Аналитика",
     items: [
-      { label: "Сканирования", section: "analytics", tab: "scans", icon: BarChart3 },
-      { label: "Продажи", section: "analytics", tab: "orders", icon: ShoppingBag },
-      { label: "Лайки", section: "analytics", tab: "likes", icon: Sparkles },
+      { label: "Сканирования", section: "analytics", tab: "scans", icon: Scan },
+      { label: "Продажи", section: "analytics", tab: "orders", icon: Coins },
+      { label: "Лайки", section: "analytics", tab: "likes", icon: ThumbsUp },
     ],
   },
 ];
@@ -326,7 +330,7 @@ function NavList({
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
           {!compact && (
-            <div className="mb-0.5 mt-3 first:mt-0 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+            <div className="mb-0.5 mt-3 first:mt-0 px-2 text-[12px] font-normal text-[#5a5a5c]">
               {group.title}
             </div>
           )}
@@ -342,18 +346,16 @@ function NavList({
                   onClick={() => onNavigate(item.section, item.tab)}
                   title={compact ? item.label : undefined}
                   className={cn(
-                    "group relative flex items-center rounded-lg transition",
+                    "group relative flex items-center rounded-[7px] font-normal transition",
                     compact
                       ? "h-8 w-8 justify-center"
-                      : "w-full gap-2 px-2 py-[5px] text-left text-[13px]",
+                      : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
                     active
-                      ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-                      : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
-                    active && !compact && "font-semibold",
-                    !active && !compact && "font-medium",
+                      ? "bg-white text-[#1c1917] shadow-sm"
+                      : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
                   )}
                 >
-                  <Icon size={compact ? 16 : 14} className="shrink-0" />
+                  <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
                   {!compact && <span className="truncate">{item.label}</span>}
                   {compact && (
                     <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
@@ -370,7 +372,7 @@ function NavList({
       {/* ── «Ещё» separator + button ── */}
       {compact && <div className="my-0.5 h-px bg-border" />}
       {!compact && (
-        <div className="mb-0.5 mt-3 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+        <div className="mb-0.5 mt-3 px-2 text-[12px] font-normal text-[#5a5a5c]">
           Инструменты
         </div>
       )}

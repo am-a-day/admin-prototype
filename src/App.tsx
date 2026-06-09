@@ -1,9 +1,8 @@
-import { useState, useEffect, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { AppHeaderLeft, AppHeaderRight } from "@/components/layout/app-header";
+import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
-import { WorkAreaRail, WorkAreaTabs } from "@/components/layout/work-area-rail";
-import { LayoutModeProvider, useLayoutMode } from "@/contexts/layout-mode-context";
+import { PlanWidget } from "@/components/layout/plan-widget";
 import { ContentHeader } from "@/components/layout/content-header";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
@@ -11,9 +10,10 @@ import { PhonePreview } from "@/components/preview/phone-preview";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider } from "@/contexts/plan-context";
-import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
+import { PublishProvider, type PageKey } from "@/contexts/publish-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
+import { PublishToast } from "@/components/workspace/publish-toast";
 import {
   banners as seedBanners,
   DEFAULT_RECOMMENDATION_TEXTS,
@@ -34,7 +34,7 @@ import { ManagementStub } from "@/features/management/management-stub";
 import { AboutWorkspace } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
 import { CatalogWorkspace, type CatalogPhase } from "@/features/storefront/catalog-workspace";
-import { HomeWorkspace } from "@/features/storefront/home-workspace";
+import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchWorkspace } from "@/features/storefront/launch-workspace";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 import { LaunchPhonePreview } from "@/components/layout/launch-phone-preview";
@@ -61,20 +61,8 @@ const PAGE_META: Record<string, PageMeta> = {
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
 };
 
-// Контекстная подпись кнопки сохранения для каждой редактируемой страницы.
-const SAVE_LABELS: Partial<Record<PageKey, string>> = {
-  home: "Сохранить главную",
-  catalog: "Сохранить позицию",
-  upsell: "Сохранить рекомендации",
-  appearance: "Сохранить оформление",
-  about: "Сохранить данные заведения",
-  "order-settings": "Сохранить настройки",
-};
-
 function AppShell() {
   const { markVisited, launchDismissed } = useVitrineLaunch();
-  const { layoutVersion, resizablePreview, changeModel } = useLayoutMode();
-  const { totalChanges, nudgeSave } = usePublish();
   const [section, setSection] = useState<SectionId>("storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>("launch");
   const [storeAboutTab, setStoreAboutTab] = useState<"info" | "seo">("info");
@@ -89,6 +77,7 @@ function AppShell() {
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("empty");
+  const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
   const [seoTitle, setSeoTitle] = useState(`${RESTAURANT_NAME} — корейская кухня`);
@@ -98,10 +87,8 @@ function AppShell() {
   const [upsellFocused, setUpsellFocused] = useState(false);
   const [homeFocus, setHomeFocus] = useState<"hero" | "sections" | null>(null);
 
-  // Ресайзируемая панель превью
-  const [previewWidth, setPreviewWidth] = useState(420);
+  // Панель превью можно скрыть
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
-  const [previewDragging, setPreviewDragging] = useState(false);
 
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -128,32 +115,6 @@ function AppShell() {
   const toggleNav = () => {
     if (wide) setSidebarCollapsed((c) => !c); // full ↔ rail inline
     else setNavDrawerOpen((o) => !o);         // narrow → overlay drawer
-  };
-
-  const startPreviewResize = (e: ReactMouseEvent) => {
-    e.preventDefault();
-    setPreviewDragging(true);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-    const onMove = (ev: MouseEvent) => {
-      const intended = window.innerWidth - ev.clientX;
-      if (!Number.isFinite(intended)) return;
-      if (intended < 210) {
-        setPreviewCollapsed(true);
-      } else {
-        setPreviewCollapsed(false);
-        setPreviewWidth(Math.min(460, Math.max(380, intended)));
-      }
-    };
-    const onUp = () => {
-      setPreviewDragging(false);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
   };
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
@@ -250,18 +211,7 @@ function AppShell() {
     setPreviewScenario(null);
   };
 
-  // ── Save + Live: guard навигации ──────────────────────────────────────────
-  // Уход со страницы при несохранённых изменениях блокируется, а save bar в
-  // шапке контента «подёргивается» (shake + жёлтая вспышка).
-  const requestNav = (fn: () => void) => {
-    if (changeModel === "save-live" && totalChanges > 0) {
-      nudgeSave();
-    } else {
-      fn();
-    }
-  };
-  const guardedNavigate = (next: SectionId, tab: string) =>
-    requestNav(() => navigate(next, tab));
+  const guardedNavigate = (next: SectionId, tab: string) => navigate(next, tab);
 
   let content: ReactNode = null;
 
@@ -278,6 +228,8 @@ function AppShell() {
           updateBanner={updateBanner}
           removeBanner={removeBanner}
           addBanner={addBanner}
+          homeTab={homeTab}
+          setHomeTab={setHomeTab}
           homeFocus={homeFocus}
           onHomeFocusHandled={() => setHomeFocus(null)}
         />
@@ -359,6 +311,8 @@ function AppShell() {
         : null;
 
   const isLaunchPage = section === "storefront" && storeTab === "launch";
+  // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
+  const isHomePage = section === "storefront" && storeTab === "home";
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
     section === "storefront" && storeTab === "catalog" && catalogPhase !== "has-items"
@@ -376,120 +330,99 @@ function AppShell() {
     "qr";
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
-  const isRailLayout = layoutVersion === "rail";
-
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-100 text-zinc-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#f5f5f4] text-zinc-950">
 
-      {/* ── Left nav column: AppHeaderLeft + Sidebar ──────────────────────────
-          Same bg (zinc-50) creates unified navigation shell.
-          Only shown in sidebar layout with inline sidebar.                  */}
-      {!isRailLayout && showInlineSidebar && (
-        <div
-          className={cn(
-            "flex shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-zinc-50",
-            !previewDragging && "transition-[width] duration-300 ease-out",
-            inlineSidebarMode === "rail" ? "w-12" : "w-48",
-          )}
-        >
-          <AppHeaderLeft
-            compact={inlineSidebarMode === "rail"}
-            onToggleSidebar={toggleNav}
-            sidebarExpanded={wide && !sidebarCollapsed}
-          />
-          <Sidebar
-            section={section}
-            activeTab={activeTab}
-            onNavigate={guardedNavigate}
-            mode={inlineSidebarMode}
-          />
-        </div>
-      )}
+      {/* ── Full-width global header ──────────────────────────────────────────── */}
+      <AppHeaderRight
+        onNavigate={guardedNavigate}
+        onResetCatalog={() => setCatalogPhase("empty")}
+        showHamburger={!showInlineSidebar}
+        onOpenMobileMenu={() => setNavDrawerOpen(true)}
+        onToggleSidebar={wide ? toggleNav : undefined}
+        isLaunchPage={isLaunchPage}
+      />
 
-      {/* ── Right column: AppHeaderRight + content ──────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/* ── Body: sidebar + white work container ─────────────────────────────── */}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
 
-        <AppHeaderRight
-          onNavigate={guardedNavigate}
-          onResetCatalog={() => setCatalogPhase("empty")}
-          showHamburger={!showInlineSidebar}
-          onOpenMobileMenu={() => setNavDrawerOpen(true)}
-          isLaunchPage={isLaunchPage}
-        />
-
-        {/* Overlay nav drawer (mobile / narrow screens) */}
-        {!isRailLayout && (
-          <NavDrawer
-            open={navDrawerOpen}
-            onClose={() => setNavDrawerOpen(false)}
-            section={section}
-            activeTab={activeTab}
-            onNavigate={guardedNavigate}
-          />
-        )}
-
-        {/* Content area */}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden gap-2 p-2">
-          {isRailLayout && (
-            <WorkAreaRail
+        {/* Left nav column (transparent — sits on the app's gray bg) */}
+        {showInlineSidebar && (
+          <div
+            className={cn(
+              "flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-out",
+              inlineSidebarMode === "rail" ? "w-12" : "w-44",
+            )}
+          >
+            <Sidebar
               section={section}
               activeTab={activeTab}
               onNavigate={guardedNavigate}
-              onResetCatalog={() => setCatalogPhase("empty")}
+              mode={inlineSidebarMode}
             />
-          )}
+            {inlineSidebarMode === "full" && <PlanWidget onNavigate={guardedNavigate} />}
+          </div>
+        )}
 
-          {/* Main editor card */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm">
-            <ContentHeader
-              title={pageMeta.title}
-              description={pageMeta.description}
-              showLanguage={pageMeta.showLanguage && !previewVisible}
-              saveLabel={pageKey ? (SAVE_LABELS[pageKey] ?? "Сохранить") : "Сохранить"}
-              onRenewPlan={() => guardedNavigate("management", "billing")}
-              tabs={
-                isRailLayout ? (
-                  <WorkAreaTabs section={section} activeTab={activeTab} onNavigate={guardedNavigate} />
-                ) : undefined
-              }
-            />
-            <div className="flex min-h-0 min-w-0 flex-1">
-              <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
-              {isLaunchPage && <LaunchPhonePreview />}
-              {previewVisible && (
-                <PhonePreview
-                  section={section}
-                  activeTab={activeTab}
-                  selectedDishId={selectedDishId}
-                  previewBanner={previewBanner}
-                  scenario={effectiveScenario}
-                  recommendationTexts={recommendationTexts}
-                  upsellSurface={upsellSurface}
-                  highlightUpsell={upsellFocused}
-                  onNavHomeHero={() => requestNav(navHomeHero)}
-                  onNavHomeSections={() => requestNav(navHomeSections)}
-                  onNavUpsell={() => requestNav(navUpsellPage)}
-                  onNavAbout={() => requestNav(navAbout)}
-                  onNavCatalogDish={(id) => requestNav(() => navCatalogDish(id))}
-                  onNavOrders={() => requestNav(openOrderAcceptance)}
-                  seoTitle={seoTitle}
-                  seoDescription={seoDescription}
-                  width={resizablePreview ? previewWidth : 420}
-                  collapsed={previewCollapsed}
-                  dragging={previewDragging}
-                  resizable={resizablePreview}
-                  onStartResize={startPreviewResize}
-                  onExpand={() => setPreviewCollapsed(false)}
-                  onCollapse={() => setPreviewCollapsed(true)}
-                />
-              )}
+        {/* Overlay nav drawer (mobile / narrow screens) */}
+        <NavDrawer
+          open={navDrawerOpen}
+          onClose={() => setNavDrawerOpen(false)}
+          section={section}
+          activeTab={activeTab}
+          onNavigate={guardedNavigate}
+        />
+
+        {/* Work area */}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden gap-2 pb-3 pr-3 pl-1">
+          {/* Single white container: editor + preview, split by a vertical line */}
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
+
+            {/* Editor column */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <ContentHeader
+                title={pageMeta.title}
+                description={pageMeta.description}
+                showLanguage={pageMeta.showLanguage && !previewVisible}
+                onRenewPlan={() => guardedNavigate("management", "billing")}
+                tabs={isHomePage ? <HomeTabs value={homeTab} onChange={setHomeTab} /> : undefined}
+              />
+              <div className="flex min-h-0 min-w-0 flex-1">
+                <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
+                {isLaunchPage && <LaunchPhonePreview />}
+              </div>
             </div>
+
+            {/* Preview panel (right side of the white container) */}
+            {previewVisible && (
+              <PhonePreview
+                section={section}
+                activeTab={activeTab}
+                selectedDishId={selectedDishId}
+                previewBanner={previewBanner}
+                scenario={effectiveScenario}
+                recommendationTexts={recommendationTexts}
+                upsellSurface={upsellSurface}
+                highlightUpsell={upsellFocused}
+                onNavHomeHero={navHomeHero}
+                onNavHomeSections={navHomeSections}
+                onNavUpsell={navUpsellPage}
+                onNavAbout={navAbout}
+                onNavCatalogDish={navCatalogDish}
+                seoTitle={seoTitle}
+                seoDescription={seoDescription}
+                collapsed={previewCollapsed}
+                onExpand={() => setPreviewCollapsed(false)}
+                onCollapse={() => setPreviewCollapsed(true)}
+              />
+            )}
           </div>
         </div>
 
       </div>
 
       <DraftToast />
+      <PublishToast />
     </div>
   );
 }
@@ -501,11 +434,9 @@ export default function App() {
         <PlanProvider>
           <PublishProvider>
             <VitrineLaunchProvider>
-              <LayoutModeProvider>
-                <HeaderActionsProvider>
-                  <AppShell />
-                </HeaderActionsProvider>
-              </LayoutModeProvider>
+              <HeaderActionsProvider>
+                <AppShell />
+              </HeaderActionsProvider>
             </VitrineLaunchProvider>
           </PublishProvider>
         </PlanProvider>

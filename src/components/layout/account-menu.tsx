@@ -11,7 +11,6 @@ import {
 import { RESTAURANT_NAME, STOREFRONT_URL, type PlanId, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
 import { useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
-import { useLayoutMode, type LayoutVersion, type ChangeModel } from "@/contexts/layout-mode-context";
 import { usePublish } from "@/contexts/publish-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
@@ -51,12 +50,6 @@ export function OrgMenu({
 }) {
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
   const { stage, resetLaunch, forceStage } = useVitrineLaunch();
-  const {
-    layoutVersion, setLayoutVersion,
-    resizablePreview, setResizablePreview,
-    changeModel, setChangeModel,
-    simulateUpdateError, setSimulateUpdateError,
-  } = useLayoutMode();
   const planStatus = usePlanStatus();
   const vitrine = useVitrineStatus();
   const { totalChanges, injectDemoChanges } = usePublish();
@@ -118,8 +111,10 @@ export function OrgMenu({
           aria-haspopup="dialog"
           title={RESTAURANT_NAME}
         >
-          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", vitrine.dot)} />
-          <span className="text-sm font-bold text-zinc-950">{RESTAURANT_NAME}</span>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-[#5600ab] text-[11px] font-medium leading-none text-white">
+            {RESTAURANT_NAME.charAt(0)}
+          </span>
+          <span className="text-sm font-normal text-black">{RESTAURANT_NAME}</span>
           <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
         </button>
       ) : (
@@ -232,7 +227,7 @@ export function OrgMenu({
                           else forceStage(s);
                         }}
                         className={cn(
-                          "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                          "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
                           isActive
                             ? "border-blue-500 bg-blue-50 text-blue-700"
                             : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
@@ -254,9 +249,9 @@ export function OrgMenu({
                   <button
                     type="button"
                     onClick={() => injectDemoChanges()}
-                    className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                    className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
                   >
-                    <span>Неопубликованные изменения</span>
+                    <span className="whitespace-nowrap">Неопубликованные изменения</span>
                     <span
                       className={cn(
                         "relative h-4 w-7 shrink-0 rounded-full transition",
@@ -282,15 +277,15 @@ export function OrgMenu({
                 <div className="flex gap-1">
                   {([
                     [18, "Активна"],
-                    [5,  "Скоро кончится"],
-                    [0,  "Закончилась"],
+                    [5,  "Истекает"],
+                    [0,  "Истекла"],
                   ] as [number, string][]).map(([d, label]) => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => setDaysLeftDemo(d)}
                       className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                        "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
                         daysLeft === d
                           ? "border-blue-500 bg-blue-50 text-blue-700"
                           : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
@@ -314,7 +309,7 @@ export function OrgMenu({
                       type="button"
                       onClick={() => setPlanId(p)}
                       className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
+                        "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
                         planId === p
                           ? "border-blue-500 bg-blue-50 text-blue-700"
                           : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
@@ -324,107 +319,6 @@ export function OrgMenu({
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* ── Лейаут ── */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Лейаут
-                </div>
-                <div className="flex gap-1">
-                  {([
-                    ["sidebar", "Sidebar"],
-                    ["rail", "Rail"],
-                  ] as [LayoutVersion, string][]).map(([v, label]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setLayoutVersion(v)}
-                      className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
-                        layoutVersion === v
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Превью ── */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Превью
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setResizablePreview(!resizablePreview)}
-                  className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50"
-                >
-                  <span>Ручной resize (эксперимент)</span>
-                  <span
-                    className={cn(
-                      "relative h-4 w-7 shrink-0 rounded-full transition",
-                      resizablePreview ? "bg-blue-600" : "bg-zinc-300",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                        resizablePreview ? "left-3.5" : "left-0.5",
-                      )}
-                    />
-                  </span>
-                </button>
-              </div>
-
-              {/* ── Модель изменений ── */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Модель изменений
-                </div>
-                <div className="flex gap-1">
-                  {([
-                    ["publish", "Публикация"],
-                    ["save-live", "Save + Live"],
-                  ] as [ChangeModel, string][]).map(([v, label]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setChangeModel(v)}
-                      className={cn(
-                        "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
-                        changeModel === v
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSimulateUpdateError(!simulateUpdateError)}
-                  className="mt-1.5 flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50"
-                >
-                  <span>Симулировать ошибку обновления</span>
-                  <span
-                    className={cn(
-                      "relative h-4 w-7 shrink-0 rounded-full transition",
-                      simulateUpdateError ? "bg-orange-500" : "bg-zinc-300",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                        simulateUpdateError ? "left-3.5" : "left-0.5",
-                      )}
-                    />
-                  </span>
-                </button>
               </div>
 
             </div>

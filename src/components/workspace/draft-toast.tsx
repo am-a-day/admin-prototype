@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { usePublish } from "@/contexts/publish-context";
-import { useLayoutMode } from "@/contexts/layout-mode-context";
 import { cn } from "@/lib/utils";
 
 /** Режим 1 (Toast): ненавязчивое уведомление о сохранении черновика. */
 export function DraftToast() {
   const { toast } = usePublish();
-  const { changeModel } = useLayoutMode();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -17,8 +15,6 @@ export function DraftToast() {
     return () => window.clearTimeout(t);
   }, [toast?.id]);
 
-  // В Save + Live Preview нет «черновика» — сохранение сразу применяется на витрине.
-  if (changeModel === "save-live") return null;
   if (!toast) return null;
 
   return (

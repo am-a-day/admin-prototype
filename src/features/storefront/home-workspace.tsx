@@ -32,6 +32,9 @@ type HomeWorkspaceProps = {
   updateBanner: (id: string, patch: Partial<Banner>) => void;
   removeBanner: (id: string) => void;
   addBanner: () => void;
+  /** Активная вкладка главной (живёт в App, рендерится в общей шапке контента). */
+  homeTab: HomeTab;
+  setHomeTab: (t: HomeTab) => void;
   /** Прокрутка/подсветка блока при переходе из превью. */
   homeFocus?: "hero" | "sections" | null;
   onHomeFocusHandled?: () => void;
@@ -39,6 +42,38 @@ type HomeWorkspaceProps = {
 
 const MAX_BANNER_CHARS = 70;
 const TAG_PRESETS = ["Хит", "Новинка", "Акция", "Сезон", "Веган"];
+
+export type HomeTab = "banners" | "sections" | "promoted";
+const HOME_TABS: { id: HomeTab; label: string }[] = [
+  { id: "banners", label: "Баннеры" },
+  { id: "sections", label: "Разделы" },
+  { id: "promoted", label: "Рекомендации" },
+];
+
+export function HomeTabs({ value, onChange }: { value: HomeTab; onChange: (t: HomeTab) => void }) {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+      {HOME_TABS.map((t) => {
+        const active = value === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange(t.id)}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-[12px] transition",
+              active
+                ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+                : "text-[#79716b] hover:text-zinc-700",
+            )}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function BlockHeading({
   eyebrow,
@@ -289,6 +324,8 @@ export function HomeWorkspace({
   updateBanner,
   removeBanner,
   addBanner,
+  homeTab: tab,
+  setHomeTab: setTab,
   homeFocus,
   onHomeFocusHandled,
 }: HomeWorkspaceProps) {
@@ -300,11 +337,10 @@ export function HomeWorkspace({
     registerChange("home");
   };
 
-  // Переход из превью: прокрутить к блоку и кратко подсветить его.
+  // Переход из превью: открыть нужную вкладку и кратко подсветить блок.
   useEffect(() => {
     if (!homeFocus) return;
-    const id = homeFocus === "hero" ? "home-hero" : "home-sections";
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTab(homeFocus === "hero" ? "banners" : "sections");
     setFlash(homeFocus);
     onHomeFocusHandled?.();
     const t = window.setTimeout(() => setFlash(null), 1600);
@@ -314,127 +350,132 @@ export function HomeWorkspace({
 
   return (
     <PageScroll>
-      <PageContent className="space-y-8">
+      <PageContent className="space-y-6">
         <LaunchPageHint
           checkId="home"
           title="Настройте главный экран витрины"
           description="Добавьте баннеры, ключевые разделы и продвигаемые позиции — это первое, что увидят гости."
         />
-        {/* 1 — Баннеры (главный блок) */}
-        <section
-          id="home-hero"
-          className={cn(
-            "mt-8 scroll-mt-6 space-y-5 rounded-3xl transition",
-            flash === "hero" && "ring-2 ring-blue-400 ring-offset-4",
-          )}
-        >
-          <BlockHeading
-            eyebrow="Первый экран"
-            title="Баннеры"
-            titleClassName="text-2xl"
-            description="Акции, новинки и сезонные предложения в верхней части главной."
-            action={
-              <Button size="sm" className="shrink-0 font-bold" onClick={handleAddBanner}>
-                <Plus size={15} />
-                Добавить баннер
-              </Button>
-            }
-          />
 
-          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-            {banners.map((banner) => (
-              <BannerThumb
-                key={banner.id}
-                banner={banner}
-                selected={selectedBanner?.id === banner.id}
-                onSelect={() => setSelectedBannerId(banner.id)}
-              />
-            ))}
-            <button
-              type="button"
-              onClick={handleAddBanner}
-              className="flex h-32 w-32 shrink-0 flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 text-sm font-bold text-zinc-500 transition hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600"
-            >
-              <Plus size={20} className="mb-1.5" />
-              Новый
-            </button>
-          </div>
-
-          {selectedBanner && (
-            <BannerEditor
-              key={selectedBanner.id}
-              banner={selectedBanner}
-              updateBanner={updateBanner}
-              removeBanner={removeBanner}
+        {/* Баннеры */}
+        {tab === "banners" && (
+          <section
+            className={cn(
+              "space-y-5 rounded-3xl transition",
+              flash === "hero" && "ring-2 ring-blue-400 ring-offset-4",
+            )}
+          >
+            <BlockHeading
+              eyebrow="Первый экран"
+              title="Баннеры"
+              titleClassName="text-2xl"
+              description="Акции, новинки и сезонные предложения в верхней части главной."
+              action={
+                <Button size="sm" className="shrink-0 font-bold" onClick={handleAddBanner}>
+                  <Plus size={15} />
+                  Добавить баннер
+                </Button>
+              }
             />
-          )}
-        </section>
 
-        {/* 2 — Разделы */}
-        <section
-          id="home-sections"
-          className={cn(
-            "mt-12 scroll-mt-6 space-y-5 rounded-3xl border-t border-border pt-10 transition",
-            flash === "sections" && "ring-2 ring-blue-400 ring-offset-4",
-          )}
-        >
-          <BlockHeading
-            eyebrow="Навигация гостя"
-            title="Разделы на главной"
-            titleClassName="text-xl"
-            description="Покажите до 6 ключевых разделов. Остальные останутся в полном меню."
-            action={
-              <Button variant="outline" size="sm" className="shrink-0 font-bold">
-                <Plus size={15} />
-                Добавить раздел
-              </Button>
-            }
-          />
-          <div className="grid grid-cols-4 gap-4">
-            {featuredCategoryIds.map((id) => {
-              const category = categories.find((c) => c.id === id)!;
-              return (
-                <div key={id} className="group rounded-3xl border border-border bg-white p-3">
-                  <div
-                    className={cn(
-                      "mb-3 flex h-28 items-center justify-center rounded-2xl bg-gradient-to-br text-4xl",
-                      category.photo,
-                    )}
-                  >
-                    {category.emoji}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-black">{category.name}</div>
-                    <GripVertical className="text-zinc-300 group-hover:text-zinc-500" size={16} />
-                  </div>
-                </div>
-              );
-            })}
-            <AddTile label="Добавить" className="min-h-[164px]" />
-          </div>
-        </section>
+            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+              {banners.map((banner) => (
+                <BannerThumb
+                  key={banner.id}
+                  banner={banner}
+                  selected={selectedBanner?.id === banner.id}
+                  onSelect={() => setSelectedBannerId(banner.id)}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={handleAddBanner}
+                className="flex h-32 w-32 shrink-0 flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 text-sm font-bold text-zinc-500 transition hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600"
+              >
+                <Plus size={20} className="mb-1.5" />
+                Новый
+              </button>
+            </div>
 
-        {/* 3 — Рекомендуемые */}
-        <section className="mt-12 space-y-5 border-t border-border pt-10">
-          <BlockHeading
-            eyebrow="Мерчендайзинг"
-            eyebrowTone="muted"
-            title="Рекомендуемые позиции"
-            titleClassName="text-lg"
-            description="Блюда и напитки, которые стоит продвигать на главной."
-            action={
-              <Button variant="ghost" size="sm" className="shrink-0 font-bold text-zinc-500">
-                <Plus size={15} />
-                Добавить позицию
-              </Button>
-            }
-          />
-          <div className="grid grid-cols-3 gap-4">
-            {promotedDishIds.map((id) => (
-              <DishTile key={id} dish={dishes.find((d) => d.id === id)!} removable />
-            ))}
-          </div>
-        </section>
+            {selectedBanner && (
+              <BannerEditor
+                key={selectedBanner.id}
+                banner={selectedBanner}
+                updateBanner={updateBanner}
+                removeBanner={removeBanner}
+              />
+            )}
+          </section>
+        )}
+
+        {/* Разделы */}
+        {tab === "sections" && (
+          <section
+            className={cn(
+              "space-y-5 rounded-3xl transition",
+              flash === "sections" && "ring-2 ring-blue-400 ring-offset-4",
+            )}
+          >
+            <BlockHeading
+              eyebrow="Навигация гостя"
+              title="Разделы на главной"
+              titleClassName="text-xl"
+              description="Покажите до 6 ключевых разделов. Остальные останутся в полном меню."
+              action={
+                <Button variant="outline" size="sm" className="shrink-0 font-bold">
+                  <Plus size={15} />
+                  Добавить раздел
+                </Button>
+              }
+            />
+            <div className="grid grid-cols-4 gap-4">
+              {featuredCategoryIds.map((id) => {
+                const category = categories.find((c) => c.id === id)!;
+                return (
+                  <div key={id} className="group rounded-3xl border border-border bg-white p-3">
+                    <div
+                      className={cn(
+                        "mb-3 flex h-28 items-center justify-center rounded-2xl bg-gradient-to-br text-4xl",
+                        category.photo,
+                      )}
+                    >
+                      {category.emoji}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-black">{category.name}</div>
+                      <GripVertical className="text-zinc-300 group-hover:text-zinc-500" size={16} />
+                    </div>
+                  </div>
+                );
+              })}
+              <AddTile label="Добавить" className="min-h-[164px]" />
+            </div>
+          </section>
+        )}
+
+        {/* Рекомендации */}
+        {tab === "promoted" && (
+          <section className="space-y-5">
+            <BlockHeading
+              eyebrow="Мерчендайзинг"
+              eyebrowTone="muted"
+              title="Рекомендуемые позиции"
+              titleClassName="text-lg"
+              description="Блюда и напитки, которые стоит продвигать на главной."
+              action={
+                <Button variant="ghost" size="sm" className="shrink-0 font-bold text-zinc-500">
+                  <Plus size={15} />
+                  Добавить позицию
+                </Button>
+              }
+            />
+            <div className="grid grid-cols-3 gap-4">
+              {promotedDishIds.map((id) => (
+                <DishTile key={id} dish={dishes.find((d) => d.id === id)!} removable />
+              ))}
+            </div>
+          </section>
+        )}
       </PageContent>
     </PageScroll>
   );
