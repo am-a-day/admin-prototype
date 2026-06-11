@@ -1,8 +1,11 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader } from "@/components/layout/content-header";
+import { GuidedNextStep, type OnbSuccess } from "@/components/layout/guided-next-step";
+import { SendReviewDialog } from "@/components/layout/send-review-dialog";
+import { runTour } from "@/lib/launch-tour";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
@@ -10,6 +13,7 @@ import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider } from "@/contexts/plan-context";
 import { PublishProvider, type PageKey } from "@/contexts/publish-context";
+import { PreviewDemoProvider } from "@/contexts/preview-demo-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -34,16 +38,15 @@ import { AboutWorkspace } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
 import { CatalogWorkspace, type CatalogPhase } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
-import { LaunchWorkspace } from "@/features/storefront/launch-workspace";
+import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
-import { LaunchPhonePreview } from "@/components/layout/launch-phone-preview";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 
 const PAGE_META: Record<string, PageMeta> = {
-  "storefront:launch":     { title: "Запуск витрины",    description: "Выполните минимум для запуска самостоятельно или попросите менеджера помочь." },
-  "storefront:home":       { title: "Главная",           description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
+  "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
+  "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
   "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
@@ -61,9 +64,9 @@ const PAGE_META: Record<string, PageMeta> = {
 };
 
 function AppShell() {
-  const { markVisited, launchDismissed } = useVitrineLaunch();
+  const { markVisited, stage, address, setAddress, sendForLaunch } = useVitrineLaunch();
   const [section, setSection] = useState<SectionId>("storefront");
-  const [storeTab, setStoreTab] = useState<StoreTabId>("launch");
+  const [storeTab, setStoreTab] = useState<StoreTabId>("catalog");
   const [storeAboutTab, setStoreAboutTab] = useState<"info" | "seo">("info");
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
@@ -76,6 +79,10 @@ function AppShell() {
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("empty");
+  const [bannerAdded, setBannerAdded] = useState(false);
+  const [onbSuccess, setOnbSuccess] = useState<OnbSuccess | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const tourSeen = useRef<Record<number, boolean>>({});
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -176,6 +183,7 @@ function AppShell() {
       },
     ]);
     setSelectedBannerId(id);
+    setBannerAdded(true);
   };
 
   const previewBanner =
@@ -216,7 +224,7 @@ function AppShell() {
 
   if (section === "storefront") {
     if (storeTab === "launch") {
-      content = <LaunchWorkspace onNavigate={guardedNavigate} />;
+      content = <LaunchPage onNavigate={guardedNavigate} />;
     }
     if (storeTab === "home") {
       content = (
@@ -289,12 +297,12 @@ function AppShell() {
     content = <QRPage />;
   }
 
-  // Navigate away from launch page if user dismissed it
+  // После активации витрины страница запуска исчезает — точкой входа становится Каталог.
   useEffect(() => {
-    if (launchDismissed && section === "storefront" && storeTab === "launch") {
-      setStoreTab("home");
+    if (stage === "active" && section === "storefront" && storeTab === "launch") {
+      setStoreTab("catalog");
     }
-  }, [launchDismissed, section, storeTab]);
+  }, [stage, section, storeTab]);
 
   // AM — отдельная страница с собственным лейаутом (без rail / header / превью)
   if (section === "am") {
@@ -312,15 +320,87 @@ function AppShell() {
   const isLaunchPage = section === "storefront" && storeTab === "launch";
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
+
+  // ── Guided first-launch flow ──────────────────────────────────────────────
+  const gotoTour = (s: SectionId, t: string, keys: string[]) => {
+    guardedNavigate(s, t);
+    window.setTimeout(() => runTour(keys), 420);
+  };
+
+  const step1done = catalogPhase === "has-items";
+  const step2done = bannerAdded;
+  const sent = stage === "pending" || stage === "active";
+  const flowActive = stage !== "active" && !sent;
+  const currentStep = !step1done ? 1 : !step2done ? 2 : 3;
+
+  // Success-переход между шагами (короткое подтверждение)
+  const prevSignals = useRef({ s1: step1done, s2: step2done, sent });
+  useEffect(() => {
+    const p = prevSignals.current;
+    if (sent && !p.sent) {
+      setOnbSuccess({
+        title: "Витрина отправлена менеджеру",
+        subtitle: "Мы проверим данные и свяжемся с вами для запуска.",
+        actionLabel: "Вернуться в каталог",
+        onAction: () => { setOnbSuccess(null); navigate("storefront", "catalog"); },
+      });
+    } else if (step2done && !p.s2) {
+      setOnbSuccess({ title: "Баннер добавлен", subtitle: "Теперь витрину можно отправить менеджеру на проверку." });
+    } else if (step1done && !p.s1) {
+      setOnbSuccess({ title: "Первая позиция создана", subtitle: "Теперь добавьте баннер на главную страницу витрины." });
+    }
+    prevSignals.current = { s1: step1done, s2: step2done, sent };
+  }, [step1done, step2done, sent]);
+
+  // Авто-скрытие success
+  useEffect(() => {
+    if (!onbSuccess) return;
+    const t = window.setTimeout(() => setOnbSuccess(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [onbSuccess]);
+
+  // Авто-подсветка цели текущего шага при заходе на нужную страницу (1 раз на шаг).
+  // tourSeen помечаем только если тур реально запустился (элемент найден).
+  useEffect(() => {
+    if (!flowActive || onbSuccess) return;
+    if (currentStep === 1 && section === "storefront" && storeTab === "catalog" && !tourSeen.current[1]) {
+      window.setTimeout(() => {
+        if (runTour(["create-dish", "dish-fields"])) tourSeen.current[1] = true;
+      }, 600);
+    }
+    if (currentStep === 2 && section === "storefront" && storeTab === "home" && !tourSeen.current[2]) {
+      // Баннер-слот живёт на вкладке «Баннеры» — открываем её перед подсветкой.
+      if (homeTab !== "banners") setHomeTab("banners");
+      window.setTimeout(() => {
+        if (runTour(["add-banner"])) tourSeen.current[2] = true;
+      }, 600);
+    }
+  }, [flowActive, onbSuccess, currentStep, section, storeTab, homeTab]);
+
+  const guidedStep =
+    !flowActive ? null :
+    currentStep === 1 ? {
+      index: 1, label: "Создайте первую позицию", actionLabel: "Создать позицию", primary: false,
+      onAction: () => guardedNavigate("storefront", "catalog"),
+      onTour: () => gotoTour("storefront", "catalog", ["create-dish", "dish-fields"]),
+    } :
+    currentStep === 2 ? {
+      index: 2, label: "Добавьте баннер", actionLabel: "Перейти к главной", primary: false,
+      onAction: () => { setHomeTab("banners"); guardedNavigate("storefront", "home"); },
+      onTour: () => { setHomeTab("banners"); gotoTour("storefront", "home", ["nav-home", "add-banner"]); },
+    } : {
+      index: 3, label: "Витрина готова к проверке", actionLabel: "Отправить на проверку", primary: true,
+      onAction: () => setReviewOpen(true),
+      onTour: undefined as undefined | (() => void),
+    };
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
     section === "storefront" && storeTab === "catalog" && catalogPhase !== "has-items"
       ? "catalog-empty"
       : previewScenario;
   const previewVisible =
-    !isLaunchPage &&
-    (section === "storefront" ||
-      (section === "management" && manageTab === "order-settings"));
+    section === "storefront" ||
+    (section === "management" && manageTab === "order-settings");
 
   const metaKey =
     section === "storefront" ? `storefront:${storeTab}` :
@@ -382,16 +462,27 @@ function AppShell() {
 
             {/* Editor column */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              {(onbSuccess || guidedStep) && (
+                <GuidedNextStep
+                  success={onbSuccess}
+                  index={guidedStep?.index}
+                  total={3}
+                  label={guidedStep?.label}
+                  actionLabel={guidedStep?.actionLabel}
+                  onAction={guidedStep?.onAction}
+                  onTour={guidedStep?.onTour}
+                  primary={guidedStep?.primary}
+                />
+              )}
               <ContentHeader
-                title={pageMeta.title}
-                description={pageMeta.description}
+                title={isHomePage || isLaunchPage ? undefined : pageMeta.title}
+                description={isHomePage || isLaunchPage ? undefined : pageMeta.description}
                 showLanguage={pageMeta.showLanguage && !previewVisible}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
                 tabs={isHomePage ? <HomeTabs value={homeTab} onChange={setHomeTab} /> : undefined}
               />
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
-                {isLaunchPage && <LaunchPhonePreview />}
               </div>
             </div>
 
@@ -427,6 +518,16 @@ function AppShell() {
 
       <DraftToast />
       <PublishToast />
+      <SendReviewDialog
+        open={reviewOpen}
+        initialAddress={address}
+        onCancel={() => setReviewOpen(false)}
+        onSubmit={(addr) => {
+          setAddress(addr);
+          sendForLaunch();
+          setReviewOpen(false);
+        }}
+      />
     </div>
   );
 }
@@ -438,9 +539,11 @@ export default function App() {
         <PlanProvider>
           <PublishProvider>
             <VitrineLaunchProvider>
-              <HeaderActionsProvider>
-                <AppShell />
-              </HeaderActionsProvider>
+              <PreviewDemoProvider>
+                <HeaderActionsProvider>
+                  <AppShell />
+                </HeaderActionsProvider>
+              </PreviewDemoProvider>
             </VitrineLaunchProvider>
           </PublishProvider>
         </PlanProvider>

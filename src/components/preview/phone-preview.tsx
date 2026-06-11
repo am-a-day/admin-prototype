@@ -3,6 +3,7 @@ import { Loader2, Smartphone } from "lucide-react";
 import { Globe, SidebarSimple } from "@phosphor-icons/react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
+import { usePreviewDemo } from "@/contexts/preview-demo-context";
 import {
   categories,
   dishes,
@@ -93,6 +94,7 @@ export function PhonePreview({
   } = useAppSettings();
   const { routes } = useOrderRouting();
   const { publishPhase, totalChanges } = usePublish();
+  const { emptyVitrine } = usePreviewDemo();
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export function PhonePreview({
   // Навигация по витрине доступна на админ-вкладке «Главная».
   const browsing = section === "storefront" && activeTab === "home" && previewBanner != null;
 
-  let screen: ReactNode = previewBanner ? <PhoneHome banner={previewBanner} /> : null;
+  let screen: ReactNode = previewBanner ? <PhoneHome banner={previewBanner} empty={emptyVitrine} /> : null;
   let showBottomNav = false;
   let overlay: ReactNode = null;
 
@@ -175,6 +177,7 @@ export function PhonePreview({
       screen = (
         <PhoneHome
           banner={previewBanner}
+          empty={emptyVitrine}
           onBanner={onNavHomeHero}
           onSections={onNavHomeSections}
           onRecommendations={onNavUpsell}

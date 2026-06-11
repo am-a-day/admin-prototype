@@ -30,10 +30,10 @@ const THEME = {
     miniFill: "bg-[#ff2056]",
   },
   expired: {
-    pillBg:   "bg-[#ffe4e6]",
-    pillText: "text-[#c70036]",
-    fill:     "bg-[#e7e5e4]", // all inactive
-    subtitle: "text-[#a50036]",
+    pillBg:   "bg-[#fef3c6]", // amber, не тревожный красный
+    pillText: "text-[#bb4d00]",
+    fill:     "bg-[#e7e5e4]", // all inactive — ничего не осталось
+    subtitle: "text-[#973c00]",
     miniFill: "bg-[#d6d3d1]",
   },
   beforeLaunch: {
@@ -94,16 +94,17 @@ function PlanPopover({
 }) {
   const go = () => { onNavigate("management", "billing"); onClose(); };
 
+  const expired = vs === "expired";
   const title =
     vs === "beforeLaunch" ? `${planId} · начнётся после запуска` :
-    vs === "expired"      ? `Тариф ${planId} истёк` :
+    expired               ? `Подписка ${planId} истекла` :
     vs === "danger"       ? `Тариф ${planId} истекает через ${daysLeft} дн.` :
     vs === "warning"      ? `Тариф ${planId} · осталось ${daysLeft} дн.` :
     `Тариф ${planId} · ${daysLeft} дн.`;
 
   const body =
     vs === "beforeLaunch" ? "Тариф начнётся после того, как менеджер активирует витрину." :
-    vs === "expired"      ? "Платные функции ограничены. Продлите тариф, чтобы восстановить доступ." :
+    expired               ? `Вы перешли на Zero. Продлите ${planId}, чтобы вернуть платные функции витрины.` :
     vs === "danger"       ? "Чтобы сохранить доступ, продлите тариф до истечения срока." :
     vs === "warning"      ? "Продлите тариф заблаговременно, чтобы не потерять доступ." :
     `Подписка активна.`;
@@ -116,8 +117,8 @@ function PlanPopover({
     >
       <div className={cn(
         "text-[13px] font-semibold",
-        vs === "expired" || vs === "danger" ? "text-[#a50036]" :
-        vs === "warning" ? "text-[#973c00]" : "text-[#292524]",
+        vs === "danger" ? "text-[#a50036]" :
+        expired || vs === "warning" ? "text-[#973c00]" : "text-[#292524]",
       )}>
         {title}
       </div>
@@ -126,9 +127,14 @@ function PlanPopover({
         <button
           type="button"
           onClick={go}
-          className="mt-3 w-full rounded-[10px] border border-[#d6d3d1] bg-white py-1.5 text-[13px] text-[#292524] transition hover:bg-zinc-50"
+          className={cn(
+            "mt-3 w-full rounded-[10px] py-1.5 text-[13px] transition",
+            expired
+              ? "border border-[#f5c563] bg-[#fef3c6] font-semibold text-[#973c00] hover:bg-[#fde9a8]"
+              : "border border-[#d6d3d1] bg-white text-[#292524] hover:bg-zinc-50",
+          )}
         >
-          Продлить
+          {expired ? `Продлить ${planId}` : "Продлить"}
         </button>
       )}
       <button
@@ -151,7 +157,7 @@ function ExpandedWidget({
   onToggle,
   onNavigate,
 }: {
-  btnRef: React.RefObject<HTMLButtonElement>;
+  btnRef: React.RefObject<HTMLButtonElement | null>;
   open: boolean;
   onToggle: () => void;
   onNavigate: (s: SectionId, t: string) => void;
@@ -165,9 +171,10 @@ function ExpandedWidget({
   const showWarningIcon = vs === "warning" || vs === "danger" || vs === "expired";
   const showRenew = vs === "warning" || vs === "danger" || vs === "expired";
 
+  const expired = vs === "expired";
   const subtitle =
     vs === "beforeLaunch" ? "Начнётся после запуска" :
-    vs === "expired"      ? "Подписка закончилась" :
+    expired               ? `Подписка ${planId} истекла` :
     vs === "danger"       ? `Истекает через ${daysLeft} ${daysLeft === 1 ? "день" : "дня"}` :
     daysLeft === 1        ? "Остался 1 день" :
     `Осталось ${daysLeft} ${daysLeft < 5 ? "дня" : "дней"}`;
@@ -217,21 +224,34 @@ function ExpandedWidget({
             />
           </button>
 
-          {/* Row 2: subtitle */}
-          <div className="flex items-center gap-[4px] px-1">
+          {/* Row 2: subtitle — для истёкшей подписки делаем главным акцентом событие */}
+          <div className="flex items-start gap-[4px] px-1">
             {showWarningIcon && (
               <AlertTriangle
                 size={14}
                 className={cn(
-                  "shrink-0",
-                  vs === "warning" ? "text-[#973c00]" : "text-[#a50036]",
+                  "mt-[1px] shrink-0",
+                  vs === "danger" ? "text-[#a50036]" : "text-[#973c00]",
                 )}
                 strokeWidth={2}
               />
             )}
-            <span className={cn("text-[13px] font-normal leading-snug", theme.subtitle)}>
-              {subtitle}
-            </span>
+            <div className="min-w-0">
+              <span
+                className={cn(
+                  "block leading-snug",
+                  expired ? "text-[13px] font-semibold" : "text-[13px] font-normal",
+                  theme.subtitle,
+                )}
+              >
+                {subtitle}
+              </span>
+              {expired && (
+                <span className="block text-[12px] leading-snug text-[#79716b]">
+                  Вы используете Zero
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -240,9 +260,14 @@ function ExpandedWidget({
           <button
             type="button"
             onClick={() => onNavigate("management", "billing")}
-            className="flex h-[32px] w-full items-center justify-center rounded-[10px] border border-[#d6d3d1] bg-white text-[14px] text-[#292524] transition hover:bg-zinc-50"
+            className={cn(
+              "flex h-[32px] w-full items-center justify-center rounded-[10px] text-[14px] transition",
+              expired
+                ? "border border-[#f5c563] bg-[#fef3c6] font-semibold text-[#973c00] hover:bg-[#fde9a8]"
+                : "border border-[#d6d3d1] bg-white text-[#292524] hover:bg-zinc-50",
+            )}
           >
-            Продлить
+            {expired ? `Продлить ${planId}` : "Продлить"}
           </button>
         )}
       </div>
@@ -257,7 +282,7 @@ function CompactWidget({
   open,
   onToggle,
 }: {
-  btnRef: React.RefObject<HTMLButtonElement>;
+  btnRef: React.RefObject<HTMLButtonElement | null>;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -271,7 +296,7 @@ function CompactWidget({
 
   const tooltip =
     vs === "beforeLaunch" ? `${planId} · начнётся после запуска` :
-    vs === "expired"      ? "Тариф истёк" :
+    vs === "expired"      ? `Подписка ${planId} истекла · вы на Zero` :
     vs === "danger"       ? `${planId} истекает через ${daysLeft} дн.` :
     vs === "warning"      ? `${planId} · осталось ${daysLeft} дн.` :
     `${planId} · ${daysLeft} дн.`;
@@ -308,9 +333,9 @@ function CompactWidget({
           ))}
         </div>
 
-        {/* Alert dot (expired only) */}
+        {/* Attention dot (expired only) — amber, не тревожный красный */}
         {showDot && (
-          <div className="absolute -right-[0.5px] -top-[0.5px] size-[6px] rounded-full border border-white bg-[#ec003f]" />
+          <div className="absolute -right-[0.5px] -top-[0.5px] size-[6px] rounded-full border border-white bg-[#fe9a00]" />
         )}
 
         {/* Tooltip */}

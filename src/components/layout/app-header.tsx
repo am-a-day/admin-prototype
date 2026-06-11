@@ -36,8 +36,19 @@ function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
     );
   }
 
-  // Без неопубликованных изменений шапка спокойная — кнопку не показываем.
-  if (totalChanges === 0) return null;
+  // Нет изменений — кнопка всегда на месте, но задизейблена.
+  if (totalChanges === 0) {
+    return (
+      <button
+        type="button"
+        disabled
+        title="Изменений нет. Витрина актуальна."
+        className="flex h-8 cursor-not-allowed items-center justify-center rounded-xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-400"
+      >
+        Опубликовано
+      </button>
+    );
+  }
 
   return (
     <button

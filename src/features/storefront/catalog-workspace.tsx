@@ -69,6 +69,7 @@ function EmptyNoSections({ onCreateSection }: { onCreateSection: () => void }) {
         <div className="mt-8 flex items-center justify-center gap-3">
           <button
             type="button"
+            data-tour="create-dish"
             onClick={onCreateSection}
             className="flex items-center gap-2 rounded-xl bg-zinc-950 px-5 py-2.5 text-[14px] font-bold text-white transition hover:bg-zinc-800"
           >
@@ -223,7 +224,7 @@ function PopulatedWorkspace({ selectedDishId }: { selectedDishId: string }) {
               </div>
             </div>
             <SectionCard>
-              <div className="grid grid-cols-2 gap-4">
+              <div data-tour="dish-fields" className="grid grid-cols-2 gap-4">
                 <TranslatableField
                   key={`name-${selectedDish.id}`}
                   label="Название"

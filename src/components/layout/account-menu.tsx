@@ -18,6 +18,7 @@ import {
 import { usePlan } from "@/contexts/plan-context";
 import { useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { usePublish } from "@/contexts/publish-context";
+import { usePreviewDemo } from "@/contexts/preview-demo-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ export function OrgMenu({
   const planStatus = usePlanStatus();
   const vitrine = useVitrineStatus();
   const { totalChanges, injectDemoChanges } = usePublish();
+  const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
 
   const railWarn = planStatus.kind === "expiring" || planStatus.kind === "expired";
 
@@ -427,6 +429,23 @@ export function OrgMenu({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* ── Превью (демо) ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Превью
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmptyVitrine(!emptyVitrine)}
+                  className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                >
+                  <span className="whitespace-nowrap">Витрина пустая (демо)</span>
+                  <span className={cn("relative h-4 w-7 shrink-0 rounded-full transition", emptyVitrine ? "bg-blue-600" : "bg-zinc-300")}>
+                    <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", emptyVitrine ? "left-3.5" : "left-0.5")} />
+                  </span>
+                </button>
               </div>
 
             </div>

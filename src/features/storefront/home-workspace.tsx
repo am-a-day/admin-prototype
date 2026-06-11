@@ -3,9 +3,12 @@ import {
   Bold,
   EyeOff,
   GripVertical,
+  Image as ImageIcon,
   Italic,
+  LayoutGrid,
   Link2,
   Plus,
+  Sparkles,
   Strikethrough,
   Trash2,
   X,
@@ -16,6 +19,7 @@ import { AddTile, DishTile } from "@/components/workspace/section-card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { usePublish } from "@/contexts/publish-context";
+import { usePreviewDemo } from "@/contexts/preview-demo-context";
 import {
   categories,
   dishes,
@@ -105,6 +109,34 @@ function BlockHeading({
         <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
       {action}
+    </div>
+  );
+}
+
+function EditorEmpty({
+  icon: Icon,
+  title,
+  desc,
+  cta,
+  onClick,
+}: {
+  icon: typeof ImageIcon;
+  title: string;
+  desc: string;
+  cta: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/50 px-6 py-14 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-zinc-400 ring-1 ring-zinc-200">
+        <Icon size={22} />
+      </div>
+      <div className="text-[15px] font-black text-zinc-900">{title}</div>
+      <p className="max-w-sm text-[13px] leading-relaxed text-zinc-500">{desc}</p>
+      <Button onClick={onClick} className="font-bold">
+        <Plus size={15} />
+        {cta}
+      </Button>
     </div>
   );
 }
@@ -332,6 +364,7 @@ export function HomeWorkspace({
   const selectedBanner = banners.find((b) => b.id === selectedBannerId) ?? banners[0] ?? null;
   const { registerChange } = usePublish();
   const [flash, setFlash] = useState<"hero" | "sections" | null>(null);
+  const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
   const handleAddBanner = () => {
     addBanner();
     registerChange("home");
@@ -358,7 +391,18 @@ export function HomeWorkspace({
         />
 
         {/* Баннеры */}
-        {tab === "banners" && (
+        {tab === "banners" && emptyVitrine && (
+          <div data-tour="add-banner">
+            <EditorEmpty
+              icon={ImageIcon}
+              title="Баннеры не добавлены"
+              desc="Показывайте акции и новости на главной — это первое, что видят гости."
+              cta="Добавить баннер"
+              onClick={() => setEmptyVitrine(false)}
+            />
+          </div>
+        )}
+        {tab === "banners" && !emptyVitrine && (
           <section
             className={cn(
               "space-y-5 rounded-3xl transition",
@@ -371,10 +415,12 @@ export function HomeWorkspace({
               titleClassName="text-2xl"
               description="Акции, новинки и сезонные предложения в верхней части главной."
               action={
-                <Button size="sm" className="shrink-0 font-bold" onClick={handleAddBanner}>
-                  <Plus size={15} />
-                  Добавить баннер
-                </Button>
+                <span data-tour="add-banner">
+                  <Button size="sm" className="shrink-0 font-bold" onClick={handleAddBanner}>
+                    <Plus size={15} />
+                    Добавить баннер
+                  </Button>
+                </span>
               }
             />
 
@@ -409,7 +455,16 @@ export function HomeWorkspace({
         )}
 
         {/* Разделы */}
-        {tab === "sections" && (
+        {tab === "sections" && emptyVitrine && (
+          <EditorEmpty
+            icon={LayoutGrid}
+            title="Избранные разделы не выбраны"
+            desc="Покажите гостям самые важные категории меню на главной."
+            cta="Выбрать разделы"
+            onClick={() => setEmptyVitrine(false)}
+          />
+        )}
+        {tab === "sections" && !emptyVitrine && (
           <section
             className={cn(
               "space-y-5 rounded-3xl transition",
@@ -454,7 +509,16 @@ export function HomeWorkspace({
         )}
 
         {/* Рекомендации */}
-        {tab === "promoted" && (
+        {tab === "promoted" && emptyVitrine && (
+          <EditorEmpty
+            icon={Sparkles}
+            title="Рекомендации не настроены"
+            desc="Помогите гостям быстрее выбирать блюда и увеличьте средний чек."
+            cta="Настроить рекомендации"
+            onClick={() => setEmptyVitrine(false)}
+          />
+        )}
+        {tab === "promoted" && !emptyVitrine && (
           <section className="space-y-5">
             <BlockHeading
               eyebrow="Мерчендайзинг"

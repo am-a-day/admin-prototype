@@ -30,6 +30,27 @@ import { cn } from "@/lib/utils";
 /** Стиль наведения для кликабельных навигационных сущностей в превью. */
 const NAV_HOVER = "cursor-pointer transition hover:ring-2 hover:ring-blue-400/60";
 
+/**
+ * Пассивный административный плейсхолдер незаполненного слота витрины.
+ * Только визуальный маркер «здесь появится блок» — без кнопок и действий.
+ * Виден только в админ-превью; на реальной витрине пустого слота нет.
+ */
+function AdminSlot({ title, className }: { title: string; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 px-4 py-6 text-center",
+        className,
+      )}
+    >
+      <div className="text-[12px] font-medium text-zinc-400">{title}</div>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-300">
+        Видно только вам
+      </span>
+    </div>
+  );
+}
+
 function MiniDishCard({ dish }: { dish: Dish }) {
   return (
     <div className="w-28 shrink-0 rounded-2xl bg-zinc-50 p-2">
@@ -59,6 +80,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 export function PhoneHome({
   banner,
   theme,
+  empty = false,
   onBanner,
   onSections,
   onRecommendations,
@@ -66,6 +88,8 @@ export function PhoneHome({
 }: {
   banner: Banner;
   theme?: boolean;
+  /** Витрина «пустая» — показываем админ-плейсхолдеры незаполненных слотов. */
+  empty?: boolean;
   onBanner?: () => void;
   onSections?: () => void;
   onRecommendations?: () => void;
@@ -74,7 +98,19 @@ export function PhoneHome({
   const hidden = banner.visible === false;
   return (
     <div className={cn("pb-6", theme ? "bg-amber-50" : "bg-white")}>
-      {hidden ? (
+      {empty ? (
+        <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-xs font-black text-white">K</div>
+            <div className="text-sm font-bold text-zinc-900">Kimchi</div>
+          </div>
+          {onAbout && (
+            <button type="button" onClick={onAbout} className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-200">
+              <Info size={13} />О нас
+            </button>
+          )}
+        </div>
+      ) : hidden ? (
         <div className="flex h-56 flex-col items-center justify-center gap-2 bg-zinc-100 px-6 text-center">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-zinc-400">
             <EyeOff size={16} />
@@ -125,51 +161,70 @@ export function PhoneHome({
           </div>
         </div>
       )}
-      <div className="-mt-5 rounded-t-[28px] bg-white px-4 pt-4">
+      <div className={cn("rounded-t-[28px] bg-white px-4 pt-4", !empty && "-mt-5")}>
+        {/* Banner slot — passive admin placeholder when empty */}
+        {empty && <AdminSlot title="Баннер появится здесь" className="mb-4" />}
+
         <div className="mb-4 flex h-11 items-center rounded-2xl bg-zinc-100 px-3 text-sm text-zinc-400">
           <Search size={17} className="mr-2" />
           Поиск по меню...
         </div>
+
+        {/* Featured sections slot */}
         <div className="mb-3 text-xs font-black uppercase tracking-wide text-zinc-500">Разделы</div>
-        <div className="grid grid-cols-2 gap-3">
-          {featuredCategoryIds.slice(0, 4).map((id) => {
-            const c = categories.find((cat) => cat.id === id)!;
-            return (
-              <div
-                key={id}
-                role={onSections ? "button" : undefined}
-                onClick={onSections}
-                className={cn("rounded-2xl bg-zinc-50 p-2", onSections && NAV_HOVER)}
-              >
+        {empty ? (
+          <AdminSlot title="Избранные разделы появятся здесь" />
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {featuredCategoryIds.slice(0, 4).map((id) => {
+              const c = categories.find((cat) => cat.id === id)!;
+              return (
                 <div
-                  className={cn(
-                    "mb-2 flex h-20 items-center justify-center rounded-xl bg-gradient-to-br text-3xl",
-                    c.photo,
-                  )}
+                  key={id}
+                  role={onSections ? "button" : undefined}
+                  onClick={onSections}
+                  className={cn("rounded-2xl bg-zinc-50 p-2", onSections && NAV_HOVER)}
                 >
-                  {c.emoji}
+                  <div
+                    className={cn(
+                      "mb-2 flex h-20 items-center justify-center rounded-xl bg-gradient-to-br text-3xl",
+                      c.photo,
+                    )}
+                  >
+                    {c.emoji}
+                  </div>
+                  <div className="text-xs font-bold">{c.name}</div>
                 </div>
-                <div className="text-xs font-bold">{c.name}</div>
-              </div>
-            );
-          })}
-        </div>
-        <div
-          role={onRecommendations ? "button" : undefined}
-          onClick={onRecommendations}
-          className={cn(
-            "mb-3 mt-6 inline-flex items-center gap-1 rounded-lg text-xs font-black uppercase tracking-wide text-zinc-500",
-            onRecommendations && "cursor-pointer transition hover:text-blue-600",
-          )}
-        >
-          Попробуйте
-          {onRecommendations && <ChevronRight size={13} />}
-        </div>
-        <div className="flex gap-3 overflow-hidden">
-          {promotedDishIds.map((id) => (
-            <MiniDishCard key={id} dish={dishes.find((d) => d.id === id)!} />
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Recommendations slot */}
+        {empty ? (
+          <div className="mt-6">
+            <AdminSlot title="Рекомендации появятся здесь" />
+          </div>
+        ) : (
+          <>
+            <div
+              role={onRecommendations ? "button" : undefined}
+              onClick={onRecommendations}
+              className={cn(
+                "mb-3 mt-6 inline-flex items-center gap-1 rounded-lg text-xs font-black uppercase tracking-wide text-zinc-500",
+                onRecommendations && "cursor-pointer transition hover:text-blue-600",
+              )}
+            >
+              Попробуйте
+              {onRecommendations && <ChevronRight size={13} />}
+            </div>
+            <div className="flex gap-3 overflow-hidden">
+              {promotedDishIds.map((id) => (
+                <MiniDishCard key={id} dish={dishes.find((d) => d.id === id)!} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

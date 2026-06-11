@@ -51,8 +51,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Витрина",
     items: [
-      { label: "Главная", section: "storefront", tab: "home", icon: House },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
+      { label: "Главная витрины", section: "storefront", tab: "home", icon: House },
       { label: "Рекомендации", section: "storefront", tab: "upsell", icon: MagicWand },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
       { label: "О заведении", section: "storefront", tab: "about", icon: ClipboardText },
@@ -76,59 +76,6 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// ── Circular progress for launch nav item ────────────────────────────────────
-
-function CircularProgress({
-  value,
-  total,
-  size = 16,
-}: {
-  value: number;
-  total: number;
-  size?: number;
-}) {
-  const r = size / 2 - 2;
-  const circ = 2 * Math.PI * r;
-  const pct = total > 0 ? value / total : 0;
-  const offset = circ * (1 - pct);
-  const complete = value >= total;
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="-rotate-90 shrink-0"
-    >
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-zinc-200"
-      />
-      {pct > 0 && (
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className={cn(
-            "transition-all duration-500",
-            complete ? "text-emerald-500" : "text-blue-500",
-          )}
-        />
-      )}
-    </svg>
-  );
-}
 
 // ── «Ещё» items ───────────────────────────────────────────────────────────────
 
@@ -276,54 +223,14 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
 }) {
-  const { stage, requiredCompletedCount, requiredTotalCount, launchDismissed } = useVitrineLaunch();
-  const showLaunchItem = stage !== "active" && !launchDismissed;
-  const launchActive = section === "storefront" && activeTab === "launch";
+  const { checks } = useVitrineLaunch();
+  // Нейтральные точки: разделы, которые ещё ни разу не использовались.
+  const unusedTabs = new Set(
+    checks.filter((c) => c.section === "storefront" && c.tab && !c.done).map((c) => c.tab as string),
+  );
 
   return (
     <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-0.5" : "px-2 space-y-1.5 pb-2 pt-1")}>
-
-      {/* ── Запуск витрины (only before activation) ── */}
-      {showLaunchItem && (
-        <div className={compact ? "" : "mb-1"}>
-          <Tooltip
-            label={`Запуск витрины · ${requiredCompletedCount}/${requiredTotalCount}`}
-            disabled={!compact}
-          >
-            <button
-              type="button"
-              onClick={() => onNavigate("storefront", "launch")}
-              className={cn(
-                "flex items-center rounded-lg transition",
-                compact
-                  ? "h-8 w-8 justify-center"
-                  : "w-full gap-2.5 px-2 py-1.5 text-left",
-                launchActive
-                  ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
-              )}
-            >
-              <CircularProgress value={requiredCompletedCount} total={requiredTotalCount} size={compact ? 17 : 15} />
-              {!compact && (
-                <div className="min-w-0 flex-1">
-                  <div className={cn(
-                    "truncate text-[13px]",
-                    launchActive ? "font-semibold text-zinc-950" : "font-medium text-zinc-700",
-                  )}>
-                    Запуск витрины
-                  </div>
-                  <div className="text-[11px] text-zinc-400">
-                    {requiredCompletedCount === requiredTotalCount
-                      ? "Готова к запуску"
-                      : `${requiredCompletedCount} из ${requiredTotalCount} обязательных`}
-                  </div>
-                </div>
-              )}
-            </button>
-          </Tooltip>
-          {!compact && <div className="mt-1.5 h-px bg-border" />}
-        </div>
-      )}
 
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
@@ -341,9 +248,10 @@ function NavList({
                 <Tooltip key={item.label} label={item.label} disabled={!compact}>
                   <button
                     type="button"
+                    data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
                     onClick={() => onNavigate(item.section, item.tab)}
                     className={cn(
-                      "flex items-center rounded-[7px] font-normal transition",
+                      "relative flex items-center rounded-[7px] font-normal transition",
                       compact
                         ? "h-8 w-8 justify-center"
                         : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
@@ -353,7 +261,14 @@ function NavList({
                     )}
                   >
                     <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
-                    {!compact && <span className="truncate">{item.label}</span>}
+                    {!compact && <span className="truncate flex-1">{item.label}</span>}
+                    {/* Нейтральная точка: возможность ещё не использовалась */}
+                    {!compact && !active && item.section === "storefront" && unusedTabs.has(item.tab) && (
+                      <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300" title="Ещё не использовали" />
+                    )}
+                    {compact && item.section === "storefront" && unusedTabs.has(item.tab) && (
+                      <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-zinc-300" />
+                    )}
                   </button>
                 </Tooltip>
               );
