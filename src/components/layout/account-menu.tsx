@@ -56,7 +56,7 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
-  const { stage, resetLaunch, forceStage } = useVitrineLaunch();
+  const { stage, forceStage } = useVitrineLaunch();
   const planStatus = usePlanStatus();
   const vitrine = useVitrineStatus();
   const { totalChanges, injectDemoChanges } = usePublish();
@@ -275,26 +275,22 @@ export function OrgMenu({
           {demoOpen && (
             <div className="mx-1 mb-1 rounded-xl border border-border bg-zinc-50 px-3 py-2.5 space-y-3">
 
-              {/* ── Витрина ── */}
+              {/* ── A. Статус витрины ── */}
               <div>
                 <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Витрина
+                  Статус витрины
                 </div>
                 <div className="flex gap-1">
                   {([
-                    ["preparing", "Готовится"],
-                    ["pending",   "Ожидает"],
-                    ["active",    "Активна"],
+                    ["pending", "Ожидает проверки"],
+                    ["active",  "Витрина активна"],
                   ] as [LaunchStage, string][]).map(([s, label]) => {
-                    const isActive = s === "active" ? stage === "active" : s === "pending" ? stage === "pending" : (stage === "preparing" || stage === "ready");
+                    const isActive = s === "active" ? stage === "active" : stage !== "active";
                     return (
                       <button
                         key={s}
                         type="button"
-                        onClick={() => {
-                          if (s === "preparing") { resetLaunch(); onResetCatalog?.(); }
-                          else forceStage(s);
-                        }}
+                        onClick={() => forceStage(s)}
                         className={cn(
                           "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
                           isActive
@@ -309,18 +305,18 @@ export function OrgMenu({
                 </div>
               </div>
 
-              {/* ── Изменения (только когда активна) ── */}
+              {/* ── B. Неопубликованные изменения (только когда активна) ── */}
               {stage === "active" && (
                 <div>
                   <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                    Изменения
+                    Неопубликованные изменения
                   </div>
                   <button
                     type="button"
                     onClick={() => injectDemoChanges()}
                     className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
                   >
-                    <span className="whitespace-nowrap">Неопубликованные изменения</span>
+                    <span className="whitespace-nowrap">Добавить изменения</span>
                     <span
                       className={cn(
                         "relative h-4 w-7 shrink-0 rounded-full transition",
@@ -363,47 +359,6 @@ export function OrgMenu({
                       {label}
                     </button>
                   ))}
-                </div>
-              </div>
-
-              {/* ── Виджет тарифа (быстрое переключение состояний) ── */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                  Виджет тарифа
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {([
-                    ["beforeLaunch", "До запуска"],
-                    ["active",       "Активен"],
-                    ["expiring",     "Истекает"],
-                    ["expired",      "Истёк"],
-                  ] as [string, string][]).map(([state, label]) => {
-                    const isCurrent =
-                      state === "beforeLaunch" ? (stage === "preparing" || stage === "ready") :
-                      state === "active"       ? (stage === "active" && daysLeft >= 14) :
-                      state === "expiring"     ? (stage === "active" && daysLeft > 0 && daysLeft < 14) :
-                      state === "expired"      ? (stage === "active" && daysLeft <= 0) : false;
-                    return (
-                      <button
-                        key={state}
-                        type="button"
-                        onClick={() => {
-                          if (state === "beforeLaunch") { setPlanId("Lite"); resetLaunch(); onResetCatalog?.(); }
-                          else if (state === "active")   { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(18); }
-                          else if (state === "expiring") { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(3); }
-                          else if (state === "expired")  { setPlanId("Lite"); forceStage("active"); setDaysLeftDemo(0); }
-                        }}
-                        className={cn(
-                          "rounded-lg border py-1 text-[11px] font-semibold transition",
-                          isCurrent
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 

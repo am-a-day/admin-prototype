@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+
+type OrderTab = "delivery" | "pickup" | "service-fee" | "waiter";
 import { AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -289,6 +291,13 @@ function MethodSection({
   );
 }
 
+const ORDER_TABS: { id: OrderTab; label: string }[] = [
+  { id: "delivery",    label: "Доставка" },
+  { id: "pickup",      label: "Самовывоз" },
+  { id: "service-fee", label: "Сервисный сбор" },
+  { id: "waiter",      label: "Вызов официанта" },
+];
+
 export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps) {
   const {
     serviceFeeEnabled,
@@ -309,6 +318,7 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
   const { registerChange } = usePublish();
   const mark = () => registerChange("order-settings");
 
+  const [activeTab, setActiveTab] = useState<OrderTab>("delivery");
   const [drawerEvent, setDrawerEvent] = useState<OrderEvent | null>(null);
 
   const focusDelivery = () => setPreviewScenario("delivery");
@@ -326,136 +336,167 @@ export function DeliveryWorkspace({ setPreviewScenario }: DeliveryWorkspaceProps
           title="Настройте приём заказов"
           description="Выберите, как гости смогут заказывать: доставка, самовывоз или вызов официанта. Это необязательно — пропустите, если витрина нужна только для просмотра меню."
         />
-        <div onMouseEnter={focusDelivery} onFocus={focusDelivery}>
-          <MethodSection
-            title="Доставка"
-            description="Гости смогут оформить доставку через витрину."
-            enabled={deliveryEnabled}
-            onToggle={(v) => {
-              setDeliveryEnabled(v);
-              mark();
-            }}
-            comment={
-              <LocalizedTextArea
-                label="Комментарий для гостя"
-                initialTranslations={{
-                  ru: "Курьер свяжется с вами после подтверждения заказа.",
-                }}
-                onEffectiveValueChange={setDeliveryComment}
-              />
-            }
-            routeText={formatRoute("delivery")}
-            onConfigure={() => setDrawerEvent("delivery")}
-            onChannelHover={focusNotifDelivery}
-            onChannelLeave={focusDelivery}
-          />
-        </div>
 
-        <div onMouseEnter={focusPickup} onFocus={focusPickup}>
-          <MethodSection
-            title="Самовывоз"
-            description="Гости смогут забрать заказ самостоятельно."
-            enabled={pickupEnabled}
-            onToggle={(v) => {
-              setPickupEnabled(v);
-              mark();
-            }}
-            address={pickupAddress}
-            comment={
-              <LocalizedTextArea
-                label="Комментарий для гостя"
-                initialTranslations={{ ru: "Заказ будет готов через 20 минут." }}
-                onEffectiveValueChange={setPickupComment}
-              />
-            }
-            routeText={formatRoute("pickup")}
-            onConfigure={() => setDrawerEvent("pickup")}
-            onChannelHover={focusNotifPickup}
-            onChannelLeave={focusPickup}
-          />
-        </div>
-
-        <div onMouseEnter={focusServiceFee} onFocus={focusServiceFee}>
-          <SectionCard>
-            <h2 className="text-xl font-black">Оформление заказа</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Дополнительные условия, которые гость видит перед подтверждением заказа.
-            </p>
-
-            <div className="my-5 border-t border-border" />
-
-            <div className="flex items-center justify-between rounded-2xl border border-border p-4">
-              <div className="font-black">Сервисный сбор</div>
-              <Switch
-                checked={serviceFeeEnabled}
-                onCheckedChange={(v) => {
-                  setServiceFeeEnabled(v);
-                  mark();
-                }}
-              />
-            </div>
-
-            <div
+        {/* Tab bar */}
+        <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 w-fit">
+          {ORDER_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
               className={cn(
-                "mt-4 rounded-2xl border border-border bg-zinc-50 px-4 py-3",
-                !serviceFeeEnabled && "opacity-50",
+                "rounded-lg px-4 py-1.5 text-sm font-semibold transition",
+                activeTab === t.id
+                  ? "bg-white text-zinc-950 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-800",
               )}
             >
-              <Label htmlFor="service-fee-percent">Размер сбора</Label>
-              <div className="mt-2 flex items-center gap-2">
-                <Input
-                  id="service-fee-percent"
-                  type="number"
-                  min={0}
-                  max={100}
-                  className="w-20 font-semibold"
-                  value={serviceFeePercent}
-                  disabled={!serviceFeeEnabled}
-                  onChange={(e) => setServiceFeePercent(Number(e.target.value) || 0)}
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Доставка ── */}
+        {activeTab === "delivery" && (
+          <div onMouseEnter={focusDelivery} onFocus={focusDelivery}>
+            <MethodSection
+              title="Доставка"
+              description="Гости смогут оформить доставку через витрину."
+              enabled={deliveryEnabled}
+              onToggle={(v) => {
+                setDeliveryEnabled(v);
+                mark();
+              }}
+              comment={
+                <LocalizedTextArea
+                  label="Комментарий для гостя"
+                  initialTranslations={{
+                    ru: "Курьер свяжется с вами после подтверждения заказа.",
+                  }}
+                  onEffectiveValueChange={setDeliveryComment}
                 />
-                <span className="text-lg font-black text-zinc-500">%</span>
+              }
+              routeText={formatRoute("delivery")}
+              onConfigure={() => setDrawerEvent("delivery")}
+              onChannelHover={focusNotifDelivery}
+              onChannelLeave={focusDelivery}
+            />
+          </div>
+        )}
+
+        {/* ── Самовывоз ── */}
+        {activeTab === "pickup" && (
+          <div onMouseEnter={focusPickup} onFocus={focusPickup}>
+            <MethodSection
+              title="Самовывоз"
+              description="Гости смогут забрать заказ самостоятельно."
+              enabled={pickupEnabled}
+              onToggle={(v) => {
+                setPickupEnabled(v);
+                mark();
+              }}
+              address={pickupAddress}
+              comment={
+                <LocalizedTextArea
+                  label="Комментарий для гостя"
+                  initialTranslations={{ ru: "Заказ будет готов через 20 минут." }}
+                  onEffectiveValueChange={setPickupComment}
+                />
+              }
+              routeText={formatRoute("pickup")}
+              onConfigure={() => setDrawerEvent("pickup")}
+              onChannelHover={focusNotifPickup}
+              onChannelLeave={focusPickup}
+            />
+          </div>
+        )}
+
+        {/* ── Сервисный сбор ── */}
+        {activeTab === "service-fee" && (
+          <div onMouseEnter={focusServiceFee} onFocus={focusServiceFee}>
+            <SectionCard>
+              <h2 className="text-xl font-black">Сервисный сбор</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Дополнительные условия, которые гость видит перед подтверждением заказа.
+              </p>
+
+              <div className="my-5 border-t border-border" />
+
+              <div className="flex items-center justify-between rounded-2xl border border-border p-4">
+                <div className="font-black">Включить сервисный сбор</div>
+                <Switch
+                  checked={serviceFeeEnabled}
+                  onCheckedChange={(v) => {
+                    setServiceFeeEnabled(v);
+                    mark();
+                  }}
+                />
               </div>
-            </div>
 
-            <div className="my-5 border-t border-border" />
-
-            <div className="flex items-center justify-between rounded-2xl border border-border p-4">
-              <div>
-                <div className="font-black">Требовать согласие гостя</div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Гость должен подтвердить согласие с сервисным сбором перед продолжением.
-                </p>
+              <div
+                className={cn(
+                  "mt-4 rounded-2xl border border-border bg-zinc-50 px-4 py-3",
+                  !serviceFeeEnabled && "opacity-50",
+                )}
+              >
+                <Label htmlFor="service-fee-percent">Размер сбора</Label>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input
+                    id="service-fee-percent"
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="w-20 font-semibold"
+                    value={serviceFeePercent}
+                    disabled={!serviceFeeEnabled}
+                    onChange={(e) => setServiceFeePercent(Number(e.target.value) || 0)}
+                  />
+                  <span className="text-lg font-black text-zinc-500">%</span>
+                </div>
               </div>
-              <Switch
-                checked={serviceFeeRequireConsent}
-                onCheckedChange={(v) => {
-                  setServiceFeeRequireConsent(v);
-                  mark();
-                }}
-                disabled={!serviceFeeEnabled}
-              />
-            </div>
-          </SectionCard>
-        </div>
 
-        {/* Вызов официанта */}
-        <div onMouseEnter={focusNotifWaiter} onFocus={focusNotifWaiter}>
-          <SectionCard>
-            <h2 className="text-xl font-black">Вызов официанта</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Гость может позвать официанта прямо из витрины.
-            </p>
-            <div className="mt-5">
-              <OrderChannel
-                label="Куда отправлять вызовы"
-                routeText={formatRoute("waiter")}
-                warningTitle="Вызовы не будут приходить"
-                warningDesc="Укажите канал для вызовов официанта."
-                onConfigure={() => setDrawerEvent("waiter")}
-              />
-            </div>
-          </SectionCard>
-        </div>
+              <div className="my-5 border-t border-border" />
+
+              <div className="flex items-center justify-between rounded-2xl border border-border p-4">
+                <div>
+                  <div className="font-black">Требовать согласие гостя</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Гость должен подтвердить согласие с сервисным сбором перед продолжением.
+                  </p>
+                </div>
+                <Switch
+                  checked={serviceFeeRequireConsent}
+                  onCheckedChange={(v) => {
+                    setServiceFeeRequireConsent(v);
+                    mark();
+                  }}
+                  disabled={!serviceFeeEnabled}
+                />
+              </div>
+            </SectionCard>
+          </div>
+        )}
+
+        {/* ── Вызов официанта ── */}
+        {activeTab === "waiter" && (
+          <div onMouseEnter={focusNotifWaiter} onFocus={focusNotifWaiter}>
+            <SectionCard>
+              <h2 className="text-xl font-black">Вызов официанта</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Гость может позвать официанта прямо из витрины.
+              </p>
+              <div className="mt-5">
+                <OrderChannel
+                  label="Куда отправлять вызовы"
+                  routeText={formatRoute("waiter")}
+                  warningTitle="Вызовы не будут приходить"
+                  warningDesc="Укажите канал для вызовов официанта."
+                  onConfigure={() => setDrawerEvent("waiter")}
+                />
+              </div>
+            </SectionCard>
+          </div>
+        )}
       </PageContent>
 
       {drawerEvent && (

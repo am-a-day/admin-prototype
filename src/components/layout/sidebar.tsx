@@ -7,6 +7,7 @@ import {
   Import,
   Menu,
   QrCode,
+  Search,
   Tag,
   X,
 } from "lucide-react";
@@ -30,7 +31,7 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { MiniLogo } from "@/components/ui/mini-logo";
 import { cn } from "@/lib/utils";
-import { RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
+import { dishes, RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 
 export type SidebarMode = "full" | "rail" | "topbar";
 
@@ -62,7 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Заказы",
     items: [
-      { label: "Прием заказов", section: "management", tab: "order-settings", icon: Package },
+      { label: "Настройка заказов", section: "management", tab: "order-settings", icon: Package },
       { label: "История заказов", section: "management", tab: "order-history", icon: ClockCounterClockwise },
     ],
   },
@@ -210,6 +211,105 @@ function MoreMenu({
   );
 }
 
+// ── Search modal ──────────────────────────────────────────────────────────────
+
+function SearchModal({
+  onClose,
+  onNavigate,
+}: {
+  onClose: () => void;
+  onNavigate: (section: SectionId, tab: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => inputRef.current?.focus(), 30);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const q = query.toLowerCase().trim();
+  const results = q.length < 1 ? [] : dishes.filter(
+    (d) => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q),
+  ).slice(0, 10);
+
+  const handlePick = () => {
+    onNavigate("storefront", "catalog");
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-start justify-center pt-20 px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-white shadow-2xl shadow-zinc-400/30 overflow-hidden">
+        {/* Search input */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Search size={16} className="shrink-0 text-zinc-400" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Найти позицию…"
+            className="flex-1 bg-transparent text-sm font-medium text-zinc-900 outline-none placeholder:text-zinc-400"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-zinc-500 transition hover:bg-zinc-300"
+            >
+              <X size={10} />
+            </button>
+          )}
+        </div>
+
+        {/* Results */}
+        <div className="max-h-[360px] overflow-y-auto">
+          {q.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-zinc-400">
+              Начните вводить название позиции или раздела
+            </div>
+          )}
+          {q.length > 0 && results.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-zinc-400">
+              Ничего не найдено
+            </div>
+          )}
+          {results.map((dish) => (
+            <button
+              key={dish.id}
+              type="button"
+              onClick={handlePick}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-zinc-50"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-xl">
+                {dish.emoji}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-zinc-900">{dish.name}</div>
+                <div className="text-xs text-zinc-400">{dish.category} · {dish.price}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {results.length > 0 && (
+          <div className="border-t border-border px-4 py-2 text-[11px] text-zinc-400">
+            Нажмите на позицию, чтобы перейти в каталог
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── Shared nav list ────────────────────────────────────────────────────────────
 
 function NavList({
@@ -224,6 +324,7 @@ function NavList({
   compact: boolean;
 }) {
   const { checks } = useVitrineLaunch();
+  const [searchOpen, setSearchOpen] = useState(false);
   // Нейтральные точки: разделы, которые ещё ни разу не использовались.
   const unusedTabs = new Set(
     checks.filter((c) => c.section === "storefront" && c.tab && !c.done).map((c) => c.tab as string),
@@ -290,6 +391,28 @@ function NavList({
         activeTab={activeTab}
         onNavigate={onNavigate}
       />
+
+      {/* ── Найти позицию ── */}
+      <Tooltip label="Найти позицию" disabled={!compact}>
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className={cn(
+            "flex items-center rounded-lg transition text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700",
+            compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
+          )}
+        >
+          <Search size={compact ? 17 : 15} className="shrink-0" />
+          {!compact && <span>Найти позицию</span>}
+        </button>
+      </Tooltip>
+
+      {searchOpen && (
+        <SearchModal
+          onClose={() => setSearchOpen(false)}
+          onNavigate={onNavigate}
+        />
+      )}
     </nav>
   );
 }

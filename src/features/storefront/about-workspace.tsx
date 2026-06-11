@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Plus, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -8,18 +9,54 @@ import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
 import { RESTAURANT_NAME, type PreviewScenario } from "@/data/mock-data";
 
-type Tab = "info" | "seo";
+export type AboutTab = "info" | "guest-rules" | "rec-titles";
 
 type AboutWorkspaceProps = {
   setPreviewScenario: (scenario: PreviewScenario) => void;
   onConfigureOrderSettings: () => void;
-  aboutTab: Tab;
-  setAboutTab: (t: Tab) => void;
+  aboutTab: AboutTab;
+  setAboutTab: (t: AboutTab) => void;
   seoTitle: string;
   setSeoTitle: (v: string) => void;
   seoDescription: string;
   setSeoDescription: (v: string) => void;
 };
+
+const TAB_LABELS: Record<AboutTab, string> = {
+  "info": "Информация",
+  "guest-rules": "Правила для гостей",
+  "rec-titles": "Заголовки рекомендаций",
+};
+
+// ── Recommendation title fields ───────────────────────────────────────────────
+
+function RecTitleField({
+  label,
+  hint,
+  defaultValue,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  defaultValue: string;
+  onChange?: (v: string) => void;
+}) {
+  const [value, setValue] = useState(defaultValue);
+  return (
+    <label className="block rounded-2xl border border-border bg-zinc-50 px-4 py-3 transition focus-within:border-blue-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
+      <div className="mb-0.5 text-xs font-semibold text-muted-foreground">{label}</div>
+      <input
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onChange?.(e.target.value);
+        }}
+        className="w-full bg-transparent text-sm font-semibold text-zinc-900 outline-none"
+      />
+      <div className="mt-1 text-[11px] text-zinc-400">{hint}</div>
+    </label>
+  );
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -28,18 +65,13 @@ export function AboutWorkspace({
   onConfigureOrderSettings,
   aboutTab: tab,
   setAboutTab: setTab,
-  seoTitle,
-  setSeoTitle,
-  seoDescription,
-  setSeoDescription,
 }: AboutWorkspaceProps) {
   const { serviceFeeEnabled, serviceFeeRateLabel } = useAppSettings();
   const { registerChange } = usePublish();
 
-  const switchTab = (t: Tab) => {
+  const switchTab = (t: AboutTab) => {
     setTab(t);
     if (t === "info") setPreviewScenario("about");
-    else setPreviewScenario("seoLink");
   };
 
   return (
@@ -50,9 +82,10 @@ export function AboutWorkspace({
           title="Заполните информацию о заведении"
           description="Добавьте описание, контакты и график работы — всё, что поможет гостям узнать о вас больше."
         />
+
         {/* Tab bar */}
         <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 w-fit">
-          {(["info", "seo"] as Tab[]).map((t) => (
+          {(["info", "guest-rules", "rec-titles"] as AboutTab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -63,7 +96,7 @@ export function AboutWorkspace({
                   : "text-zinc-500 hover:text-zinc-800"
               }`}
             >
-              {t === "info" ? "Информация" : "Ссылка на витрину"}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </div>
@@ -103,11 +136,16 @@ export function AboutWorkspace({
                 </div>
               </div>
             </SectionCard>
+          </div>
+        )}
 
+        {/* ── Правила для гостей ── */}
+        {tab === "guest-rules" && (
+          <div className="space-y-6">
             <SectionCard>
               <h2 className="text-xl font-black">Правила для гостей</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Как гость увидит ограничения и сборы. Настройки — в «Настройка заказов».
+                Как гость увидит ограничения и сборы. Настройки заказов — в «Настройка заказов».
               </p>
               <div className="mt-5 space-y-3">
                 <div
@@ -150,66 +188,34 @@ export function AboutWorkspace({
           </div>
         )}
 
-        {/* ── Ссылка на витрину ── */}
-        {tab === "seo" && (
+        {/* ── Заголовки рекомендаций ── */}
+        {tab === "rec-titles" && (
           <div className="space-y-6">
             <SectionCard>
-              <h2 className="mb-4 text-lg font-black">Мета-данные</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={seoTitle}
-                    onChange={(e) => {
-                      setSeoTitle(e.target.value);
-                      registerChange("about");
-                    }}
-                    className="w-full rounded-xl border border-border bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-900 outline-none focus:border-blue-500 focus:bg-white"
-                    placeholder="Название для браузера и поиска"
-                    maxLength={70}
-                  />
-                  <div className="mt-1 text-right text-xs text-zinc-400">
-                    {seoTitle.length} / 70
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                    Description
-                  </label>
-                  <textarea
-                    value={seoDescription}
-                    onChange={(e) => {
-                      setSeoDescription(e.target.value);
-                      registerChange("about");
-                    }}
-                    rows={3}
-                    className="w-full resize-none rounded-xl border border-border bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-900 outline-none focus:border-blue-500 focus:bg-white"
-                    placeholder="Краткое описание для поисковиков"
-                    maxLength={160}
-                  />
-                  <div className="mt-1 text-right text-xs text-zinc-400">
-                    {seoDescription.length} / 160
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard>
-              <h2 className="mb-1 text-lg font-black">OG-изображение</h2>
-              <p className="mb-4 text-sm text-muted-foreground">
-                Показывается при репосте ссылки в мессенджерах и соцсетях.
+              <h2 className="text-xl font-black">Заголовки рекомендаций</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Тексты блоков рекомендаций, которые гость видит в разных местах витрины.
               </p>
-              <button
-                type="button"
-                className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-zinc-50 text-zinc-400 transition hover:border-zinc-300 hover:bg-zinc-100"
-              >
-                <Plus size={20} />
-                <span className="text-sm font-medium">Загрузить изображение</span>
-                <span className="text-xs text-zinc-400">1200 × 630 px, JPG или PNG</span>
-              </button>
+              <div className="mt-5 space-y-3">
+                <RecTitleField
+                  label="На главной странице"
+                  hint="Блок рекомендуемых позиций на главном экране витрины."
+                  defaultValue="Рекомендуем попробовать"
+                  onChange={() => registerChange("about")}
+                />
+                <RecTitleField
+                  label="В карточке блюда"
+                  hint="Блок похожих позиций внутри модалки блюда."
+                  defaultValue="С этим блюдом берут"
+                  onChange={() => registerChange("about")}
+                />
+                <RecTitleField
+                  label="В корзине"
+                  hint="Блок дополнений к заказу перед оформлением."
+                  defaultValue="Добавьте к заказу"
+                  onChange={() => registerChange("about")}
+                />
+              </div>
             </SectionCard>
           </div>
         )}

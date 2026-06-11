@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Smartphone } from "lucide-react";
+import { ChevronDown, Loader2, Smartphone } from "lucide-react";
 import { Globe, SidebarSimple } from "@phosphor-icons/react";
+import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
 import { usePreviewDemo } from "@/contexts/preview-demo-context";
@@ -95,8 +96,10 @@ export function PhonePreview({
   const { routes } = useOrderRouting();
   const { publishPhase, totalChanges } = usePublish();
   const { emptyVitrine } = usePreviewDemo();
+  const { stage } = useVitrineLaunch();
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
+  const [statusExpanded, setStatusExpanded] = useState(false);
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -273,6 +276,7 @@ export function PhonePreview({
 
   return (
     <aside
+      data-tour="preview-panel"
       style={{ width: collapsed ? 44 : 390 }}
       className="relative flex shrink-0 flex-col border-l border-[#e7e5e4] bg-white transition-[width] duration-300 ease-out"
     >
@@ -298,16 +302,56 @@ export function PhonePreview({
         <div className="flex h-full flex-col overflow-hidden px-3 pt-4">
           {/* Header: «Предпросмотр витрины» + статус + язык + скрыть */}
           <div className="mb-3 flex w-full items-start justify-between px-1">
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-1">
               <span className="text-[16px] font-medium tracking-[-0.38px] text-black">
                 Предпросмотр витрины
               </span>
-              {totalChanges > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="flex h-3 w-3 items-center justify-center rounded-full bg-amber-100">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  </span>
-                  <span className="text-[12px] text-[#79716b]">Изменения не опубликованы</span>
+
+              {/* Status badge — pending review or active */}
+              {stage !== "active" ? (
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setStatusExpanded((v) => !v)}
+                    className="flex items-center gap-1.5 rounded-md py-0.5 text-left transition hover:opacity-80"
+                  >
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                    </span>
+                    <span className="text-[11px] font-medium text-amber-700">
+                      Ожидает проверки менеджера
+                    </span>
+                    <ChevronDown
+                      size={10}
+                      className={`text-amber-600 transition-transform ${statusExpanded ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {statusExpanded && (
+                    <div className="rounded-lg bg-zinc-50 px-3 py-2.5 text-[11px] leading-[1.65] text-zinc-600">
+                      <p>Витрина пока доступна только в предпросмотре.</p>
+                      <p className="mt-1.5">Менеджер проверит данные, закрепит адрес витрины и активирует публичную ссылку. После этого гости смогут открыть меню по QR-коду или ссылке.</p>
+                      <p className="mt-1.5">Пока вы можете продолжать наполнять меню и проверять результат в предпросмотре.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="text-[11px] font-medium text-emerald-700">Витрина активна</span>
+                  </div>
+                  {totalChanges > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex h-3 w-3 items-center justify-center rounded-full bg-amber-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      </span>
+                      <span className="text-[12px] text-[#79716b]">Есть неопубликованные изменения</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

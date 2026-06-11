@@ -9,23 +9,12 @@ import { type SectionId } from "@/data/mock-data";
 
 // ── Publish button ────────────────────────────────────────────────────────────
 
-function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
+function PublishButton(_props: { isLaunchPage?: boolean }) {
   const { totalChanges, publishPhase, startPublish } = usePublish();
   const { stage } = useVitrineLaunch();
 
-  // On the launch page itself, suppress the launch CTA — the page already shows it
-  if (!isLaunchPage) {
-    if (stage === "preparing" || stage === "ready") {
-      return (
-        <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-50">
-          {stage === "ready" ? "Отправить на запуск" : "Продолжить запуск"}
-        </button>
-      );
-    }
-    if (stage === "pending") {
-      return <span className="text-xs text-zinc-400">Менеджер проверяет витрину</span>;
-    }
-  }
+  // До активации менеджером кнопка публикации не показывается
+  if (stage !== "active") return null;
 
   if (publishPhase === "publishing") {
     return (
@@ -36,13 +25,12 @@ function PublishButton({ isLaunchPage }: { isLaunchPage?: boolean }) {
     );
   }
 
-  // Нет изменений — кнопка всегда на месте, но задизейблена.
   if (totalChanges === 0) {
     return (
       <button
         type="button"
         disabled
-        title="Изменений нет. Витрина актуальна."
+        title="Витрина актуальна"
         className="flex h-8 cursor-not-allowed items-center justify-center rounded-xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-400"
       >
         Опубликовано

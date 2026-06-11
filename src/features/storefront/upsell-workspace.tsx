@@ -267,7 +267,7 @@ export function UpsellWorkspace({
               </div>
             </div>
 
-            <section>
+            <section data-tour="upsell-setup">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black text-zinc-950">Связанные позиции</h2>

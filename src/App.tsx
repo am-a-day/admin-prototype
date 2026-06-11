@@ -1,11 +1,8 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader } from "@/components/layout/content-header";
-import { GuidedNextStep, type OnbSuccess } from "@/components/layout/guided-next-step";
-import { SendReviewDialog } from "@/components/layout/send-review-dialog";
-import { runTour } from "@/lib/launch-tour";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
@@ -34,7 +31,7 @@ import { AnalyticsPage, OrderHistoryPage, QRPage } from "@/features/standalone-p
 import { AMApp } from "@/features/am/am-app";
 import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
-import { AboutWorkspace } from "@/features/storefront/about-workspace";
+import { AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
 import { CatalogWorkspace, type CatalogPhase } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
@@ -64,10 +61,10 @@ const PAGE_META: Record<string, PageMeta> = {
 };
 
 function AppShell() {
-  const { markVisited, stage, address, setAddress, sendForLaunch } = useVitrineLaunch();
+  const { markVisited, stage } = useVitrineLaunch();
   const [section, setSection] = useState<SectionId>("storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>("catalog");
-  const [storeAboutTab, setStoreAboutTab] = useState<"info" | "seo">("info");
+  const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>("info");
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [selectedDishId, setSelectedDishId] = useState("pepperoni");
@@ -79,10 +76,6 @@ function AppShell() {
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("empty");
-  const [bannerAdded, setBannerAdded] = useState(false);
-  const [onbSuccess, setOnbSuccess] = useState<OnbSuccess | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const tourSeen = useRef<Record<number, boolean>>({});
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -183,7 +176,6 @@ function AppShell() {
       },
     ]);
     setSelectedBannerId(id);
-    setBannerAdded(true);
   };
 
   const previewBanner =
@@ -276,10 +268,6 @@ function AppShell() {
           onConfigureOrderSettings={openOrderAcceptance}
           aboutTab={storeAboutTab}
           setAboutTab={setStoreAboutTab}
-          seoTitle={seoTitle}
-          setSeoTitle={setSeoTitle}
-          seoDescription={seoDescription}
-          setSeoDescription={setSeoDescription}
         />
       );
     }
@@ -321,78 +309,6 @@ function AppShell() {
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
 
-  // ── Guided first-launch flow ──────────────────────────────────────────────
-  const gotoTour = (s: SectionId, t: string, keys: string[]) => {
-    guardedNavigate(s, t);
-    window.setTimeout(() => runTour(keys), 420);
-  };
-
-  const step1done = catalogPhase === "has-items";
-  const step2done = bannerAdded;
-  const sent = stage === "pending" || stage === "active";
-  const flowActive = stage !== "active" && !sent;
-  const currentStep = !step1done ? 1 : !step2done ? 2 : 3;
-
-  // Success-переход между шагами (короткое подтверждение)
-  const prevSignals = useRef({ s1: step1done, s2: step2done, sent });
-  useEffect(() => {
-    const p = prevSignals.current;
-    if (sent && !p.sent) {
-      setOnbSuccess({
-        title: "Витрина отправлена менеджеру",
-        subtitle: "Мы проверим данные и свяжемся с вами для запуска.",
-        actionLabel: "Вернуться в каталог",
-        onAction: () => { setOnbSuccess(null); navigate("storefront", "catalog"); },
-      });
-    } else if (step2done && !p.s2) {
-      setOnbSuccess({ title: "Баннер добавлен", subtitle: "Теперь витрину можно отправить менеджеру на проверку." });
-    } else if (step1done && !p.s1) {
-      setOnbSuccess({ title: "Первая позиция создана", subtitle: "Теперь добавьте баннер на главную страницу витрины." });
-    }
-    prevSignals.current = { s1: step1done, s2: step2done, sent };
-  }, [step1done, step2done, sent]);
-
-  // Авто-скрытие success
-  useEffect(() => {
-    if (!onbSuccess) return;
-    const t = window.setTimeout(() => setOnbSuccess(null), 4000);
-    return () => window.clearTimeout(t);
-  }, [onbSuccess]);
-
-  // Авто-подсветка цели текущего шага при заходе на нужную страницу (1 раз на шаг).
-  // tourSeen помечаем только если тур реально запустился (элемент найден).
-  useEffect(() => {
-    if (!flowActive || onbSuccess) return;
-    if (currentStep === 1 && section === "storefront" && storeTab === "catalog" && !tourSeen.current[1]) {
-      window.setTimeout(() => {
-        if (runTour(["create-dish", "dish-fields"])) tourSeen.current[1] = true;
-      }, 600);
-    }
-    if (currentStep === 2 && section === "storefront" && storeTab === "home" && !tourSeen.current[2]) {
-      // Баннер-слот живёт на вкладке «Баннеры» — открываем её перед подсветкой.
-      if (homeTab !== "banners") setHomeTab("banners");
-      window.setTimeout(() => {
-        if (runTour(["add-banner"])) tourSeen.current[2] = true;
-      }, 600);
-    }
-  }, [flowActive, onbSuccess, currentStep, section, storeTab, homeTab]);
-
-  const guidedStep =
-    !flowActive ? null :
-    currentStep === 1 ? {
-      index: 1, label: "Создайте первую позицию", actionLabel: "Создать позицию", primary: false,
-      onAction: () => guardedNavigate("storefront", "catalog"),
-      onTour: () => gotoTour("storefront", "catalog", ["create-dish", "dish-fields"]),
-    } :
-    currentStep === 2 ? {
-      index: 2, label: "Добавьте баннер", actionLabel: "Перейти к главной", primary: false,
-      onAction: () => { setHomeTab("banners"); guardedNavigate("storefront", "home"); },
-      onTour: () => { setHomeTab("banners"); gotoTour("storefront", "home", ["nav-home", "add-banner"]); },
-    } : {
-      index: 3, label: "Витрина готова к проверке", actionLabel: "Отправить на проверку", primary: true,
-      onAction: () => setReviewOpen(true),
-      onTour: undefined as undefined | (() => void),
-    };
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
     section === "storefront" && storeTab === "catalog" && catalogPhase !== "has-items"
@@ -462,18 +378,6 @@ function AppShell() {
 
             {/* Editor column */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              {(onbSuccess || guidedStep) && (
-                <GuidedNextStep
-                  success={onbSuccess}
-                  index={guidedStep?.index}
-                  total={3}
-                  label={guidedStep?.label}
-                  actionLabel={guidedStep?.actionLabel}
-                  onAction={guidedStep?.onAction}
-                  onTour={guidedStep?.onTour}
-                  primary={guidedStep?.primary}
-                />
-              )}
               <ContentHeader
                 title={isHomePage || isLaunchPage ? undefined : pageMeta.title}
                 description={isHomePage || isLaunchPage ? undefined : pageMeta.description}
@@ -518,16 +422,6 @@ function AppShell() {
 
       <DraftToast />
       <PublishToast />
-      <SendReviewDialog
-        open={reviewOpen}
-        initialAddress={address}
-        onCancel={() => setReviewOpen(false)}
-        onSubmit={(addr) => {
-          setAddress(addr);
-          sendForLaunch();
-          setReviewOpen(false);
-        }}
-      />
     </div>
   );
 }
