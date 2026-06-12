@@ -58,6 +58,10 @@ type PublishContextValue = {
   publish: () => void;
   /** Prototype tool: inject mock unpublished changes for demo. */
   injectDemoChanges: () => void;
+  /** Prototype tool: instantly clear unpublished changes (demo). */
+  clearChanges: () => void;
+  /** Время последней успешной публикации (для статуса «Всё опубликовано»). */
+  lastPublishedAt: number | null;
   // ── Публикация витрины (Publish model) ────────────────────────────────────
   /** Идёт ли публикация — фиксированный 3-сек loader поверх preview. */
   publishPhase: "idle" | "publishing";
@@ -94,6 +98,12 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState>(null);
   const [publishPhase, setPublishPhase] = useState<"idle" | "publishing">("idle");
   const [publishResult, setPublishResult] = useState<"success" | "error" | null>(null);
+  // Дефолт-мок: «сегодня в 10:42» — для состояния «Всё опубликовано».
+  const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(() => {
+    const d = new Date();
+    d.setHours(10, 42, 0, 0);
+    return d.getTime();
+  });
   const savingTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const publishTimers = useRef<number[]>([]);
@@ -155,6 +165,11 @@ export function PublishProvider({ children }: { children: ReactNode }) {
     setLastChangeAt(Date.now());
   }, []);
 
+  const clearChanges = useCallback(() => {
+    setChanges(emptyChanges());
+    setLastChangeAt(null);
+  }, []);
+
   // ── Публикация витрины ──────────────────────────────────────────────────────
   // Ревалидация Next/cache почти мгновенна, но момент готовности неизвестен —
   // поэтому показываем фиксированный 3-сек loader, затем success toast.
@@ -176,6 +191,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
             setPublishVersion((v) => v + 1);
             setPublishPhase("idle");
             setPublishResult("success");
+            setLastPublishedAt(Date.now());
           }
         },
         opts?.fail ? 600 : 3000, // ошибку показываем сразу, успех — после 3 сек
@@ -195,6 +211,8 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       registerChange,
       publish,
       injectDemoChanges,
+      clearChanges,
+      lastPublishedAt,
       publishPhase,
       publishResult,
       startPublish,
@@ -212,6 +230,8 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       registerChange,
       publish,
       injectDemoChanges,
+      clearChanges,
+      lastPublishedAt,
       publishPhase,
       publishResult,
       startPublish,

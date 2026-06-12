@@ -142,6 +142,8 @@ type ContentHeaderProps = {
   tabs?: ReactNode;
   /** Navigate to billing on plan warning CTA */
   onRenewPlan?: () => void;
+  /** Действие в правом верхнем углу рабочей области (например, toggle предпросмотра) */
+  rightSlot?: ReactNode;
 };
 
 export function ContentHeader({
@@ -150,34 +152,38 @@ export function ContentHeader({
   showLanguage,
   tabs,
   onRenewPlan,
+  rightSlot,
 }: ContentHeaderProps) {
-  const hasHeader = !!(title || description || showLanguage || tabs);
+  const hasHeader = !!(title || description || showLanguage || tabs || rightSlot);
 
   return (
     <div className="shrink-0">
       <PlanWarningStrip onRenew={onRenewPlan} />
       {hasHeader && (
-        <div className="border-b border-border bg-white px-5 pb-3 pt-4">
-          {/* Title row */}
-          {(title || showLanguage) && (
-            <div className="flex items-center gap-2">
-              {title && (
-                <h1 className="text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
-              )}
-              {showLanguage && (
-                <>
-                  <span className="text-xs text-zinc-300">·</span>
-                  <PageLangSwitcher />
-                </>
-              )}
-            </div>
-          )}
-          {/* Description */}
-          {description && (
-            <p className={cn("text-sm text-zinc-500", title && "mt-1")}>{description}</p>
-          )}
-          {/* Tabs (rail layout) */}
-          {tabs && <div className={cn("-mx-1", (title || description) && "mt-3")}>{tabs}</div>}
+        <div className="flex items-start justify-between gap-3 border-b border-border bg-white px-5 pb-3 pt-4">
+          <div className="min-w-0 flex-1">
+            {/* Title row */}
+            {(title || showLanguage) && (
+              <div className="flex items-center gap-2">
+                {title && (
+                  <h1 className="text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
+                )}
+                {showLanguage && (
+                  <>
+                    <span className="text-xs text-zinc-300">·</span>
+                    <PageLangSwitcher />
+                  </>
+                )}
+              </div>
+            )}
+            {/* Description */}
+            {description && (
+              <p className={cn("text-sm text-zinc-500", title && "mt-1")}>{description}</p>
+            )}
+            {/* Tabs (rail layout) */}
+            {tabs && <div className={cn("-mx-1", (title || description) && "mt-3")}>{tabs}</div>}
+          </div>
+          {rightSlot && <div className="shrink-0">{rightSlot}</div>}
         </div>
       )}
     </div>

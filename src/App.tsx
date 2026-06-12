@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader } from "@/components/layout/content-header";
+import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
@@ -384,6 +385,14 @@ function AppShell() {
                 showLanguage={pageMeta.showLanguage && !previewVisible}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
                 tabs={isHomePage ? <HomeTabs value={homeTab} onChange={setHomeTab} /> : undefined}
+                rightSlot={
+                  previewVisible ? (
+                    <PreviewToggle
+                      open={!previewCollapsed}
+                      onToggle={() => setPreviewCollapsed((c) => !c)}
+                    />
+                  ) : undefined
+                }
               />
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
@@ -391,7 +400,7 @@ function AppShell() {
             </div>
 
             {/* Preview panel (right side of the white container) */}
-            {previewVisible && (
+            {previewVisible && !previewCollapsed && (
               <PhonePreview
                 section={section}
                 activeTab={activeTab}
@@ -408,9 +417,6 @@ function AppShell() {
                 onNavCatalogDish={navCatalogDish}
                 seoTitle={seoTitle}
                 seoDescription={seoDescription}
-                collapsed={previewCollapsed}
-                onExpand={() => setPreviewCollapsed(false)}
-                onCollapse={() => setPreviewCollapsed(true)}
               />
             )}
           </div>

@@ -59,7 +59,7 @@ export function OrgMenu({
   const { stage, forceStage } = useVitrineLaunch();
   const planStatus = usePlanStatus();
   const vitrine = useVitrineStatus();
-  const { totalChanges, injectDemoChanges } = usePublish();
+  const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
 
   const railWarn = planStatus.kind === "expiring" || planStatus.kind === "expired";
@@ -125,11 +125,11 @@ export function OrgMenu({
             {RESTAURANT_INITIALS}
           </div>
           {/* Org name */}
-          <span className="text-[13px] font-medium text-zinc-900">{RESTAURANT_NAME}</span>
-          {/* Separator */}
-          <span className="text-[13px] text-zinc-300" aria-hidden>·</span>
-          {/* Address or URL */}
-          <span className="max-w-[160px] truncate text-[13px] text-zinc-400">
+          <span className="max-w-[140px] truncate text-[13px] font-medium text-zinc-900">{RESTAURANT_NAME}</span>
+          {/* Separator — скрывается вместе с адресом на узкой ширине */}
+          <span className="hidden text-[13px] text-zinc-300 lg:inline" aria-hidden>·</span>
+          {/* Address or URL — скрывается первым на узкой ширине */}
+          <span className="hidden max-w-[160px] truncate text-[13px] text-zinc-400 lg:inline">
             {RESTAURANT_ADDRESS || vitrine.webAddress}
           </span>
           {/* Chevron */}
@@ -401,6 +401,44 @@ export function OrgMenu({
                     <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", emptyVitrine ? "left-3.5" : "left-0.5")} />
                   </span>
                 </button>
+              </div>
+
+              {/* ── Статус витрины (демо) ── */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Статус витрины
+                </div>
+                <div className="flex gap-1">
+                  {([
+                    ["review", "На проверке"],
+                    ["published", "Опубликовано"],
+                    ["changes", "Есть изменения"],
+                  ] as ["review" | "published" | "changes", string][]).map(([v, label]) => {
+                    const active =
+                      v === "review" ? stage === "pending" :
+                      v === "published" ? stage === "active" && totalChanges === 0 :
+                      stage === "active" && totalChanges > 0;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          if (v === "review") { forceStage("pending"); }
+                          else if (v === "published") { forceStage("active"); clearChanges(); }
+                          else { forceStage("active"); injectDemoChanges(); }
+                        }}
+                        className={cn(
+                          "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                          active
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>

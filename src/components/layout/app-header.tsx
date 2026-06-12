@@ -1,53 +1,10 @@
-import { Loader2, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { SidebarSimple } from "@phosphor-icons/react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
+import { PublishStatusControl } from "@/components/layout/publish-status-control";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
-import { usePublish } from "@/contexts/publish-context";
-import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { type SectionId } from "@/data/mock-data";
-
-// ── Publish button ────────────────────────────────────────────────────────────
-
-function PublishButton(_props: { isLaunchPage?: boolean }) {
-  const { totalChanges, publishPhase, startPublish } = usePublish();
-  const { stage } = useVitrineLaunch();
-
-  // До активации менеджером кнопка публикации не показывается
-  if (stage !== "active") return null;
-
-  if (publishPhase === "publishing") {
-    return (
-      <button type="button" disabled className="flex h-8 items-center gap-1.5 rounded-xl bg-blue-400 px-4 text-sm font-semibold text-white">
-        <Loader2 size={13} className="animate-spin" />
-        Публикуем…
-      </button>
-    );
-  }
-
-  if (totalChanges === 0) {
-    return (
-      <button
-        type="button"
-        disabled
-        title="Витрина актуальна"
-        className="flex h-8 cursor-not-allowed items-center justify-center rounded-xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-400"
-      >
-        Опубликовано
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => startPublish()}
-      className="flex h-8 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
-    >
-      Опубликовать
-    </button>
-  );
-}
 
 // ── AppHeaderRight: full-width global header ───────────────────────────────────
 
@@ -68,7 +25,6 @@ export function AppHeaderRight({
   onOpenMobileMenu,
   onToggleSidebar,
   sidebarCollapsed,
-  isLaunchPage,
 }: AppHeaderRightProps) {
   return (
     <header className="flex h-[59px] shrink-0 items-center px-3 gap-1">
@@ -102,10 +58,10 @@ export function AppHeaderRight({
         <OrgMenu variant="text" onNavigate={onNavigate} onResetCatalog={onResetCatalog} />
       </div>
 
-      {/* ── Right: account + publish ── */}
+      {/* ── Right: status + account ── */}
       <div className="flex shrink-0 items-center gap-3">
+        <PublishStatusControl />
         <UserMenu compact placement="down" onNavigate={onNavigate} />
-        <PublishButton isLaunchPage={isLaunchPage} />
       </div>
     </header>
   );
