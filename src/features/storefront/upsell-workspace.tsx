@@ -186,6 +186,7 @@ export function UpsellWorkspace({
       <div className="flex min-h-0 flex-1">
         {/* Left panel — visually inside the page, not part of global nav */}
         <aside className="w-[280px] shrink-0 overflow-y-auto border-r border-border bg-zinc-50/60 p-4">
+          <h2 className="mb-3 text-base font-bold text-zinc-900">Рекомендации</h2>
           <div className="flex h-10 items-center rounded-xl border border-border bg-white px-3 text-sm text-zinc-400">
             <Search size={16} className="mr-2" />
             Поиск по позициям...

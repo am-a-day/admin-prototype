@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
-import { Sidebar, NavDrawer, type SidebarMode } from "@/components/layout/sidebar";
+import { Sidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader } from "@/components/layout/content-header";
 import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
@@ -34,7 +34,7 @@ import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
 import { AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
-import { CatalogWorkspace, type CatalogPhase } from "@/features/storefront/catalog-workspace";
+import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
@@ -61,6 +61,12 @@ const PAGE_META: Record<string, PageMeta> = {
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
 };
 
+const HOME_TAB_META: Record<HomeTab, { title: string; description?: string }> = {
+  banners:  { title: "Баннеры",           description: "Показывайте акции, события и важные новости" },
+  sections: { title: "Подборка разделов" },
+  promoted: { title: "Подборка позиций" },
+};
+
 function AppShell() {
   const { markVisited, stage } = useVitrineLaunch();
   const [section, setSection] = useState<SectionId>("storefront");
@@ -76,7 +82,8 @@ function AppShell() {
     DEFAULT_RECOMMENDATION_TEXTS,
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
-  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("empty");
+  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("has-items");
+  const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -309,6 +316,8 @@ function AppShell() {
   const isLaunchPage = section === "storefront" && storeTab === "launch";
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
+  const isCatalogPage = section === "storefront" && storeTab === "catalog";
+  const isUpsellPage = section === "storefront" && storeTab === "upsell";
 
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
@@ -357,6 +366,7 @@ function AppShell() {
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
           onToggleSidebar={wide ? toggleNav : undefined}
           sidebarCollapsed={inlineSidebarMode === "rail"}
+          pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
         />
 
@@ -373,27 +383,35 @@ function AppShell() {
           />
 
           {/* Work area */}
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden gap-2 pb-3 pr-3 pl-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-2 pb-3 pr-3 pl-1">
+
+            {/* Tab bar above the card — only for pages with tabs */}
+            {(isHomePage || isCatalogPage) && (
+              <div className="shrink-0">
+                {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
+                {isCatalogPage && <CatalogTabs value={catalogTab} onChange={setCatalogTab} />}
+              </div>
+            )}
+
           {/* Single white container: editor + preview, split by a vertical line */}
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
 
             {/* Editor column */}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ContentHeader
-                title={isHomePage || isLaunchPage ? undefined : pageMeta.title}
-                description={isHomePage || isLaunchPage ? undefined : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isUpsellPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isUpsellPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 showLanguage={pageMeta.showLanguage && !previewVisible}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
-                tabs={isHomePage ? <HomeTabs value={homeTab} onChange={setHomeTab} /> : undefined}
-                rightSlot={
-                  previewVisible ? (
-                    <PreviewToggle
-                      open={!previewCollapsed}
-                      onToggle={() => setPreviewCollapsed((c) => !c)}
-                    />
-                  ) : undefined
-                }
               />
+              {previewVisible && (
+                <div className="absolute right-4 top-3 z-10">
+                  <PreviewToggle
+                    open={!previewCollapsed}
+                    onToggle={() => setPreviewCollapsed((c) => !c)}
+                  />
+                </div>
+              )}
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
               </div>

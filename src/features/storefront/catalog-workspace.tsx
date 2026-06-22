@@ -9,6 +9,34 @@ import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
 
+export type CatalogTab = "sections" | "overview" | "stoplist";
+const CATALOG_TABS: { id: CatalogTab; label: string }[] = [
+  { id: "sections", label: "Разделы" },
+  { id: "overview", label: "Обзор" },
+  { id: "stoplist", label: "Стоп-лист" },
+];
+export function CatalogTabs({ value, onChange }: { value: CatalogTab; onChange: (t: CatalogTab) => void }) {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+      {CATALOG_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onChange(t.id)}
+          className={cn(
+            "rounded-lg px-2.5 py-1 text-[12px] transition",
+            value === t.id
+              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+              : "text-[#79716b] hover:text-zinc-700",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type CatalogWorkspaceProps = {
   selectedDishId: string;
   catalogPhase: CatalogPhase;
@@ -233,6 +261,7 @@ function PopulatedWorkspace({ selectedDishId }: { selectedDishId: string }) {
       <div className="flex min-h-0 flex-1">
         {/* Left panel */}
         <aside className="w-[280px] shrink-0 overflow-y-auto border-r border-border bg-zinc-50/60 p-4">
+          <h2 className="mb-3 text-base font-bold text-zinc-900">Все позиции</h2>
           <div className="space-y-1">
             <NavAction icon={Plus} label="Новый раздел" />
             <NavAction icon={Plus} label="Новая позиция" tourId="create-dish" />

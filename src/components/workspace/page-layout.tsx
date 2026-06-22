@@ -13,7 +13,7 @@ export function PageScroll({
   className?: string;
 }) {
   return (
-    <main className={cn("min-w-0 flex-1 overflow-y-auto bg-white", className)}>
+    <main className={cn("min-w-0 flex-1 overflow-y-auto bg-white ", className)}>
       {children}
     </main>
   );
@@ -31,7 +31,7 @@ export function PageContent({
   className?: string;
 }) {
   return (
-    <div className={cn("mx-auto w-full max-w-5xl space-y-6 px-8 py-8", className)}>
+    <div className={cn("mx-auto w-full max-w-5xl space-y-6 px-8 py-8 relative", className)}>
       {children}
     </div>
   );

@@ -160,7 +160,8 @@ export function ContentHeader({
     <div className="shrink-0">
       <PlanWarningStrip onRenew={onRenewPlan} />
       {hasHeader && (
-        <div className="flex items-start justify-between gap-3 border-b border-border bg-white px-5 pb-3 pt-4">
+        <div className="bg-white">
+          <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-3 px-8 pb-3 pt-4">
           <div className="min-w-0 flex-1">
             {/* Title row */}
             {(title || showLanguage) && (
@@ -168,12 +169,7 @@ export function ContentHeader({
                 {title && (
                   <h1 className="text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
                 )}
-                {showLanguage && (
-                  <>
-                    <span className="text-xs text-zinc-300">·</span>
-                    <PageLangSwitcher />
-                  </>
-                )}
+                
               </div>
             )}
             {/* Description */}
@@ -183,7 +179,8 @@ export function ContentHeader({
             {/* Tabs (rail layout) */}
             {tabs && <div className={cn("-mx-1", (title || description) && "mt-3")}>{tabs}</div>}
           </div>
-          {rightSlot && <div className="shrink-0">{rightSlot}</div>}
+          {rightSlot && <div className="absolute top-4 right-4">{rightSlot}</div>}
+          </div>
         </div>
       )}
     </div>

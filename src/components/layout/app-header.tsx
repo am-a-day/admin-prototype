@@ -1,5 +1,4 @@
-import { Menu } from "lucide-react";
-import { SidebarSimple } from "@phosphor-icons/react";
+import { ChevronsLeft, ChevronsRight, Menu } from "lucide-react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
 import { PublishStatusControl } from "@/components/layout/publish-status-control";
@@ -15,6 +14,7 @@ export type AppHeaderRightProps = {
   onOpenMobileMenu?: () => void;
   onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
+  pageTitle?: string;
   isLaunchPage?: boolean;
 };
 
@@ -25,11 +25,12 @@ export function AppHeaderRight({
   onOpenMobileMenu,
   onToggleSidebar,
   sidebarCollapsed,
+  pageTitle,
 }: AppHeaderRightProps) {
   return (
-    <header className="flex h-[59px] shrink-0 items-center px-3 gap-1">
+    <header className="flex h-[59px] shrink-0 items-center pr-3 gap-1">
 
-      {/* ── Left: sidebar toggle (desktop) OR logo+hamburger (mobile) ── */}
+      {/* ── Left: mobile logo+hamburger, OR fixed collapse toggle + page title (collapsed) ── */}
       {showHamburger ? (
         <div className="flex shrink-0 items-center gap-2 mr-1">
           <TaskoLogo className="text-zinc-900" />
@@ -43,14 +44,19 @@ export function AppHeaderRight({
           </button>
         </div>
       ) : onToggleSidebar ? (
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          title={sidebarCollapsed ? "Развернуть sidebar" : "Свернуть sidebar"}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
-        >
-          <SidebarSimple size={18} mirrored={sidebarCollapsed} />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
+          >
+            {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+          </button>
+          {sidebarCollapsed && pageTitle && (
+            <span className="shrink-0 text-sm  text-zinc-800">{pageTitle}</span>
+          )}
+        </div>
       ) : null}
 
       {/* ── Center: organization ── */}

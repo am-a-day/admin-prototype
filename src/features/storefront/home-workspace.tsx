@@ -49,9 +49,9 @@ const TAG_PRESETS = ["Хит", "Новинка", "Акция", "Сезон", "В
 
 export type HomeTab = "banners" | "sections" | "promoted";
 const HOME_TABS: { id: HomeTab; label: string }[] = [
-  { id: "banners", label: "Баннеры" },
-  { id: "sections", label: "Разделы" },
-  { id: "promoted", label: "Рекомендации" },
+  { id: "banners",  label: "Баннеры" },
+  { id: "sections", label: "Подборка разделов" },
+  { id: "promoted", label: "Подборка позиций" },
 ];
 
 export function HomeTabs({ value, onChange }: { value: HomeTab; onChange: (t: HomeTab) => void }) {

@@ -12,8 +12,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  CaretDoubleLeft,
-  CaretDoubleRight,
   ClipboardText,
   ClockCounterClockwise,
   Coins,
@@ -27,7 +25,6 @@ import {
   ThumbsUp,
   type Icon,
 } from "@phosphor-icons/react";
-import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { PlanWidget } from "@/components/layout/plan-widget";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -53,10 +50,10 @@ type NavGroup = {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Витрина",
+    title: "Мой ресторан",
     items: [
+      { label: "Главная", section: "storefront", tab: "home", icon: House },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
-      { label: "Главная витрины", section: "storefront", tab: "home", icon: House },
       { label: "Рекомендации", section: "storefront", tab: "upsell", icon: MagicWand },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
       { label: "О заведении", section: "storefront", tab: "about", icon: ClipboardText },
@@ -344,14 +341,14 @@ function SidebarSearch({
           className="relative flex w-full cursor-pointer items-center"
         >
           <MagnifyingGlass
-            size={15}
-            className="pointer-events-none absolute left-2.5 text-zinc-400"
+            size={14}
+            className="pointer-events-none absolute left-[7px] text-[#5a5a5c]"
           />
           <Input
             readOnly
             tabIndex={-1}
             placeholder="Поиск позиций"
-            className="pointer-events-none h-9 cursor-pointer rounded-lg border-zinc-200 bg-white pl-8 text-[13px]"
+            className="pointer-events-none h-auto cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-[6px] pl-[27px] text-[13px] text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
           />
         </button>
       )}
@@ -376,14 +373,8 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
 }) {
-  const { checks } = useVitrineLaunch();
-  // Нейтральные точки: разделы, которые ещё ни разу не использовались.
-  const unusedTabs = new Set(
-    checks.filter((c) => c.section === "storefront" && c.tab && !c.done).map((c) => c.tab as string),
-  );
-
   return (
-    <nav className={cn("flex-1 overflow-y-auto py-1", compact ? "px-1 space-y-0.5" : "px-2 space-y-1.5 pb-2 pt-1")}>
+    <nav className={cn("flex-1 overflow-y-auto py-1 mt-2", compact ? "px-1 space-y-2" : "px-2 space-y-4 pb-2 pt-1")}>
 
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
@@ -415,13 +406,6 @@ function NavList({
                   >
                     <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
                     {!compact && <span className="truncate flex-1">{item.label}</span>}
-                    {/* Нейтральная точка: возможность ещё не использовалась */}
-                    {!compact && !active && item.section === "storefront" && unusedTabs.has(item.tab) && (
-                      <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300" title="Ещё не использовали" />
-                    )}
-                    {compact && item.section === "storefront" && unusedTabs.has(item.tab) && (
-                      <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-zinc-300" />
-                    )}
                   </button>
                 </Tooltip>
               );
@@ -525,23 +509,12 @@ type NavProps = {
   onToggleSidebar?: () => void;
 };
 
-function FullSidebar({ section, activeTab, onNavigate, onToggleSidebar }: NavProps) {
+function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Header row: logo + collapse toggle */}
-      <div className="flex h-[59px] shrink-0 items-center justify-between px-4">
+      {/* Header row: logo only — collapse toggle lives in the work-area header */}
+      <div className="flex h-[59px] shrink-0 items-center px-4">
         <TaskoLogo className="text-zinc-900" />
-        {onToggleSidebar && (
-          <Tooltip label="Свернуть меню">
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
-            >
-              <CaretDoubleLeft size={16} />
-            </button>
-          </Tooltip>
-        )}
       </div>
       {/* Search */}
       <div className="px-3 pb-1">
@@ -555,26 +528,15 @@ function FullSidebar({ section, activeTab, onNavigate, onToggleSidebar }: NavPro
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate, onToggleSidebar }: NavProps) {
+function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header row: mini logo, aligns with app header height */}
       <div className="flex h-[59px] shrink-0 items-center justify-center">
         <MiniLogo className="text-zinc-900" />
       </div>
-      {/* Expand toggle + search */}
+      {/* Search (collapse toggle lives in the work-area header) */}
       <div className="flex shrink-0 flex-col items-center gap-0.5 pb-1">
-        {onToggleSidebar && (
-          <Tooltip label="Развернуть меню" delayDuration={0}>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onToggleSidebar(); }}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
-            >
-              <CaretDoubleRight size={16} />
-            </button>
-          </Tooltip>
-        )}
         <SidebarSearch compact onNavigate={onNavigate} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
@@ -601,20 +563,16 @@ export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode 
   return (
     <TooltipProvider delayDuration={0}>
       {isRail ? (
-        // Клик по пустой области rail разворачивает sidebar.
-        // Интерактивные элементы (пункты, поиск, тоггл, тариф, флайаут) гасят всплытие.
+        // Клик по пустой области rail разворачивает sidebar; e-resize-курсор подсказывает это.
+        // Интерактивные элементы (пункты, поиск, тариф, флайаут) гасят всплытие.
         <div
-          className="flex min-h-0 flex-1 cursor-default flex-col overflow-hidden"
+          className="flex min-h-0 flex-1 cursor-e-resize flex-col overflow-hidden"
           onClick={() => onToggleSidebar?.()}
-          role={onToggleSidebar ? "button" : undefined}
-          aria-label={onToggleSidebar ? "Развернуть меню" : undefined}
-          title={onToggleSidebar ? "Развернуть меню" : undefined}
         >
           <RailSidebar
             section={section}
             activeTab={activeTab}
             onNavigate={onNavigate}
-            onToggleSidebar={onToggleSidebar}
           />
         </div>
       ) : (
@@ -622,7 +580,6 @@ export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode 
           section={section}
           activeTab={activeTab}
           onNavigate={onNavigate}
-          onToggleSidebar={onToggleSidebar}
         />
       )}
     </TooltipProvider>
@@ -631,7 +588,7 @@ export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode 
 
 // ── TopBar (small viewport — replaces sidebar entirely) ───────────────────────
 
-function getPageTitle(section: SectionId, activeTab: string | null): string {
+export function getPageTitle(section: SectionId, activeTab: string | null): string {
   if (section === "qr") return "QR-меню";
   if (section === "am") return "";
 
