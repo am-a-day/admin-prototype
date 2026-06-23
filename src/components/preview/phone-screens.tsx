@@ -475,7 +475,7 @@ export function PhoneCart({
 export function PhoneAboutSheet() {
   return (
     <div className="relative min-h-full bg-zinc-100 pt-10">
-      <PhoneHome banner={banners[0]} />
+      {banners[0] && <PhoneHome banner={banners[0]} />}
       <div className="absolute inset-x-0 bottom-0 rounded-t-[32px] bg-white p-5 shadow-2xl">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-200" />
         <div className="flex items-center gap-3">

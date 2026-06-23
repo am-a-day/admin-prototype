@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ChevronDown } from "lucide-react";
+import { Globe } from "@phosphor-icons/react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
@@ -49,7 +50,7 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
 
 // ── Content language switcher ─────────────────────────────────────────────────
 
-function PageLangSwitcher() {
+export function PageLangSwitcher() {
   const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -86,15 +87,14 @@ function PageLangSwitcher() {
         type="button"
         onClick={toggle}
         className={cn(
-          "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm transition",
-          open
-            ? "bg-zinc-100 text-zinc-700"
-            : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600",
+          "flex items-center gap-1 rounded-md px-1 py-0.5 transition",
+          open ? "bg-zinc-100" : "hover:bg-zinc-100",
         )}
         title="Язык контента"
       >
-        <span className="text-xs font-medium">Контент: {contentLanguageShort}</span>
-        <ChevronDown size={10} className={cn("shrink-0 transition", open && "rotate-180")} />
+        <Globe size={14} className="shrink-0 text-[#57534d]" />
+        <span className="text-[13px] text-black">Контент · {contentLanguageShort}</span>
+        <ChevronDown size={11} className={cn("shrink-0 text-[#79716b] transition", open && "rotate-180")} />
       </button>
 
       {open && (
@@ -161,13 +161,13 @@ export function ContentHeader({
       <PlanWarningStrip onRenew={onRenewPlan} />
       {hasHeader && (
         <div className="bg-white">
-          <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-3 px-8 pb-3 pt-4">
+          <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-3 px-8  pt-4">
           <div className="min-w-0 flex-1">
             {/* Title row */}
             {(title || showLanguage) && (
               <div className="flex items-center gap-2">
                 {title && (
-                  <h1 className="text-[15px] font-bold leading-tight text-zinc-950">{title}</h1>
+                  <h1 className="text-[14px] leading-tight text-stone-950 font-medium">{title}</h1>
                 )}
                 
               </div>

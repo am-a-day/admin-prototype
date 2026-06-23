@@ -12,6 +12,17 @@ const PLAN_INFO: Record<PlanId, {
   price: string;
   features: { label: string; included: boolean }[];
 }> = {
+  Start: {
+    price: "Бесплатно",
+    features: [
+      { label: "До 20 блюд в меню", included: true },
+      { label: "1 язык витрины", included: true },
+      { label: "QR-меню", included: true },
+      { label: "Аналитика", included: false },
+      { label: "Табло заказов", included: false },
+      { label: "Импорт меню", included: false },
+    ],
+  },
   Zero: {
     price: "Бесплатно",
     features: [
@@ -48,6 +59,7 @@ const PLAN_INFO: Record<PlanId, {
 };
 
 const NEXT_PLAN: Record<PlanId, PlanId | null> = {
+  Start: "Zero",
   Zero: "Lite",
   Lite: "Ultra",
   Ultra: null,

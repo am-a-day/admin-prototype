@@ -47,7 +47,6 @@ function MenuItem({ icon: Icon, label, external, onClick }: MenuItemProps) {
 /** Organisation / vitrine context menu — triggered from header or sidebar */
 export function OrgMenu({
   onNavigate,
-  onResetCatalog,
   variant = "full",
 }: {
   onNavigate: (section: SectionId, tab: string) => void;

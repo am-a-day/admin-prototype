@@ -9,11 +9,12 @@ import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
 
-export type CatalogTab = "sections" | "overview" | "stoplist";
+export type CatalogTab = "sections" | "overview" | "stoplist" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string }[] = [
   { id: "sections", label: "Разделы" },
   { id: "overview", label: "Обзор" },
   { id: "stoplist", label: "Стоп-лист" },
+  { id: "upsell", label: "Рекомендации" },
 ];
 export function CatalogTabs({ value, onChange }: { value: CatalogTab; onChange: (t: CatalogTab) => void }) {
   return (

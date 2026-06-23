@@ -2,8 +2,7 @@ import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
-import { ContentHeader } from "@/components/layout/content-header";
-import { PreviewToggle } from "@/components/layout/preview-toggle";
+import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
@@ -61,10 +60,10 @@ const PAGE_META: Record<string, PageMeta> = {
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
 };
 
-const HOME_TAB_META: Record<HomeTab, { title: string; description?: string }> = {
-  banners:  { title: "Баннеры",           description: "Показывайте акции, события и важные новости" },
-  sections: { title: "Подборка разделов" },
-  promoted: { title: "Подборка позиций" },
+const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> = {
+  banners:  {},
+  sections: {},
+  promoted: {},
 };
 
 function AppShell() {
@@ -146,7 +145,7 @@ function AppShell() {
     openStoreTab("home");
     setHomeFocus("sections");
   };
-  const navUpsellPage = () => openStoreTab("upsell");
+  const navUpsellPage = () => { openStoreTab("catalog"); setCatalogTab("upsell"); };
   const navAbout = () => openStoreTab("about");
   const navCatalogDish = (id: string) => {
     setSelectedDishId(id);
@@ -204,7 +203,6 @@ function AppShell() {
       if (tab === "home") markVisited("home");
       if (tab === "appearance") markVisited("appearance");
       if (tab === "about") markVisited("about");
-      if (tab === "upsell") markVisited("upsell");
     }
     if (next === "management") {
       setManageTab(tab as ManageTabId);
@@ -244,19 +242,7 @@ function AppShell() {
       );
     }
     if (storeTab === "catalog") {
-      content = (
-        <CatalogWorkspace
-          selectedDishId={selectedDishId}
-          catalogPhase={catalogPhase}
-          onAdvancePhase={(next) => {
-            setCatalogPhase(next);
-            if (next === "has-items") markVisited("catalog");
-          }}
-        />
-      );
-    }
-    if (storeTab === "upsell") {
-      content = (
+      content = catalogTab === "upsell" ? (
         <UpsellWorkspace
           selectedDishId={selectedDishId}
           setSelectedDishId={setSelectedDishId}
@@ -264,6 +250,15 @@ function AppShell() {
           setRecommendationText={setRecommendationText}
           setUpsellSurface={setUpsellSurface}
           setUpsellFocused={setUpsellFocused}
+        />
+      ) : (
+        <CatalogWorkspace
+          selectedDishId={selectedDishId}
+          catalogPhase={catalogPhase}
+          onAdvancePhase={(next) => {
+            setCatalogPhase(next);
+            if (next === "has-items") markVisited("catalog");
+          }}
         />
       );
     }
@@ -277,6 +272,10 @@ function AppShell() {
           onConfigureOrderSettings={openOrderAcceptance}
           aboutTab={storeAboutTab}
           setAboutTab={setStoreAboutTab}
+          seoTitle={seoTitle}
+          setSeoTitle={setSeoTitle}
+          seoDescription={seoDescription}
+          setSeoDescription={setSeoDescription}
         />
       );
     }
@@ -318,13 +317,15 @@ function AppShell() {
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
-  const isUpsellPage = section === "storefront" && storeTab === "upsell";
 
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
-    section === "storefront" && storeTab === "catalog" && catalogPhase !== "has-items"
+    section === "storefront" && storeTab === "catalog" && catalogTab !== "upsell" && catalogPhase !== "has-items"
       ? "catalog-empty"
       : previewScenario;
+
+  // When on catalog's Рекомендации tab, preview should show upsell screen
+  const effectiveActiveTab = isCatalogPage && catalogTab === "upsell" ? "upsell" : activeTab;
   const previewVisible =
     section === "storefront" ||
     (section === "management" && manageTab === "order-settings");
@@ -386,57 +387,76 @@ function AppShell() {
           {/* Work area */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-2 pb-3 pr-3 pl-1">
 
-            {/* Tab bar above the card — only for pages with tabs */}
-            {(isHomePage || isCatalogPage) && (
-              <div className="shrink-0">
-                {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
-                {isCatalogPage && <CatalogTabs value={catalogTab} onChange={setCatalogTab} />}
+            {/* Toolbar: tabs left + language + preview toggle right */}
+            {(isHomePage || isCatalogPage || pageMeta.showLanguage || (previewVisible && previewCollapsed)) && (
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <div className="shrink-0">
+                  {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
+                  {isCatalogPage && (
+                    <CatalogTabs
+                      value={catalogTab}
+                      onChange={(t) => {
+                        setCatalogTab(t);
+                        if (t === "upsell") markVisited("upsell");
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {pageMeta.showLanguage && <PageLangSwitcher />}
+                  {previewVisible && previewCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewCollapsed(false)}
+                      className="flex h-8 items-center rounded-[10px] bg-[#ebeae9] px-2.5 text-[14px] font-medium text-[#57534d] transition hover:bg-[#e0dfdd]"
+                    >
+                      Предпросмотр
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
-          {/* Single white container: editor + preview, split by a vertical line */}
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
+          {/* Editor card + preview card side by side */}
+          <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-hidden">
 
-            {/* Editor column */}
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {/* Editor card */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
               <ContentHeader
-                title={isLaunchPage || isCatalogPage || isUpsellPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage || isUpsellPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
-                showLanguage={pageMeta.showLanguage && !previewVisible}
+                title={isLaunchPage || isCatalogPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
-              {previewVisible && (
-                <div className="absolute right-4 top-3 z-10">
-                  <PreviewToggle
-                    open={!previewCollapsed}
-                    onToggle={() => setPreviewCollapsed((c) => !c)}
-                  />
-                </div>
-              )}
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
               </div>
             </div>
 
-            {/* Preview panel (right side of the white container) */}
-            {previewVisible && !previewCollapsed && (
-              <PhonePreview
-                section={section}
-                activeTab={activeTab}
-                selectedDishId={selectedDishId}
-                previewBanner={previewBanner}
-                scenario={effectiveScenario}
-                recommendationTexts={recommendationTexts}
-                upsellSurface={upsellSurface}
-                highlightUpsell={upsellFocused}
-                onNavHomeHero={navHomeHero}
-                onNavHomeSections={navHomeSections}
-                onNavUpsell={navUpsellPage}
-                onNavAbout={navAbout}
-                onNavCatalogDish={navCatalogDish}
-                seoTitle={seoTitle}
-                seoDescription={seoDescription}
-              />
+            {/* Preview card — always mounted, width animated */}
+            {previewVisible && (
+              <div className={cn(
+                "shrink-0 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm transition-[width] duration-300 ease-out",
+                previewCollapsed ? "w-0 border-transparent shadow-none" : "w-[390px]",
+              )}>
+                <PhonePreview
+                  section={section}
+                  activeTab={effectiveActiveTab}
+                  selectedDishId={selectedDishId}
+                  previewBanner={previewBanner}
+                  scenario={effectiveScenario}
+                  recommendationTexts={recommendationTexts}
+                  upsellSurface={upsellSurface}
+                  highlightUpsell={upsellFocused}
+                  onNavHomeHero={navHomeHero}
+                  onNavHomeSections={navHomeSections}
+                  onNavUpsell={navUpsellPage}
+                  onNavAbout={navAbout}
+                  onNavCatalogDish={navCatalogDish}
+                  seoTitle={seoTitle}
+                  seoDescription={seoDescription}
+                  onClose={() => setPreviewCollapsed(true)}
+                />
+              </div>
             )}
           </div>
         </div>

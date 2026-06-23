@@ -1,14 +1,11 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeftRight,
   ChevronDown,
-  ChevronRight,
   Eye,
   EyeOff,
   GripVertical,
   Image as ImageIcon,
-  Layers,
   LayoutGrid,
   Link,
   Plus,
@@ -16,10 +13,10 @@ import {
   Trash2,
   Video,
   X,
+  XCircle,
 } from "lucide-react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
-import { AddTile, DishTile } from "@/components/workspace/section-card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { usePublish } from "@/contexts/publish-context";
@@ -92,40 +89,6 @@ export function HomeTabs({ value, onChange }: { value: HomeTab; onChange: (t: Ho
   );
 }
 
-function BlockHeading({
-  eyebrow,
-  eyebrowTone = "accent",
-  title,
-  titleClassName,
-  description,
-  action,
-}: {
-  eyebrow: string;
-  eyebrowTone?: "accent" | "muted";
-  title: string;
-  titleClassName?: string;
-  description: string;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex items-end justify-between gap-4">
-      <div>
-        <div
-          className={cn(
-            "text-xs font-black uppercase tracking-wide",
-            eyebrowTone === "accent" ? "text-blue-600" : "text-zinc-400",
-          )}
-        >
-          {eyebrow}
-        </div>
-        <h2 className={cn("mt-1 font-black text-zinc-950", titleClassName)}>{title}</h2>
-        <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">{description}</p>
-      </div>
-      {action}
-    </div>
-  );
-}
-
 function EditorEmpty({
   icon: Icon,
   title,
@@ -144,7 +107,7 @@ function EditorEmpty({
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-zinc-400 ring-1 ring-zinc-200">
         <Icon size={22} />
       </div>
-      <div className="text-[15px] font-black text-zinc-900">{title}</div>
+      <div className="text-[15px] font-medium text-zinc-900">{title}</div>
       <p className="max-w-sm text-[13px] leading-relaxed text-zinc-500">{desc}</p>
       <Button onClick={onClick} className="font-bold">
         <Plus size={15} />
@@ -186,6 +149,75 @@ function BannerThumb({
   );
 }
 
+type PickItem = { id: string; emoji: string; accent: string; name: string; price?: string };
+
+function WorkAreaHeader({
+  title, action,
+}: {
+  title: string; action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <h2 className="text-[15px] font-semibold text-[#292524]">{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+function DismissibleIntro({ title, text, onDismiss }: { title: string; text: string; onDismiss: () => void }) {
+  return (
+    <div className="relative rounded-xl bg-[#f5f5f4] px-4 py-3 pr-10">
+      <button type="button" onClick={onDismiss} aria-label="Закрыть" className="absolute right-3 top-3 text-[#a6a09b] transition hover:text-[#57534d]">
+        <X size={14} />
+      </button>
+      <p className="text-[13px] font-medium text-[#292524]">{title}</p>
+      <p className="mt-0.5 text-[13px] leading-[1.4] text-[#79716b]">{text}</p>
+    </div>
+  );
+}
+
+function PickList({ items, onRemove, onReorder }: { items: PickItem[]; onRemove: (id: string) => void; onReorder?: (from: number, to: number) => void }) {
+  const dragIdx = useRef<number | null>(null);
+  return (
+    <div className="space-y-3">
+      {items.map((item, i) => (
+        <div
+          key={item.id}
+          draggable={!!onReorder}
+          onDragStart={() => { dragIdx.current = i; }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => { if (dragIdx.current !== null && dragIdx.current !== i) { onReorder!(dragIdx.current, i); dragIdx.current = null; } }}
+          className="flex items-center gap-[7px]"
+        >
+          <GripVertical size={14} className={cn("shrink-0", onReorder ? "cursor-grab text-[#a6a09b]" : "text-[#d6d3d1]")} />
+          <div className="flex min-w-0 flex-1 items-center gap-[10px]">
+            <div className={cn("flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[3px] bg-gradient-to-br text-sm", item.accent)}>
+              {item.emoji}
+            </div>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{item.name}</span>
+            {item.price && <span className="shrink-0 text-[12px] text-[#a6a09b]">{item.price}</span>}
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(item.id)}
+            className="flex shrink-0 items-center gap-[5px] text-[#a6a09b] transition hover:text-red-500"
+          >
+            <XCircle size={13} className="shrink-0" />
+            <span className="text-[12px]">Убрать</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ponytail: mock cycle, replace with real upload handler when backend ready
+const MOCK_IMAGES = [
+  "https://picsum.photos/seed/cafe-a/300/150",
+  "https://picsum.photos/seed/cafe-b/300/150",
+  "https://picsum.photos/seed/cafe-c/300/150",
+];
+
 function BannerEditor({
   banner,
   updateBanner,
@@ -204,14 +236,10 @@ function BannerEditor({
   const [tagLang, setTagLang] = useState<"ru" | "kz" | "en">("ru");
   const [tagType, setTagType] = useState<BannerTagType>("accent");
   const [tagTexts, setTagTexts] = useState({ ru: "", kz: "", en: "" });
-  const replaceFileRef = useRef<HTMLInputElement>(null);
-
-  const handleReplaceFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    updateBanner(banner.id, { image: URL.createObjectURL(file) });
+  const handleReplaceMock = () => {
+    const idx = MOCK_IMAGES.indexOf(banner.image ?? "");
+    updateBanner(banner.id, { image: MOCK_IMAGES[(idx + 1) % MOCK_IMAGES.length] });
     mark();
-    e.target.value = "";
   };
 
   const openEditTag = (tag: BannerTag) => {
@@ -248,16 +276,20 @@ function BannerEditor({
 
   return (
     <>
-    <input ref={replaceFileRef} type="file" accept="image/*" className="hidden" onChange={handleReplaceFile} />
     <div className="rounded-2xl border border-[#e7e5e4] bg-[#f5f5f4]">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className={cn("relative shrink-0 overflow-hidden rounded-[5px] border border-[#4f39f6] p-0.5")}>
+          <button
+            type="button"
+            onClick={handleReplaceMock}
+            title="Заменить медиа"
+            className="relative shrink-0 cursor-pointer overflow-hidden rounded-[5px] border border-[#4f39f6] p-0.5 transition hover:opacity-75"
+          >
             <div className={cn("h-7 w-[26px] overflow-hidden rounded-[3px] bg-gradient-to-br", banner.accent)}>
               {banner.image && <img src={banner.image} alt="" className="absolute inset-0 h-full w-full object-cover" />}
             </div>
-          </div>
+          </button>
           <div className="flex min-w-0 items-center gap-1.5">
             <Video size={14} className="shrink-0 text-[#79716b]" />
             <span className="truncate text-[13px] font-medium text-[#79716b]">{banner.subtitle}</span>
@@ -382,27 +414,6 @@ function BannerEditor({
 
         {/* Action rows */}
         <div className="overflow-hidden rounded-2xl bg-white">
-          <div className="flex h-[42px] items-center justify-between border-b border-[#e7e5e4] px-4">
-            <div className="flex items-center gap-2">
-              <Eye size={18} className="text-[#292524]" />
-              <span className="text-[13px] text-[#292524]">Отображение гостям</span>
-            </div>
-            <Switch
-              checked={banner.visible}
-              onCheckedChange={(v) => { updateBanner(banner.id, { visible: v }); mark(); }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => replaceFileRef.current?.click()}
-            className="flex h-[42px] w-full items-center justify-between border-b border-[#e7e5e4] px-4 text-left hover:bg-zinc-50"
-          >
-            <div className="flex items-center gap-2">
-              <ArrowLeftRight size={18} className="text-[#292524]" />
-              <span className="text-[13px] text-[#292524]">Заменить медиа</span>
-            </div>
-            <ChevronRight size={16} className="text-zinc-400" />
-          </button>
           {/* Ссылка: click to expand inline input */}
           <button
             type="button"
@@ -432,6 +443,16 @@ function BannerEditor({
               />
             </div>
           )}
+          <div className="flex h-[42px] items-center justify-between border-t border-[#e7e5e4] px-4">
+            <div className="flex items-center gap-2">
+              <Eye size={18} className="text-[#292524]" />
+              <span className="text-[13px] text-[#292524]">Отображение гостям</span>
+            </div>
+            <Switch
+              checked={banner.visible}
+              onCheckedChange={(v) => { updateBanner(banner.id, { visible: v }); mark(); }}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -482,7 +503,28 @@ export function HomeWorkspace({
   const { registerChange } = usePublish();
   const { planId } = usePlan();
   const [flash, setFlash] = useState<"hero" | "sections" | null>(null);
+  const [introDismissed, setIntroDismissed] = useState<Record<string, boolean>>({});
+  const dismissIntro = (key: string) => setIntroDismissed((p) => ({ ...p, [key]: true }));
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
+  const [sectionIds, setSectionIds] = useState(() => [...featuredCategoryIds]);
+  const [promotedIds, setPromotedIds] = useState(() => [...promotedDishIds]);
+
+  const sectionItems: PickItem[] = sectionIds.map((id) => {
+    const c = categories.find((x) => x.id === id)!;
+    return { id, emoji: c.emoji, accent: c.photo, name: c.name };
+  });
+  const promotedItems: PickItem[] = promotedIds.map((id) => {
+    const d = dishes.find((x) => x.id === id)!;
+    return { id, emoji: d.emoji, accent: d.accent, name: d.name, price: d.price };
+  });
+  const addSection = () => {
+    const next = categories.find((c) => !sectionIds.includes(c.id));
+    if (next) setSectionIds((p) => [...p, next.id]);
+  };
+  const addPromoted = () => {
+    const next = dishes.find((d) => !promotedIds.includes(d.id));
+    if (next) setPromotedIds((p) => [...p, next.id]);
+  };
   const addFileRef = useRef<HTMLInputElement>(null);
   const isStart = planId === "Start";
   const atStartLimit = isStart && banners.length >= START_BANNER_LIMIT;
@@ -518,11 +560,29 @@ export function HomeWorkspace({
         />
 
         {/* Баннеры */}
+        {tab === "banners" && (
+          <WorkAreaHeader title="Баннеры" />
+        )}
+        {tab === "banners" && !introDismissed.banners && (
+          <DismissibleIntro
+            title="Расскажите о важном на первом экране"
+            text="Используйте баннеры для акций, сезонных предложений, новинок или объявлений. Баннер показывается в верхней части главной страницы витрины."
+            onDismiss={() => dismissIntro("banners")}
+          />
+        )}
         {tab === "banners" && banners.length === 0 && (
           <div data-tour="add-banner" className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-[17px]">
-                <Layers size={45} className="text-[#44403b]" />
+                <svg width="45" height="45" viewBox="0 0 256 256" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="banner-icon-grad" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#1c1917" />
+                      <stop offset="1" stopColor="#78716c" />
+                    </linearGradient>
+                  </defs>
+                  <path fill="url(#banner-icon-grad)" d="M224,104v96a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V104A16,16,0,0,1,48,88H208A16,16,0,0,1,224,104ZM56,72H200a8,8,0,0,0,0-16H56a8,8,0,0,0,0,16ZM72,40H184a8,8,0,0,0,0-16H72a8,8,0,0,0,0,16Z" />
+                </svg>
                 <div className="flex flex-col gap-4">
                   <p className="text-[16px] font-medium text-[#44403b]">Добавьте первый баннер</p>
                   <p className="text-[14px] leading-[1.4] text-[#79716b]">
@@ -533,7 +593,7 @@ export function HomeWorkspace({
               <button
                 type="button"
                 onClick={handleAddBanner}
-                className="inline-flex h-[32px] items-center justify-center rounded-[10px] bg-[#4f39f6] px-[10px] text-[14px] font-medium text-white transition hover:bg-[#4030d4]"
+                className="self-start inline-flex h-[32px] items-center justify-center rounded-[10px] bg-[#4f39f6] px-[10px] text-[14px] font-medium text-white transition hover:bg-[#4030d4]"
               >
                 Добавить баннер
               </button>
@@ -574,9 +634,9 @@ export function HomeWorkspace({
               </div>
             )}
 
-            {/* Banner strip: + only when limit not reached */}
-            <div className="flex items-center gap-[8.78px] overflow-x-auto pb-1 scrollbar-none">
-              {!atStartLimit && (
+            {/* Banner strip: hidden at start limit (single banner, no navigation needed) */}
+            {!atStartLimit && (
+              <div className="flex items-center gap-[8.78px] overflow-x-auto pb-1 scrollbar-none">
                 <button
                   type="button"
                   data-tour="add-banner"
@@ -585,16 +645,16 @@ export function HomeWorkspace({
                 >
                   <Plus size={18} />
                 </button>
-              )}
-              {banners.map((banner) => (
-                <BannerThumb
-                  key={banner.id}
-                  banner={banner}
-                  selected={selectedBanner?.id === banner.id}
-                  onSelect={() => setSelectedBannerId(banner.id)}
-                />
-              ))}
-            </div>
+                {banners.map((banner) => (
+                  <BannerThumb
+                    key={banner.id}
+                    banner={banner}
+                    selected={selectedBanner?.id === banner.id}
+                    onSelect={() => setSelectedBannerId(banner.id)}
+                  />
+                ))}
+              </div>
+            )}
 
             {selectedBanner && (
               <BannerEditor
@@ -618,47 +678,36 @@ export function HomeWorkspace({
           />
         )}
         {tab === "sections" && !emptyVitrine && (
-          <section
-            className={cn(
-              "space-y-5 rounded-3xl transition",
-              flash === "sections" && "ring-2 ring-blue-400 ring-offset-4",
-            )}
-          >
-            <BlockHeading
-              eyebrow="Навигация гостя"
-              title="Разделы на главной"
-              titleClassName="text-xl"
-              description="Покажите до 6 ключевых разделов. Остальные останутся в полном меню."
+          <>
+            <WorkAreaHeader
+              title={`Подборка разделов · ${sectionItems.length} из 6`}
               action={
-                <Button variant="outline" size="sm" className="shrink-0 font-bold">
-                  <Plus size={15} />
-                  Добавить раздел
-                </Button>
+                <button
+                  type="button"
+                  onClick={addSection}
+                  disabled={sectionIds.length >= 6}
+                  className={cn(
+                    "inline-flex shrink-0 h-[32px] items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition",
+                    sectionIds.length >= 6 ? "bg-[#f5f5f4] text-[#a6a09b] cursor-default" : "bg-[#4f39f6] text-white hover:bg-[#4030d4]",
+                  )}
+                >
+                  {sectionIds.length >= 6 ? "Лимит достигнут" : <><Plus size={13} />Добавить раздел</>}
+                </button>
               }
             />
-            <div className="grid grid-cols-4 gap-4">
-              {featuredCategoryIds.map((id) => {
-                const category = categories.find((c) => c.id === id)!;
-                return (
-                  <div key={id} className="group rounded-3xl border border-border bg-white p-3">
-                    <div
-                      className={cn(
-                        "mb-3 flex h-28 items-center justify-center rounded-2xl bg-gradient-to-br text-4xl",
-                        category.photo,
-                      )}
-                    >
-                      {category.emoji}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-black">{category.name}</div>
-                      <GripVertical className="text-zinc-300 group-hover:text-zinc-500" size={16} />
-                    </div>
-                  </div>
-                );
-              })}
-              <AddTile label="Добавить" className="min-h-[164px]" />
-            </div>
-          </section>
+            {!introDismissed.sections && (
+              <DismissibleIntro
+                title="Помогите гостям быстрее найти нужное"
+                text="Покажите важные разделы меню сразу на главной странице. Мы уже добавили несколько разделов из каталога — вы можете изменить порядок, убрать лишнее или добавить другие."
+                onDismiss={() => dismissIntro("sections")}
+              />
+            )}
+            <PickList
+              items={sectionItems}
+              onRemove={(id) => setSectionIds((p) => p.filter((x) => x !== id))}
+              onReorder={(from, to) => setSectionIds((p) => { const next = [...p]; next.splice(to, 0, next.splice(from, 1)[0]); return next; })}
+            />
+          </>
         )}
 
         {/* Рекомендации */}
@@ -672,26 +721,36 @@ export function HomeWorkspace({
           />
         )}
         {tab === "promoted" && !emptyVitrine && (
-          <section className="space-y-5">
-            <BlockHeading
-              eyebrow="Мерчендайзинг"
-              eyebrowTone="muted"
-              title="Рекомендуемые позиции"
-              titleClassName="text-lg"
-              description="Блюда и напитки, которые стоит продвигать на главной."
+          <>
+            <WorkAreaHeader
+              title={`Подборка позиций · ${promotedItems.length} из 10`}
               action={
-                <Button variant="ghost" size="sm" className="shrink-0 font-bold text-zinc-500">
-                  <Plus size={15} />
-                  Добавить позицию
-                </Button>
+                <button
+                  type="button"
+                  onClick={addPromoted}
+                  disabled={promotedIds.length >= 10}
+                  className={cn(
+                    "inline-flex shrink-0 h-[32px] items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition",
+                    promotedIds.length >= 10 ? "bg-[#f5f5f4] text-[#a6a09b] cursor-default" : "bg-[#4f39f6] text-white hover:bg-[#4030d4]",
+                  )}
+                >
+                  {promotedIds.length >= 10 ? "Лимит достигнут" : <><Plus size={13} />Добавить позицию</>}
+                </button>
               }
             />
-            <div className="grid grid-cols-3 gap-4">
-              {promotedDishIds.map((id) => (
-                <DishTile key={id} dish={dishes.find((d) => d.id === id)!} removable />
-              ))}
-            </div>
-          </section>
+            {!introDismissed.promoted && (
+              <DismissibleIntro
+                title="Выделите позиции на главной"
+                text="Покажите гостям блюда, товары или предложения, которые хотите продвинуть. Подборку можно заполнить автоматически, а затем отредактировать вручную."
+                onDismiss={() => dismissIntro("promoted")}
+              />
+            )}
+            <PickList
+              items={promotedItems}
+              onRemove={(id) => setPromotedIds((p) => p.filter((x) => x !== id))}
+              onReorder={(from, to) => setPromotedIds((p) => { const next = [...p]; next.splice(to, 0, next.splice(from, 1)[0]); return next; })}
+            />
+          </>
         )}
       </PageContent>
     </PageScroll>

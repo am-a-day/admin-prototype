@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Lock } from "lucide-react";
-import { Globe } from "@phosphor-icons/react";
+import { Loader2, Lock, X } from "lucide-react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -42,7 +41,6 @@ import {
   type PreviewTab,
 } from "@/components/preview/phone-screens";
 import { useOrderRouting } from "@/contexts/order-routing-context";
-import { ContentLanguageControl } from "@/components/preview/content-language-control";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -62,6 +60,7 @@ type PhonePreviewProps = {
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
+  onClose?: () => void;
 };
 
 export function PhonePreview({
@@ -80,6 +79,7 @@ export function PhonePreview({
   onNavCatalogDish,
   seoTitle = "",
   seoDescription = "",
+  onClose,
 }: PhonePreviewProps) {
   const {
     serviceFeeRequireConsent,
@@ -272,14 +272,14 @@ export function PhonePreview({
     <aside
       data-tour="preview-panel"
       style={{ width: 390 }}
-      className="relative flex shrink-0 flex-col border-l border-[#e7e5e4] bg-white"
+      className="relative flex shrink-0 flex-col bg-white"
     >
         <div className="flex h-full flex-col overflow-hidden px-3 pt-4">
-          {/* Header: «Предпросмотр витрины» + статус + язык + скрыть */}
+          {/* Header: «Предпросмотр» + статус + закрыть */}
           <div className="mb-3 flex w-full items-start justify-between px-1">
             <div className="flex flex-col gap-1">
               <span className="text-[16px] font-medium tracking-[-0.38px] text-black">
-                Предпросмотр витрины
+                Предпросмотр
               </span>
 
               {/* Ссылка на витрину — переход активен после валидации менеджером */}
@@ -302,10 +302,17 @@ export function PhonePreview({
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-0.5 text-black">
-              <Globe size={16} className="shrink-0" />
-              <ContentLanguageControl compact />
-            </div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Скрыть предпросмотр"
+                aria-label="Скрыть предпросмотр"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           {/* Flat preview viewport — заполняет всю высоту панели */}

@@ -17,7 +17,6 @@ import {
   Coins,
   ForkKnife,
   House,
-  MagicWand,
   MagnifyingGlass,
   Package,
   Scan,
@@ -55,7 +54,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Главная", section: "storefront", tab: "home", icon: House },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
-      { label: "Рекомендации", section: "storefront", tab: "upsell", icon: MagicWand },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
       { label: "О заведении", section: "storefront", tab: "about", icon: ClipboardText },
     ],
