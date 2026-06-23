@@ -31,7 +31,13 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(wait)",
-      "Bash(cat /tmp/vite-check.log 2>/dev/null | head -15)"
+      "Bash(cat /tmp/vite-check.log 2>/dev/null | head -15)",
+      "Bash(git pull *)",
+      "mcp__958c13f5-84c8-4555-94c9-3ff6b377ced6__get_design_context",
+      "Bash(node -e \"const {CardsThree} = require\\('@phosphor-icons/react'\\); const React = require\\('react'\\); const {renderToStaticMarkup} = require\\('react-dom/server'\\); console.log\\(renderToStaticMarkup\\(React.createElement\\(CardsThree, {weight:'fill',size:45}\\)\\)\\);\")",
+      "mcp__958c13f5-84c8-4555-94c9-3ff6b377ced6__get_screenshot",
+      "mcp__958c13f5-84c8-4555-94c9-3ff6b377ced6__get_metadata",
+      "Bash(gh api *)"
     ]
   }
 }
