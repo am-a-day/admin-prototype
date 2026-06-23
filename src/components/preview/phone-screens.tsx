@@ -152,8 +152,16 @@ export function PhoneHome({
           >
             <div className="mb-2 flex flex-wrap gap-1">
               {banner.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-zinc-950">
-                  {tag}
+                <span
+                  key={tag.id}
+                  className={cn(
+                    "rounded-full px-2 py-1 text-[10px] font-bold",
+                    tag.type === "accent"   ? "bg-[#ff2d55] text-white" :
+                    tag.type === "contrast" ? "bg-white text-zinc-900 ring-1 ring-zinc-900" :
+                                              "bg-white/80 text-zinc-700 ring-1 ring-white/50",
+                  )}
+                >
+                  {tag.texts.ru}
                 </span>
               ))}
             </div>

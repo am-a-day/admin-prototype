@@ -32,6 +32,7 @@ import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { MiniLogo } from "@/components/ui/mini-logo";
 import { cn } from "@/lib/utils";
 import { dishes, RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
+import { usePlan } from "@/contexts/plan-context";
 
 export type SidebarMode = "full" | "rail" | "topbar";
 
@@ -509,7 +510,36 @@ type NavProps = {
   onToggleSidebar?: () => void;
 };
 
+function StartPlanBlock() {
+  return (
+    <div className="shrink-0 px-3 pb-3 pt-1">
+      <div className="flex flex-col gap-[9px]">
+        <div className="flex flex-col gap-[4px]">
+          <div className="flex items-center gap-2">
+            <div className="flex h-[17px] items-center justify-center rounded-[3px] bg-[#f5f5f4] px-1">
+              <span className="whitespace-nowrap text-[13px] font-medium text-[#44403b]">
+                START · Бесплатно
+              </span>
+            </div>
+          </div>
+          <p className="w-[163px] text-[13px] leading-[1.3] text-[#a6a09b]">
+            Базовые возможности для начала работы
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {}}
+          className="flex h-[32px] w-full items-center justify-center rounded-[10px] border border-[#d6d3d1] bg-white text-[14px] text-[#292524] transition hover:bg-zinc-50"
+        >
+          Выбрать тариф
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
+  const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header row: logo only — collapse toggle lives in the work-area header */}
@@ -521,7 +551,7 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
         <SidebarSearch compact={false} onNavigate={onNavigate} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
-      <PlanWidget onNavigate={onNavigate} compact={false} />
+      {planId === "Start" ? <StartPlanBlock /> : <PlanWidget onNavigate={onNavigate} compact={false} />}
     </div>
   );
 }

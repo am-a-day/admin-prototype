@@ -368,7 +368,7 @@ export function OrgMenu({
                   Тариф
                 </div>
                 <div className="flex gap-1">
-                  {(["Zero", "Lite", "Ultra"] as PlanId[]).map((p) => (
+                  {(["Start", "Lite", "Ultra"] as PlanId[]).map((p) => (
                     <button
                       key={p}
                       type="button"

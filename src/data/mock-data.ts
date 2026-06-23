@@ -57,14 +57,15 @@ export const DEFAULT_RECOMMENDATION_TEXTS: RecommendationTexts = {
   cart: "Возьмите ещё это 🔥",
 };
 
-export type PlanId = "Zero" | "Lite" | "Ultra";
+export type PlanId = "Zero" | "Start" | "Lite" | "Ultra";
 
 export const RESTAURANT_NAME = "Kimchi Astana";
 /** Short initials shown in the avatar chip in the header (1–2 chars). */
 export const RESTAURANT_INITIALS = "АБ";
 /** Physical address of the location — shown in header next to org name. Falls back to STOREFRONT_URL if empty. */
 export const RESTAURANT_ADDRESS = "Абая, 10";
-export const CURRENT_PLAN: PlanId = "Zero";
+export const CURRENT_PLAN: PlanId = "Start";
+export const START_BANNER_LIMIT = 1;
 export const STOREFRONT_URL = "kimchi.tasko.app";
 
 /** A single vitrine entry shown in the org switcher. */
@@ -147,14 +148,22 @@ export type Dish = {
   stop: boolean;
 };
 
+export type BannerTagType = "accent" | "contrast" | "outline";
+export type BannerTag = {
+  id: string;
+  type: BannerTagType;
+  texts: { ru: string; kz: string; en: string };
+};
+
 export type Banner = {
   id: string;
   title: string;
   subtitle: string;
-  tags: string[];
+  tags: BannerTag[];
   accent: string;
   visible: boolean;
   link: string;
+  image?: string;
 };
 
 export const categories: Category[] = [
@@ -252,35 +261,7 @@ export const dishes: Dish[] = [
   },
 ];
 
-export const banners: Banner[] = [
-  {
-    id: "hero-1",
-    title: "Шеф рекомендует",
-    subtitle: "Рибай Wagyu MB9+ на углях",
-    tags: ["Signature", "Блюдо недели"],
-    accent: "from-zinc-950 via-stone-800 to-amber-800",
-    visible: true,
-    link: "",
-  },
-  {
-    id: "hero-2",
-    title: "Комбо на двоих",
-    subtitle: "Пицца + напитки со скидкой",
-    tags: ["Комбо", "Хит"],
-    accent: "from-rose-700 via-orange-500 to-yellow-400",
-    visible: true,
-    link: "/promo/combo",
-  },
-  {
-    id: "hero-3",
-    title: "Новинки недели",
-    subtitle: "Попробуйте сезонные позиции",
-    tags: ["Новинка"],
-    accent: "from-emerald-800 via-teal-500 to-cyan-400",
-    visible: false,
-    link: "",
-  },
-];
+export const banners: Banner[] = [];
 
 export const featuredCategoryIds = ["pizza", "drinks", "desserts", "burgers"];
 export const promotedDishIds = ["pepperoni", "cola", "tiramisu"];

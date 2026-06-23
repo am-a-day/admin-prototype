@@ -25,7 +25,7 @@ export function usePlanStatus(): PlanStatus {
   const { stage } = useVitrineLaunch();
 
   let kind: PlanStatusKind;
-  if (planId === "Zero") kind = "none";
+  if (planId === "Zero" || planId === "Start") kind = "none";
   else if (stage !== "active") kind = "pending";
   else if (daysLeft <= 0) kind = "expired";
   else if (daysLeft <= 7) kind = "expiring";

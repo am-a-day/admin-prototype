@@ -169,7 +169,7 @@ function AppShell() {
       return next;
     });
 
-  const addBanner = () => {
+  const addBanner = (imageUrl?: string) => {
     const id = `hero-${Date.now()}`;
     setBannerList((prev) => [
       ...prev,
@@ -181,6 +181,7 @@ function AppShell() {
         accent: "from-indigo-700 via-blue-500 to-sky-400",
         visible: true,
         link: "",
+        ...(imageUrl && { image: imageUrl }),
       },
     ]);
     setSelectedBannerId(id);

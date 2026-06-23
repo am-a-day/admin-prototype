@@ -62,7 +62,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setDaysLeftDemo: setDaysLeft,
       expiryLabel: label,
       expiryFull: full,
-      expiresLabel: planId === "Zero" ? null : label,
+      expiresLabel: planId === "Zero" || planId === "Start" ? null : label,
     };
   }, [planId, daysLeft]);
 

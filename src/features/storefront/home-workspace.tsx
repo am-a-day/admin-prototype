@@ -1,16 +1,20 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Bold,
+  ArrowLeftRight,
+  ChevronDown,
+  ChevronRight,
+  Eye,
   EyeOff,
   GripVertical,
   Image as ImageIcon,
-  Italic,
+  Layers,
   LayoutGrid,
-  Link2,
+  Link,
   Plus,
   Sparkles,
-  Strikethrough,
   Trash2,
+  Video,
   X,
 } from "lucide-react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
@@ -20,12 +24,16 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { usePublish } from "@/contexts/publish-context";
 import { usePreviewDemo } from "@/contexts/preview-demo-context";
+import { usePlan } from "@/contexts/plan-context";
 import {
   categories,
   dishes,
   featuredCategoryIds,
   promotedDishIds,
+  START_BANNER_LIMIT,
   type Banner,
+  type BannerTag,
+  type BannerTagType,
 } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +43,7 @@ type HomeWorkspaceProps = {
   setSelectedBannerId: (id: string) => void;
   updateBanner: (id: string, patch: Partial<Banner>) => void;
   removeBanner: (id: string) => void;
-  addBanner: () => void;
+  addBanner: (imageUrl?: string) => void;
   /** Активная вкладка главной (живёт в App, рендерится в общей шапке контента). */
   homeTab: HomeTab;
   setHomeTab: (t: HomeTab) => void;
@@ -45,7 +53,12 @@ type HomeWorkspaceProps = {
 };
 
 const MAX_BANNER_CHARS = 70;
-const TAG_PRESETS = ["Хит", "Новинка", "Акция", "Сезон", "Веган"];
+
+function tagStyle(type: BannerTagType) {
+  if (type === "accent")   return "bg-[#ff2d55] text-white font-bold border-transparent";
+  if (type === "contrast") return "bg-white border-[1.5px] border-zinc-900 text-zinc-900 font-bold";
+  return "bg-white border border-zinc-300 text-zinc-700";
+}
 
 export type HomeTab = "banners" | "sections" | "promoted";
 const HOME_TABS: { id: HomeTab; label: string }[] = [
@@ -141,10 +154,6 @@ function EditorEmpty({
   );
 }
 
-function FieldLabel({ children }: { children: ReactNode }) {
-  return <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">{children}</div>;
-}
-
 function BannerThumb({
   banner,
   selected,
@@ -159,25 +168,19 @@ function BannerThumb({
       type="button"
       onClick={onSelect}
       className={cn(
-        "relative h-32 w-48 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br p-4 text-left text-white transition",
-        banner.accent,
-        selected
-          ? "outline outline-2 outline-blue-500 outline-offset-2"
-          : "opacity-95 hover:opacity-100",
+        "shrink-0 rounded-[10px] border p-0.5 transition",
+        selected ? "border-[#4f39f6]" : "border-transparent hover:border-zinc-200",
       )}
     >
-      <div className="absolute inset-0 bg-black/25" />
-      {!banner.visible && (
-        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold backdrop-blur">
-          <EyeOff size={11} />
-          Скрыт
-        </span>
-      )}
-      <div className="relative z-10 flex h-full flex-col justify-end">
-        <div className="text-xs font-semibold opacity-90">{banner.title}</div>
-        <div className="mt-0.5 line-clamp-2 text-sm font-black leading-tight">
-          {banner.subtitle}
-        </div>
+      <div className={cn("relative h-[60px] w-[55px] overflow-hidden rounded-[7px] bg-gradient-to-br", banner.accent)}>
+        {banner.image && (
+          <img src={banner.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        )}
+        {!banner.visible && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(105,105,105,0.7)]">
+            <EyeOff size={22} className="text-white" />
+          </div>
+        )}
       </div>
     </button>
   );
@@ -194,158 +197,272 @@ function BannerEditor({
 }) {
   const { registerChange } = usePublish();
   const mark = () => registerChange("home");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [tagLang, setTagLang] = useState<"ru" | "kz" | "en">("ru");
+  const [tagType, setTagType] = useState<BannerTagType>("accent");
+  const [tagTexts, setTagTexts] = useState({ ru: "", kz: "", en: "" });
+  const replaceFileRef = useRef<HTMLInputElement>(null);
 
-  const [format, setFormat] = useState<string[]>([]);
-  const toggleFormat = (key: string) => {
-    setFormat((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
+  const handleReplaceFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    updateBanner(banner.id, { image: URL.createObjectURL(file) });
+    mark();
+    e.target.value = "";
+  };
+
+  const openEditTag = (tag: BannerTag) => {
+    setEditingTagId(tag.id);
+    setTagType(tag.type);
+    setTagTexts({ ...tag.texts });
+    setTagLang("ru");
+    setAddingTag(true);
+  };
+  const closeTagPanel = () => {
+    setAddingTag(false);
+    setEditingTagId(null);
+    setTagTexts({ ru: "", kz: "", en: "" });
+  };
+  const confirmTag = () => {
+    if (!tagTexts.ru.trim()) return;
+    if (editingTagId) {
+      updateBanner(banner.id, {
+        tags: banner.tags.map((t) => t.id === editingTagId ? { ...t, type: tagType, texts: { ...tagTexts } } : t),
+      });
+    } else {
+      const newTag: BannerTag = { id: `tag-${Date.now()}`, type: tagType, texts: { ...tagTexts } };
+      updateBanner(banner.id, { tags: [...banner.tags, newTag] });
+    }
+    mark();
+    closeTagPanel();
+  };
+  const removeTag = (id: string) => {
+    updateBanner(banner.id, { tags: banner.tags.filter((t) => t.id !== id) });
     mark();
   };
 
   const chars = banner.subtitle.length;
-  const words = banner.subtitle.trim() ? banner.subtitle.trim().split(/\s+/).length : 0;
-
-  const formatButtons = [
-    { key: "bold", icon: Bold },
-    { key: "italic", icon: Italic },
-    { key: "strike", icon: Strikethrough },
-  ];
-
-  const addTag = () => {
-    const next = TAG_PRESETS.find((t) => !banner.tags.includes(t)) ?? `Тег ${banner.tags.length + 1}`;
-    updateBanner(banner.id, { tags: [...banner.tags, next] });
-    mark();
-  };
-  const removeTag = (tag: string) => {
-    updateBanner(banner.id, { tags: banner.tags.filter((t) => t !== tag) });
-    mark();
-  };
 
   return (
-    <div className="rounded-3xl border border-border bg-white p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div className="text-xs font-black uppercase tracking-wide text-zinc-400">
-          Настройки баннера
+    <>
+    <input ref={replaceFileRef} type="file" accept="image/*" className="hidden" onChange={handleReplaceFile} />
+    <div className="rounded-2xl border border-[#e7e5e4] bg-[#f5f5f4]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className={cn("relative shrink-0 overflow-hidden rounded-[5px] border border-[#4f39f6] p-0.5")}>
+            <div className={cn("h-7 w-[26px] overflow-hidden rounded-[3px] bg-gradient-to-br", banner.accent)}>
+              {banner.image && <img src={banner.image} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Video size={14} className="shrink-0 text-[#79716b]" />
+            <span className="truncate text-[13px] font-medium text-[#79716b]">{banner.subtitle}</span>
+          </div>
         </div>
         <button
           type="button"
-          onClick={() => {
-            removeBanner(banner.id);
-            mark();
-          }}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-red-500 transition hover:text-red-600"
+          onClick={() => setConfirmDelete(true)}
+          className="shrink-0 text-zinc-400 transition hover:text-red-500"
+          title="Удалить баннер"
         >
-          <Trash2 size={14} />
-          Удалить
+          <Trash2 size={16} />
         </button>
       </div>
 
-      <div className="grid gap-x-8 gap-y-6 md:grid-cols-[1fr_260px]">
-        {/* Main column */}
-        <div className="space-y-6">
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <FieldLabel>Текст баннера</FieldLabel>
-              <div className="flex gap-1">
-                {formatButtons.map(({ key, icon: Icon }) => (
+      {/* Body */}
+      <div className="flex flex-col gap-1.5 px-1 pb-1">
+        {/* Tags + Textarea */}
+        <div className="flex flex-col gap-2 rounded-2xl bg-white px-2.5 py-4">
+          <div className="flex flex-wrap gap-1.5">
+            {banner.tags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => openEditTag(tag)}
+                className={cn("inline-flex h-8 items-center gap-1 rounded-full border px-2 text-[13px] transition hover:opacity-80", tagStyle(tag.type))}
+              >
+                {tag.texts.ru}
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); removeTag(tag.id); }}
+                  className="opacity-60 hover:opacity-100"
+                >
+                  <X size={14} />
+                </span>
+              </button>
+            ))}
+            {!addingTag && (
+              <button
+                type="button"
+                onClick={() => setAddingTag(true)}
+                className="inline-flex h-8 items-center gap-1 rounded-full border border-dashed border-[#d6d3d1] px-4 text-[13px] text-[#292524] hover:border-zinc-400"
+              >
+                <Plus size={13} />
+                Добавить тег
+              </button>
+            )}
+          </div>
+          {addingTag && (
+            <div className="rounded-xl border border-[#e7e5e4] bg-[#f5f5f4] p-3">
+              {/* Input + lang switcher */}
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={tagTexts[tagLang]}
+                  placeholder="Текст тега..."
+                  onChange={(e) => setTagTexts((p) => ({ ...p, [tagLang]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmTag(); if (e.key === "Escape") setAddingTag(false); }}
+                  className="min-w-0 flex-1 rounded-lg border border-[#e7e5e4] bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-[#4f39f6]"
+                />
+                <div className="flex overflow-hidden rounded-lg border border-[#e7e5e4]">
+                  {(["ru", "kz", "en"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setTagLang(lang)}
+                      className={cn("px-2 py-1.5 text-[11px] font-medium uppercase transition", tagLang === lang ? "bg-[#4f39f6] text-white" : "bg-white text-zinc-500 hover:bg-zinc-50")}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={closeTagPanel} className="text-zinc-400 hover:text-zinc-600">
+                  <X size={14} />
+                </button>
+              </div>
+              {/* Type selector */}
+              <div className="mb-2.5 flex gap-1.5">
+                {(["accent", "contrast", "outline"] as const).map((t) => (
                   <button
-                    key={key}
+                    key={t}
                     type="button"
-                    onClick={() => toggleFormat(key)}
+                    onClick={() => setTagType(t)}
                     className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-lg transition",
-                      format.includes(key)
-                        ? "bg-zinc-900 text-white"
-                        : "text-zinc-500 hover:bg-zinc-100",
+                      "flex-1 rounded-lg py-1.5 text-[11px] font-medium transition",
+                      tagType === t ? "bg-white shadow-sm ring-1 ring-[#4f39f6] text-[#4f39f6]" : "text-zinc-500 hover:bg-white/60",
                     )}
                   >
-                    <Icon size={14} />
+                    {t === "accent" ? "Акцентный" : t === "contrast" ? "Контрастный" : "Контурный"}
                   </button>
                 ))}
               </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={confirmTag}
+                  disabled={!tagTexts.ru.trim()}
+                  className="rounded-lg bg-[#4f39f6] px-3 py-1.5 text-[12px] font-medium text-white transition disabled:opacity-40"
+                >
+                  {editingTagId ? "Сохранить" : "Добавить"}
+                </button>
+              </div>
             </div>
+          )}
+
+          <div className="relative rounded-xl border border-[#e7e5e4] bg-white">
+            <span className="absolute left-2.5 top-[9px] text-[12px] leading-[1.5] text-[#79716b]">
+              Надпись на баннере
+            </span>
             <textarea
               value={banner.subtitle}
               maxLength={MAX_BANNER_CHARS}
-              onChange={(e) => updateBanner(banner.id, { subtitle: e.target.value })}
-              className={cn(
-                "min-h-20 w-full resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base font-semibold text-zinc-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-blue-500/30",
-                format.includes("bold") && "font-black",
-                format.includes("italic") && "italic",
-                format.includes("strike") && "line-through",
-              )}
+              rows={3}
+              onChange={(e) => { updateBanner(banner.id, { subtitle: e.target.value }); mark(); }}
+              className="w-full resize-none rounded-xl bg-transparent pb-5 pl-2.5 pr-2 pt-7 text-[13px] text-[#292524] outline-none"
             />
-            <div className="mt-1.5 text-right text-xs text-muted-foreground">
-              {chars} / {MAX_BANNER_CHARS} · слов: {words}
-            </div>
-          </div>
-
-          <div>
-            <FieldLabel>Ссылка при клике</FieldLabel>
-            <div className="relative mt-2">
-              <Link2
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-              />
-              <input
-                value={banner.link}
-                placeholder="https:// или /menu"
-                onChange={(e) => updateBanner(banner.id, { link: e.target.value })}
-                className="h-10 w-full rounded-xl bg-zinc-50 pl-9 pr-3 text-sm font-medium text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Куда ведёт баннер. Можно оставить пустым.
-            </p>
+            <span className="absolute bottom-1.5 right-2.5 text-[11px] text-[#a6a09b]">
+              {chars} из {MAX_BANNER_CHARS}
+            </span>
           </div>
         </div>
 
-        {/* Side column */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
-            <div>
-              <div className="text-sm font-bold text-zinc-900">На витрине</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">Показывать гостям</div>
+        {/* Action rows */}
+        <div className="overflow-hidden rounded-2xl bg-white">
+          <div className="flex h-[42px] items-center justify-between border-b border-[#e7e5e4] px-4">
+            <div className="flex items-center gap-2">
+              <Eye size={18} className="text-[#292524]" />
+              <span className="text-[13px] text-[#292524]">Отображение гостям</span>
             </div>
             <Switch
               checked={banner.visible}
-              onCheckedChange={(v) => {
-                updateBanner(banner.id, { visible: v });
-                mark();
-              }}
+              onCheckedChange={(v) => { updateBanner(banner.id, { visible: v }); mark(); }}
             />
           </div>
-
-          <div>
-            <FieldLabel>Теги</FieldLabel>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {banner.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 py-1.5 pl-3 pr-2 text-xs font-semibold text-zinc-700"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    className="text-zinc-400 transition hover:text-zinc-700"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={addTag}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-500 transition hover:border-blue-300 hover:text-blue-600"
-              >
-                <Plus size={12} />
-                Тег
-              </button>
+          <button
+            type="button"
+            onClick={() => replaceFileRef.current?.click()}
+            className="flex h-[42px] w-full items-center justify-between border-b border-[#e7e5e4] px-4 text-left hover:bg-zinc-50"
+          >
+            <div className="flex items-center gap-2">
+              <ArrowLeftRight size={18} className="text-[#292524]" />
+              <span className="text-[13px] text-[#292524]">Заменить медиа</span>
             </div>
-          </div>
+            <ChevronRight size={16} className="text-zinc-400" />
+          </button>
+          {/* Ссылка: click to expand inline input */}
+          <button
+            type="button"
+            onClick={() => setLinkOpen((v) => !v)}
+            className="flex h-[42px] w-full items-center justify-between px-4 text-left"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Link size={18} className="shrink-0 text-[#292524]" />
+              <span className="text-[13px] text-[#292524]">Ссылка</span>
+              {banner.link && !linkOpen && (
+                <>
+                  <span className="text-[13px] text-[#79716b]">·</span>
+                  <span className="truncate text-[13px] text-[#a6a09b]">{banner.link}</span>
+                </>
+              )}
+            </div>
+            <ChevronDown size={16} className={cn("shrink-0 text-zinc-400 transition", linkOpen && "rotate-180")} />
+          </button>
+          {linkOpen && (
+            <div className="border-t border-[#e7e5e4] px-4 pb-3 pt-2">
+              <input
+                autoFocus
+                value={banner.link}
+                placeholder="https://..."
+                onChange={(e) => { updateBanner(banner.id, { link: e.target.value }); mark(); }}
+                className="w-full rounded-lg border border-[#e7e5e4] bg-[#f5f5f4] px-3 py-1.5 text-[13px] text-[#292524] outline-none focus:border-[#4f39f6]"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
+    {confirmDelete && createPortal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+        <div className="w-[320px] rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-zinc-200">
+          <h2 className="text-base font-bold text-zinc-900">Удалить баннер?</h2>
+          <p className="mt-1.5 text-[13px] leading-5 text-zinc-500">
+            Баннер будет удалён без возможности восстановления.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="rounded-xl px-4 py-2 text-[13px] text-zinc-500 transition hover:bg-zinc-100"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => removeBanner(banner.id)}
+              className="rounded-xl bg-red-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-red-600"
+            >
+              Удалить
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }
 
@@ -363,11 +480,20 @@ export function HomeWorkspace({
 }: HomeWorkspaceProps) {
   const selectedBanner = banners.find((b) => b.id === selectedBannerId) ?? banners[0] ?? null;
   const { registerChange } = usePublish();
+  const { planId } = usePlan();
   const [flash, setFlash] = useState<"hero" | "sections" | null>(null);
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
-  const handleAddBanner = () => {
-    addBanner();
+  const addFileRef = useRef<HTMLInputElement>(null);
+  const isStart = planId === "Start";
+  const atStartLimit = isStart && banners.length >= START_BANNER_LIMIT;
+
+  const handleAddBanner = () => addFileRef.current?.click();
+
+  const handleAddFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    addBanner(file ? URL.createObjectURL(file) : undefined);
     registerChange("home");
+    e.target.value = "";
   };
 
   // Переход из превью: открыть нужную вкладку и кратко подсветить блок.
@@ -383,6 +509,7 @@ export function HomeWorkspace({
 
   return (
     <PageScroll>
+      <input ref={addFileRef} type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
       <PageContent className="space-y-6">
         <LaunchPageHint
           checkId="home"
@@ -391,40 +518,74 @@ export function HomeWorkspace({
         />
 
         {/* Баннеры */}
-        {tab === "banners" && emptyVitrine && (
-          <div data-tour="add-banner">
-            <EditorEmpty
-              icon={ImageIcon}
-              title="Баннеры не добавлены"
-              desc="Показывайте акции и новости на главной — это первое, что видят гости."
-              cta="Добавить баннер"
-              onClick={() => setEmptyVitrine(false)}
-            />
+        {tab === "banners" && banners.length === 0 && (
+          <div data-tour="add-banner" className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-[17px]">
+                <Layers size={45} className="text-[#44403b]" />
+                <div className="flex flex-col gap-4">
+                  <p className="text-[16px] font-medium text-[#44403b]">Добавьте первый баннер</p>
+                  <p className="text-[14px] leading-[1.4] text-[#79716b]">
+                    Баннеры помогают выделить акции, новинки, сезонные предложения или важную информацию для гостей
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddBanner}
+                className="inline-flex h-[32px] items-center justify-center rounded-[10px] bg-[#4f39f6] px-[10px] text-[14px] font-medium text-white transition hover:bg-[#4030d4]"
+              >
+                Добавить баннер
+              </button>
+            </div>
           </div>
         )}
-        {tab === "banners" && !emptyVitrine && (
+        {tab === "banners" && banners.length > 0 && (
           <section
             className={cn(
-              "space-y-5 rounded-3xl transition",
-              flash === "hero" && "ring-2 ring-blue-400 ring-offset-4",
+              "space-y-4 transition",
+              flash === "hero" && "rounded-3xl ring-2 ring-blue-400 ring-offset-4",
             )}
           >
-            <BlockHeading
-              eyebrow="Первый экран"
-              title="Баннеры"
-              titleClassName="text-2xl"
-              description="Акции, новинки и сезонные предложения в верхней части главной."
-              action={
-                <span data-tour="add-banner">
-                  <Button size="sm" className="shrink-0 font-bold" onClick={handleAddBanner}>
-                    <Plus size={15} />
-                    Добавить баннер
-                  </Button>
-                </span>
-              }
-            />
+            {/* Limit reached block (START plan, slot full) */}
+            {atStartLimit && (
+              <div className="rounded-xl border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
+                <p className="mb-4 text-[14px] leading-[1.4] text-[#292524]">
+                  Улучшите тариф, чтобы создавать больше баннеров.{" "}
+                  До 5 видео и фото-баннеров —{" "}
+                  <span className="font-medium text-[#2b7fff]">на тарифе LITE</span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {}}
+                    className="h-[32px] rounded-[10px] bg-[#4f39f6] px-4 text-[14px] font-medium text-white transition hover:bg-[#4030d4]"
+                  >
+                    Улучшить тариф
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {}}
+                    className="h-[32px] rounded-[10px] border border-[#d6d3d1] bg-white px-4 text-[14px] text-[#292524] transition hover:bg-zinc-50"
+                  >
+                    Сравнить тарифы
+                  </button>
+                </div>
+              </div>
+            )}
 
-            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+            {/* Banner strip: + only when limit not reached */}
+            <div className="flex items-center gap-[8.78px] overflow-x-auto pb-1 scrollbar-none">
+              {!atStartLimit && (
+                <button
+                  type="button"
+                  data-tour="add-banner"
+                  onClick={handleAddBanner}
+                  className="flex h-[62px] w-[62px] shrink-0 items-center justify-center rounded-[8px] border border-dashed border-[#d6d3d1] bg-[#f5f5f4] text-[#79716b] transition hover:bg-zinc-100"
+                >
+                  <Plus size={18} />
+                </button>
+              )}
               {banners.map((banner) => (
                 <BannerThumb
                   key={banner.id}
@@ -433,14 +594,6 @@ export function HomeWorkspace({
                   onSelect={() => setSelectedBannerId(banner.id)}
                 />
               ))}
-              <button
-                type="button"
-                onClick={handleAddBanner}
-                className="flex h-32 w-32 shrink-0 flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 text-sm font-bold text-zinc-500 transition hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600"
-              >
-                <Plus size={20} className="mb-1.5" />
-                Новый
-              </button>
             </div>
 
             {selectedBanner && (
