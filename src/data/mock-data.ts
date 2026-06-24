@@ -23,6 +23,8 @@ export const MOCK_USER = {
   shortName: "Амадей",
   initials: "АШ",
   email: "amadey@kimchi-astana.kz",
+  phone: "+7 *** *** 45 67",
+  role: "Владелец",
 } as const;
 
 export type UserRole = "owner" | "am";

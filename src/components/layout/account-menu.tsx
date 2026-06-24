@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
-import { MapPin, Plus } from "@phosphor-icons/react";
+import { Check, ChevronDown } from "lucide-react";
+import { Buildings, CaretRight, LockKeyOpen, PlusCircle } from "@phosphor-icons/react";
 import {
   RESTAURANT_NAME,
   RESTAURANT_ADDRESS,
@@ -12,6 +12,16 @@ import {
 import { usePlan } from "@/contexts/plan-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
+
+/** Gated-feature pill: open-lock icon + plan label */
+function LockBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a6a09b]">
+      <LockKeyOpen size={11} />
+      {label}
+    </span>
+  );
+}
 
 /** Organisation / location context menu - triggered from header or sidebar */
 export function OrgMenu({
@@ -135,70 +145,80 @@ export function OrgMenu({
         <div
           id="org-menu-popup"
           style={{ top: popupPos.top, left: popupPos.left }}
-          className="fixed z-[200] w-[320px] max-w-[calc(100vw-24px)] rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
+          className="fixed z-[200] w-[260px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-xl shadow-zinc-300/40"
         >
-          <div className="px-2.5 py-1.5">
+          {/* Header */}
+          <div className="px-3 py-3">
             <div className="flex min-w-0 items-center gap-2">
-              <div className="truncate text-[14px] font-semibold leading-tight text-zinc-950">
+              <span className="truncate text-[13px] font-semibold leading-none text-[#292524]">
                 {current.name}
-              </div>
-              <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-zinc-600">
+              </span>
+              <span className="shrink-0 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#57534d]">
                 {planId.toUpperCase()}
               </span>
             </div>
-            <div className="mt-0.5 truncate text-[12px] text-zinc-400">
+            <div className="mt-1.5 truncate text-[12px] leading-none text-[#a6a09b]">
               {current.address}
             </div>
           </div>
 
-          <div className="my-1 border-t border-border" />
+          <div className="h-px bg-[#e7e5e4]" />
 
-          <button
-            type="button"
-            onClick={() => setPointsOpen((v) => !v)}
-            className={cn(
-              "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950",
-              pointsOpen && "bg-zinc-50 text-zinc-950",
-            )}
-          >
-            <MapPin size={14} weight="fill" className="shrink-0 text-zinc-400" />
-            <span className="flex-1">Все точки</span>
-            <span className="text-[12px] font-medium text-zinc-400">{locationsCount}</span>
-            <ChevronRight size={14} className="shrink-0 text-zinc-400" />
-          </button>
+          {/* Menu */}
+          <div className="p-1">
+            <button
+              type="button"
+              onClick={() => setPointsOpen((v) => !v)}
+              className={cn(
+                "flex h-9 w-full items-center gap-1.5 rounded-lg px-2 text-left transition hover:bg-[#f5f5f4]",
+                pointsOpen && "bg-[#f5f5f4]",
+              )}
+            >
+              <Buildings size={14} className="shrink-0 text-[#57534d]" />
+              <span className="flex-1 text-[13px] text-[#44403b]">Ваши точки</span>
+              <span className="text-[12px] text-[#a6a09b]">{locationsCount}</span>
+              <CaretRight size={14} className="shrink-0 text-[#a6a09b]" />
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (canAddLocation) close();
-            }}
-            disabled={!canAddLocation}
-            title={addLocationTitle}
-            className={cn(
-              "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] font-medium transition",
-              canAddLocation
-                ? "text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950"
-                : "cursor-not-allowed text-zinc-500",
-            )}
-          >
-            <Plus size={14} weight="fill" className="shrink-0 text-zinc-400" />
-            <span className="flex-1">{addLocationLabel}</span>
-            {addLocationBadge && (
-              <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-zinc-500">
-                {addLocationBadge}
-              </span>
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (canAddLocation) close();
+              }}
+              disabled={!canAddLocation}
+              title={addLocationTitle}
+              className={cn(
+                "flex h-9 w-full items-center gap-1.5 rounded-lg px-2 text-left transition",
+                canAddLocation ? "hover:bg-[#f5f5f4]" : "cursor-not-allowed",
+              )}
+            >
+              <PlusCircle size={14} className="shrink-0 text-[#57534d]" />
+              <span className="flex-1 text-[13px] text-[#44403b]">{addLocationLabel}</span>
+              {addLocationBadge && <LockBadge label={addLocationBadge} />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              close();
-            }}
-            className="flex h-8 w-full items-center justify-center rounded-lg border border-stone-200 bg-white px-3 text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
-          >
-            {planCtaLabel}
-          </button>
+            <button
+              type="button"
+              disabled
+              title="Доступно на тарифе LITE"
+              className="flex h-9 w-full cursor-not-allowed items-center gap-1.5 rounded-lg px-2 text-left"
+            >
+              <PlusCircle size={14} className="shrink-0 text-[#57534d]" />
+              <span className="flex-1 text-[13px] text-[#44403b]">Пригласить сотрудника</span>
+              <LockBadge label="LITE" />
+            </button>
+          </div>
+
+          {/* CTA */}
+          <div className="px-3 pb-3 pt-0.5">
+            <button
+              type="button"
+              onClick={close}
+              className="flex h-8 w-full items-center justify-center rounded-[8px] border border-[#e7e5e4] text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4]"
+            >
+              {planCtaLabel}
+            </button>
+          </div>
         </div>,
         document.body,
       )}
@@ -206,8 +226,8 @@ export function OrgMenu({
       {open && pointsOpen && createPortal(
         <div
           id="org-points-popup"
-          style={{ top: popupPos.top, left: popupPos.left + 328 }}
-          className="fixed z-[201] w-[280px] max-w-[calc(100vw-24px)] rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
+          style={{ top: popupPos.top, left: popupPos.left + 268 }}
+          className="fixed z-[201] w-[260px] max-w-[calc(100vw-24px)] rounded-[14px] border border-[#e7e5e4] bg-white p-2 shadow-xl shadow-zinc-300/40"
         >
           <div className="px-2.5 pb-1 pt-1 text-[13px] font-semibold text-zinc-950">
             Точки
