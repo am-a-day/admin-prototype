@@ -3,17 +3,19 @@ import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
+import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
-import { VitrineLaunchProvider } from "@/contexts/vitrine-launch-context";
+import { VitrineLaunchProvider, useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
-import { PlanProvider } from "@/contexts/plan-context";
-import { PublishProvider, type PageKey } from "@/contexts/publish-context";
-import { PreviewDemoProvider } from "@/contexts/preview-demo-context";
+import { PlanProvider, usePlan } from "@/contexts/plan-context";
+import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
+import { PreviewDemoProvider, usePreviewDemo } from "@/contexts/preview-demo-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
+import { Flask } from "@phosphor-icons/react";
 import {
   banners as seedBanners,
   DEFAULT_RECOMMENDATION_TEXTS,
@@ -21,6 +23,7 @@ import {
   type AnalyticsTabId,
   type Banner,
   type ManageTabId,
+  type PlanId,
   type PreviewScenario,
   type RecommendationTexts,
   type SectionId,
@@ -37,7 +40,6 @@ import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab } fro
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
-import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 
@@ -65,6 +67,197 @@ const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> =
   sections: {},
   promoted: {},
 };
+
+function PrototypeToolsFloating() {
+  const [open, setOpen] = useState(false);
+  const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
+  const { stage, forceStage } = useVitrineLaunch();
+  const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
+  const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
+
+  return (
+    <div className="fixed bottom-5 right-5 z-[210] flex flex-col items-end gap-2">
+      {open && (
+        <div className="w-[320px] rounded-2xl border border-border bg-white p-3 shadow-xl shadow-zinc-300/40">
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <Flask size={17} weight="fill" className="text-zinc-500" />
+            <div className="text-sm font-semibold text-zinc-900">Prototype tools</div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Статус точки
+              </div>
+              <div className="flex gap-1">
+                {([
+                  ["pending", "Ожидает проверки"],
+                  ["active", "Активна"],
+                ] as [LaunchStage, string][]).map(([s, label]) => {
+                  const isActive = s === "active" ? stage === "active" : stage !== "active";
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => forceStage(s)}
+                      className={cn(
+                        "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                        isActive
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {stage === "active" && (
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Неопубликованные изменения
+                </div>
+                <button
+                  type="button"
+                  onClick={() => injectDemoChanges()}
+                  className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                >
+                  <span className="whitespace-nowrap">Добавить изменения</span>
+                  <span className={cn("relative h-4 w-7 shrink-0 rounded-full transition", totalChanges > 0 ? "bg-blue-600" : "bg-zinc-300")}>
+                    <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", totalChanges > 0 ? "left-3.5" : "left-0.5")} />
+                  </span>
+                </button>
+              </div>
+            )}
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Подписка
+              </div>
+              <div className="flex gap-1">
+                {([
+                  [18, "Активна"],
+                  [5, "Истекает"],
+                  [0, "Истекла"],
+                ] as [number, string][]).map(([d, label]) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDaysLeftDemo(d)}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      daysLeft === d
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Тариф
+              </div>
+              <div className="flex gap-1">
+                {(["Start", "Lite", "Ultra"] as PlanId[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPlanId(p)}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      planId === p
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Превью
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmptyVitrine(!emptyVitrine)}
+                className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
+              >
+                <span className="whitespace-nowrap">Точка пустая (демо)</span>
+                <span className={cn("relative h-4 w-7 shrink-0 rounded-full transition", emptyVitrine ? "bg-blue-600" : "bg-zinc-300")}>
+                  <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", emptyVitrine ? "left-3.5" : "left-0.5")} />
+                </span>
+              </button>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Статус публикации
+              </div>
+              <div className="flex gap-1">
+                {([
+                  ["review", "На проверке"],
+                  ["published", "Опубликовано"],
+                  ["changes", "Изменения"],
+                ] as ["review" | "published" | "changes", string][]).map(([v, label]) => {
+                  const active =
+                    v === "review" ? stage === "pending" :
+                    v === "published" ? stage === "active" && totalChanges === 0 :
+                    stage === "active" && totalChanges > 0;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        if (v === "review") forceStage("pending");
+                        else if (v === "published") {
+                          forceStage("active");
+                          clearChanges();
+                        } else {
+                          forceStage("active");
+                          injectDemoChanges();
+                        }
+                      }}
+                      className={cn(
+                        "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                        active
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex h-11 w-11 items-center justify-center rounded-full border border-border bg-white text-zinc-600 shadow-lg shadow-zinc-300/40 transition hover:bg-zinc-50 hover:text-zinc-950",
+          open && "bg-zinc-100 text-zinc-950",
+        )}
+        aria-label="Prototype tools"
+        title="Prototype tools"
+      >
+        <Flask size={20} weight="fill" />
+      </button>
+    </div>
+  );
+}
 
 function AppShell() {
   const { markVisited, stage } = useVitrineLaunch();
@@ -373,7 +566,7 @@ function AppShell() {
         />
 
         {/* ── Body ─────────────────────────────────────────────────────────── */}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
 
           {/* Overlay nav drawer (mobile / narrow screens) */}
           <NavDrawer
@@ -386,10 +579,11 @@ function AppShell() {
 
           {/* Work area */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-2 pb-3 pr-3 pl-1">
-
-            {/* Toolbar: tabs left + language + preview toggle right */}
-            {(isHomePage || isCatalogPage || pageMeta.showLanguage || (previewVisible && previewCollapsed)) && (
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+            {/* Toolbar: tabs left + language right */}
+            {(isHomePage || isCatalogPage || pageMeta.showLanguage || previewVisible) && (
+              <div className={cn(
+                "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
+              )}>
                 <div className="shrink-0">
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && (
@@ -404,21 +598,20 @@ function AppShell() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {pageMeta.showLanguage && <PageLangSwitcher />}
-                  {previewVisible && previewCollapsed && (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewCollapsed(false)}
-                      className="flex h-8 items-center rounded-[10px] bg-[#ebeae9] px-2.5 text-[14px] font-medium text-[#57534d] transition hover:bg-[#e0dfdd]"
-                    >
-                      Предпросмотр
-                    </button>
-                  )}
                 </div>
               </div>
             )}
 
           {/* Editor card + preview card side by side */}
-          <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-hidden">
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {previewVisible && (
+              <div className="absolute right-4 top-4 z-20">
+                <PreviewToggle
+                  open={!previewCollapsed}
+                  onToggle={() => setPreviewCollapsed((collapsed) => !collapsed)}
+                />
+              </div>
+            )}
 
             {/* Editor card */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
@@ -432,11 +625,13 @@ function AppShell() {
               </div>
             </div>
 
-            {/* Preview card — always mounted, width animated */}
+            {/* Preview card */}
             {previewVisible && (
               <div className={cn(
-                "shrink-0 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm transition-[width] duration-300 ease-out",
-                previewCollapsed ? "w-0 border-transparent shadow-none" : "w-[390px]",
+                "shrink-0 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm transition-[width,margin,opacity] duration-300 ease-out",
+                previewCollapsed
+                  ? "ml-0 w-0 border-transparent opacity-0 shadow-none"
+                  : "ml-3 w-[390px] opacity-100",
               )}>
                 <PhonePreview
                   section={section}
@@ -454,7 +649,6 @@ function AppShell() {
                   onNavCatalogDish={navCatalogDish}
                   seoTitle={seoTitle}
                   seoDescription={seoDescription}
-                  onClose={() => setPreviewCollapsed(true)}
                 />
               </div>
             )}
@@ -467,6 +661,7 @@ function AppShell() {
 
       <DraftToast />
       <PublishToast />
+      <PrototypeToolsFloating />
     </div>
   );
 }

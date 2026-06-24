@@ -84,8 +84,6 @@ export type MockVitrine = {
 
 export const MOCK_VITRINES: MockVitrine[] = [
   { id: "abaya",    initials: "АБ", avatarColor: "bg-zinc-900",    name: "Kimchi Astana", address: "Абая, 10",      url: "kimchi-abaya.tsqr.me"    },
-  { id: "mega",     initials: "MS", avatarColor: "bg-violet-700",  name: "Kimchi Astana", address: "Mega Silk Way", url: "kimchi-mega.tsqr.me"     },
-  { id: "delivery", initials: "ДО", avatarColor: "bg-blue-700",    name: "Kimchi Astana", address: "Доставка",      url: "kimchi-delivery.tsqr.me" },
 ];
 
 /** ID of the vitrine currently being edited (mock). */

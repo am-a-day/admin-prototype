@@ -31,7 +31,7 @@ export function PageContent({
   className?: string;
 }) {
   return (
-    <div className={cn("mx-auto w-full max-w-5xl space-y-6 px-8 py-8 relative", className)}>
+    <div className={cn("mx-auto w-full max-w-5xl space-y-6 px-16 pb-8 pt-[55px] relative", className)}>
       {children}
     </div>
   );

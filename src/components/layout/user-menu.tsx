@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { HelpCircle, LogOut, Settings } from "lucide-react";
+import { useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { CaretRight, Check, Gear, Globe, Question, SignOut, User } from "@phosphor-icons/react";
 import { MOCK_USER, type SectionId } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { cn } from "@/lib/utils";
+
+function ProfileThumb({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#d4d4d4]",
+        className,
+      )}
+    >
+      <User size={18} weight="fill" className="text-white" />
+    </span>
+  );
+}
 
 /** User account menu — bottom of sidebar or in app header */
 export function UserMenu({
@@ -19,105 +32,60 @@ export function UserMenu({
 }) {
   const { uiLanguage, setUiLanguage } = useAppSettings();
   const [open, setOpen] = useState(false);
-  const [popupPos, setPopupPos] = useState({ top: 0, bottom: 0, left: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const [langOpen, setLangOpen] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (btnRef.current?.contains(target)) return;
-      const popup = document.getElementById("user-menu-popup");
-      if (popup?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      if (placement === "down") {
-        setPopupPos({
-          top: rect.bottom + 6,
-          bottom: 0,
-          left: Math.max(8, rect.right - 256),
-        });
-      } else {
-        // Open upward: anchor to the top of the trigger button
-        setPopupPos({
-          top: 0,
-          bottom: window.innerHeight - rect.top + 6,
-          left: compact ? rect.right + 8 : rect.left,
-        });
-      }
-    }
-    setOpen((v) => !v);
+  const close = () => {
+    setOpen(false);
+    setLangOpen(false);
   };
-
-  const close = () => setOpen(false);
   const nav = (section: SectionId, tab: string) => {
     onNavigate(section, tab);
     close();
   };
 
   return (
-    <>
-      {compact ? (
-        /* Rail mode: just the avatar circle */
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={handleToggle}
-          title={MOCK_USER.name}
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-300",
-            open && "ring-2 ring-blue-500/30 ring-offset-1",
-          )}
-        >
-          {MOCK_USER.initials}
-        </button>
-      ) : (
-        /* Full sidebar mode: avatar + name row */
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={handleToggle}
-          className={cn(
-            "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-zinc-100",
-            open && "bg-zinc-100",
-          )}
-        >
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[9px] font-black text-zinc-700">
-            {MOCK_USER.initials}
-          </div>
-          <span className="flex-1 truncate text-[13px] font-medium text-zinc-700">
-            {MOCK_USER.shortName}
-          </span>
-        </button>
-      )}
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        {compact ? (
+          /* Rail mode: just the avatar circle */
+          <button
+            type="button"
+            title={MOCK_USER.name}
+            className={cn(
+              "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full transition",
+              open && "ring-2 ring-blue-500/30 ring-offset-1",
+            )}
+          >
+            <ProfileThumb />
+          </button>
+        ) : (
+          /* Full sidebar mode: avatar + name row */
+          <button
+            type="button"
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-zinc-100",
+              open && "bg-zinc-100",
+            )}
+          >
+            <ProfileThumb />
+            <span className="flex-1 truncate text-[13px] font-medium text-zinc-700">
+              {MOCK_USER.shortName}
+            </span>
+          </button>
+        )}
+      </DropdownMenu.Trigger>
 
-      {open && createPortal(
-        <div
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
           id="user-menu-popup"
-          style={
-            placement === "down"
-              ? { top: popupPos.top, left: popupPos.left }
-              : { bottom: popupPos.bottom, left: popupPos.left }
-          }
-          className="fixed z-[200] w-64 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
+          side={placement === "down" ? "bottom" : "top"}
+          align={placement === "down" ? "end" : "start"}
+          sideOffset={6}
+          className="z-[200] w-64 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-zinc-300/40"
         >
           {/* User header */}
           <div className="flex items-center gap-3 px-2.5 py-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[11px] font-black text-zinc-700">
-              {MOCK_USER.initials}
-            </div>
+            <ProfileThumb />
             <div className="min-w-0">
               <div className="truncate text-sm font-bold leading-tight text-zinc-950">
                 {MOCK_USER.name}
@@ -131,45 +99,66 @@ export function UserMenu({
           <div className="my-1.5 border-t border-border" />
 
           {/* UI language */}
-          <div className="px-2.5 pb-1.5">
-            <div className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-zinc-400">
-              Язык интерфейса
-            </div>
-            <div className="flex gap-1">
-              {LANGUAGES.map((lang) => (
-                <button
-                  key={lang.code}
-                  type="button"
-                  onClick={() => setUiLanguage(lang.code as LanguageCode)}
-                  className={cn(
-                    "flex-1 rounded-lg border py-1 text-xs font-semibold transition",
-                    uiLanguage === lang.code
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-border bg-white text-zinc-500 hover:bg-zinc-50",
-                  )}
-                >
-                  {lang.short}
-                </button>
-              ))}
-            </div>
-          </div>
+          <DropdownMenu.Sub open={langOpen} onOpenChange={setLangOpen}>
+            <DropdownMenu.SubTrigger
+              onPointerEnter={() => setLangOpen(true)}
+              className="flex w-full cursor-default items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-zinc-700 outline-none transition hover:bg-zinc-100 hover:text-zinc-950 data-[state=open]:bg-zinc-100 data-[state=open]:text-zinc-950"
+            >
+              <Globe size={17} weight="fill" className="shrink-0 text-zinc-400" />
+              <span className="min-w-0 flex-1">Язык админки</span>
+              <span className="text-xs font-semibold text-zinc-400">
+                {LANGUAGES.find((lang) => lang.code === uiLanguage)?.short}
+              </span>
+              <CaretRight size={14} weight="fill" className="shrink-0 text-zinc-400" />
+            </DropdownMenu.SubTrigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.SubContent
+                sideOffset={6}
+                alignOffset={-4}
+                className="z-[210] w-44 rounded-xl border border-border bg-white p-1.5 shadow-xl shadow-zinc-300/40"
+              >
+                {LANGUAGES.map((lang) => (
+                  <DropdownMenu.Item
+                    key={lang.code}
+                    onClick={() => setUiLanguage(lang.code as LanguageCode)}
+                    className={cn(
+                      "flex h-8 cursor-default items-center gap-2 rounded-lg px-2 text-[13px] outline-none transition",
+                      uiLanguage === lang.code
+                        ? "bg-zinc-100 font-medium text-zinc-950"
+                        : "text-zinc-600 hover:bg-zinc-50 focus:bg-zinc-50 focus:text-zinc-950",
+                    )}
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-zinc-500">
+                      {uiLanguage === lang.code && <Check size={13} weight="fill" />}
+                    </span>
+                    <span className="min-w-0 flex-1">{lang.label}</span>
+                    <span className="text-xs text-zinc-400">{lang.short}</span>
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Sub>
 
           <div className="my-1.5 border-t border-border" />
 
           <button
             type="button"
+            onPointerEnter={() => setLangOpen(false)}
+            onFocus={() => setLangOpen(false)}
             onClick={() => nav("management", "account")}
             className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950"
           >
-            <Settings size={17} className="shrink-0 text-zinc-400" />
+            <Gear size={17} weight="fill" className="shrink-0 text-zinc-400" />
             <span className="flex-1">Настройки аккаунта</span>
           </button>
           <button
             type="button"
+            onPointerEnter={() => setLangOpen(false)}
+            onFocus={() => setLangOpen(false)}
             onClick={close}
             className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950"
           >
-            <HelpCircle size={17} className="shrink-0 text-zinc-400" />
+            <Question size={17} weight="fill" className="shrink-0 text-zinc-400" />
             <span className="flex-1">Помощь и поддержка</span>
           </button>
 
@@ -177,15 +166,16 @@ export function UserMenu({
 
           <button
             type="button"
+            onPointerEnter={() => setLangOpen(false)}
+            onFocus={() => setLangOpen(false)}
             onClick={close}
-            className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+            className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950"
           >
-            <LogOut size={17} className="shrink-0 text-red-500" />
+            <SignOut size={17} weight="fill" className="shrink-0 text-zinc-400" />
             <span className="flex-1">Выйти из аккаунта</span>
           </button>
-        </div>,
-        document.body,
-      )}
-    </>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }

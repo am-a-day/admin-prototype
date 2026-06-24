@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronDown } from "lucide-react";
-import { Globe } from "@phosphor-icons/react";
+import { type ReactNode } from "react";
+import { AlertTriangle } from "lucide-react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
-import { LANGUAGES, type LanguageCode } from "@/data/languages";
+import { LANGUAGES } from "@/data/languages";
 import { cn } from "@/lib/utils";
 
 // ── Plan warning strip ────────────────────────────────────────────────────────
@@ -51,84 +50,32 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
 // ── Content language switcher ─────────────────────────────────────────────────
 
 export function PageLangSwitcher() {
-  const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (btnRef.current?.contains(e.target as Node)) return;
-      if (document.getElementById("page-lang-popup")?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const toggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
-    }
-    setOpen((v) => !v);
-  };
+  const { contentLanguage, setContentLanguage } = useAppSettings();
 
   return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggle}
-        className={cn(
-          "flex items-center gap-1 rounded-md px-1 py-0.5 transition",
-          open ? "bg-zinc-100" : "hover:bg-zinc-100",
-        )}
-        title="Язык контента"
-      >
-        <Globe size={14} className="shrink-0 text-[#57534d]" />
-        <span className="text-[13px] text-black">Контент · {contentLanguageShort}</span>
-        <ChevronDown size={11} className={cn("shrink-0 text-[#79716b] transition", open && "rotate-180")} />
-      </button>
-
-      {open && (
-        <div
-          id="page-lang-popup"
-          style={{ top: pos.top, left: pos.left }}
-          className="fixed z-[200] w-44 rounded-xl border border-border bg-white p-2 shadow-xl shadow-zinc-200/60"
-        >
-          <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
-            Язык контента
-          </div>
-          <p className="mb-1.5 px-2 text-[10px] leading-4 text-zinc-400">
-            Версия меню и витрины для редактирования.
-          </p>
-          {LANGUAGES.map((lang) => (
+    <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#f5f5f4] px-1 text-[12px] text-[#57534d]">
+      <span className="px-1.5 font-medium text-[#57534d]">Языковая версия:</span>
+      <div className="flex items-center gap-0.5">
+        {LANGUAGES.map((lang) => {
+          const active = contentLanguage === lang.code;
+          return (
             <button
               key={lang.code}
               type="button"
-              onClick={() => { setContentLanguage(lang.code as LanguageCode); setOpen(false); }}
+              onClick={() => setContentLanguage(lang.code)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition",
-                contentLanguage === lang.code
-                  ? "bg-blue-50 font-semibold text-blue-700"
-                  : "text-zinc-600 hover:bg-zinc-50",
+                "flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
+                active
+                  ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+                  : "text-[#79716b] hover:bg-white/70 hover:text-[#292524]",
               )}
             >
-              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", contentLanguage === lang.code ? "bg-blue-600" : "bg-transparent")} />
-              {lang.label}
-              <span className="ml-auto text-xs text-zinc-400">{lang.short}</span>
+              {lang.short}
             </button>
-          ))}
-        </div>
-      )}
-    </>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

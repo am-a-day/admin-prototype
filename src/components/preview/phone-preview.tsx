@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Lock, X } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -60,7 +60,6 @@ type PhonePreviewProps = {
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
-  onClose?: () => void;
 };
 
 export function PhonePreview({
@@ -79,7 +78,6 @@ export function PhonePreview({
   onNavCatalogDish,
   seoTitle = "",
   seoDescription = "",
-  onClose,
 }: PhonePreviewProps) {
   const {
     serviceFeeRequireConsent,
@@ -275,8 +273,8 @@ export function PhonePreview({
       className="relative flex shrink-0 flex-col bg-white"
     >
         <div className="flex h-full flex-col overflow-hidden px-3 pt-4">
-          {/* Header: «Предпросмотр» + статус + закрыть */}
-          <div className="mb-3 flex w-full items-start justify-between px-1">
+          {/* Header: «Предпросмотр» + статус */}
+          <div className="mb-3 flex w-full items-start justify-between px-1 pr-12">
             <div className="flex flex-col gap-1">
               <span className="text-[16px] font-medium tracking-[-0.38px] text-black">
                 Предпросмотр
@@ -302,17 +300,6 @@ export function PhonePreview({
                 </span>
               )}
             </div>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                title="Скрыть предпросмотр"
-                aria-label="Скрыть предпросмотр"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
-              >
-                <X size={16} />
-              </button>
-            )}
           </div>
 
           {/* Flat preview viewport — заполняет всю высоту панели */}
