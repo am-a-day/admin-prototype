@@ -15,7 +15,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -552,12 +552,13 @@ export function HomeWorkspace({
   return (
     <PageScroll>
       <input ref={addFileRef} type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
-      <PageContent className="space-y-6">
-        <LaunchPageHint
-          checkId="home"
-          title="Настройте главный экран витрины"
-          description="Добавьте баннеры, ключевые разделы и продвигаемые позиции — это первое, что увидят гости."
-        />
+      <PageContent className="space-y-0">
+        <CompactContent className="space-y-6">
+          <LaunchPageHint
+            checkId="home"
+            title="Настройте главный экран витрины"
+            description="Добавьте баннеры, ключевые разделы и продвигаемые позиции — это первое, что увидят гости."
+          />
 
         {/* Баннеры */}
         {tab === "banners" && (
@@ -752,6 +753,7 @@ export function HomeWorkspace({
             />
           </>
         )}
+        </CompactContent>
       </PageContent>
     </PageScroll>
   );

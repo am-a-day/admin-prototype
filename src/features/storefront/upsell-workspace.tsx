@@ -185,16 +185,18 @@ export function UpsellWorkspace({
       {/* Workspace area */}
       <div className="flex min-h-0 flex-1">
         {/* Left panel — visually inside the page, not part of global nav */}
-        <aside className="w-[280px] shrink-0 overflow-y-auto border-r border-border bg-zinc-50/60 p-4">
-          <h2 className="mb-3 text-base font-bold text-zinc-900">Рекомендации</h2>
-          <div className="flex h-10 items-center rounded-xl border border-border bg-white px-3 text-sm text-zinc-400">
+        <aside className="w-[228px] shrink-0 overflow-y-auto border-r border-border bg-[#fbfbf9] px-2 pt-4">
+          <div className="mb-4 flex items-center px-2">
+            <h2 className="min-w-0 flex-1 text-[14px] font-normal leading-[1.4] text-[#292524]">Рекомендации</h2>
+          </div>
+          <div className="mx-1 flex h-8 items-center rounded-xl border border-transparent bg-[#f1f1ea] px-2 text-[13px] text-[#79716b]">
             <Search size={16} className="mr-2" />
             Поиск по позициям...
           </div>
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 space-y-4">
             {grouped.map((group) => (
               <div key={group.id}>
-                <div className="mb-1 flex items-center justify-between px-1 text-xs font-black uppercase tracking-wide text-zinc-400">
+                <div className="mb-1 flex items-center justify-between px-2 text-[11px] font-medium text-[#a8a29e]">
                   <span>{group.name}</span>
                   <span>
                     {group.items.reduce((s, i) => s + i.recommendations.length, 0) || ""}
@@ -209,18 +211,18 @@ export function UpsellWorkspace({
                         type="button"
                         onClick={() => setSelectedDishId(item.id)}
                         className={cn(
-                          "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm transition",
+                          "flex h-8 w-full items-center justify-between gap-2 rounded-xl border px-[6px] pr-2 text-left text-[13px] font-medium leading-[18px] transition",
                           active
-                            ? "bg-blue-50 font-bold text-blue-700"
-                            : "text-zinc-600 hover:bg-white hover:text-zinc-950",
+                            ? "rounded-lg border-[#e7e5e4] bg-white text-[#292524] shadow-[0_0_2px_rgba(0,0,0,0.09)]"
+                            : "border-transparent text-[#79716b] hover:bg-[#f1f1ea]",
                         )}
                       >
                         <span className="truncate">{item.name}</span>
                         {item.recommendations.length > 0 && (
                           <span
                             className={cn(
-                              "flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold",
-                              active ? "bg-blue-100 text-blue-700" : "bg-zinc-100 text-zinc-500",
+                              "flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium",
+                              active ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a8a29e]",
                             )}
                           >
                             {item.recommendations.length}

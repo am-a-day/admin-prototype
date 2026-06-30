@@ -32,19 +32,21 @@ export function Tooltip({
   children,
   disabled,
   delayDuration = 300,
+  contentClassName,
 }: {
-  label: string;
+  label: React.ReactNode;
   side?: "right" | "left" | "top" | "bottom";
   children: React.ReactNode;
   disabled?: boolean;
   /** 0 → показ без задержки (для rail-иконок). */
   delayDuration?: number;
+  contentClassName?: string;
 }) {
   if (disabled) return <>{children}</>;
   return (
     <TooltipRoot delayDuration={delayDuration}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>
+      <TooltipContent side={side} className={contentClassName}>
         {label}
       </TooltipContent>
     </TooltipRoot>

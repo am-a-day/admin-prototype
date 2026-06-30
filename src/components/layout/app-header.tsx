@@ -57,6 +57,10 @@ export function AppHeaderRight({
             <span className="shrink-0 text-sm  text-zinc-800">{pageTitle}</span>
           )}
         </div>
+      ) : sidebarCollapsed && pageTitle ? (
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="shrink-0 text-sm text-zinc-800">{pageTitle}</span>
+        </div>
       ) : null}
 
       {/* ── Center: organization ── */}

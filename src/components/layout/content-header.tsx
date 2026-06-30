@@ -54,7 +54,7 @@ export function PageLangSwitcher() {
 
   return (
     <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#f5f5f4] px-1 text-[12px] text-[#57534d]">
-      <span className="px-1.5 font-medium text-[#57534d]">Языковая версия:</span>
+      <span className="px-1.5 font-medium text-[#57534d]">Язык редактирования:</span>
       <div className="flex items-center gap-0.5">
         {LANGUAGES.map((lang) => {
           const active = contentLanguage === lang.code;

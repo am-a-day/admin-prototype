@@ -594,8 +594,9 @@ export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode 
         // Клик по пустой области rail разворачивает sidebar; e-resize-курсор подсказывает это.
         // Интерактивные элементы (пункты, поиск, тариф, флайаут) гасят всплытие.
         <div
-          className="flex min-h-0 flex-1 cursor-e-resize flex-col overflow-hidden"
+          className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", onToggleSidebar && "cursor-e-resize")}
           onClick={() => onToggleSidebar?.()}
+          title={onToggleSidebar ? undefined : "В каталоге используется компактная навигация"}
         >
           <RailSidebar
             section={section}

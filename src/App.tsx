@@ -15,7 +15,7 @@ import { PreviewDemoProvider, usePreviewDemo } from "@/contexts/preview-demo-con
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
-import { Flask } from "@phosphor-icons/react";
+import { BookOpen, Flask } from "@phosphor-icons/react";
 import {
   banners as seedBanners,
   DEFAULT_RECOMMENDATION_TEXTS,
@@ -34,14 +34,17 @@ import { AnalyticsPage, OrderHistoryPage, QRPage } from "@/features/standalone-p
 import { AMApp } from "@/features/am/am-app";
 import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
-import { AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
+import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
-import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab } from "@/features/storefront/catalog-workspace";
+import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab, type OverviewFilterId } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
+type SidebarPreference = "expanded" | "collapsed" | null;
+
+const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
 
 const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
@@ -68,7 +71,13 @@ const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> =
   promoted: {},
 };
 
-function PrototypeToolsFloating() {
+function PrototypeToolsFloating({
+  catalogPhase,
+  setCatalogPhase,
+}: {
+  catalogPhase: CatalogPhase;
+  setCatalogPhase: (phase: CatalogPhase) => void;
+}) {
   const [open, setOpen] = useState(false);
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
   const { stage, forceStage } = useVitrineLaunch();
@@ -200,6 +209,33 @@ function PrototypeToolsFloating() {
 
             <div>
               <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Каталог
+              </div>
+              <div className="flex gap-1">
+                {([
+                  ["empty", "Пустой"],
+                  ["has-sections", "Раздел"],
+                  ["has-items", "Позиции"],
+                ] as [CatalogPhase, string][]).map(([phase, label]) => (
+                  <button
+                    key={phase}
+                    type="button"
+                    onClick={() => setCatalogPhase(phase)}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      catalogPhase === phase
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
                 Статус публикации
               </div>
               <div className="flex gap-1">
@@ -259,6 +295,80 @@ function PrototypeToolsFloating() {
   );
 }
 
+function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
+  const [open, setOpen] = useState(false);
+  const notes = isCatalogPage
+    ? [
+        {
+          title: "Поведение сайдбара",
+          text: "В каталоге глобальный sidebar отображается в rail-режиме, чтобы освободить место для дерева, редактора и предпросмотра. Это не перезаписывает пользовательскую настройку sidebar на других страницах.",
+        },
+        {
+          title: "Левая панель",
+          text: "Левая панель показывается только когда есть локальная навигация или фильтрация: дерево разделов, фильтры и контекстные списки. Если данных нет, панель скрывается.",
+        },
+        {
+          title: "Пустые состояния",
+          text: "Если в каталоге нет разделов или в срезе “На стопе” нет позиций, показывается empty state в основной области.",
+        },
+        {
+          title: "Ширина контента",
+          text: "Контент не растягивается на всю доступную ширину. Empty states и простые формы ограничены по max-width.",
+        },
+        {
+          title: "Preview",
+          text: "Preview открыт по умолчанию там, где пользователь редактирует структуру или визуальное представление: в разделах и рекомендациях. В обзорных вкладках preview скрыт, чтобы освободить место для списка и фильтров.",
+        },
+        {
+          title: "Стоп-лист",
+          text: "Стоп-лист не является отдельной вкладкой. Это быстрый срез во вкладке “Все позиции”, потому что стоп — состояние позиции, а не отдельная сущность каталога.",
+        },
+      ]
+    : [];
+
+  return (
+    <div className="fixed bottom-5 right-[78px] z-[210] flex flex-col items-end gap-2">
+      {open && (
+        <div className="w-[360px] rounded-2xl border border-border bg-white p-4 shadow-xl shadow-zinc-300/40">
+          <div className="mb-3 flex items-center gap-2">
+            <BookOpen size={17} weight="fill" className="text-zinc-500" />
+            <div className="text-sm font-semibold text-zinc-900">
+              {isCatalogPage ? "Каталог" : "Решения"}
+            </div>
+          </div>
+          {isCatalogPage ? (
+            <div className="space-y-3">
+              {notes.map((note) => (
+                <div key={note.title}>
+                  <div className="text-[12px] font-semibold text-zinc-900">{note.title}</div>
+                  <p className="mt-1 text-[12px] leading-5 text-zinc-500">{note.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] leading-5 text-zinc-500">
+              Для этой страницы пока нет заметок.
+            </p>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          "inline-flex h-11 items-center gap-2 rounded-full border border-border bg-white px-4 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-300/40 transition hover:bg-zinc-50 hover:text-zinc-950",
+          open && "bg-zinc-100 text-zinc-950",
+        )}
+        aria-label="Решения"
+        title="Решения"
+      >
+        <BookOpen size={18} weight="fill" />
+        Решения
+      </button>
+    </div>
+  );
+}
+
 function AppShell() {
   const { markVisited, stage } = useVitrineLaunch();
   const [section, setSection] = useState<SectionId>("storefront");
@@ -276,6 +386,7 @@ function AppShell() {
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("has-items");
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
+  const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>("quick:all");
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -303,17 +414,28 @@ function AppShell() {
     };
   }, []);
 
-  // Sidebar visibility / collapse — unified, user-controllable
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1200);
+  // Sidebar visibility / collapse — catalog can force rail without changing the user's preference.
+  const [userSidebarPreference, setUserSidebarPreference] = useState<SidebarPreference>(() => {
+    const saved = window.localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+    return saved === "expanded" || saved === "collapsed" ? saved : null;
+  });
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
 
   const wide = viewportWidth >= 1024;        // inline full sidebar fits
   const showInlineSidebar = viewportWidth >= 768; // tablet+ shows at least a rail
+  const catalogForcesRail = section === "storefront" && storeTab === "catalog";
+  const sidebarCollapsed = catalogForcesRail || userSidebarPreference === "collapsed";
   const inlineSidebarMode: SidebarMode = wide && !sidebarCollapsed ? "full" : "rail";
 
   const toggleNav = () => {
-    if (wide) setSidebarCollapsed((c) => !c); // full ↔ rail inline
-    else setNavDrawerOpen((o) => !o);         // narrow → overlay drawer
+    if (wide && !catalogForcesRail) {
+      const nextPreference: Exclude<SidebarPreference, null> =
+        userSidebarPreference === "collapsed" ? "expanded" : "collapsed";
+      setUserSidebarPreference(nextPreference);
+      window.localStorage.setItem(SIDEBAR_PREFERENCE_KEY, nextPreference);
+    } else if (!wide) {
+      setNavDrawerOpen((o) => !o);         // narrow → overlay drawer
+    }
   };
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
@@ -448,6 +570,9 @@ function AppShell() {
         <CatalogWorkspace
           selectedDishId={selectedDishId}
           catalogPhase={catalogPhase}
+          catalogTab={catalogTab}
+          overviewFilterId={catalogOverviewFilterId}
+          onOverviewFilterChange={setCatalogOverviewFilterId}
           onAdvancePhase={(next) => {
             setCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");
@@ -464,7 +589,6 @@ function AppShell() {
           setPreviewScenario={setPreviewScenario}
           onConfigureOrderSettings={openOrderAcceptance}
           aboutTab={storeAboutTab}
-          setAboutTab={setStoreAboutTab}
           seoTitle={seoTitle}
           setSeoTitle={setSeoTitle}
           seoDescription={seoDescription}
@@ -493,6 +617,20 @@ function AppShell() {
     }
   }, [stage, section, storeTab]);
 
+  useEffect(() => {
+    if (section === "storefront" && storeTab === "catalog") {
+      setPreviewCollapsed(catalogTab !== "sections" && catalogTab !== "upsell");
+    }
+  }, [section, storeTab, catalogTab]);
+
+  // Публичное отображение использует локальные превью каналов — глобальную
+  // превью-панель плавно сворачиваем (как «На стопе» в каталоге), а не размонтируем.
+  useEffect(() => {
+    if (section === "storefront" && storeTab === "about") {
+      setPreviewCollapsed(storeAboutTab === "public-display");
+    }
+  }, [section, storeTab, storeAboutTab]);
+
   // AM — отдельная страница с собственным лейаутом (без rail / header / превью)
   if (section === "am") {
     return <AMApp onExit={() => setSection("storefront")} />;
@@ -510,6 +648,8 @@ function AppShell() {
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
+  const isAboutPage = section === "storefront" && storeTab === "about";
+  const isPublicDisplayPage = section === "storefront" && storeTab === "about" && storeAboutTab === "public-display";
 
   // When catalog is empty, override preview to show the empty-catalog phone screen
   const effectiveScenario: typeof previewScenario =
@@ -546,7 +686,7 @@ function AppShell() {
             activeTab={activeTab}
             onNavigate={guardedNavigate}
             mode={inlineSidebarMode}
-            onToggleSidebar={wide ? toggleNav : undefined}
+            onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
           />
         </div>
       )}
@@ -559,7 +699,7 @@ function AppShell() {
           onResetCatalog={() => setCatalogPhase("empty")}
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
-          onToggleSidebar={wide ? toggleNav : undefined}
+          onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
           sidebarCollapsed={inlineSidebarMode === "rail"}
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
@@ -580,7 +720,7 @@ function AppShell() {
           {/* Work area */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-2 pb-3 pr-3 pl-1">
             {/* Toolbar: tabs left + language right */}
-            {(isHomePage || isCatalogPage || pageMeta.showLanguage || previewVisible) && (
+            {(isHomePage || isCatalogPage || isAboutPage || pageMeta.showLanguage || previewVisible) && (
               <div className={cn(
                 "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
               )}>
@@ -593,6 +733,20 @@ function AppShell() {
                         setCatalogTab(t);
                         if (t === "upsell") markVisited("upsell");
                       }}
+                      onStopClick={() => {
+                        setCatalogTab("overview");
+                        setCatalogOverviewFilterId("status:stop");
+                      }}
+                      stopActive={catalogTab === "overview" && catalogOverviewFilterId === "status:stop"}
+                    />
+                  )}
+                  {isAboutPage && (
+                    <AboutTabs
+                      value={storeAboutTab}
+                      onChange={(t) => {
+                        setStoreAboutTab(t);
+                        setPreviewScenario(t === "info" ? "about" : null);
+                      }}
                     />
                   )}
                 </div>
@@ -604,7 +758,7 @@ function AppShell() {
 
           {/* Editor card + preview card side by side */}
           <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            {previewVisible && (
+            {previewVisible && !isPublicDisplayPage && (
               <div className="absolute right-4 top-4 z-20">
                 <PreviewToggle
                   open={!previewCollapsed}
@@ -616,8 +770,8 @@ function AppShell() {
             {/* Editor card */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
               <ContentHeader
-                title={isLaunchPage || isCatalogPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
               <div className="flex min-h-0 min-w-0 flex-1">
@@ -661,7 +815,8 @@ function AppShell() {
 
       <DraftToast />
       <PublishToast />
-      <PrototypeToolsFloating />
+      <DevNotesFloating isCatalogPage={isCatalogPage} />
+      <PrototypeToolsFloating catalogPhase={catalogPhase} setCatalogPhase={setCatalogPhase} />
     </div>
   );
 }
