@@ -197,7 +197,7 @@ export const dishes: Dish[] = [
     accent: "from-emerald-100 to-red-100",
     emoji: "🍕",
     recommendations: ["cola"],
-    stop: false,
+    stop: true,
   },
   {
     id: "quattro",
@@ -221,7 +221,7 @@ export const dishes: Dish[] = [
     accent: "from-red-100 to-zinc-100",
     emoji: "🥤",
     recommendations: [],
-    stop: false,
+    stop: true,
   },
   {
     id: "orange",
@@ -257,7 +257,7 @@ export const dishes: Dish[] = [
     accent: "from-stone-100 to-orange-50",
     emoji: "🍰",
     recommendations: [],
-    stop: false,
+    stop: true,
   },
 ];
 

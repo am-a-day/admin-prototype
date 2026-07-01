@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ForkKnife } from "@phosphor-icons/react";
-import { ChevronRight, GripVertical, Plus, Search } from "lucide-react";
+import { ChevronRight, GripVertical, MoreVertical, Plus, Search } from "lucide-react";
 import { Field, SectionCard } from "@/components/workspace/section-card";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { categories, dishes, getDish } from "@/data/mock-data";
-import type { Category } from "@/data/mock-data";
+import type { Category, Dish } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
@@ -13,8 +13,8 @@ export type CatalogPhase = "empty" | "has-sections" | "has-items";
 export type CatalogTab = "sections" | "overview" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "sections", label: "Разделы" },
-  { id: "overview", label: "Все позиции", count: dishes.length },
   { id: "upsell", label: "Рекомендации" },
+  { id: "overview", label: "Все позиции", count: dishes.length },
 ];
 
 const CREATED_SECTION: Category = {
@@ -26,60 +26,64 @@ const CREATED_SECTION: Category = {
 export function CatalogTabs({
   value,
   onChange,
-  onStopClick,
-  stopActive,
 }: {
   value: CatalogTab;
   onChange: (t: CatalogTab) => void;
-  onStopClick: () => void;
-  stopActive?: boolean;
+}) {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+      {CATALOG_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onChange(t.id)}
+          className={cn(
+            "rounded-lg px-2.5 py-1 text-[12px] transition",
+            value === t.id
+              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+              : "text-[#79716b] hover:text-zinc-700",
+          )}
+        >
+          <span>{t.label}</span>
+          {typeof t.count === "number" && (
+            <span className={cn(
+              "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
+              value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
+            )}>
+              {t.count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function StopListShortcut({
+  hidden,
+  onClick,
+}: {
+  hidden?: boolean;
+  onClick: () => void;
 }) {
   const stopCount = dishes.filter((dish) => dish.stop).length;
+  if (hidden) return null;
 
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-        {CATALOG_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onChange(t.id)}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-[12px] transition",
-              value === t.id
-                ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                : "text-[#79716b] hover:text-zinc-700",
-            )}
-          >
-            <span>{t.label}</span>
-            {typeof t.count === "number" && (
-              <span className={cn(
-                "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
-                value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
-              )}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center gap-2">
+      <div className="h-5 w-px bg-[#d6d3d1]" />
       <button
         type="button"
-        onClick={onStopClick}
+        onClick={onClick}
         className={cn(
-          "inline-flex items-center rounded-lg px-2.5 py-1 text-[12px] transition",
-          stopActive
-            ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-            : stopCount === 0
-              ? "text-[#a8a29e] hover:bg-[#f5f5f4]"
-              : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-zinc-700",
+          "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          stopCount === 0
+            ? "text-[#a8a29e] hover:bg-[#efefea]"
+            : "text-[#79716b] hover:bg-[#efefea] hover:text-[#292524]",
         )}
       >
-        <span>На стопе</span>
-        <span className={cn(
-          "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
-          stopActive ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
-        )}>
+        <span>Стоп-лист</span>
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] font-medium text-[#a6a09b]">
           {stopCount}
         </span>
       </button>
@@ -103,19 +107,157 @@ type PanelRow = {
   count?: number;
   icon?: string;
 };
+type OverviewFilterMeta = {
+  label: string;
+  emptyTitle: string;
+  emptyText: string;
+  countText: (count: number) => string;
+};
 export type OverviewFilterId =
   | "quick:all"
   | "quick:no-description"
   | "quick:no-photo"
   | "quick:no-weight"
   | "quick:no-kbju"
+  | "quick:no-translation"
+  | "quick:discount"
   | "quick:with-tags"
   | "quick:with-labels"
   | "quick:with-options"
   | "status:active"
   | "status:archived"
+  | "status:hidden"
   | "status:stop"
-  | "status:soon";
+  | "status:soon"
+  | "status:schedule";
+type OverviewSortId = "name" | "price" | "category" | "status";
+
+const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
+  "quick:all": {
+    label: "Все позиции",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")}`,
+    emptyTitle: "В меню пока нет позиций",
+    emptyText: "Добавленные позиции появятся здесь общим списком.",
+  },
+  "quick:no-description": {
+    label: "Без описания",
+    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} описание`,
+    emptyTitle: "Нет позиций без описания",
+    emptyText: "Все позиции уже с описаниями.",
+  },
+  "quick:no-photo": {
+    label: "Без фото",
+    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} фото`,
+    emptyTitle: "Нет позиций без фото",
+    emptyText: "Все позиции уже с фотографиями.",
+  },
+  "quick:no-weight": {
+    label: "Без граммовки",
+    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} граммовку`,
+    emptyTitle: "Нет позиций без граммовки",
+    emptyText: "У всех позиций указана граммовка или объём.",
+  },
+  "quick:no-kbju": {
+    label: "Без КБЖУ",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} без данных КБЖУ`,
+    emptyTitle: "Нет позиций без КБЖУ",
+    emptyText: "У всех позиций заполнены данные КБЖУ.",
+  },
+  "quick:no-translation": {
+    label: "Без перевода",
+    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} перевод`,
+    emptyTitle: "Нет позиций без перевода",
+    emptyText: "У всех позиций заполнены переводы.",
+  },
+  "quick:discount": {
+    label: "Со скидкой",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} со скидкой`,
+    emptyTitle: "Нет позиций со скидкой",
+    emptyText: "Позиции со скидкой появятся здесь.",
+  },
+  "quick:with-tags": {
+    label: "С тегами",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с тегами`,
+    emptyTitle: "Нет позиций с тегами",
+    emptyText: "Позиции с тегами появятся здесь.",
+  },
+  "quick:with-labels": {
+    label: "С лейблами",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с лейблами`,
+    emptyTitle: "Нет позиций с лейблами",
+    emptyText: "Позиции с лейблами появятся здесь.",
+  },
+  "quick:with-options": {
+    label: "С опциями",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с опциями`,
+    emptyTitle: "Нет позиций с опциями",
+    emptyText: "Позиции с опциями появятся здесь.",
+  },
+  "status:active": {
+    label: "Активные",
+    countText: (count) => `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} гостям`,
+    emptyTitle: "Нет активных позиций",
+    emptyText: "Активные позиции появятся здесь.",
+  },
+  "status:archived": {
+    label: "В архиве",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} в архиве`,
+    emptyTitle: "Нет позиций в архиве",
+    emptyText: "Архивные позиции появятся здесь.",
+  },
+  "status:hidden": {
+    label: "Скрытые",
+    countText: (count) => `${count} ${plural(count, "позиция скрыта", "позиции скрыты", "позиций скрыты")}`,
+    emptyTitle: "Нет скрытых позиций",
+    emptyText: "Скрытые позиции появятся здесь.",
+  },
+  "status:stop": {
+    label: "На стопе",
+    countText: (count) => `${count} ${plural(count, "позиция временно недоступна", "позиции временно недоступны", "позиций временно недоступны")}`,
+    emptyTitle: "Нет позиций на стопе",
+    emptyText: "Все позиции сейчас доступны для гостей.",
+  },
+  "status:soon": {
+    label: "Скоро будут",
+    countText: (count) => `${count} ${plural(count, "позиция скоро будет доступна", "позиции скоро будут доступны", "позиций скоро будут доступны")}`,
+    emptyTitle: "Нет позиций со статусом «Скоро будут»",
+    emptyText: "Позиции с будущей доступностью появятся здесь.",
+  },
+  "status:schedule": {
+    label: "По расписанию",
+    countText: (count) => `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} по расписанию`,
+    emptyTitle: "Нет позиций по расписанию",
+    emptyText: "Позиции с расписанием доступности появятся здесь.",
+  },
+};
+
+function plural(count: number, one: string, few: string, many: string) {
+  const abs = Math.abs(count);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+function parsePrice(price: string) {
+  return Number(price.replace(/[^\d]/g, "")) || 0;
+}
+
+function getDishAuditState(dish: Dish) {
+  return {
+    archived: dish.id === "quattro",
+    hidden: dish.id === "garlic",
+    soon: dish.id === "tiramisu",
+    scheduled: dish.id === "cola",
+    discount: dish.id === "margarita",
+    noTranslation: dish.id === "orange" || dish.id === "garlic",
+    noKbju: dish.id === "orange" || dish.id === "margarita" || dish.id === "tiramisu",
+    hasOptions: dish.category === "Пицца",
+    hasTags: dish.recommendations.length > 0,
+    hasLabels: dish.stop,
+  };
+}
 
 function buildCatalogTree(sections: Category[]): CatalogTreeSection[] {
   if (sections.length < 5) return sections;
@@ -179,7 +321,12 @@ function CatalogPanelRow({
       </span>
       <span className="min-w-0 flex-1 truncate">{row.label}</span>
       {typeof row.count === "number" && (
-        <span className="ml-2 shrink-0 text-[12px] font-medium text-[#a8a29e]">{row.count}</span>
+        <span className={cn(
+          "ml-2 shrink-0 text-[12px] font-medium",
+          selected ? "text-[#57534d]" : "text-[#a8a29e]",
+        )}>
+          {row.count}
+        </span>
       )}
     </button>
   );
@@ -410,25 +557,43 @@ function getOverviewDishes(filterId: OverviewFilterId) {
     return dishes.filter((dish) => !dish.weight.trim());
   }
   if (filterId === "quick:no-kbju") {
-    return dishes;
+    return dishes.filter((dish) => getDishAuditState(dish).noKbju);
+  }
+  if (filterId === "quick:no-translation") {
+    return dishes.filter((dish) => getDishAuditState(dish).noTranslation);
   }
   if (filterId === "quick:with-tags") {
-    return dishes.filter((dish) => dish.recommendations.length > 0);
+    return dishes.filter((dish) => getDishAuditState(dish).hasTags);
   }
   if (filterId === "quick:with-labels") {
-    return dishes.filter((dish) => dish.stop);
+    return dishes.filter((dish) => getDishAuditState(dish).hasLabels);
   }
   if (filterId === "quick:with-options") {
-    return dishes.filter((dish) => dish.category === "Пицца");
+    return dishes.filter((dish) => getDishAuditState(dish).hasOptions);
+  }
+  if (filterId === "quick:discount") {
+    return dishes.filter((dish) => getDishAuditState(dish).discount);
   }
   if (filterId === "status:active") {
-    return dishes.filter((dish) => !dish.stop);
+    return dishes.filter((dish) => {
+      const state = getDishAuditState(dish);
+      return !dish.stop && !state.archived && !state.hidden && !state.soon;
+    });
   }
-  if (filterId === "status:archived" || filterId === "status:soon") {
-    return [];
+  if (filterId === "status:archived") {
+    return dishes.filter((dish) => getDishAuditState(dish).archived);
+  }
+  if (filterId === "status:hidden") {
+    return dishes.filter((dish) => getDishAuditState(dish).hidden);
   }
   if (filterId === "status:stop") {
     return dishes.filter((dish) => dish.stop);
+  }
+  if (filterId === "status:soon") {
+    return dishes.filter((dish) => getDishAuditState(dish).soon);
+  }
+  if (filterId === "status:schedule") {
+    return dishes.filter((dish) => getDishAuditState(dish).scheduled);
   }
   return dishes;
 }
@@ -443,25 +608,39 @@ function CatalogFiltersPanel({
   const countByFilter = (id: OverviewFilterId) => getOverviewDishes(id).length;
   const groups: { title: string; rows: PanelRow[] }[] = [
     {
-      title: "Быстрые фильтры",
+      title: "Состояние",
       rows: [
         { id: "quick:all", label: "Все", count: countByFilter("quick:all"), icon: "≡" },
+        { id: "status:active", label: "Активные", count: countByFilter("status:active"), icon: "✓" },
+        { id: "status:archived", label: "В архиве", count: countByFilter("status:archived"), icon: "↧" },
+        { id: "status:hidden", label: "Скрытые", count: countByFilter("status:hidden"), icon: "◌" },
+      ],
+    },
+    {
+      title: "Доступность",
+      rows: [
+        { id: "status:stop", label: "На стопе", count: countByFilter("status:stop"), icon: "!" },
+        { id: "status:soon", label: "Скоро будут", count: countByFilter("status:soon"), icon: "⏱" },
+        { id: "status:schedule", label: "По расписанию", count: countByFilter("status:schedule"), icon: "⌁" },
+      ],
+    },
+    {
+      title: "Заполненность",
+      rows: [
         { id: "quick:no-description", label: "Без описания", count: countByFilter("quick:no-description"), icon: "…" },
         { id: "quick:no-photo", label: "Без фото", count: countByFilter("quick:no-photo"), icon: "□" },
         { id: "quick:no-weight", label: "Без граммовки", count: countByFilter("quick:no-weight"), icon: "г" },
         { id: "quick:no-kbju", label: "Без КБЖУ", count: countByFilter("quick:no-kbju"), icon: "к" },
-        { id: "quick:with-tags", label: "С тегами", count: countByFilter("quick:with-tags"), icon: "#" },
-        { id: "quick:with-labels", label: "С лейблами", count: countByFilter("quick:with-labels"), icon: "!" },
-        { id: "quick:with-options", label: "С опциями", count: countByFilter("quick:with-options"), icon: "+" },
+        { id: "quick:no-translation", label: "Без перевода", count: countByFilter("quick:no-translation"), icon: "文" },
       ],
     },
     {
-      title: "Статус",
+      title: "Возможности",
       rows: [
-        { id: "status:active", label: "Активные", count: countByFilter("status:active"), icon: "✓" },
-        { id: "status:archived", label: "В архиве", count: countByFilter("status:archived"), icon: "↧" },
-        { id: "status:stop", label: "На стопе", count: countByFilter("status:stop"), icon: "!" },
-        { id: "status:soon", label: "Скоро будут", count: countByFilter("status:soon"), icon: "⏱" },
+        { id: "quick:discount", label: "Со скидкой", count: countByFilter("quick:discount"), icon: "%" },
+        { id: "quick:with-tags", label: "С тегами", count: countByFilter("quick:with-tags"), icon: "#" },
+        { id: "quick:with-labels", label: "С лейблами", count: countByFilter("quick:with-labels"), icon: "!" },
+        { id: "quick:with-options", label: "С опциями", count: countByFilter("quick:with-options"), icon: "+" },
       ],
     },
   ];
@@ -611,6 +790,184 @@ function PopulatedWorkspace({
   );
 }
 
+function getDishAuditChips(dish: Dish, filterId: OverviewFilterId) {
+  const state = getDishAuditState(dish);
+  const chips: string[] = [];
+  if (state.archived) chips.push("В архиве");
+  if (state.hidden) chips.push("Скрыта");
+  if (dish.stop) chips.push("На стопе");
+  if (state.soon) chips.push("Скоро будет");
+  if (state.scheduled) chips.push("По расписанию");
+  if (!dish.emoji) chips.push("Без фото");
+  if (!dish.description.trim()) chips.push("Без описания");
+  if (!dish.weight.trim()) chips.push("Без граммовки");
+  if (state.noKbju || filterId === "quick:no-kbju") chips.push("Без КБЖУ");
+  if (state.noTranslation) chips.push("Без перевода");
+  if (!state.hasTags) chips.push("Без тегов");
+  if (state.discount) chips.push("Со скидкой");
+  if (filterId === "quick:with-options" && state.hasOptions) chips.push("С опциями");
+  return chips;
+}
+
+function DishPrice({ dish }: { dish: Dish }) {
+  const state = getDishAuditState(dish);
+  const oldPrice = state.discount ? `${Math.round(parsePrice(dish.price) * 1.18 / 100) * 100} ₸` : null;
+
+  return (
+    <span className="min-w-[76px] shrink-0 text-right">
+      <span className="block text-[14px] font-medium leading-5 text-[#292524]">{dish.price}</span>
+      {oldPrice && (
+        <span className="block text-[12px] leading-4 text-[#a8a29e] line-through">{oldPrice}</span>
+      )}
+    </span>
+  );
+}
+
+function AuditDishRow({
+  dish,
+  filterId,
+  showSectionMeta,
+}: {
+  dish: Dish;
+  filterId: OverviewFilterId;
+  showSectionMeta?: boolean;
+}) {
+  const chips = getDishAuditChips(dish, filterId);
+  const visibleChips = chips.slice(0, 3);
+  const hiddenChipCount = Math.max(0, chips.length - visibleChips.length);
+  const state = getDishAuditState(dish);
+  const metaItems = [
+    showSectionMeta ? dish.category : null,
+    filterId === "quick:with-options" && state.hasOptions ? "2 модиф." : null,
+  ].filter(Boolean);
+
+  return (
+    <button
+      type="button"
+      className="group flex w-full items-center gap-3 rounded-[12px] border border-[#e7e5e4] bg-white px-3 py-2.5 text-left transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f4] text-[20px]">
+        {dish.emoji || "□"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-start justify-between gap-3">
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-medium text-[#292524]">{dish.name}</span>
+            {metaItems.length > 0 && (
+              <span className="mt-0.5 block truncate text-[13px] text-[#79716b]">
+                {metaItems.join(" · ")}
+              </span>
+            )}
+          </span>
+          <span className="flex shrink-0 items-center gap-3">
+            {dish.stop && (
+              <span className="hidden rounded-lg px-2 py-1 text-[12px] font-medium text-[#79716b] transition hover:bg-[#efefea] hover:text-[#292524] group-hover:inline-flex">
+                Вернуть со стопа
+              </span>
+            )}
+            <DishPrice dish={dish} />
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a8a29e] transition hover:bg-[#efefea] hover:text-[#57534d]">
+              <MoreVertical size={16} />
+            </span>
+          </span>
+        </span>
+        {visibleChips.length > 0 && (
+          <span className="mt-2 flex flex-wrap gap-1.5">
+            {visibleChips.map((chip) => (
+              <span
+                key={chip}
+                className={cn(
+                  "rounded-full bg-[#f5f5f4] px-2 py-0.5 text-[11px] font-medium text-[#79716b]",
+                  chip === "Со скидкой" && "bg-[#efefea] text-[#57534d]",
+                  ["На стопе", "Скоро будет", "По расписанию", "В архиве", "Скрыта"].includes(chip) &&
+                    "bg-[#efefea] text-[#57534d]",
+                )}
+              >
+                {chip}
+              </span>
+            ))}
+            {hiddenChipCount > 0 && (
+              <span className="rounded-full bg-[#f5f5f4] px-2 py-0.5 text-[11px] font-medium text-[#a8a29e]">
+                +{hiddenChipCount}
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function OverviewStatusBar({
+  filterId,
+  count,
+  query,
+}: {
+  filterId: OverviewFilterId;
+  count: number;
+  query: string;
+}) {
+  const meta = OVERVIEW_FILTER_META[filterId];
+  const showChip = filterId !== "quick:all";
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[12px] bg-[#fafaf9] px-4 py-3">
+      <div className="min-w-0">
+        <div className="text-[14px] font-medium leading-5 text-[#292524]">{meta.label}</div>
+        <div className="mt-0.5 text-[13px] leading-5 text-[#79716b]">
+          {meta.countText(count)}
+          {query.trim() && <span> · с учётом поиска</span>}
+        </div>
+      </div>
+      {showChip && (
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[12px] font-medium text-[#79716b] ring-1 ring-[#e7e5e4]">
+          {meta.label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionNavigation({
+  groups,
+  activeId,
+  onSelect,
+}: {
+  groups: Array<Category & { items: Dish[] }>;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  if (groups.length <= 1) return null;
+
+  return (
+    <aside className="sticky top-0 hidden w-[168px] shrink-0 pt-1 lg:block">
+      <div className="relative border-l border-[#e7e5e4] pl-3">
+        <div className="mb-2 text-[11px] font-medium leading-[18px] text-[#a8a29e]">По разделам</div>
+        <div className="space-y-1">
+          {groups.map((group) => {
+            const active = activeId === group.id;
+            return (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => onSelect(group.id)}
+                className={cn(
+                  "relative flex h-8 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition",
+                  active ? "text-[#292524]" : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]",
+                )}
+              >
+                {active && <span className="absolute -left-[13px] h-5 w-[2px] rounded-full bg-[#292524]" />}
+                <span className="truncate">{group.name}</span>
+                <span className="shrink-0 text-[12px] text-[#a8a29e]">{group.items.length}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function OverviewWorkspace({
   filterId,
   onFilterChange,
@@ -619,14 +976,26 @@ function OverviewWorkspace({
   onFilterChange: (id: OverviewFilterId) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [sortId, setSortId] = useState<OverviewSortId>("name");
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const filtered = getOverviewDishes(filterId);
-  const visible = filtered.filter((dish) => {
+  const searched = filtered.filter((dish) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return true;
     return [dish.name, dish.category, dish.description].some((value) =>
       value.toLowerCase().includes(normalized),
     );
+  });
+  const visible = [...searched].sort((left, right) => {
+    if (sortId === "price") return parsePrice(left.price) - parsePrice(right.price);
+    if (sortId === "category") return left.category.localeCompare(right.category, "ru");
+    if (sortId === "status") {
+      const leftStatus = getDishAuditState(left).archived ? 3 : left.stop ? 0 : getDishAuditState(left).soon ? 1 : 2;
+      const rightStatus = getDishAuditState(right).archived ? 3 : right.stop ? 0 : getDishAuditState(right).soon ? 1 : 2;
+      return leftStatus - rightStatus || left.name.localeCompare(right.name, "ru");
+    }
+    return left.name.localeCompare(right.name, "ru");
   });
   const grouped = categories
     .map((category) => ({
@@ -634,19 +1003,26 @@ function OverviewWorkspace({
       items: visible.filter((dish) => dish.category === category.name),
     }))
     .filter((group) => group.items.length > 0);
+  const statusMeta = OVERVIEW_FILTER_META[filterId];
+  const showSectionMeta = query.trim().length > 0 || sortId !== "category";
+
+  useEffect(() => {
+    if (grouped.length === 0) {
+      setActiveSectionId(null);
+      return;
+    }
+    setActiveSectionId((current) => current && grouped.some((group) => group.id === current) ? current : grouped[0].id);
+  }, [grouped]);
 
   const resetFilter = () => {
     setQuery("");
     onFilterChange("quick:all");
   };
-  const emptyTitle = filterId === "status:stop" && filtered.length === 0
-    ? "Нет позиций на стопе"
-    : "Нет позиций по фильтру";
-  const emptyText = filterId === "status:stop" && filtered.length === 0
-    ? "Здесь будут позиции, которые временно недоступны для заказа. Добавить позицию на стоп можно из карточки позиции или из списка всех позиций."
-    : "Попробуйте выбрать другой фильтр или перейти ко всем позициям.";
+  const emptyTitle = statusMeta.emptyTitle;
+  const emptyText = statusMeta.emptyText;
 
   const scrollToSection = (id: string) => {
+    setActiveSectionId(id);
     sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -655,16 +1031,38 @@ function OverviewWorkspace({
       <div className="flex min-h-0 flex-1">
         <CatalogFiltersPanel selectedId={filterId} onSelect={onFilterChange} />
         <div className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div className="mx-auto flex max-w-5xl items-start gap-6">
+          <div className="mx-auto flex w-full max-w-6xl items-start gap-6">
             <div className="min-w-0 flex-1 space-y-5">
-              <div className="flex h-9 items-center rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#79716b]">
-                <Search size={16} className="mr-2 shrink-0 text-[#a8a29e]" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Найти позицию"
-                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#a8a29e]"
-                />
+              <OverviewStatusBar filterId={filterId} count={visible.length} query={query} />
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 min-w-0 flex-1 items-center rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#79716b]">
+                  <Search size={16} className="mr-2 shrink-0 text-[#a8a29e]" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Найти позицию"
+                    className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#a8a29e]"
+                  />
+                </div>
+                <label className="sr-only" htmlFor="catalog-overview-sort">Сортировка</label>
+                <select
+                  id="catalog-overview-sort"
+                  value={sortId}
+                  onChange={(event) => setSortId(event.target.value as OverviewSortId)}
+                  className="h-9 rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] outline-none transition hover:bg-[#fafaf9] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
+                >
+                  <option value="name">По названию</option>
+                  <option value="price">По цене</option>
+                  <option value="category">По разделу</option>
+                  <option value="status">По статусу</option>
+                </select>
+                <button
+                  type="button"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[12px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+                >
+                  <Plus size={15} />
+                  Добавить позицию
+                </button>
               </div>
 
               {visible.length === 0 ? (
@@ -698,31 +1096,17 @@ function OverviewWorkspace({
                       className="scroll-mt-6 space-y-2"
                     >
                       <div className="flex items-center justify-between">
-                        <h2 className="text-[18px] font-semibold text-[#292524]">{group.name}</h2>
+                        <h2 className="text-[16px] font-semibold text-[#292524]">{group.name}</h2>
                         <span className="text-[13px] font-medium text-[#a8a29e]">{group.items.length}</span>
                       </div>
                       <div className="space-y-2">
                         {group.items.map((dish) => (
-                          <button
+                          <AuditDishRow
                             key={dish.id}
-                            type="button"
-                            className="flex w-full items-center gap-3 rounded-[12px] border border-[#e7e5e4] bg-white px-4 py-3 text-left transition hover:bg-[#fafaf9]"
-                          >
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f4] text-[20px]">
-                              {dish.emoji}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[14px] font-medium text-[#292524]">{dish.name}</span>
-                              <span className="mt-0.5 block truncate text-[13px] text-[#79716b]">
-                                {dish.price} · {dish.weight}
-                              </span>
-                            </span>
-                            {dish.stop && (
-                              <span className="shrink-0 rounded-full bg-[#f5f5f4] px-2 py-1 text-[12px] font-medium text-[#79716b]">
-                                На стопе
-                              </span>
-                            )}
-                          </button>
+                            dish={dish}
+                            filterId={filterId}
+                            showSectionMeta={showSectionMeta}
+                          />
                         ))}
                       </div>
                     </section>
@@ -731,26 +1115,7 @@ function OverviewWorkspace({
               )}
             </div>
 
-            {grouped.length > 0 && (
-              <aside className="sticky top-0 hidden w-[168px] shrink-0 rounded-[12px] border border-[#e7e5e4] bg-[#fafaf9] p-2 lg:block">
-                <div className="mb-1 px-2 text-[11px] font-medium leading-[18px] text-[#a8a29e]">
-                  По разделам
-                </div>
-                <div className="space-y-1">
-                  {grouped.map((group) => (
-                    <button
-                      key={group.id}
-                      type="button"
-                      onClick={() => scrollToSection(group.id)}
-                      className="flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
-                    >
-                      <span className="truncate">{group.name}</span>
-                      <span className="ml-2 shrink-0 text-[12px] text-[#a8a29e]">{group.items.length}</span>
-                    </button>
-                  ))}
-                </div>
-              </aside>
-            )}
+            <SectionNavigation groups={grouped} activeId={activeSectionId} onSelect={scrollToSection} />
           </div>
         </div>
       </div>

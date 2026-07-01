@@ -36,7 +36,7 @@ import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
 import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
-import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab, type OverviewFilterId } from "@/features/storefront/catalog-workspace";
+import { CatalogWorkspace, CatalogTabs, StopListShortcut, type CatalogPhase, type CatalogTab, type OverviewFilterId } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
@@ -727,18 +727,22 @@ function AppShell() {
                 <div className="shrink-0">
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && (
-                    <CatalogTabs
-                      value={catalogTab}
-                      onChange={(t) => {
-                        setCatalogTab(t);
-                        if (t === "upsell") markVisited("upsell");
-                      }}
-                      onStopClick={() => {
-                        setCatalogTab("overview");
-                        setCatalogOverviewFilterId("status:stop");
-                      }}
-                      stopActive={catalogTab === "overview" && catalogOverviewFilterId === "status:stop"}
-                    />
+                    <div className="flex items-center gap-2">
+                      <CatalogTabs
+                        value={catalogTab}
+                        onChange={(t) => {
+                          setCatalogTab(t);
+                          if (t === "upsell") markVisited("upsell");
+                        }}
+                      />
+                      <StopListShortcut
+                        hidden={catalogTab === "overview" && catalogOverviewFilterId === "status:stop"}
+                        onClick={() => {
+                          setCatalogTab("overview");
+                          setCatalogOverviewFilterId("status:stop");
+                        }}
+                      />
+                    </div>
                   )}
                   {isAboutPage && (
                     <AboutTabs

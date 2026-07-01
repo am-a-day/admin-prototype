@@ -24,17 +24,17 @@ type AboutWorkspaceProps = {
 
 const TAB_LABELS: Record<AboutTab, string> = {
   "info": "Основное",
-  "guest-rules": "Правила для гостей",
-  "public-display": "Публичное отображение",
-  "rec-titles": "Тексты",
+  "guest-rules": "Предупреждения",
+  "public-display": "Мой ресторан в сети",
+  "rec-titles": "Заголовки и кнопки",
 };
 
 // Один источник для заголовка/подзаголовка рабочей области по активной вкладке.
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
   "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас." },
   "guest-rules": { title: "Предупреждения", subtitle: "Настройте подтверждения, которые гости увидят перед открытием меню." },
-  "public-display": { title: "Публичное отображение", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
-  "rec-titles": { title: "Тексты", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
+  "public-display": { title: "Мой ресторан в сети", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
+  "rec-titles": { title: "Заголовки и кнопки", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
 };
 
 const ABOUT_TABS: { id: AboutTab; label: string }[] = [
@@ -148,10 +148,8 @@ const TEXTS_FIELDS: Record<TextsTab, { key: string; label: string; default: stri
     { key: "cartBtn", label: "Надпись на кнопке заказа", default: "Сделать заказ" },
   ],
   order: [
-    { key: "waiterBtn", label: "Надпись кнопки вызова официанта", default: "Позвать официанта" },
     { key: "pickupBtn", label: "Надпись кнопки самовывоза", default: "Самовывоз" },
     { key: "deliveryBtn", label: "Надпись кнопки доставки", default: "Доставка" },
-    { key: "showWaiterBtn", label: "Надпись кнопки «Показать официанту»", default: "Показать официанту" },
   ],
 };
 
@@ -199,12 +197,14 @@ function PublicTextField({
   value,
   onChange,
   tooltip,
+  placeholder,
   multiline = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   tooltip: string;
+  placeholder: string;
   multiline?: boolean;
 }) {
   return (
@@ -214,12 +214,14 @@ function PublicTextField({
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
           className="min-h-[77px] w-full resize-none rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-2 text-[14px] leading-5 text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
         />
       ) : (
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
           className="h-9 w-full rounded-[10px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
         />
       )}
@@ -355,12 +357,14 @@ function PublicDisplayWorkspace({
           value={title}
           onChange={updateTitle}
           tooltip={PUBLIC_FIELD_TOOLTIPS.title}
+          placeholder="Например: Kimchi Astana — корейская кухня"
         />
         <PublicTextField
           label="Описание"
           value={description}
           onChange={updateDescription}
           tooltip={PUBLIC_FIELD_TOOLTIPS.description}
+          placeholder="Кратко опишите кухню, формат и главное преимущество заведения"
           multiline
         />
       </div>
@@ -392,15 +396,19 @@ function PublicDisplayWorkspace({
                 <DottedLabelWithTooltip label="Ключевые слова" tooltip={PUBLIC_FIELD_TOOLTIPS.keywords} />
                 <div className="flex h-10 items-center rounded-[10px] border border-[#e7e5e4] bg-white px-2.5">
                   <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-                    {keywords.map((keyword) => (
-                      <span
-                        key={keyword}
-                        className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-md bg-[#f5f5f4] px-2 text-[13px] text-[#292524]"
-                      >
-                        {keyword}
-                        <X size={12} className="text-[#79716b]" />
-                      </span>
-                    ))}
+                    {keywords.length > 0 ? (
+                      keywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-md bg-[#f5f5f4] px-2 text-[13px] text-[#292524]"
+                        >
+                          {keyword}
+                          <X size={12} className="text-[#79716b]" />
+                        </span>
+                      ))
+                    ) : (
+                      <span className="truncate text-[14px] text-[#a8a29e]">Добавьте блюда, услуги или особенности</span>
+                    )}
                   </div>
                   <ChevronDown size={14} className="ml-2 shrink-0 text-[#79716b]" />
                 </div>
