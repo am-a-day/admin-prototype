@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Fire, ForkKnife, SealCheck, Tag } from "@phosphor-icons/react";
-import { ChevronDown, ChevronRight, GripVertical, MoreVertical, Plus, Search } from "lucide-react";
+import {
+  CaretDown,
+  Clock,
+  DotsThreeVertical,
+  Fire,
+  ForkKnife,
+  List,
+  Lock,
+  MegaphoneSimple,
+  Tag,
+} from "@phosphor-icons/react";
+import { ChevronRight, GripVertical, ImageOff, Play, Plus, Search } from "lucide-react";
 import { Field, SectionCard } from "@/components/workspace/section-card";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { categories, dishes, getDish } from "@/data/mock-data";
@@ -107,6 +117,7 @@ type PanelRow = {
   label: string;
   count?: number;
   icon?: string;
+  accent?: boolean;
 };
 type AuditChip = {
   label: string;
@@ -130,16 +141,18 @@ export type OverviewFilterId =
   | "quick:no-kbju"
   | "quick:no-translation"
   | "quick:discount"
+  | "quick:with-video"
   | "quick:with-tags"
   | "quick:with-labels"
   | "quick:with-options"
+  | "quick:with-recommendations"
+  | "quick:no-recommendations"
   | "status:active"
   | "status:archived"
   | "status:hidden"
   | "status:stop"
   | "status:soon"
   | "status:schedule";
-type OverviewSortId = "name" | "price" | "category" | "status";
 
 const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
   "quick:all": {
@@ -191,16 +204,34 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     emptyText: "Позиции с тегами появятся здесь.",
   },
   "quick:with-labels": {
-    label: "С лейблами",
-    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с лейблами`,
-    emptyTitle: "Нет позиций с лейблами",
-    emptyText: "Позиции с лейблами появятся здесь.",
+    label: "Со стикерами",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} со стикерами`,
+    emptyTitle: "Нет позиций со стикерами",
+    emptyText: "Позиции со стикерами появятся здесь.",
   },
   "quick:with-options": {
     label: "С опциями",
     countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с опциями`,
     emptyTitle: "Нет позиций с опциями",
     emptyText: "Позиции с опциями появятся здесь.",
+  },
+  "quick:with-video": {
+    label: "С видео",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с видео`,
+    emptyTitle: "Нет позиций с видео",
+    emptyText: "Позиции с видео появятся здесь.",
+  },
+  "quick:with-recommendations": {
+    label: "С рекомендациями",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} с рекомендациями`,
+    emptyTitle: "Нет позиций с рекомендациями",
+    emptyText: "Позиции с рекомендациями появятся здесь.",
+  },
+  "quick:no-recommendations": {
+    label: "Без рекомендаций",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} без рекомендаций`,
+    emptyTitle: "Нет позиций без рекомендаций",
+    emptyText: "У всех позиций настроены рекомендации.",
   },
   "status:active": {
     label: "Активные",
@@ -283,6 +314,12 @@ function getDishAuditState(dish: Dish) {
     noWeight: dish.id === "garlic" || !dish.weight.trim(),
     noTranslation: dish.id === "orange" || dish.id === "garlic",
     noKbju: dish.id === "orange" || dish.id === "margarita" || dish.id === "tiramisu",
+    kbjuPartial: dish.id === "cola",
+    hasVideo: dish.id === "pepperoni" || dish.id === "margarita",
+    displayMode: (dish.id === "tiramisu" ? "no-price" : dish.id === "garlic" ? "no-button" : "full") as
+      | "full"
+      | "no-button"
+      | "no-price",
     hasOptions: dish.category === "Пицца",
     hasTags: (guestPropertiesByDish[dish.id] ?? []).some((property) => property.icon === "tag"),
     hasLabels: (guestPropertiesByDish[dish.id] ?? []).some((property) => property.icon === "label"),
@@ -356,7 +393,7 @@ function CatalogPanelRow({
       {typeof row.count === "number" && (
         <span className={cn(
           "ml-2 shrink-0 text-[12px] font-medium",
-          selected ? "text-[#57534d]" : "text-[#a8a29e]",
+          selected || (row.accent && (row.count ?? 0) > 0) ? "text-[#57534d]" : "text-[#a8a29e]",
         )}>
           {row.count}
         </span>
@@ -604,13 +641,22 @@ function getOverviewDishes(filterId: OverviewFilterId) {
   if (filterId === "quick:with-options") {
     return dishes.filter((dish) => getDishAuditState(dish).hasOptions);
   }
+  if (filterId === "quick:with-video") {
+    return dishes.filter((dish) => getDishAuditState(dish).hasVideo);
+  }
+  if (filterId === "quick:with-recommendations") {
+    return dishes.filter((dish) => dish.recommendations.length > 0);
+  }
+  if (filterId === "quick:no-recommendations") {
+    return dishes.filter((dish) => dish.recommendations.length === 0);
+  }
   if (filterId === "quick:discount") {
     return dishes.filter((dish) => getDishAuditState(dish).discount);
   }
   if (filterId === "status:active") {
     return dishes.filter((dish) => {
       const state = getDishAuditState(dish);
-      return !dish.stop && !state.archived && !state.hidden && !state.soon;
+      return !dish.stop && !state.archived && !state.hidden && !state.soon && !state.scheduled;
     });
   }
   if (filterId === "status:archived") {
@@ -634,19 +680,24 @@ function getOverviewDishes(filterId: OverviewFilterId) {
 function CatalogFiltersPanel({
   selectedId,
   onSelect,
+  sectionScopeId,
+  onSectionScopeChange,
 }: {
   selectedId: OverviewFilterId;
   onSelect: (id: OverviewFilterId) => void;
+  sectionScopeId: string | null;
+  onSectionScopeChange: (id: string | null) => void;
 }) {
-  const countByFilter = (id: OverviewFilterId) => getOverviewDishes(id).length;
+  const scopeCategory = categories.find((category) => category.id === sectionScopeId) ?? null;
+  const countByFilter = (id: OverviewFilterId) =>
+    getOverviewDishes(id).filter((dish) => !scopeCategory || dish.category === scopeCategory.name).length;
   const groups: { title: string; rows: PanelRow[] }[] = [
     {
-      title: "Состояние",
+      title: "Позиции",
       rows: [
         { id: "quick:all", label: "Все", count: countByFilter("quick:all") },
         { id: "status:active", label: "Активные", count: countByFilter("status:active") },
         { id: "status:archived", label: "В архиве", count: countByFilter("status:archived") },
-        { id: "status:hidden", label: "Скрытые", count: countByFilter("status:hidden") },
       ],
     },
     {
@@ -670,36 +721,107 @@ function CatalogFiltersPanel({
     {
       title: "Возможности",
       rows: [
+        { id: "quick:no-recommendations", label: "Без рекомендаций", count: countByFilter("quick:no-recommendations") },
+        { id: "quick:with-recommendations", label: "С рекомендациями", count: countByFilter("quick:with-recommendations") },
         { id: "quick:discount", label: "Со скидкой", count: countByFilter("quick:discount") },
+        { id: "quick:with-labels", label: "Со стикерами", count: countByFilter("quick:with-labels") },
         { id: "quick:with-tags", label: "С тегами", count: countByFilter("quick:with-tags") },
-        { id: "quick:with-labels", label: "С лейблами", count: countByFilter("quick:with-labels") },
         { id: "quick:with-options", label: "С опциями", count: countByFilter("quick:with-options") },
       ],
     },
   ];
 
   return (
-    <CatalogSidePanel title="Все позиции">
-      <div className="space-y-4">
-        {groups.map((group) => (
-          <div key={group.title}>
-            <div className="mb-1 px-2 text-[11px] font-medium leading-[18px] text-[#a8a29e]">
-              {group.title}
-            </div>
-            <div className="space-y-1">
-              {group.rows.map((row) => (
-                <CatalogPanelRow
-                  key={row.id}
-                  row={row}
-                  selected={selectedId === row.id}
-                  onClick={() => onSelect(row.id as OverviewFilterId)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
+    <aside className="flex w-[228px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-[#fbfbf9] px-2 pt-4">
+      <div className="pl-[5px] pr-2">
+        <h2 className="text-[14px] leading-[1.4] text-[#292524]">Фильтры</h2>
       </div>
-    </CatalogSidePanel>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] p-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] bg-white text-[11px]">
+              {scopeCategory ? scopeCategory.emoji : <List size={12} className="text-[#57534d]" />}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#292524]">
+              {scopeCategory ? scopeCategory.name : "Все разделы"}
+            </span>
+            <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb]">
+              <CaretDown size={12} className="text-[#79716b]" />
+            </span>
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="start">
+          <DropdownActionItem onSelect={() => onSectionScopeChange(null)}>Все разделы</DropdownActionItem>
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          {categories.map((category) => {
+            const count = getOverviewDishes(selectedId).filter((dish) => dish.category === category.name).length;
+            return (
+              <DropdownActionItem key={category.id} onSelect={() => onSectionScopeChange(category.id)}>
+                <span className="flex w-full items-center gap-2">
+                  <span>{category.emoji}</span>
+                  <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                  <span className="text-[12px] text-[#a8a29e]">{count}</span>
+                </span>
+              </DropdownActionItem>
+            );
+          })}
+        </DropdownContent>
+      </DropdownMenu.Root>
+      {groups.map((group) => (
+        <div key={group.title} className="flex flex-col gap-[9px]">
+          <div className="px-1.5 text-[12px] font-medium leading-[18px] text-[#a6a09b]">{group.title}</div>
+          <div className="flex flex-col gap-1">
+            {group.rows.map((row) => (
+              <FilterPanelRow
+                key={row.id}
+                row={row}
+                selected={selectedId === row.id}
+                onClick={() => onSelect(row.id as OverviewFilterId)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="h-2 shrink-0" />
+    </aside>
+  );
+}
+
+function FilterPanelRow({
+  row,
+  selected,
+  onClick,
+}: {
+  row: PanelRow;
+  selected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2 p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        selected
+          ? "rounded-[8px] border border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]"
+          : "rounded-[12px] border border-transparent hover:bg-[#f0f0ea]",
+      )}
+    >
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]",
+          selected ? "text-[#292524]" : "text-[#79716b]",
+        )}
+      >
+        {row.label}
+      </span>
+      <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[10px] font-medium leading-4 text-[#79716b]">
+        {row.count}
+      </span>
+    </button>
   );
 }
 
@@ -823,94 +945,190 @@ function PopulatedWorkspace({
   );
 }
 
-function getDishAuditChips(dish: Dish, filterId: OverviewFilterId): AuditChip[] {
+function getStatusChips(dish: Dish): AuditChip[] {
   const state = getDishAuditState(dish);
   const chips: AuditChip[] = [];
   if (dish.stop) chips.push({ label: "На стопе", tone: "stop" });
   if (state.archived) chips.push({ label: "В архиве", tone: "archived" });
   if (state.hidden) chips.push({ label: "Скрыта", tone: "status" });
   if (state.soon) chips.push({ label: "Скоро будет", tone: "status" });
-  if (state.scheduled) chips.push({ label: "По расписанию", tone: "status" });
-  if (state.noPhoto) chips.push({ label: "Без фото", tone: "problem" });
-  if (state.noDescription) chips.push({ label: "Без описания", tone: "problem" });
-  if (state.noWeight) chips.push({ label: "Без граммовки", tone: "problem" });
-  if (state.noKbju || filterId === "quick:no-kbju") chips.push({ label: "Без КБЖУ", tone: "problem" });
-  if (state.noTranslation) chips.push({ label: "Без перевода", tone: "problem" });
+  if (state.scheduled) chips.push({ label: "С расписанием", tone: "status" });
+  if (state.displayMode === "no-button") chips.push({ label: "Без кнопки", tone: "status" });
+  if (state.displayMode === "no-price") chips.push({ label: "Без цены", tone: "status" });
   return chips;
 }
 
-function DishPrice({ dish }: { dish: Dish }) {
-  const state = getDishAuditState(dish);
-  const oldPrice = state.discount ? `${Math.round(parsePrice(dish.price) * 1.18 / 100) * 100} ₸` : null;
+// ── Audit table (Figma 979:10759) ─────────────────────────────────────────────
 
+const TRANSLATION_TOTAL = 3;
+const TABLE_COL = {
+  description: "w-[87px]",
+  weight: "w-[58px]",
+  kbju: "w-[62px]",
+  translation: "w-[80px]",
+  price: "w-[82px]",
+  kebab: "w-[40px]",
+};
+
+function TableCheckbox({ ariaLabel }: { ariaLabel: string }) {
   return (
-    <span className="min-w-[76px] shrink-0 text-right">
-      <span className="block text-[14px] font-medium leading-5 text-[#292524]">{dish.price}</span>
-      {oldPrice && (
-        <span className="block text-[12px] leading-4 text-[#a8a29e] line-through">{oldPrice}</span>
-      )}
+    <input
+      type="checkbox"
+      aria-label={ariaLabel}
+      className="h-[18px] w-[18px] shrink-0 cursor-pointer appearance-none rounded-[5px] border border-[#d6d3d1] bg-white transition checked:border-[#292524] checked:bg-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    />
+  );
+}
+
+function AuditDot({ state, title }: { state: "filled" | "partial" | "missing"; title: string }) {
+  return (
+    <span className="flex items-center justify-center" title={title}>
+      {state === "filled" && <span className="h-[7px] w-[7px] rounded-full bg-[#006045]" />}
+      {state === "partial" && <span className="h-[9px] w-[9px] rounded-full border-[1.5px] border-[#006045]" />}
+      {state === "missing" && <span className="text-[13px] leading-none text-[#a6a09b]">—</span>}
     </span>
   );
 }
 
-function AuditChipBadge({ chip }: { chip: AuditChip }) {
+function TableHeaderRow({ query, onQueryChange }: { query: string; onQueryChange: (value: string) => void }) {
+  const labels: [string, string][] = [
+    ["Описание", TABLE_COL.description],
+    ["Вес", TABLE_COL.weight],
+    ["КБЖУ", TABLE_COL.kbju],
+    ["Перевод", TABLE_COL.translation],
+    ["Цена", TABLE_COL.price],
+  ];
+
+  return (
+    <div className="sticky top-0 z-10 flex items-center bg-white">
+      <div className="flex min-w-0 flex-1 items-center py-3 pr-3">
+        <div className="flex h-[34px] min-w-0 flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
+          <Search size={14} className="shrink-0 text-[#a6a09b]" />
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Поиск по всем позициям"
+            className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
+          />
+        </div>
+      </div>
+      {labels.map(([label, width]) => (
+        <span
+          key={label}
+          className={cn("flex shrink-0 items-center justify-center p-3 text-[13px] leading-5 text-[#79716b]", width)}
+        >
+          {label}
+        </span>
+      ))}
+      <span className={cn("h-[44px] shrink-0", TABLE_COL.kebab)} />
+    </div>
+  );
+}
+
+function StatusBadge({ label }: { label: string }) {
+  const isStop = label === "На стопе";
+  const isBlue = label === "С расписанием" || label === "Скоро будет";
+  const isSlate = label === "В архиве" || label === "Скрыта";
+
   return (
     <span
       className={cn(
-        "inline-flex h-[24px] items-center rounded-full px-2.5 text-[12px] font-medium leading-none",
-        chip.tone === "stop" && "bg-[#bc4a08] text-white",
-        chip.tone === "archived" && "bg-[#f5f5f4] text-[#a16207] ring-1 ring-[#e7e5e4]",
-        chip.tone === "status" && "bg-[#efefea] text-[#57534d]",
-        chip.tone === "problem" && "bg-[#f5f5f4] text-[#79716b]",
+        "flex h-4 items-center justify-center gap-0.5 rounded-[4px]",
+        isStop && "bg-[#ffedd4] pl-[3px] pr-1.5",
+        isBlue && "bg-[#dbeafe] pl-[3px] pr-1.5",
+        isSlate && "bg-[#f1f5f9] px-1.5",
+        !isStop && !isBlue && !isSlate && "bg-[#f5f5f4] px-1.5",
       )}
     >
-      {chip.label}
+      {isStop && <Lock size={12} weight="fill" className="shrink-0 text-[#f54900]" />}
+      {isBlue && <Clock size={12} weight="fill" className="shrink-0 text-[#2b7fff]" />}
+      <span
+        className={cn(
+          "whitespace-nowrap text-[11px] font-semibold leading-5",
+          isStop ? "text-[#ca3500]" : isBlue ? "text-[#2b7fff]" : isSlate ? "text-[#62748e]" : "text-[#57534d]",
+        )}
+      >
+        {label}
+      </span>
     </span>
   );
 }
 
 function GuestPropertyIcon({ icon }: { icon: GuestProperty["icon"] }) {
-  if (icon === "label") return <SealCheck size={14} weight="fill" className="text-[#79716b]" />;
-  if (icon === "tag") return <Tag size={14} weight="fill" className="text-[#79716b]" />;
-  if (icon === "spicy") return <Fire size={14} weight="fill" className="text-[#79716b]" />;
+  if (icon === "label") return <MegaphoneSimple size={12} className="shrink-0 text-[#57534d]" />;
+  if (icon === "tag") return <Tag size={12} className="shrink-0 text-[#57534d]" />;
+  if (icon === "spicy") return <Fire size={12} weight="fill" className="shrink-0 text-[#57534d]" />;
   return null;
 }
 
-function AuditPropertyLine({
-  dish,
-  filterId,
-  showSectionMeta,
-}: {
-  dish: Dish;
-  filterId: OverviewFilterId;
-  showSectionMeta?: boolean;
-}) {
-  const state = getDishAuditState(dish);
-  const kcalByDish: Record<string, string> = {
-    pepperoni: "139 ккал",
-    quattro: "143 ккал",
-    cola: "42 ккал",
-    garlic: "118 ккал",
-  };
-  const properties: GuestProperty[] = [
-    ...state.guestProperties,
-    showSectionMeta ? { label: dish.category } : null,
-    filterId === "quick:with-options" && state.hasOptions ? { label: "2 опции" } : null,
-    !state.noWeight && dish.weight.trim() ? { label: dish.weight } : null,
-    !state.noKbju && kcalByDish[dish.id] ? { label: kcalByDish[dish.id] } : null,
-  ].filter((property): property is GuestProperty => Boolean(property));
+function AttributeBadge({ property }: { property: GuestProperty }) {
+  return (
+    <span className="flex h-4 items-center justify-center gap-0.5 rounded-[4px] bg-[#f5f5f4] pl-[3px] pr-1.5">
+      <GuestPropertyIcon icon={property.icon} />
+      <span className="whitespace-nowrap text-[11px] font-medium leading-5 text-[#292524]">{property.label}</span>
+    </span>
+  );
+}
 
-  if (properties.length === 0) return null;
+function MetaDot() {
+  return <span className="text-[10px] font-extralight leading-none text-[#a6a6a6]">•</span>;
+}
+
+function RowMeta({ dish, showSectionMeta }: { dish: Dish; showSectionMeta?: boolean }) {
+  const state = getDishAuditState(dish);
+  const statusChips = getStatusChips(dish);
+  const counts: string[] = [];
+  if (showSectionMeta) counts.push(dish.category);
+  if (state.hasOptions) counts.push("2 опции");
+  if (dish.recommendations.length > 0) {
+    counts.push(
+      `${dish.recommendations.length} ${plural(dish.recommendations.length, "рекомендация", "рекомендации", "рекомендаций")}`,
+    );
+  }
+
+  const segments: ReactNode[] = [];
+  if (statusChips.length > 0) {
+    segments.push(
+      <span key="status" className="flex items-center gap-1">
+        {statusChips.map((chip) => (
+          <StatusBadge key={chip.label} label={chip.label} />
+        ))}
+      </span>,
+    );
+  }
+  if (state.guestProperties.length > 0) {
+    segments.push(
+      <span key="attributes" className="flex items-center gap-[3px]">
+        {state.guestProperties.map((property, index) => (
+          <span key={property.label} className="flex items-center gap-[3px]">
+            {index > 0 && <MetaDot />}
+            <AttributeBadge property={property} />
+          </span>
+        ))}
+      </span>,
+    );
+  }
+  if (counts.length > 0) {
+    segments.push(
+      <span key="counts" className="flex items-center gap-[3px]">
+        {counts.map((count, index) => (
+          <span key={count} className="flex items-center gap-[3px]">
+            {index > 0 && <MetaDot />}
+            <span className="whitespace-nowrap text-[12px] leading-none text-[#595959]">{count}</span>
+          </span>
+        ))}
+      </span>,
+    );
+  }
+
+  if (segments.length === 0) return null;
 
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[14px] leading-5 text-[#79716b]">
-      {properties.map((property, index) => (
-        <span key={`${property.label}-${index}`} className="inline-flex items-center gap-1.5">
-          {index > 0 && <span className="text-[#d6d3d1]">·</span>}
-          <span className="inline-flex items-center gap-1">
-            <GuestPropertyIcon icon={property.icon} />
-            <span>{property.label}</span>
-          </span>
+    <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+      {segments.map((segment, index) => (
+        <span key={index} className="flex shrink-0 items-center gap-2">
+          {index > 0 && <span className="h-[11px] w-px shrink-0 bg-[#e7e5e4]" />}
+          {segment}
         </span>
       ))}
     </span>
@@ -953,14 +1171,6 @@ function DropdownActionItem({
   );
 }
 
-function getQuickActionLabel(dish: Dish) {
-  const state = getDishAuditState(dish);
-  if (dish.stop) return "Убрать со стопа";
-  if (state.archived) return "Восстановить";
-  if (state.hidden) return "Показать";
-  return null;
-}
-
 function AuditRowActionsMenu({ dish, onAction }: { dish: Dish; onAction: (action: string) => void }) {
   const state = getDishAuditState(dish);
 
@@ -969,10 +1179,10 @@ function AuditRowActionsMenu({ dish, onAction }: { dish: Dish; onAction: (action
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a8a29e] transition hover:bg-[#efefea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           aria-label={`Действия для ${dish.name}`}
         >
-          <MoreVertical size={16} />
+          <DotsThreeVertical size={18} weight="bold" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent>
@@ -1000,253 +1210,137 @@ function AuditRowActionsMenu({ dish, onAction }: { dish: Dish; onAction: (action
 
 function AuditDishRow({
   dish,
-  filterId,
-  selected,
-  onSelectedChange,
+  showSectionMeta,
   onAction,
 }: {
   dish: Dish;
-  filterId: OverviewFilterId;
-  selected: boolean;
-  onSelectedChange: (checked: boolean) => void;
+  showSectionMeta?: boolean;
   onAction: (dish: Dish, action: string) => void;
 }) {
-  const chips = getDishAuditChips(dish, filterId);
-  const visibleChips = chips.slice(0, 3);
-  const hiddenChipCount = Math.max(0, chips.length - visibleChips.length);
   const state = getDishAuditState(dish);
-  const quickActionLabel = getQuickActionLabel(dish);
+  const translated = state.noTranslation ? 1 : TRANSLATION_TOTAL;
+  const oldPrice = state.discount ? `${Math.round((parsePrice(dish.price) * 1.18) / 100) * 100} ₸` : null;
 
   return (
-    <div
-      className={cn(
-        "group flex w-full items-center gap-3 border-b border-[#eceae7] bg-white px-0 py-3 text-left transition hover:bg-[#fafaf9]",
-        selected && "bg-[#fafaf9]",
-      )}
-    >
-      <label className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-[#efefea]">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(event) => onSelectedChange(event.target.checked)}
-          className="h-[18px] w-[18px] rounded-[6px] border-[#d6d3d1] text-[#292524] accent-[#292524]"
-          aria-label={`Выбрать ${dish.name}`}
-        />
-      </label>
-      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[28px]">
-        {state.noPhoto ? <span className="text-[20px] text-[#a8a29e]">□</span> : dish.emoji}
-      </span>
-      <button
-        type="button"
-        onClick={() => onAction(dish, "Открыть позицию")}
-        className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        <span className="flex min-w-0 items-start justify-between gap-4">
-          <span className="min-w-0">
-            {visibleChips.length > 0 && (
-              <span className="mb-1.5 flex flex-wrap gap-1.5">
-                {visibleChips.map((chip) => (
-                  <AuditChipBadge key={chip.label} chip={chip} />
-                ))}
-                {hiddenChipCount > 0 && (
-                  <span className="inline-flex h-[24px] items-center rounded-full bg-[#f5f5f4] px-2.5 text-[12px] font-medium leading-none text-[#a8a29e]">
-                    +{hiddenChipCount}
-                  </span>
-                )}
+    <div className="group flex h-[62px] items-center border-b border-[#e5e7eb] bg-white transition hover:bg-[#fafaf9]">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <TableCheckbox ariaLabel={`Выбрать ${dish.name}`} />
+        <div className="flex min-w-0 items-center gap-[9px]">
+          <span
+            className={cn(
+              "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] text-[18px]",
+              state.noPhoto ? "bg-[#faf0e6]" : "bg-[#f5f5f4]",
+            )}
+            title={state.noPhoto ? "Нет фото" : undefined}
+          >
+            {state.noPhoto ? <ImageOff size={14} className="text-[#bc4a08]" /> : dish.emoji}
+            {state.hasVideo && (
+              <span
+                className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white shadow-[0_0_0_1px_#e7e5e4]"
+                title="Есть видео"
+              >
+                <Play size={7} className="ml-px fill-[#57534d] text-[#57534d]" />
               </span>
             )}
-            <span className="block truncate text-[15px] font-semibold leading-5 text-[#44403b]">{dish.name}</span>
-            <AuditPropertyLine dish={dish} filterId={filterId} showSectionMeta={false} />
           </span>
-        </span>
-      </button>
-      <span className="flex shrink-0 items-start gap-3">
-        {quickActionLabel && (
-          <button
-            type="button"
-            onClick={() => onAction(dish, quickActionLabel)}
-            className="mt-0.5 hidden rounded-lg px-2 py-1 text-[12px] font-medium text-[#79716b] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:inline-flex"
-          >
-            {quickActionLabel}
-          </button>
+          <div className="flex min-w-0 flex-col justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onAction(dish, "Открыть позицию")}
+              className="block max-w-full truncate text-left text-[13px] leading-none text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {dish.name}
+            </button>
+            <RowMeta dish={dish} showSectionMeta={showSectionMeta} />
+          </div>
+        </div>
+      </div>
+      <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.description)}>
+        <AuditDot
+          state={state.noDescription ? "missing" : "filled"}
+          title={state.noDescription ? "Нет описания" : "Описание есть"}
+        />
+      </span>
+      <span
+        className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.weight)}
+        title={state.noWeight ? "Нет граммовки" : `Граммовка: ${dish.weight}`}
+      >
+        {state.noWeight ? <span className="text-[#a6a09b]">—</span> : dish.weight}
+      </span>
+      <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
+        <AuditDot
+          state={state.noKbju ? "missing" : state.kbjuPartial ? "partial" : "filled"}
+          title={
+            state.noKbju
+              ? "Нет КБЖУ"
+              : state.kbjuPartial
+                ? "КБЖУ (на 100 г) заполнено частично"
+                : "КБЖУ (на 100 г) заполнено"
+          }
+        />
+      </span>
+      <span
+        className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)}
+        title={`Перевод: ${translated} из ${TRANSLATION_TOTAL} языков`}
+      >
+        {translated}/{TRANSLATION_TOTAL}
+      </span>
+      <span
+        className={cn(
+          "flex shrink-0 flex-col items-center justify-center px-3 text-[13px] leading-5 text-[#292524]",
+          TABLE_COL.price,
         )}
-        <DishPrice dish={dish} />
+      >
+        <span className="whitespace-nowrap">{dish.price}</span>
+        {oldPrice && <span className="text-[11px] leading-3 text-[#a6a09b] line-through">{oldPrice}</span>}
+      </span>
+      <span className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)}>
         <AuditRowActionsMenu dish={dish} onAction={(action) => onAction(dish, action)} />
       </span>
     </div>
   );
 }
 
+type ProblemLink = { id: OverviewFilterId; label: string };
+
 function OverviewStatusBar({
   filterId,
   count,
   query,
+  scopeName,
+  problems,
+  onProblemClick,
 }: {
   filterId: OverviewFilterId;
   count: number;
   query: string;
+  scopeName?: string;
+  problems: ProblemLink[];
+  onProblemClick: (id: OverviewFilterId) => void;
 }) {
   const meta = OVERVIEW_FILTER_META[filterId];
 
   return (
-    <div className="min-w-0">
-      <div className="text-[18px] font-semibold leading-6 text-[#292524]">{meta.label}</div>
-      {filterId !== "quick:all" && (
-        <div className="mt-1 text-[13px] leading-5 text-[#79716b]">
-          {meta.label} — {meta.countText(count)}
-          {query.trim() && <span> · с учётом поиска</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BulkActionMenu({
-  label,
-  items,
-  onAction,
-}: {
-  label: string;
-  items: string[];
-  onAction: (action: string) => void;
-}) {
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          {label}
-          <ChevronDown size={14} />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownContent align="start">
-        {items.map((item) => (
-          <DropdownActionItem key={item} onSelect={() => onAction(`${label}: ${item}`)}>
-            {item}
-          </DropdownActionItem>
+    <div className="flex h-[41px] min-w-0 flex-col justify-center gap-1">
+      <div className="text-[14px] font-medium leading-[1.4] text-[#292524]">{meta.label}</div>
+      <div className="text-[13px] leading-4 text-[#292524]">
+        {meta.countText(count)}
+        {scopeName && <span> · раздел «{scopeName}»</span>}
+        {query.trim() && <span> · с учётом поиска</span>}
+        {problems.map((problem) => (
+          <span key={problem.id}>
+            {" · "}
+            <button
+              type="button"
+              onClick={() => onProblemClick(problem.id)}
+              className="transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {problem.label}
+            </button>
+          </span>
         ))}
-      </DropdownContent>
-    </DropdownMenu.Root>
-  );
-}
-
-function SelectionToolbar({
-  selectedCount,
-  discountOpen,
-  discountValue,
-  onDiscountOpenChange,
-  onDiscountValueChange,
-  onApplyDiscount,
-  onClear,
-  onAction,
-}: {
-  selectedCount: number;
-  discountOpen: boolean;
-  discountValue: string;
-  onDiscountOpenChange: (open: boolean) => void;
-  onDiscountValueChange: (value: string) => void;
-  onApplyDiscount: () => void;
-  onClear: () => void;
-  onAction: (action: string) => void;
-}) {
-  if (selectedCount === 0) return null;
-
-  return (
-    <div className="rounded-[14px] border border-[#e7e5e4] bg-[#fbfbf9] px-3 py-2 shadow-[0_1px_2px_rgba(41,37,36,0.04)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-[13px] font-medium text-[#292524]">
-          Выбрано: {selectedCount}
-        </span>
-        <BulkActionMenu
-          label="Статус"
-          items={["Активна", "Скрыта", "В архиве"]}
-          onAction={onAction}
-        />
-        <BulkActionMenu
-          label="Доступность"
-          items={["Доступна", "На стопе", "Скоро будет", "По расписанию"]}
-          onAction={onAction}
-        />
-        <button
-          type="button"
-          onClick={() => onDiscountOpenChange(!discountOpen)}
-          className="inline-flex h-8 items-center rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          Задать скидку
-        </button>
-        <button
-          type="button"
-          onClick={onClear}
-          className="ml-auto inline-flex h-8 items-center rounded-[10px] px-2.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#efefea] hover:text-[#292524]"
-        >
-          Снять выбор
-        </button>
       </div>
-      {discountOpen && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[#eceae7] pt-2">
-          <label className="text-[13px] font-medium text-[#57534d]" htmlFor="bulk-discount-input">
-            Скидка
-          </label>
-          <input
-            id="bulk-discount-input"
-            value={discountValue}
-            onChange={(event) => onDiscountValueChange(event.target.value)}
-            placeholder="Например, 15%"
-            className="h-8 w-[160px] rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
-          />
-          <button
-            type="button"
-            onClick={onApplyDiscount}
-            disabled={!discountValue.trim()}
-            className="inline-flex h-8 items-center rounded-[10px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:opacity-40"
-          >
-            Применить
-          </button>
-        </div>
-      )}
     </div>
-  );
-}
-
-function SectionNavigation({
-  groups,
-  activeId,
-  onSelect,
-}: {
-  groups: Array<Category & { items: Dish[] }>;
-  activeId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  if (groups.length <= 1) return null;
-
-  return (
-    <aside className="sticky top-0 hidden w-[168px] shrink-0 pt-1 lg:block">
-      <div className="relative border-l border-[#e7e5e4] pl-3">
-        <div className="mb-2 text-[11px] font-medium leading-[18px] text-[#a8a29e]">По разделам</div>
-        <div className="space-y-1">
-          {groups.map((group) => {
-            const active = activeId === group.id;
-            return (
-              <button
-                key={group.id}
-                type="button"
-                onClick={() => onSelect(group.id)}
-                className={cn(
-                  "relative flex h-8 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition",
-                  active ? "text-[#292524]" : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]",
-                )}
-              >
-                {active && <span className="absolute -left-[13px] h-5 w-[2px] rounded-full bg-[#292524]" />}
-                <span className="truncate">{group.name}</span>
-                <span className="shrink-0 text-[12px] text-[#a8a29e]">{group.items.length}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </aside>
   );
 }
 
@@ -1258,14 +1352,11 @@ function OverviewWorkspace({
   onFilterChange: (id: OverviewFilterId) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [sortId, setSortId] = useState<OverviewSortId>("name");
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-  const [selectedDishIds, setSelectedDishIds] = useState<string[]>([]);
-  const [discountOpen, setDiscountOpen] = useState(false);
-  const [discountValue, setDiscountValue] = useState("");
-  const [lastPreparedAction, setLastPreparedAction] = useState<string | null>(null);
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const filtered = getOverviewDishes(filterId);
+  const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const scopeCategory = categories.find((category) => category.id === sectionScopeId) ?? null;
+  const inScope = (dish: Dish) => !scopeCategory || dish.category === scopeCategory.name;
+  const filtered = getOverviewDishes(filterId).filter(inScope);
   const searched = filtered.filter((dish) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return true;
@@ -1273,16 +1364,7 @@ function OverviewWorkspace({
       value.toLowerCase().includes(normalized),
     );
   });
-  const visible = [...searched].sort((left, right) => {
-    if (sortId === "price") return parsePrice(left.price) - parsePrice(right.price);
-    if (sortId === "category") return left.category.localeCompare(right.category, "ru");
-    if (sortId === "status") {
-      const leftStatus = getDishAuditState(left).archived ? 3 : left.stop ? 0 : getDishAuditState(left).soon ? 1 : 2;
-      const rightStatus = getDishAuditState(right).archived ? 3 : right.stop ? 0 : getDishAuditState(right).soon ? 1 : 2;
-      return leftStatus - rightStatus || left.name.localeCompare(right.name, "ru");
-    }
-    return left.name.localeCompare(right.name, "ru");
-  });
+  const visible = [...searched].sort((left, right) => left.name.localeCompare(right.name, "ru"));
   const grouped = categories
     .map((category) => ({
       ...category,
@@ -1290,106 +1372,51 @@ function OverviewWorkspace({
     }))
     .filter((group) => group.items.length > 0);
   const statusMeta = OVERVIEW_FILTER_META[filterId];
-  const visibleDishIds = visible.map((dish) => dish.id);
-  const selectedVisibleCount = selectedDishIds.filter((id) => visibleDishIds.includes(id)).length;
+  const flat = query.trim().length > 0;
 
-  useEffect(() => {
-    if (grouped.length === 0) {
-      setActiveSectionId(null);
-      return;
-    }
-    setActiveSectionId((current) => current && grouped.some((group) => group.id === current) ? current : grouped[0].id);
-  }, [grouped]);
-
-  useEffect(() => {
-    setSelectedDishIds((current) => current.filter((id) => visibleDishIds.includes(id)));
-  }, [visibleDishIds.join("|")]);
+  const stopCount = getOverviewDishes("status:stop").filter(inScope).length;
+  const problems: ProblemLink[] =
+    filterId !== "status:stop" && stopCount > 0
+      ? [{ id: "status:stop", label: `${stopCount} на стопе` }]
+      : [];
 
   const resetFilter = () => {
     setQuery("");
+    setSectionScopeId(null);
     onFilterChange("quick:all");
+  };
+  const clearSearch = () => {
+    setQuery("");
   };
   const emptyTitle = statusMeta.emptyTitle;
   const emptyText = statusMeta.emptyText;
 
-  const scrollToSection = (id: string) => {
-    setActiveSectionId(id);
-    sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const toggleSection = (id: string) => {
+    setCollapsedSections((current) => ({ ...current, [id]: !current[id] }));
   };
 
-  const toggleDishSelection = (dishId: string, checked: boolean) => {
-    setSelectedDishIds((current) => {
-      if (checked) return current.includes(dishId) ? current : [...current, dishId];
-      return current.filter((id) => id !== dishId);
-    });
-  };
-
-  const prepareBulkAction = (action: string) => {
-    setLastPreparedAction(`${action} · ${selectedVisibleCount} выбрано`);
-  };
-
-  const applyDiscount = () => {
-    if (!discountValue.trim()) return;
-    setLastPreparedAction(`Скидка ${discountValue.trim()} · ${selectedVisibleCount} выбрано`);
-    setDiscountOpen(false);
-    setDiscountValue("");
-  };
-
-  const prepareRowAction = (dish: Dish, action: string) => {
-    setLastPreparedAction(`${action} · ${dish.name}`);
-  };
+  const prepareRowAction = () => {};
 
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
-        <CatalogFiltersPanel selectedId={filterId} onSelect={onFilterChange} />
-        <div className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div className="mx-auto flex w-full max-w-6xl items-start gap-6">
-            <div className="min-w-0 flex-1 space-y-5">
-              <div className="rounded-[16px] border border-[#eceae7] bg-white p-4 shadow-[0_1px_2px_rgba(41,37,36,0.04)]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <OverviewStatusBar filterId={filterId} count={visible.length} query={query} />
-                  {lastPreparedAction && (
-                    <div className="rounded-full bg-[#f5f5f4] px-2.5 py-1 text-[12px] font-medium text-[#79716b]">
-                      Подготовлено: {lastPreparedAction}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <div className="flex h-9 min-w-0 flex-1 items-center rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#79716b]">
-                    <Search size={16} className="mr-2 shrink-0 text-[#a8a29e]" />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Найти позицию"
-                      className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#a8a29e]"
-                    />
-                  </div>
-                  <label className="sr-only" htmlFor="catalog-overview-sort">Сортировка</label>
-                  <select
-                    id="catalog-overview-sort"
-                    value={sortId}
-                    onChange={(event) => setSortId(event.target.value as OverviewSortId)}
-                    className="h-9 rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] outline-none transition hover:bg-[#fafaf9] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
-                  >
-                    <option value="name">По названию</option>
-                    <option value="price">По цене</option>
-                    <option value="category">По разделу</option>
-                    <option value="status">По статусу</option>
-                  </select>
-                </div>
-              </div>
-              <SelectionToolbar
-                selectedCount={selectedVisibleCount}
-                discountOpen={discountOpen}
-                discountValue={discountValue}
-                onDiscountOpenChange={setDiscountOpen}
-                onDiscountValueChange={setDiscountValue}
-                onApplyDiscount={applyDiscount}
-                onClear={() => setSelectedDishIds([])}
-                onAction={prepareBulkAction}
-              />
-
+        <CatalogFiltersPanel
+          selectedId={filterId}
+          onSelect={onFilterChange}
+          sectionScopeId={sectionScopeId}
+          onSectionScopeChange={setSectionScopeId}
+        />
+        <div className="min-w-0 flex-1 overflow-y-auto px-6 pb-10 pt-[14px]">
+          <div className="min-w-0">
+            <OverviewStatusBar
+              filterId={filterId}
+              count={visible.length}
+              query={query}
+              scopeName={scopeCategory?.name}
+              problems={problems}
+              onProblemClick={onFilterChange}
+            />
+            <div className="pt-[14px]">
               {visible.length === 0 ? (
                 <div className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
                   <div className="flex flex-col gap-4">
@@ -1401,48 +1428,84 @@ function OverviewWorkspace({
                         {emptyText}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={resetFilter}
-                      className="inline-flex h-[32px] self-start items-center justify-center rounded-[10px] bg-[#4f39f6] px-[10px] text-[14px] font-medium text-white transition hover:bg-[#4030d4]"
-                    >
-                      Показать все позиции
-                    </button>
+                    {filterId === "quick:all" && !query.trim() && !scopeCategory ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-[32px] items-center justify-center gap-1.5 self-start rounded-[10px] bg-[#292524] px-[10px] text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+                      >
+                        <Plus size={14} />
+                        Добавить позицию
+                      </button>
+                    ) : query.trim() ? (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
+                      >
+                        Очистить поиск
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={resetFilter}
+                        className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
+                      >
+                        Показать все позиции
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-7">
-                  {grouped.map((group) => (
-                    <section
-                      key={group.id}
-                      ref={(node) => {
-                        sectionRefs.current[group.id] = node;
-                      }}
-                      className="scroll-mt-6 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-[16px] font-semibold text-[#292524]">{group.name}</h2>
-                        <span className="text-[13px] font-medium text-[#a8a29e]">{group.items.length}</span>
-                      </div>
-                      <div className="space-y-2">
-                        {group.items.map((dish) => (
-                          <AuditDishRow
-                            key={dish.id}
-                            dish={dish}
-                            filterId={filterId}
-                            selected={selectedDishIds.includes(dish.id)}
-                            onSelectedChange={(checked) => toggleDishSelection(dish.id, checked)}
-                            onAction={prepareRowAction}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
+                <div>
+                  <TableHeaderRow query={query} onQueryChange={setQuery} />
+                  {flat ? (
+                    <div>
+                      {visible.map((dish) => (
+                        <AuditDishRow key={dish.id} dish={dish} showSectionMeta onAction={prepareRowAction} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-[38px] pt-1">
+                      {grouped.map((group) => {
+                        const isCollapsed = Boolean(collapsedSections[group.id]);
+                        return (
+                          <section key={group.id} className="flex flex-col gap-[10px]">
+                            <div className="sticky top-[58px] z-[9] flex items-center gap-2 bg-white">
+                              <TableCheckbox ariaLabel={`Выбрать раздел ${group.name}`} />
+                              <button
+                                type="button"
+                                onClick={() => toggleSection(group.id)}
+                                aria-expanded={!isCollapsed}
+                                className="flex min-w-0 items-center gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                              >
+                                <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[10px] font-medium leading-4 text-[#79716b]">
+                                  {group.items.length}
+                                </span>
+                                <span className="truncate text-[13px] font-medium leading-[18px] text-[#292524]">
+                                  {group.name}
+                                </span>
+                                <CaretDown
+                                  size={13}
+                                  weight="bold"
+                                  className={cn("shrink-0 text-[#57534d] transition-transform", isCollapsed && "-rotate-90")}
+                                />
+                              </button>
+                            </div>
+                            {!isCollapsed && (
+                              <div>
+                                {group.items.map((dish) => (
+                                  <AuditDishRow key={dish.id} dish={dish} onAction={prepareRowAction} />
+                                ))}
+                              </div>
+                            )}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-
-            <SectionNavigation groups={grouped} activeId={activeSectionId} onSelect={scrollToSection} />
           </div>
         </div>
       </div>
