@@ -48,6 +48,12 @@ type NavGroup = {
   trailingCta?: { label: string; section: SectionId; tab: string };
 };
 
+type SidebarRow =
+  | { type: "brand" }
+  | { type: "search" }
+  | { type: "group"; label: string }
+  | { type: "item"; item: NavItem }
+  | { type: "more" };
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Мой ресторан",
@@ -76,6 +82,23 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const TOOLS_GROUP_LABEL = "Инструменты";
+const RAIL_WIDTH_CLASS = "w-16";
+const RAIL_GRID_CLASS = "grid-cols-[64px_minmax(0,1fr)]";
+const RAIL_COLLAPSED_WIDTH = 64;
+const RAIL_EXPANDED_WIDTH = 360;
+
+const SIDEBAR_ROWS: SidebarRow[] = [
+  { type: "brand" },
+  { type: "search" },
+  ...NAV_GROUPS.flatMap<SidebarRow>((group) => [
+    { type: "group", label: group.title },
+    ...group.items.map((item): SidebarRow => ({ type: "item", item })),
+  ]),
+  { type: "group", label: TOOLS_GROUP_LABEL },
+  { type: "more" },
+];
+
 
 // ── «Ещё» items ───────────────────────────────────────────────────────────────
 
@@ -92,11 +115,13 @@ const MORE_ITEMS: MoreItem[] = [
 
 function MoreMenu({
   compact,
+  expanded = false,
   section,
   activeTab,
   onNavigate,
 }: {
   compact: boolean;
+  expanded?: boolean;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
@@ -146,23 +171,66 @@ function MoreMenu({
 
   return (
     <>
-      <Tooltip label="Ещё" disabled={!compact} delayDuration={0}>
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={handleToggle}
+      {compact ? (
+        <div
           className={cn(
-            "flex cursor-pointer items-center rounded-lg transition",
-            compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
-            isMoreActive || open
-              ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+            "grid h-10 w-full items-center rounded-[7px]",
+            RAIL_GRID_CLASS,
+            expanded && (
+              isMoreActive || open
+                ? "bg-white text-[#1c1917] shadow-sm"
+                : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800"
+            ),
           )}
         >
-          <Ellipsis size={compact ? 17 : 15} className="shrink-0" />
-          {!compact && <span>Ещё</span>}
-        </button>
-      </Tooltip>
+          <Tooltip label="Ещё" disabled={expanded} delayDuration={0}>
+            <button
+              ref={btnRef}
+              type="button"
+              onClick={handleToggle}
+              className={cn(
+                "mx-auto flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[7px] transition",
+                expanded
+                  ? isMoreActive || open ? "text-[#1c1917]" : "text-[#5a5a5c]"
+                  : isMoreActive || open
+                    ? "bg-white text-[#1c1917] shadow-sm"
+                    : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
+              )}
+            >
+              <Ellipsis size={16} className="shrink-0" />
+            </button>
+          </Tooltip>
+          {expanded && (
+            <button
+              type="button"
+              onClick={handleToggle}
+              className={cn(
+                "min-w-0 truncate rounded-[7px] py-2 pl-6 pr-4 text-left text-[16px] font-normal leading-6 transition",
+                isMoreActive || open ? "text-zinc-950" : "text-zinc-500 hover:text-zinc-800",
+              )}
+            >
+              Ещё
+            </button>
+          )}
+        </div>
+      ) : (
+        <Tooltip label="Ещё" disabled delayDuration={0}>
+          <button
+            ref={btnRef}
+            type="button"
+            onClick={handleToggle}
+            className={cn(
+              "flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-[5px] text-left text-[13px] font-medium transition",
+              isMoreActive || open
+                ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
+                : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+            )}
+          >
+            <Ellipsis size={16} className="shrink-0" />
+            <span>Ещё</span>
+          </button>
+        </Tooltip>
+      )}
 
       {open && createPortal(
         <div
@@ -178,7 +246,7 @@ function MoreMenu({
                   key={item.label}
                   className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-zinc-400"
                 >
-                  <Icon size={15} className="shrink-0" />
+                  <Icon size={16} className="shrink-0" />
                   <span className="flex-1">{item.label}</span>
                   <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
                     Скоро
@@ -199,7 +267,7 @@ function MoreMenu({
                     : "font-medium text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950",
                 )}
               >
-                <Icon size={15} className="shrink-0" />
+                <Icon size={16} className="shrink-0" />
                 {item.label}
               </button>
             );
@@ -314,9 +382,11 @@ function SearchModal({
 
 function SidebarSearch({
   compact,
+  expanded = false,
   onNavigate,
 }: {
   compact: boolean;
+  expanded?: boolean;
   onNavigate: (section: SectionId, tab: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -324,15 +394,26 @@ function SidebarSearch({
   return (
     <>
       {compact ? (
-        <Tooltip label="Поиск позиций" disabled={!compact} delayDuration={0}>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
-          >
-            <MagnifyingGlass size={17} className="shrink-0" />
-          </button>
-        </Tooltip>
+        <div className={cn("grid h-10 w-full items-center", RAIL_GRID_CLASS)}>
+          <Tooltip label="Поиск позиций" disabled={expanded} delayDuration={0}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+              className="mx-auto flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
+            >
+              <MagnifyingGlass size={16} className="shrink-0" />
+            </button>
+          </Tooltip>
+          {expanded && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+              className="min-w-0 truncate rounded-[9px] bg-[#e7e5e4]/70 py-2 pl-6 pr-4 text-left text-[16px] font-normal leading-6 text-[#5a5a5c] transition hover:bg-[#e7e5e4] hover:text-zinc-800"
+            >
+                Поиск позиций
+            </button>
+          )}
+        </div>
       ) : (
         <button
           type="button"
@@ -340,14 +421,14 @@ function SidebarSearch({
           className="relative flex w-full cursor-pointer items-center"
         >
           <MagnifyingGlass
-            size={14}
+            size={16}
             className="pointer-events-none absolute left-[7px] text-[#5a5a5c]"
           />
           <Input
             readOnly
             tabIndex={-1}
             placeholder="Поиск позиций"
-            className="pointer-events-none h-auto cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-[6px] pl-[27px] text-[13px] text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
+            className="pointer-events-none h-8 cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-0 pl-[27px] text-[13px] text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
           />
         </button>
       )}
@@ -366,45 +447,109 @@ function NavList({
   activeTab,
   onNavigate,
   compact,
+  expanded = false,
 }: {
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
+  expanded?: boolean;
 }) {
   return (
-    <nav className={cn("flex-1 overflow-y-auto py-1 mt-2", compact ? "px-1 space-y-2" : "px-2 space-y-4 pb-2 pt-1")}>
-
-      {NAV_GROUPS.map((group) => (
+    <nav
+      className={cn(
+        "flex-1 overflow-y-auto py-1 mt-2",
+        compact ? "px-1 space-y-0 pb-2 pt-1" : "px-2 space-y-4 pb-2 pt-1",
+      )}
+    >
+      {NAV_GROUPS.map((group, groupIndex) => (
         <div key={group.title}>
           {!compact && (
             <div className="mb-0.5 mt-3 first:mt-0 px-2 text-[12px] font-normal text-[#5a5a5c]">
               {group.title}
             </div>
           )}
-          {compact && <div className="my-0.5 h-px bg-border" />}
+          {compact && groupIndex === 0 && expanded && (
+            <div className="relative h-0">
+              <div className="absolute left-10 top-[-18px] whitespace-nowrap text-[12px] font-normal leading-[18px] text-[#5a5a5c]">
+                {group.title}
+              </div>
+            </div>
+          )}
+          {compact && groupIndex > 0 && (
+            <div className="relative h-[9px]">
+              <div className="absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-border" />
+              {expanded && (
+                <div className="absolute left-10 top-1/2 -translate-y-1/2 whitespace-nowrap text-[12px] font-normal leading-[18px] text-[#5a5a5c]">
+                  {group.title}
+                </div>
+              )}
+            </div>
+          )}
           <div className="space-y-px">
             {group.items.map((item) => {
               const Icon = item.icon;
               const active = section === item.section && activeTab === item.tab;
+              if (compact) {
+                return (
+                  <div
+                    key={item.label}
+                    className={cn(
+                      "flex h-8 w-full items-center gap-2 rounded-[7px]",
+                      expanded && (
+                        active
+                          ? "bg-white text-[#1c1917] shadow-sm"
+                          : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800"
+                      ),
+                    )}
+                  >
+                    <Tooltip label={item.label} disabled delayDuration={0}>
+                      <button
+                        type="button"
+                        data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
+                        onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
+                        className={cn(
+                          "flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[7px] font-normal transition",
+                          expanded
+                            ? active ? "text-[#1c1917]" : "text-[#5a5a5c]"
+                            : active
+                              ? "bg-white text-[#1c1917] shadow-sm"
+                              : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
+                        )}
+                      >
+                        <Icon size={16} weight="fill" className="shrink-0" />
+                      </button>
+                    </Tooltip>
+                    {expanded && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
+                        className={cn(
+                          "min-w-0 flex-1 truncate rounded-[7px] py-1.5 pr-2 text-left text-[13px] leading-4 transition",
+                          active ? "text-[#1c1917]" : "text-[#5a5a5c] hover:text-zinc-800",
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               return (
-                <Tooltip key={item.label} label={item.label} disabled={!compact} delayDuration={0}>
+                <Tooltip key={item.label} label={item.label} disabled delayDuration={0}>
                   <button
                     type="button"
                     data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
                     onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
                     className={cn(
-                      "relative flex cursor-pointer items-center rounded-[7px] font-normal transition",
-                      compact
-                        ? "h-8 w-8 justify-center"
-                        : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
+                      "relative flex w-full cursor-pointer items-center gap-1.5 rounded-[7px] px-[7px] py-1.5 text-left text-[13px] font-normal leading-4 transition",
                       active
                         ? "bg-white text-[#1c1917] shadow-sm"
                         : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
                     )}
                   >
-                    <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
-                    {!compact && <span className="truncate flex-1">{item.label}</span>}
+                    <Icon size={16} weight="fill" className="shrink-0" />
+                    <span className="truncate flex-1">{item.label}</span>
                   </button>
                 </Tooltip>
               );
@@ -414,7 +559,16 @@ function NavList({
       ))}
 
       {/* ── «Ещё» separator + button ── */}
-      {compact && <div className="my-0.5 h-px bg-border" />}
+      {compact && (
+        <div className="relative h-[9px]">
+          <div className="absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-border" />
+          {expanded && (
+            <div className="absolute left-10 top-1/2 -translate-y-1/2 whitespace-nowrap text-[12px] font-normal leading-[18px] text-[#5a5a5c]">
+              Инструменты
+            </div>
+          )}
+        </div>
+      )}
       {!compact && (
         <div className="mb-0.5 mt-3 px-2 text-[12px] font-normal text-[#5a5a5c]">
           Инструменты
@@ -425,6 +579,7 @@ function NavList({
         section={section}
         activeTab={activeTab}
         onNavigate={onNavigate}
+        expanded={expanded}
       />
     </nav>
   );
@@ -485,7 +640,7 @@ export function NavDrawer({
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
           >
-            <X size={15} />
+            <X size={16} />
           </button>
         </div>
         <div className="h-px bg-border" />
@@ -556,21 +711,151 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
+function RailRowList({
+  section,
+  activeTab,
+  onNavigate,
+  expanded,
+}: NavProps & { expanded: boolean }) {
+  return (
+    <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
+      {SIDEBAR_ROWS.map((row, index) => {
+        if (row.type === "brand") {
+          return (
+            <div
+              key="brand"
+              data-sidebar-row="brand"
+              className={cn("grid h-[64px] shrink-0 items-center", RAIL_GRID_CLASS)}
+            >
+              {expanded ? (
+                <>
+                  <div className="flex items-center justify-center">
+                    <MiniLogo className="text-zinc-900" />
+                  </div>
+                  <div className="flex items-center pl-6 pr-4">
+                    <TaskoLogo className="text-zinc-900" />
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center">
+                  <MiniLogo className="text-zinc-900" />
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        if (row.type === "search") {
+          return (
+            <div key="search" data-sidebar-row="search" className="h-10 shrink-0">
+              <SidebarSearch compact expanded={expanded} onNavigate={onNavigate} />
+            </div>
+          );
+        }
+
+        if (row.type === "group") {
+          return (
+            <div
+              key={`${row.label}-${index}`}
+              data-sidebar-row={`group:${row.label}`}
+              className={cn("mt-5 mb-2 grid h-5 shrink-0 items-center", RAIL_GRID_CLASS)}
+            >
+              <div className="flex items-center justify-center">
+                <div className="h-px w-6 bg-border" />
+              </div>
+              {expanded && (
+                <div className="min-w-0 truncate pl-6 pr-4 text-[16px] font-normal leading-5 text-[#5a5a5c]">
+                  {row.label}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        if (row.type === "more") {
+          return (
+            <div key="more" data-sidebar-row="more" className="h-10 shrink-0">
+              <MoreMenu
+                compact
+                section={section}
+                activeTab={activeTab}
+                onNavigate={onNavigate}
+                expanded={expanded}
+              />
+            </div>
+          );
+        }
+
+        const item = row.item;
+        const Icon = item.icon;
+        const active = section === item.section && activeTab === item.tab;
+        const rowId = `${item.section}:${item.tab}`;
+
+        return (
+          <Tooltip key={rowId} label={item.label} disabled={expanded} delayDuration={0}>
+            <button
+              type="button"
+              data-sidebar-row={rowId}
+              data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
+              onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
+              className={cn(
+                "grid h-10 w-full shrink-0 cursor-pointer items-center rounded-[9px] text-left transition",
+                RAIL_GRID_CLASS,
+                expanded
+                  ? active
+                    ? "bg-white text-[#1c1917] shadow-sm"
+                    : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800"
+                  : "text-[#5a5a5c]",
+              )}
+            >
+              <span className="flex items-center justify-center">
+                <span
+                  data-sidebar-icon={rowId}
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-[9px] transition",
+                    !expanded && (
+                      active
+                        ? "bg-white text-[#1c1917] shadow-sm"
+                        : "hover:bg-zinc-200/50 hover:text-zinc-800"
+                    ),
+                  )}
+                >
+                  <Icon size={16} weight="fill" className="shrink-0" />
+                </span>
+              </span>
+              {expanded && (
+                <span
+                  data-sidebar-label={rowId}
+                  className="min-w-0 truncate pl-6 pr-4 text-[16px] font-normal leading-6"
+                >
+                  {item.label}
+                </span>
+              )}
+            </button>
+          </Tooltip>
+        );
+      })}
+    </nav>
+  );
+}
+
+function RailSidebar({
+  section,
+  activeTab,
+  onNavigate,
+  expanded = false,
+}: NavProps & { expanded?: boolean }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Header row: mini logo, aligns with app header height */}
-      <div className="flex h-[59px] shrink-0 items-center justify-center">
-        <MiniLogo className="text-zinc-900" />
-      </div>
-      {/* Search (collapse toggle lives in the work-area header) */}
-      <div className="flex shrink-0 flex-col items-center gap-0.5 pb-1">
-        <SidebarSearch compact onNavigate={onNavigate} />
-      </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
+      <RailRowList
+        section={section}
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        expanded={expanded}
+      />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
       <div onClick={(e) => e.stopPropagation()}>
-        <PlanWidget onNavigate={onNavigate} compact={true} />
+        <PlanWidget onNavigate={onNavigate} compact={!expanded} />
       </div>
     </div>
   );
@@ -583,34 +868,66 @@ type SidebarProps = NavProps & {
   dragging?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode }: SidebarProps) {
-  const isRail = mode === "rail";
+export function Sidebar({ section, activeTab, onNavigate, mode }: SidebarProps) {
+  const [hoverExpanded, setHoverExpanded] = useState(false);
+  const openTimer = useRef<number | null>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (openTimer.current !== null) window.clearTimeout(openTimer.current);
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
 
   if (mode === "topbar") return null;
 
+  if (mode === "full") {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
+      </TooltipProvider>
+    );
+  }
+
+  const handleMouseEnter = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    openTimer.current = window.setTimeout(() => setHoverExpanded(true), 140);
+  };
+
+  const handleMouseLeave = () => {
+    if (openTimer.current !== null) window.clearTimeout(openTimer.current);
+    closeTimer.current = window.setTimeout(() => setHoverExpanded(false), 100);
+  };
+
+  const handleNavigate = (nextSection: SectionId, nextTab: string) => {
+    onNavigate(nextSection, nextTab);
+  };
+
   return (
     <TooltipProvider delayDuration={0}>
-      {isRail ? (
-        // Клик по пустой области rail разворачивает sidebar; e-resize-курсор подсказывает это.
-        // Интерактивные элементы (пункты, поиск, тариф, флайаут) гасят всплытие.
+      <div
+        className={cn("relative z-50 h-full", RAIL_WIDTH_CLASS)}
+      >
         <div
-          className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", onToggleSidebar && "cursor-e-resize")}
-          onClick={() => onToggleSidebar?.()}
-          title={onToggleSidebar ? undefined : "В каталоге используется компактная навигация"}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{ width: hoverExpanded ? RAIL_EXPANDED_WIDTH : RAIL_COLLAPSED_WIDTH }}
+          className={cn(
+            "absolute inset-y-0 left-0 flex min-h-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#f5f5f4] transition-[width,box-shadow] duration-150 ease-out",
+            hoverExpanded
+              ? "shadow-2xl shadow-zinc-300/35"
+              : "shadow-none",
+          )}
         >
           <RailSidebar
             section={section}
             activeTab={activeTab}
-            onNavigate={onNavigate}
+            onNavigate={handleNavigate}
+            expanded={hoverExpanded}
           />
         </div>
-      ) : (
-        <FullSidebar
-          section={section}
-          activeTab={activeTab}
-          onNavigate={onNavigate}
-        />
-      )}
+      </div>
     </TooltipProvider>
   );
 }

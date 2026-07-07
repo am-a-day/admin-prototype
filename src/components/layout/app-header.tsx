@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
 import { PublishStatusControl } from "@/components/layout/publish-status-control";
@@ -12,7 +12,6 @@ export type AppHeaderRightProps = {
   onResetCatalog?: () => void;
   showHamburger?: boolean;
   onOpenMobileMenu?: () => void;
-  onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
   pageTitle?: string;
   isLaunchPage?: boolean;
@@ -23,14 +22,13 @@ export function AppHeaderRight({
   onResetCatalog,
   showHamburger,
   onOpenMobileMenu,
-  onToggleSidebar,
   sidebarCollapsed,
   pageTitle,
 }: AppHeaderRightProps) {
   return (
     <header className="flex h-[59px] shrink-0 items-center pr-3 gap-1">
 
-      {/* ── Left: mobile logo+hamburger, OR fixed collapse toggle + page title (collapsed) ── */}
+      {/* ── Left: mobile logo+hamburger, OR fixed page title next to the rail ── */}
       {showHamburger ? (
         <div className="flex shrink-0 items-center gap-2 mr-1">
           <TaskoLogo className="text-zinc-900" />
@@ -42,20 +40,6 @@ export function AppHeaderRight({
           >
             <Menu size={18} />
           </button>
-        </div>
-      ) : onToggleSidebar ? (
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
-          >
-            {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
-          </button>
-          {sidebarCollapsed && pageTitle && (
-            <span className="shrink-0 text-sm  text-zinc-800">{pageTitle}</span>
-          )}
         </div>
       ) : sidebarCollapsed && pageTitle ? (
         <div className="flex shrink-0 items-center gap-2">

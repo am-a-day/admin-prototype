@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
-import { Sidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
+import { Sidebar, NavDrawer, getPageTitle } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
 import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
@@ -42,9 +42,6 @@ import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
-type SidebarPreference = "expanded" | "collapsed" | null;
-
-const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
 
 const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
@@ -414,29 +411,10 @@ function AppShell() {
     };
   }, []);
 
-  // Sidebar visibility / collapse — catalog can force rail without changing the user's preference.
-  const [userSidebarPreference, setUserSidebarPreference] = useState<SidebarPreference>(() => {
-    const saved = window.localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
-    return saved === "expanded" || saved === "collapsed" ? saved : null;
-  });
+  // The global sidebar is a stable rail on tablet/desktop; expanded navigation is a hover overlay.
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
 
-  const wide = viewportWidth >= 1024;        // inline full sidebar fits
   const showInlineSidebar = viewportWidth >= 768; // tablet+ shows at least a rail
-  const catalogForcesRail = section === "storefront" && storeTab === "catalog";
-  const sidebarCollapsed = catalogForcesRail || userSidebarPreference === "collapsed";
-  const inlineSidebarMode: SidebarMode = wide && !sidebarCollapsed ? "full" : "rail";
-
-  const toggleNav = () => {
-    if (wide && !catalogForcesRail) {
-      const nextPreference: Exclude<SidebarPreference, null> =
-        userSidebarPreference === "collapsed" ? "expanded" : "collapsed";
-      setUserSidebarPreference(nextPreference);
-      window.localStorage.setItem(SIDEBAR_PREFERENCE_KEY, nextPreference);
-    } else if (!wide) {
-      setNavDrawerOpen((o) => !o);         // narrow → overlay drawer
-    }
-  };
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
     setRecommendationTexts((prev) => ({ ...prev, [key]: value }));
@@ -675,18 +653,12 @@ function AppShell() {
 
       {/* ── Left: full-height sidebar ─────────────────────────────────────────── */}
       {showInlineSidebar && (
-        <div
-          className={cn(
-            "flex shrink-0 flex-col transition-[width] duration-300 ease-out",
-            inlineSidebarMode === "rail" ? "w-12" : "w-48",
-          )}
-        >
+        <div className="flex w-16 shrink-0 flex-col">
           <Sidebar
             section={section}
             activeTab={activeTab}
             onNavigate={guardedNavigate}
-            mode={inlineSidebarMode}
-            onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
+            mode="rail"
           />
         </div>
       )}
@@ -699,8 +671,7 @@ function AppShell() {
           onResetCatalog={() => setCatalogPhase("empty")}
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
-          onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
-          sidebarCollapsed={inlineSidebarMode === "rail"}
+          sidebarCollapsed={showInlineSidebar}
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
         />

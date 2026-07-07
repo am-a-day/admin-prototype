@@ -294,13 +294,6 @@ function CompactWidget({
   const filled  = miniFilledCount(daysLeft, vs);
   const showDot = vs === "expired";
 
-  const tooltip =
-    vs === "beforeLaunch" ? `${planId} · начнётся после запуска` :
-    vs === "expired"      ? `Подписка ${planId} истекла · вы на Zero` :
-    vs === "danger"       ? `${planId} истекает через ${daysLeft} дн.` :
-    vs === "warning"      ? `${planId} · осталось ${daysLeft} дн.` :
-    `${planId} · ${daysLeft} дн.`;
-
   return (
     <div className="flex shrink-0 justify-center pb-3 pt-1">
       <button
@@ -338,10 +331,6 @@ function CompactWidget({
           <div className="absolute -right-[0.5px] -top-[0.5px] size-[6px] rounded-full border border-white bg-[#fe9a00]" />
         )}
 
-        {/* Tooltip */}
-        <span className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-2 py-1 text-xs text-white shadow-xl group-hover:block">
-          {tooltip}
-        </span>
       </button>
     </div>
   );
