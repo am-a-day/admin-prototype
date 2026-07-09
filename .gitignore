@@ -3,3 +3,6 @@ dist
 .vercel
 .env
 .env.local
+
+# local dev-server logs
+vite-dev.*.log

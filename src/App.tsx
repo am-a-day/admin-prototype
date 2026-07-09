@@ -1,7 +1,7 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
-import { Sidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
+import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
 import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
@@ -301,7 +301,7 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
     ? [
         {
           title: "Поведение сайдбара",
-          text: "В каталоге глобальный sidebar отображается в rail-режиме, чтобы освободить место для дерева, редактора и предпросмотра. Это не перезаписывает пользовательскую настройку sidebar на других страницах.",
+          text: "Состояние сайдбара — настройка пользователя, а не свойство страницы: Каталог больше не переключает навигацию. В свёрнутом (rail) состоянии наведение временно раскрывает сайдбар поверх контента как flyout — layout не сдвигается. Раскрытый вид можно закрепить (pin).",
         },
         {
           title: "Левая панель",
@@ -423,20 +423,40 @@ function AppShell() {
 
   const wide = viewportWidth >= 1024;        // inline full sidebar fits
   const showInlineSidebar = viewportWidth >= 768; // tablet+ shows at least a rail
-  const catalogForcesRail = section === "storefront" && storeTab === "catalog";
-  const sidebarCollapsed = catalogForcesRail || userSidebarPreference === "collapsed";
+  // Состояние сайдбара — настройка пользователя, а не свойство страницы.
+  // Страницы (включая Каталог) навигацию не переключают.
+  const sidebarCollapsed = userSidebarPreference === "collapsed";
   const inlineSidebarMode: SidebarMode = wide && !sidebarCollapsed ? "full" : "rail";
+  const desktopRail = wide && inlineSidebarMode === "rail"; // пользователь свернул сайдбар на десктопе
+
+  const setPreference = (next: Exclude<SidebarPreference, null>) => {
+    setUserSidebarPreference(next);
+    window.localStorage.setItem(SIDEBAR_PREFERENCE_KEY, next);
+  };
 
   const toggleNav = () => {
-    if (wide && !catalogForcesRail) {
-      const nextPreference: Exclude<SidebarPreference, null> =
-        userSidebarPreference === "collapsed" ? "expanded" : "collapsed";
-      setUserSidebarPreference(nextPreference);
-      window.localStorage.setItem(SIDEBAR_PREFERENCE_KEY, nextPreference);
-    } else if (!wide) {
+    if (wide) {
+      setPreference(userSidebarPreference === "collapsed" ? "expanded" : "collapsed");
+    } else {
       setNavDrawerOpen((o) => !o);         // narrow → overlay drawer
     }
   };
+
+  // Hover-flyout: в свёрнутом сайдборе на десктопе наведение временно раскрывает
+  // навигацию поверх контента, не сдвигая layout. Задержки — hover intent.
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const flyoutTimer = useRef<number | null>(null);
+  const scheduleFlyout = (open: boolean, delay: number) => {
+    if (flyoutTimer.current) window.clearTimeout(flyoutTimer.current);
+    flyoutTimer.current = window.setTimeout(() => setFlyoutOpen(open), delay);
+  };
+  const pinSidebar = () => {
+    setPreference("expanded");
+    setFlyoutOpen(false);
+  };
+  useEffect(() => {
+    if (!desktopRail && flyoutOpen) setFlyoutOpen(false);
+  }, [desktopRail, flyoutOpen]);
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
     setRecommendationTexts((prev) => ({ ...prev, [key]: value }));
@@ -673,21 +693,44 @@ function AppShell() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f5f4] text-zinc-950">
 
-      {/* ── Left: full-height sidebar ─────────────────────────────────────────── */}
+      {/* ── Left: full-height sidebar (+ desktop hover flyout) ────────────────── */}
       {showInlineSidebar && (
         <div
           className={cn(
-            "flex shrink-0 flex-col transition-[width] duration-300 ease-out",
+            "relative z-30 flex shrink-0 flex-col transition-[width] duration-300 ease-out",
             inlineSidebarMode === "rail" ? "w-12" : "w-48",
           )}
+          onMouseEnter={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
+          onMouseLeave={desktopRail ? () => scheduleFlyout(false, 150) : undefined}
         >
           <Sidebar
             section={section}
             activeTab={activeTab}
             onNavigate={guardedNavigate}
             mode={inlineSidebarMode}
-            onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
+            showTooltips={!wide}
           />
+
+          {/* Flyout: панель «вырастает» из рейла по ширине (48→192), без fade.
+              Внутренний слой фиксирован на 192px и не переверстывается — контейнер
+              его раскрывает через overflow, иконки остаются на месте. Layout не двигается. */}
+          {desktopRail && (
+            <div
+              className={cn(
+                "absolute inset-y-0 left-0 z-40 overflow-hidden transition-[width] duration-150 ease-out",
+                flyoutOpen ? "w-48 shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
+              )}
+            >
+              <div className="flex h-full w-48 flex-col bg-[#f5f5f4]">
+                <FullSidebar
+                  section={section}
+                  activeTab={activeTab}
+                  onNavigate={guardedNavigate}
+                  onPin={pinSidebar}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -699,7 +742,7 @@ function AppShell() {
           onResetCatalog={() => setCatalogPhase("empty")}
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
-          onToggleSidebar={wide && !catalogForcesRail ? toggleNav : undefined}
+          onToggleSidebar={wide ? toggleNav : undefined}
           sidebarCollapsed={inlineSidebarMode === "rail"}
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}

@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useHeaderActions } from "@/contexts/header-actions-context";
-import { Plus, Search, SlidersHorizontal } from "lucide-react";
+import { ImageOff, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DishTile, EmptyState } from "@/components/workspace/section-card";
-import {
-  categories,
-  dishes,
-  getDish,
-  getRecommendedDishes,
-  type RecommendationTexts,
-  type UpsellSurface,
-} from "@/data/mock-data";
+import { EmptyState } from "@/components/workspace/section-card";
+import type { RecommendationTexts, UpsellSurface } from "@/data/mock-data";
+import { catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import { usePublish } from "@/contexts/publish-context";
 import { cn } from "@/lib/utils";
 
@@ -158,8 +152,7 @@ export function UpsellWorkspace({
   setUpsellSurface,
   setUpsellFocused,
 }: UpsellWorkspaceProps) {
-  const dish = getDish(selectedDishId);
-  const recommended = getRecommendedDishes(dish);
+  const item = catalogItems.find((i) => i.id === selectedDishId) ?? catalogItems[0];
   const { registerChange } = usePublish();
 
   useHeaderActions(
@@ -173,10 +166,12 @@ export function UpsellWorkspace({
 
   const grouped = useMemo(
     () =>
-      categories.map((cat) => ({
-        ...cat,
-        items: dishes.filter((d) => d.category === cat.name),
-      })),
+      catalogSections
+        .map((section) => ({
+          ...section,
+          items: catalogItems.filter((i) => i.sectionId === section.id),
+        }))
+        .filter((group) => group.items.length > 0),
     [],
   );
 
@@ -198,18 +193,15 @@ export function UpsellWorkspace({
               <div key={group.id}>
                 <div className="mb-1 flex items-center justify-between px-2 text-[11px] font-medium text-[#a8a29e]">
                   <span>{group.name}</span>
-                  <span>
-                    {group.items.reduce((s, i) => s + i.recommendations.length, 0) || ""}
-                  </span>
                 </div>
                 <div className="space-y-1">
-                  {group.items.map((item) => {
-                    const active = selectedDishId === item.id;
+                  {group.items.map((row) => {
+                    const active = selectedDishId === row.id;
                     return (
                       <button
-                        key={item.id}
+                        key={row.id}
                         type="button"
-                        onClick={() => setSelectedDishId(item.id)}
+                        onClick={() => setSelectedDishId(row.id)}
                         className={cn(
                           "flex h-8 w-full items-center justify-between gap-2 rounded-xl border px-[6px] pr-2 text-left text-[13px] font-medium leading-[18px] transition",
                           active
@@ -217,17 +209,7 @@ export function UpsellWorkspace({
                             : "border-transparent text-[#79716b] hover:bg-[#f1f1ea]",
                         )}
                       >
-                        <span className="truncate">{item.name}</span>
-                        {item.recommendations.length > 0 && (
-                          <span
-                            className={cn(
-                              "flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium",
-                              active ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a8a29e]",
-                            )}
-                          >
-                            {item.recommendations.length}
-                          </span>
-                        )}
+                        <span className="truncate">{row.title}</span>
                       </button>
                     );
                   })}
@@ -242,30 +224,27 @@ export function UpsellWorkspace({
           <div className="mx-auto max-w-4xl space-y-6">
             <div className="overflow-hidden rounded-[28px] border border-border bg-white shadow-sm">
               <div className="flex">
-                <div
-                  className={cn(
-                    "flex h-48 w-72 shrink-0 items-center justify-center bg-gradient-to-br text-8xl",
-                    dish.accent,
+                <div className="flex h-48 w-72 shrink-0 items-center justify-center overflow-hidden bg-[#f5f5f4]">
+                  {item.thumbnailUrl ? (
+                    <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageOff size={40} className="text-[#a6a09b]" />
                   )}
-                >
-                  {dish.emoji}
                 </div>
                 <div className="flex flex-1 flex-col justify-center p-7">
                   <div className="mb-2 text-xs font-black uppercase tracking-wide text-blue-600">
-                    {dish.category} · Меню
+                    {item.sectionName} · Меню
                   </div>
-                  <h1 className="text-3xl font-black text-zinc-950">
-                    {dish.name}{" "}
-                    <span className="font-black text-zinc-300">({recommended.length})</span>
-                  </h1>
+                  <h1 className="text-3xl font-black text-zinc-950">{item.title}</h1>
                   <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-zinc-950">
-                    <span>{dish.price}</span>
-                    <span className="text-zinc-300">•</span>
-                    <span className="text-zinc-500">{dish.weight}</span>
+                    <span>{item.price ? formatPrice(item.price) : "Цена не указана"}</span>
+                    {item.weightLabel && (
+                      <>
+                        <span className="text-zinc-300">•</span>
+                        <span className="text-zinc-500">{item.weightLabel}</span>
+                      </>
+                    )}
                   </div>
-                  <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">
-                    {dish.description}
-                  </p>
                 </div>
               </div>
             </div>
@@ -284,20 +263,13 @@ export function UpsellWorkspace({
                 </Button>
               </div>
 
-              {recommended.length === 0 ? (
-                <EmptyState
-                  icon="✨"
-                  title="Пока нет рекомендаций"
-                  description="Подскажите гостю, что хорошо сочетается с этой позицией: напиток, соус, десерт или другое блюдо."
-                  chips={["🥤 Напитки", "🧄 Соусы", "🍰 Десерты"]}
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  {recommended.map((item) => (
-                    <DishTile key={item.id} dish={item} removable />
-                  ))}
-                </div>
-              )}
+              {/* ponytail: fixture has no recommendation links yet — always empty until the import covers them */}
+              <EmptyState
+                icon="✨"
+                title="Пока нет рекомендаций"
+                description="Подскажите гостю, что хорошо сочетается с этой позицией: напиток, соус, десерт или другое блюдо."
+                chips={["🥤 Напитки", "🧄 Соусы", "🍰 Десерты"]}
+              />
             </section>
           </div>
         </div>

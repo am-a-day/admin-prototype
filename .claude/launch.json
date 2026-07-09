@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"admin-prototype","runtimeExecutable":"npm","runtimeArgs":["run","dev","--","--port","5174"],"port":5174,"cwd":"D:\\admin-prototype"}]}
+{"version":"0.0.1","configurations":[{"name":"admin-prototype","runtimeExecutable":"npm","runtimeArgs":["run","dev","--","--port","5174","--strictPort"],"port":5174,"autoPort":false,"cwd":"D:\\admin-prototype"}]}

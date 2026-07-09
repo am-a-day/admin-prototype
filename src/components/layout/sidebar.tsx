@@ -6,6 +6,7 @@ import {
   FileSearch,
   Import,
   Menu,
+  Pin,
   QrCode,
   Search,
   Tag,
@@ -92,11 +93,13 @@ const MORE_ITEMS: MoreItem[] = [
 
 function MoreMenu({
   compact,
+  showTooltip = false,
   section,
   activeTab,
   onNavigate,
 }: {
   compact: boolean;
+  showTooltip?: boolean;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
@@ -146,21 +149,21 @@ function MoreMenu({
 
   return (
     <>
-      <Tooltip label="Ещё" disabled={!compact} delayDuration={0}>
+      <Tooltip label="Ещё" disabled={!compact || !showTooltip} delayDuration={0}>
         <button
           ref={btnRef}
           type="button"
           onClick={handleToggle}
           className={cn(
-            "flex cursor-pointer items-center rounded-lg transition",
-            compact ? "h-8 w-8 justify-center" : "w-full gap-2 px-2 py-[5px] text-left text-[13px] font-medium",
+            "flex cursor-pointer items-center gap-1.5 rounded-[7px] px-[7px] py-[6px] text-left text-[13px] font-normal leading-4 transition",
+            !compact && "w-full",
             isMoreActive || open
               ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
           )}
         >
-          <Ellipsis size={compact ? 17 : 15} className="shrink-0" />
-          {!compact && <span>Ещё</span>}
+          <Ellipsis size={16} className="shrink-0" />
+          {!compact && <span className="truncate flex-1">Ещё</span>}
         </button>
       </Tooltip>
 
@@ -315,22 +318,25 @@ function SearchModal({
 function SidebarSearch({
   compact,
   onNavigate,
+  showTooltip = false,
 }: {
   compact: boolean;
   onNavigate: (section: SectionId, tab: string) => void;
+  showTooltip?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
       {compact ? (
-        <Tooltip label="Поиск позиций" disabled={!compact} delayDuration={0}>
+        <Tooltip label="Поиск позиций" disabled={!compact || !showTooltip} delayDuration={0}>
+          {/* Та же высота (28px) и X иконки, что у поля поиска в full — Y/X не прыгают при раскрытии */}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
+            className="flex h-7 cursor-pointer items-center rounded-[7px] px-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
           >
-            <MagnifyingGlass size={17} className="shrink-0" />
+            <MagnifyingGlass size={14} className="shrink-0" />
           </button>
         </Tooltip>
       ) : (
@@ -347,7 +353,7 @@ function SidebarSearch({
             readOnly
             tabIndex={-1}
             placeholder="Поиск позиций"
-            className="pointer-events-none h-auto cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-[6px] pl-[27px] text-[13px] text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
+            className="pointer-events-none h-auto cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-[6px] pl-[27px] text-[13px] leading-4 text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
           />
         </button>
       )}
@@ -361,49 +367,58 @@ function SidebarSearch({
 
 // ── Shared nav list ────────────────────────────────────────────────────────────
 
+// Заголовок группы (full) и разделитель (rail) занимают одинаковый ряд 28px,
+// пункты — 28px в обоих режимах: rail и flyout стоят на одних Y-координатах (Figma 1058:5517 / 1058:5611).
+function GroupHeaderRow({ compact, title }: { compact: boolean; title: string }) {
+  return (
+    <div className={cn("flex h-7 items-center", compact ? "px-[7px]" : "pl-2")}>
+      {compact ? (
+        <div className="h-px w-4 bg-border" />
+      ) : (
+        <span className="text-[11px] font-normal leading-4 text-[#5a5a5c]">{title}</span>
+      )}
+    </div>
+  );
+}
+
 function NavList({
   section,
   activeTab,
   onNavigate,
   compact,
+  showTooltips = false,
 }: {
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
+  showTooltips?: boolean;
 }) {
   return (
-    <nav className={cn("flex-1 overflow-y-auto py-1 mt-2", compact ? "px-1 space-y-2" : "px-2 space-y-4 pb-2 pt-1")}>
+    <nav className="mt-2 flex-1 space-y-[6px] overflow-y-auto px-2 pb-2 pt-1">
 
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
-          {!compact && (
-            <div className="mb-0.5 mt-3 first:mt-0 px-2 text-[12px] font-normal text-[#5a5a5c]">
-              {group.title}
-            </div>
-          )}
-          {compact && <div className="my-0.5 h-px bg-border" />}
-          <div className="space-y-px">
+          <GroupHeaderRow compact={compact} title={group.title} />
+          <div>
             {group.items.map((item) => {
               const Icon = item.icon;
               const active = section === item.section && activeTab === item.tab;
               return (
-                <Tooltip key={item.label} label={item.label} disabled={!compact} delayDuration={0}>
+                <Tooltip key={item.label} label={item.label} disabled={!compact || !showTooltips} delayDuration={0}>
                   <button
                     type="button"
                     data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
                     onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
                     className={cn(
-                      "relative flex cursor-pointer items-center rounded-[7px] font-normal transition",
-                      compact
-                        ? "h-8 w-8 justify-center"
-                        : "w-full gap-1.5 px-[7px] py-1.5 text-left text-[13px] leading-4",
+                      "relative flex cursor-pointer items-center gap-1.5 rounded-[7px] px-[7px] py-[6px] text-left text-[13px] font-normal leading-4 transition",
+                      !compact && "w-full",
                       active
                         ? "bg-white text-[#1c1917] shadow-sm"
                         : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
                     )}
                   >
-                    <Icon size={compact ? 17 : 14} weight="fill" className="shrink-0" />
+                    <Icon size={16} weight="fill" className="shrink-0" />
                     {!compact && <span className="truncate flex-1">{item.label}</span>}
                   </button>
                 </Tooltip>
@@ -413,19 +428,17 @@ function NavList({
         </div>
       ))}
 
-      {/* ── «Ещё» separator + button ── */}
-      {compact && <div className="my-0.5 h-px bg-border" />}
-      {!compact && (
-        <div className="mb-0.5 mt-3 px-2 text-[12px] font-normal text-[#5a5a5c]">
-          Инструменты
-        </div>
-      )}
-      <MoreMenu
-        compact={compact}
-        section={section}
-        activeTab={activeTab}
-        onNavigate={onNavigate}
-      />
+      {/* ── «Ещё» ── */}
+      <div>
+        <GroupHeaderRow compact={compact} title="Инструменты" />
+        <MoreMenu
+          compact={compact}
+          showTooltip={showTooltips}
+          section={section}
+          activeTab={activeTab}
+          onNavigate={onNavigate}
+        />
+      </div>
     </nav>
   );
 }
@@ -536,13 +549,23 @@ function StartPlanBlock() {
   );
 }
 
-function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
+export function FullSidebar({ section, activeTab, onNavigate, onPin }: NavProps & { onPin?: () => void }) {
   const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Header row: logo only — collapse toggle lives in the work-area header */}
-      <div className="flex h-[59px] shrink-0 items-center px-4">
+      {/* Header row: logo + optional pin (pin appears only in the hover flyout) */}
+      <div className="flex h-[59px] shrink-0 items-center justify-between px-4">
         <TaskoLogo className="text-zinc-900" />
+        {onPin && (
+          <button
+            type="button"
+            onClick={onPin}
+            title="Закрепить меню"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-700"
+          >
+            <Pin size={15} />
+          </button>
+        )}
       </div>
       {/* Search */}
       <div className="px-3 pb-1">
@@ -556,18 +579,18 @@ function FullSidebar({ section, activeTab, onNavigate }: NavProps) {
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
+function RailSidebar({ section, activeTab, onNavigate, showTooltips = false }: NavProps & { showTooltips?: boolean }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header row: mini logo, aligns with app header height */}
       <div className="flex h-[59px] shrink-0 items-center justify-center">
         <MiniLogo className="text-zinc-900" />
       </div>
-      {/* Search (collapse toggle lives in the work-area header) */}
-      <div className="flex shrink-0 flex-col items-center gap-0.5 pb-1">
-        <SidebarSearch compact onNavigate={onNavigate} />
+      {/* Search — тот же wrapper (px-3 pb-1), что и в FullSidebar: одинаковый Y-ритм */}
+      <div className="shrink-0 px-3 pb-1">
+        <SidebarSearch compact onNavigate={onNavigate} showTooltip={showTooltips} />
       </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} />
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
       <div onClick={(e) => e.stopPropagation()}>
         <PlanWidget onNavigate={onNavigate} compact={true} />
@@ -581,9 +604,11 @@ function RailSidebar({ section, activeTab, onNavigate }: NavProps) {
 type SidebarProps = NavProps & {
   mode: SidebarMode;
   dragging?: boolean;
+  /** Rail icon tooltips — only when there's no hover-flyout to reveal labels (tablet rail). */
+  showTooltips?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false }: SidebarProps) {
   const isRail = mode === "rail";
 
   if (mode === "topbar") return null;
@@ -591,25 +616,9 @@ export function Sidebar({ section, activeTab, onNavigate, onToggleSidebar, mode 
   return (
     <TooltipProvider delayDuration={0}>
       {isRail ? (
-        // Клик по пустой области rail разворачивает sidebar; e-resize-курсор подсказывает это.
-        // Интерактивные элементы (пункты, поиск, тариф, флайаут) гасят всплытие.
-        <div
-          className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", onToggleSidebar && "cursor-e-resize")}
-          onClick={() => onToggleSidebar?.()}
-          title={onToggleSidebar ? undefined : "В каталоге используется компактная навигация"}
-        >
-          <RailSidebar
-            section={section}
-            activeTab={activeTab}
-            onNavigate={onNavigate}
-          />
-        </div>
+        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} />
       ) : (
-        <FullSidebar
-          section={section}
-          activeTab={activeTab}
-          onNavigate={onNavigate}
-        />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
       )}
     </TooltipProvider>
   );

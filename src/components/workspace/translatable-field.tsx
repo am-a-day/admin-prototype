@@ -23,6 +23,8 @@ export function TranslatableField({
   rows = 4,
   fallbackLang = "ru",
   placeholder = "Введите перевод…",
+  showTranslationMeta = true,
+  compact = false,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -30,6 +32,8 @@ export function TranslatableField({
   rows?: number;
   fallbackLang?: LanguageCode;
   placeholder?: string;
+  showTranslationMeta?: boolean;
+  compact?: boolean;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const [translations, setTranslations] = useState<Translations>(initialTranslations);
@@ -69,14 +73,16 @@ export function TranslatableField({
     setTranslations((prev) => ({ ...prev, [contentLanguage]: fallbackValue }));
 
   return (
-    <div className="rounded-2xl border border-border bg-zinc-50 px-4 py-3">
+    <div className={compact ? "rounded-xl border border-zinc-200 bg-white px-3 py-2.5" : "rounded-2xl border border-border bg-zinc-50 px-4 py-3"}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        <TranslationIndicator
-          translations={translations}
-          fieldLabel={label}
-          onPickLanguage={handlePickLanguage}
-        />
+        {showTranslationMeta && (
+          <TranslationIndicator
+            translations={translations}
+            fieldLabel={label}
+            onPickLanguage={handlePickLanguage}
+          />
+        )}
       </div>
 
       {multiline ? (
@@ -99,7 +105,7 @@ export function TranslatableField({
       )}
 
       {/* Soft hint when current language is empty */}
-      {isEmpty && (
+      {showTranslationMeta && isEmpty && (
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-zinc-400">
           <span>Перевод на {GENITIVE[contentLanguage] ?? currentLabel} ещё не заполнен</span>
           {showCopy && (
