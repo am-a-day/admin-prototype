@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TranslationIndicator } from "@/components/workspace/translation-indicator";
+import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 
@@ -25,6 +26,7 @@ export function TranslatableField({
   placeholder = "Введите перевод…",
   showTranslationMeta = true,
   compact = false,
+  plain = false,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -34,6 +36,8 @@ export function TranslatableField({
   placeholder?: string;
   showTranslationMeta?: boolean;
   compact?: boolean;
+  /** Стиль макета редактора позиции: подпись над полем, поле в собственной рамке. */
+  plain?: boolean;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const [translations, setTranslations] = useState<Translations>(initialTranslations);
@@ -72,10 +76,13 @@ export function TranslatableField({
   const copyFromFallback = () =>
     setTranslations((prev) => ({ ...prev, [contentLanguage]: fallbackValue }));
 
+  const plainInputClass =
+    "w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.1)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
+
   return (
-    <div className={compact ? "rounded-xl border border-zinc-200 bg-white px-3 py-2.5" : "rounded-2xl border border-border bg-zinc-50 px-4 py-3"}>
+    <div className={plain ? undefined : compact ? "rounded-xl border border-zinc-200 bg-white px-3 py-2.5" : "rounded-2xl border border-border bg-zinc-50 px-4 py-3"}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+        <span className={plain ? "text-[13px] leading-5 text-[#303030]" : "text-xs font-semibold text-muted-foreground"}>{label}</span>
         {showTranslationMeta && (
           <TranslationIndicator
             translations={translations}
@@ -92,7 +99,11 @@ export function TranslatableField({
           value={currentValue}
           onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full resize-none bg-transparent text-base font-semibold text-zinc-900 placeholder:text-zinc-300 outline-none"
+          className={
+            plain
+              ? cn(plainInputClass, "min-h-[77px] resize-none py-2 leading-6")
+              : "w-full resize-none bg-transparent text-base font-semibold text-zinc-900 placeholder:text-zinc-300 outline-none"
+          }
         />
       ) : (
         <input
@@ -100,7 +111,11 @@ export function TranslatableField({
           value={currentValue}
           onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-transparent text-base font-semibold text-zinc-900 placeholder:text-zinc-300 outline-none"
+          className={
+            plain
+              ? cn(plainInputClass, "h-9")
+              : "w-full bg-transparent text-base font-semibold text-zinc-900 placeholder:text-zinc-300 outline-none"
+          }
         />
       )}
 

@@ -13,11 +13,11 @@ import {
   MegaphoneSimple,
   Tag,
 } from "@phosphor-icons/react";
-import { ArrowLeft, Camera, CheckCircle, ChevronRight, GripVertical, ImageOff, Play, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, CheckCircle, ChevronRight, CirclePlus, GripVertical, ImageOff, Play, Plus, Search, Trash2, X } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import type { Category } from "@/data/mock-data";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
-import type { CatalogItem } from "@/data/catalog";
+import type { CatalogItem, CatalogSection } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
@@ -914,12 +914,11 @@ function EmptyCatalog({
 
 // ── Position editor: back → summary header → tabs ─────────────────────────────
 
-type EditorTab = "basic" | "media" | "promo" | "options" | "availability" | "display";
+type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
 
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
-  { id: "media", label: "Медиа" },
-  { id: "promo", label: "Продвижение" },
+  { id: "promo", label: "Допродажа" },
   { id: "options", label: "Опции" },
   { id: "availability", label: "Доступность" },
   { id: "display", label: "Отображение" },
@@ -939,50 +938,6 @@ type MediaEntry = {
   coverMode?: "auto" | "custom";
 };
 
-type SummaryChip = {
-  key: string;
-  label: string;
-  kind: "status" | "label" | "tag" | "count";
-  tab: EditorTab;
-};
-
-/** Compact audit-like summary: media → exceptional status → promo → counts. */
-function buildPositionSummary(item: CatalogItem, media: MediaEntry[]): SummaryChip[] {
-  const chips: SummaryChip[] = [];
-  const mainMedia = media[0];
-  if (!mainMedia) {
-    chips.push({
-      key: "media-empty",
-      label: "Нет медиа",
-      kind: "count",
-      tab: "media",
-    });
-  } else if (mainMedia.kind === "video" && mainMedia.fileName) {
-    chips.push({
-      key: "video",
-      label: "С видео",
-      kind: "count",
-      tab: "media",
-    });
-  }
-  for (const chip of getStatusChips(item)) {
-    const tab: EditorTab = chip.label.startsWith("Без кнопки") ? "display" : "availability";
-    chips.push({ key: `st-${chip.label}`, label: chip.label, kind: "status", tab });
-  }
-  item.guestLabels.forEach((label) => chips.push({ key: `lb-${label}`, label, kind: "label", tab: "promo" }));
-  item.tags.forEach((tag) => chips.push({ key: `tg-${tag}`, label: tag, kind: "tag", tab: "promo" }));
-  if (item.optionsCount > 0) {
-    chips.push({ key: "opt", label: `${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")}`, kind: "count", tab: "options" });
-  }
-  if (item.modifiersCount > 0) {
-    chips.push({ key: "mod", label: `${item.modifiersCount} ${plural(item.modifiersCount, "доп", "допа", "допов")}`, kind: "count", tab: "options" });
-  }
-  if (item.recommendationsCount > 0) {
-    chips.push({ key: "rec", label: `${item.recommendationsCount} ${plural(item.recommendationsCount, "рекомендация", "рекомендации", "рекомендаций")}`, kind: "count", tab: "promo" });
-  }
-  return chips.slice(0, 6);
-}
-
 /** Unfilled audit fields (routed to «Основное»). */
 function buildPositionProblems(item: CatalogItem): string[] {
   const problems: string[] = [];
@@ -991,75 +946,6 @@ function buildPositionProblems(item: CatalogItem): string[] {
   if (item.translationFilledCount < item.translationTotalCount) problems.push("Нет перевода");
   if (!item.hasDescription) problems.push("Нет описания");
   return problems;
-}
-
-function PositionSummary({
-  item,
-  media,
-  onOpenTab,
-}: {
-  item: CatalogItem;
-  media: MediaEntry[];
-  onOpenTab: (tab: EditorTab) => void;
-}) {
-  const chips = buildPositionSummary(item, media);
-  const problems = buildPositionProblems(item);
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={() => onOpenTab(chip.tab)}
-          className="flex items-center rounded-[4px] transition hover:opacity-80"
-          title="Открыть настройку"
-        >
-          {chip.kind === "status" ? (
-            <StatusBadge label={chip.label} />
-          ) : chip.kind === "count" ? (
-            <span className="flex h-4 items-center rounded-[4px] bg-[#f5f5f4] px-1.5 text-[11px] font-medium leading-5 text-[#57534d]">
-              {chip.label}
-            </span>
-          ) : (
-            <AttributeBadge property={{ label: chip.label, icon: chip.kind === "label" ? "label" : "tag" }} />
-          )}
-        </button>
-      ))}
-      {problems.length > 0 && problems.length <= 3 &&
-        problems.map((problem) => (
-          <button
-            key={problem}
-            type="button"
-            onClick={() => onOpenTab("basic")}
-            className="flex h-4 items-center rounded-[4px] border border-dashed border-[#e0b3a0] bg-[#fdf6f2] px-1.5 text-[11px] font-medium leading-5 text-[#bc4a08] transition hover:bg-[#faeee7]"
-          >
-            {problem}
-          </button>
-        ))}
-      {problems.length > 3 && (
-        <button
-          type="button"
-          onClick={() => onOpenTab("basic")}
-          className="flex h-4 items-center rounded-[4px] border border-dashed border-[#e0b3a0] bg-[#fdf6f2] px-1.5 text-[11px] font-medium leading-5 text-[#bc4a08] transition hover:bg-[#faeee7]"
-        >
-          {problems.length} {plural(problems.length, "поле", "поля", "полей")} не заполнены
-        </button>
-      )}
-    </div>
-  );
-}
-
-function EditorFieldShell({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
 }
 
 function AddInlineButton({ label, onClick }: { label: string; onClick: () => void }) {
@@ -1071,31 +957,6 @@ function AddInlineButton({ label, onClick }: { label: string; onClick: () => voi
     >
       <Plus size={14} />
       {label}
-    </button>
-  );
-}
-
-/** Neutral ghost text-action used in the illustration definition line. */
-function GhostAction({ children, onClick, disabled, title }: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "rounded-md px-1.5 py-0.5 text-[13px] font-medium transition",
-        disabled
-          ? "cursor-not-allowed text-[#c4c0ba]"
-          : "text-[#57534d] hover:bg-[#f5f5f4] hover:text-[#292524]",
-      )}
-    >
-      {children}
     </button>
   );
 }
@@ -1139,7 +1000,7 @@ function MediaTile({
       className={cn(
         "group relative shrink-0 cursor-grab overflow-hidden rounded-xl border bg-[#f5f5f4] active:cursor-grabbing",
         "border-zinc-200",
-        "h-[72px] w-[72px]",
+        "h-16 w-16",
       )}
     >
       {isVideo ? (
@@ -1244,7 +1105,7 @@ function BasicMediaStrip({
       <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFileChange} />
       <input ref={videoInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/*" className="hidden" onChange={handleVideoFileChange} />
 
-      <div className="mb-2 text-[13px] font-medium text-[#292524]">Медиа</div>
+      <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">Медиа</div>
       <div className="flex flex-wrap items-start gap-2">
         {media.map((entry, index) => (
           <MediaTile
@@ -1270,7 +1131,7 @@ function BasicMediaStrip({
           <DropdownMenu.Trigger asChild>
             <button
               type="button"
-              className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl border border-dashed border-[#d6d3d1] text-[#79716b] transition hover:border-[#a8a29e] hover:bg-[#fafaf9] hover:text-[#292524]"
+              className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-dashed border-[#d6d3d1] text-[#79716b] transition hover:border-[#a8a29e] hover:bg-[#fafaf9] hover:text-[#292524]"
             >
               <Plus size={18} />
             </button>
@@ -1299,189 +1160,19 @@ function BasicMediaStrip({
   );
 }
 
-function MediaTab({
-  item,
-  media,
-  onAddPhotoFile,
-  onAddVideoFile,
-  onReorder,
-  onRemove,
-  onSetVideoCoverMode,
-}: {
-  item: CatalogItem;
-  media: MediaEntry[];
-  onAddPhotoFile: (file: File) => void;
-  onAddVideoFile: (file: File) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
-  onRemove: (id: string) => void;
-  onSetVideoCoverMode: (id: string, mode: "auto" | "custom") => void;
-}) {
-  const [notice, setNotice] = useState("");
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
-  const videoInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timeout = window.setTimeout(() => setNotice(""), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [notice]);
-
-  const hasVideo = media.some((m) => m.kind === "video");
-  const videoEntry = media.find((m) => m.kind === "video");
-  const activeVideoUsed = VIDEO_LIMIT_USED; // demo: active positions with video
-  const limitReached = activeVideoUsed >= VIDEO_LIMIT_TOTAL;
-  const canAddVideo = VIDEO_PACKAGE_CONNECTED && !hasVideo && !limitReached;
-
-  const flash = (text: string) => setNotice(text);
-  const openPhotoPicker = () => photoInputRef.current?.click();
-  const openVideoPicker = () => {
-    if (!VIDEO_PACKAGE_CONNECTED) return flash("Видео доступно в пакете");
-    if (hasVideo) return flash("У позиции уже есть видео");
-    if (limitReached) return flash(`Лимит ${VIDEO_LIMIT_TOTAL} из ${VIDEO_LIMIT_TOTAL} — отключите видео у другой позиции`);
-    videoInputRef.current?.click();
-  };
-  const handlePhotoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    if (!file) return;
-    onAddPhotoFile(file);
-  };
-  const handleVideoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    if (!file) return;
-    onAddVideoFile(file);
-  };
-  const handleDrop = (toIndex: number) => {
-    if (dragIndex == null || dragIndex === toIndex) {
-      setDragIndex(null);
-      return;
-    }
-    onReorder(dragIndex, toIndex);
-    setDragIndex(null);
-  };
-
+// Поле макета редактора: подпись сверху, контент в белой рамке h-9.
+function EditorField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="space-y-4">
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handlePhotoFileChange}
-      />
-      <input
-        ref={videoInputRef}
-        type="file"
-        accept="video/mp4,video/quicktime,video/webm,video/*"
-        className="hidden"
-        onChange={handleVideoFileChange}
-      />
-
-      {media.length === 0 ? (
-        <div className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
-          <p className="text-[14px] font-medium text-[#44403b]">Нет медиа</p>
-          <p className="mt-1 text-[13px] text-[#79716b]">Добавьте фото или видео, чтобы показать позицию на витрине.</p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={openPhotoPicker}
-              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
-            >
-              <Plus size={14} /> Добавить фото
-            </button>
-            <button
-              type="button"
-              onClick={openVideoPicker}
-              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]"
-            >
-              Добавить видео
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-start gap-2">
-            {media.map((entry, index) => (
-              <MediaTile
-                key={entry.id}
-                item={item}
-                entry={entry}
-                index={index}
-                onDragStart={setDragIndex}
-                onDragOver={() => {}}
-                onDrop={handleDrop}
-                onRemove={() => onRemove(entry.id)}
-                onReplace={() => entry.kind === "video" ? flash("Замена видео будет подключена позже") : openPhotoPicker()}
-              />
-            ))}
-
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl border border-dashed border-[#d6d3d1] text-[#79716b] transition hover:border-[#a8a29e] hover:bg-[#fafaf9] hover:text-[#292524]"
-                >
-                  <Plus size={18} />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownContent align="start">
-                <DropdownActionItem onSelect={openPhotoPicker}>Добавить фото</DropdownActionItem>
-                <DropdownActionItem
-                  onSelect={openVideoPicker}
-                >
-                  <span className={cn("flex w-full items-center justify-between gap-3", !canAddVideo && "text-[#a8a29e]")}>
-                    <span>Добавить видео</span>
-                    {!VIDEO_PACKAGE_CONNECTED ? (
-                      <Lock size={13} />
-                    ) : (
-                      <span className="text-[11px] text-[#a8a29e]">{activeVideoUsed}/{VIDEO_LIMIT_TOTAL}</span>
-                    )}
-                  </span>
-                </DropdownActionItem>
-                <div className="px-2 py-1 text-[11px] text-[#a8a29e]">
-                  {limitReached && !hasVideo ? "Лимит 10 из 10" : `${activeVideoUsed} из ${VIDEO_LIMIT_TOTAL} активных позиций`}
-                </div>
-              </DropdownContent>
-            </DropdownMenu.Root>
-          </div>
-        </>
-      )}
-
-      {/* Video inspector — only when the position has a video */}
-      {videoEntry && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-3">
-          <div className="mb-2 text-[13px] font-semibold text-[#292524]">Видео-иллюстрация</div>
-          <div className="space-y-1.5 text-[12px] leading-5 text-[#79716b]">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <span className="text-[#57534d]">Файл:</span>
-              <span>{videoEntry.fileName ?? "video-dish.mp4"}</span>
-              <span className="text-[#d6d3d1]">·</span>
-              <GhostAction onClick={() => flash("Замена видео будет подключена позже")}>Заменить</GhostAction>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <span className="text-[#57534d]">Обложка:</span>
-              <span>{videoEntry.coverMode === "custom" ? "своя" : "авто"}</span>
-              <span className="text-[#d6d3d1]">·</span>
-              {videoEntry.coverMode === "custom" ? (
-                <GhostAction onClick={() => onSetVideoCoverMode(videoEntry.id, "auto")}>Вернуть авто</GhostAction>
-              ) : (
-                <GhostAction onClick={() => { onSetVideoCoverMode(videoEntry.id, "custom"); flash("Загрузка обложки будет подключена позже"); }}>Поменять обложку</GhostAction>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {notice && (
-        <div className="fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
-          {notice}
-        </div>
-      )}
+    <div className="min-w-0">
+      <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{label}</div>
+      <div className="flex h-9 w-full items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]">
+        {children}
+      </div>
     </div>
   );
 }
+
+const WEIGHT_UNITS = ["г", "кг", "мл", "л", "шт"];
 
 function BasicTab({
   item,
@@ -1498,91 +1189,20 @@ function BasicTab({
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
   onRemoveMedia: (id: string) => void;
 }) {
-  const [discountOpen, setDiscountOpen] = useState(item.hasDiscount);
-  const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
-
-  const [weightValue, weightUnit] = item.weightLabel
+  const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
     : ["", "г"];
+  const [unit, setUnit] = useState(initialWeightUnit);
+
+  useEffect(() => {
+    setUnit(initialWeightUnit);
+  }, [item.id, initialWeightUnit]);
+
+  const inlineInputClass =
+    "min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]";
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <TranslatableField
-          key={`name-${item.id}`}
-          label="Название"
-          initialTranslations={{ ru: item.title }}
-          showTranslationMeta={false}
-          compact
-        />
-
-        <EditorFieldShell label="Цена">
-          <div className="flex items-baseline gap-1">
-            <input
-              defaultValue={item.price || ""}
-              placeholder="0"
-              className="w-full bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-300"
-            />
-            <span className="text-sm font-semibold text-zinc-400">₸</span>
-          </div>
-        </EditorFieldShell>
-      </div>
-
-      {discountOpen && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2.5">
-          <span className="text-xs font-semibold text-muted-foreground">Скидка</span>
-          <input
-            defaultValue="10"
-            className="h-8 w-16 rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-900 outline-none"
-          />
-          <span className="text-[13px] text-[#79716b]">%</span>
-          <span className="text-[13px] text-[#79716b]">Цена со скидкой:</span>
-          <div className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2">
-            <input
-              defaultValue={item.priceWithSale ?? Math.round(item.price * 0.9)}
-              placeholder="0"
-              className="w-24 bg-transparent text-sm font-semibold text-zinc-900 outline-none placeholder:text-zinc-300"
-            />
-            <span className="text-xs font-semibold text-zinc-400">₸</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setDiscountOpen(false)}
-            className="ml-auto h-8 rounded-[8px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
-          >
-            Убрать
-          </button>
-        </div>
-      )}
-
-      <EditorFieldShell label="Порция">
-        <div className="flex max-w-[260px] items-center gap-2">
-          <input
-            defaultValue={weightValue}
-            placeholder="—"
-            className="w-full bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-300"
-          />
-          <select
-            defaultValue={weightUnit}
-            className="shrink-0 rounded-lg border border-border bg-white px-2 py-1 text-sm font-semibold text-zinc-700 outline-none"
-          >
-            {["г", "кг", "мл", "л", "шт"].map((u) => (
-              <option key={u} value={u}>{u}</option>
-            ))}
-          </select>
-        </div>
-      </EditorFieldShell>
-
-      <TranslatableField
-        key={`desc-${item.id}`}
-        label="Описание"
-        multiline
-        initialTranslations={{ ru: item.description }}
-        placeholder="Кратко опишите состав, вкус или способ подачи"
-        showTranslationMeta={false}
-        compact
-      />
-
+    <div className="space-y-3">
       <BasicMediaStrip
         item={item}
         media={media}
@@ -1592,29 +1212,107 @@ function BasicTab({
         onRemove={onRemoveMedia}
       />
 
-      <div>
-        <div className="mb-1.5 text-xs font-semibold text-muted-foreground">Дополнительно</div>
-        <div className="flex flex-wrap items-center gap-2">
-          {!discountOpen && <AddInlineButton label="Добавить скидку" onClick={() => setDiscountOpen(true)} />}
-          {!kbjuOpen && <AddInlineButton label="Добавить КБЖУ на 100 г" onClick={() => setKbjuOpen(true)} />}
-        </div>
+      <TranslatableField
+        key={`name-${item.id}`}
+        label="Название"
+        initialTranslations={{ ru: item.title }}
+        showTranslationMeta={false}
+        plain
+      />
+
+      <div className="grid grid-cols-2 gap-3">
+        <EditorField label="Объем">
+          <input defaultValue={initialWeightValue} placeholder="—" className={inlineInputClass} />
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-[6px] text-[13px] text-[#666] transition hover:text-[#292524]">
+                {unit}
+                <CaretDown size={13} className="text-[#a8a29e]" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              {WEIGHT_UNITS.map((u) => (
+                <DropdownActionItem key={u} onSelect={() => setUnit(u)}>{u}</DropdownActionItem>
+              ))}
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </EditorField>
+
+        <EditorField label="Цена">
+          <input defaultValue={item.price || ""} placeholder="0" className={inlineInputClass} />
+          <span className="shrink-0 text-[13px] text-[#666]">₸</span>
+        </EditorField>
       </div>
 
-      {kbjuOpen && (
-        <EditorFieldShell label="КБЖУ на 100 г">
-          <div className="grid grid-cols-4 gap-2">
-            {["Ккал", "Белки", "Жиры", "Углеводы"].map((macro) => (
-              <label key={macro} className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2">
-                <div className="text-[11px] font-medium text-muted-foreground">{macro}</div>
-                <input
-                  placeholder="—"
-                  className="w-full bg-transparent text-sm font-semibold text-zinc-900 outline-none placeholder:text-zinc-300"
-                />
-              </label>
-            ))}
-          </div>
-        </EditorFieldShell>
-      )}
+      <TranslatableField
+        key={`desc-${item.id}`}
+        label="Описание"
+        multiline
+        rows={3}
+        initialTranslations={{ ru: item.description }}
+        placeholder="Кратко опишите состав, вкус или способ подачи"
+        showTranslationMeta={false}
+        plain
+      />
+    </div>
+  );
+}
+
+// ── Скидка и КБЖУ — опциональные блоки под карточкой (паттерн «Ещё») ──────────
+
+function EditorBlockHeader({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <div className="mb-1.5 flex h-7 items-center">
+      <div className="text-[13px] font-medium leading-[18px] text-[#303030]">{label}</div>
+      <div className="flex-1" />
+      <button
+        type="button"
+        title="Убрать блок"
+        onClick={onRemove}
+        className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626]"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function DiscountBlock({ item, onRemove }: { item: CatalogItem; onRemove: () => void }) {
+  return (
+    <div>
+      <EditorBlockHeader label="Скидка" onRemove={onRemove} />
+      <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[#e7e5e4] bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+        <input
+          defaultValue="10"
+          className="h-8 w-16 rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+        />
+        <span className="text-[13px] text-[#79716b]">%</span>
+        <span className="text-[13px] text-[#79716b]">Цена со скидкой:</span>
+        <div className="flex h-8 items-center gap-1 rounded-[8px] border border-[#e5e5e5] px-2">
+          <input
+            defaultValue={item.priceWithSale ?? Math.round(item.price * 0.9)}
+            placeholder="0"
+            className="w-24 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+          />
+          <span className="text-[13px] text-[#666]">₸</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KbjuBlock({ onRemove }: { onRemove: () => void }) {
+  return (
+    <div>
+      <EditorBlockHeader label="КБЖУ на 100 г" onRemove={onRemove} />
+      <div className="grid grid-cols-4 gap-2">
+        {["Ккал", "Белки", "Жиры", "Углеводы"].map((macro) => (
+          <label key={macro} className="rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]">
+            <div className="text-[11px] text-[#79716b]">{macro}</div>
+            <input placeholder="—" className="w-full bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1790,7 +1488,7 @@ function DisplayTab({ item }: { item: CatalogItem }) {
             />
           ))}
         </div>
-        <p className="mt-3 text-[12px] text-[#a8a29e]">Фото и видео позиции — в табе «Медиа».</p>
+        <p className="mt-3 text-[12px] text-[#a8a29e]">Фото и видео позиции — в блоке «Медиа» таба «Основное».</p>
       </section>
 
     </div>
@@ -1801,15 +1499,24 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
   return item.thumbnailUrl ? [{ id: "photo-1", kind: "photo" }] : [];
 }
 
-function PositionEditor({ item }: { item: CatalogItem }) {
+function PositionEditor({
+  item,
+  items,
+  onSelectItem,
+}: {
+  item: CatalogItem;
+  items: CatalogItem[];
+  onSelectItem: (id: string) => void;
+}) {
   const [activeTab, setActiveTab] = useState<EditorTab>("basic");
-  const [photoHover, setPhotoHover] = useState(false);
   const [media, setMedia] = useState<MediaEntry[]>(() => getInitialMedia(item));
-
-  const openTab = (tab: EditorTab) => setActiveTab(tab);
+  const [discountOpen, setDiscountOpen] = useState(item.hasDiscount);
+  const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
 
   useEffect(() => {
     setMedia(getInitialMedia(item));
+    setDiscountOpen(item.hasDiscount);
+    setKbjuOpen(item.nutritionFilledCount > 0);
   }, [item]);
 
   const addPhotoFile = (file: File) => {
@@ -1838,111 +1545,120 @@ function PositionEditor({ item }: { item: CatalogItem }) {
       return next;
     });
   };
-  const setVideoCoverMode = (id: string, mode: "auto" | "custom") => {
-    setMedia((current) => current.map((entry) => entry.id === id ? { ...entry, coverMode: mode } : entry));
-  };
   const removeMedia = (id: string) =>
     setMedia((m) => m.filter((x) => x.id !== id));
 
+  const addRowClass =
+    "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
+
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="min-w-0 flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-3xl">
-          {/* Compact position header: thumbnail + title + summary */}
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab("media")}
-              onMouseEnter={() => setPhotoHover(true)}
-              onMouseLeave={() => setPhotoHover(false)}
-              title="Открыть медиа"
-              className={cn(
-                "relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px]",
-                media[0]?.kind === "video" ? "bg-[#292524]" : item.thumbnailUrl ? "bg-[#f5f5f4]" : "bg-[#faf0e6]",
-              )}
-            >
-              {media[0]?.kind === "video" ? (
-                <Play size={16} fill="white" className="text-white" />
-              ) : item.thumbnailUrl ? (
-                <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <ImageOff size={16} className="text-[#bc4a08]" />
-              )}
-              {photoHover && (
-                <span className="absolute inset-0 flex items-center justify-center bg-black/35">
-                  <Camera size={16} className="text-white" />
-                </span>
-              )}
-            </button>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <h1 className="text-[18px] font-semibold leading-tight text-[#292524]">{item.title}</h1>
-              <div className="mt-1.5">
-                <PositionSummary
+      <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
+        <div className="mx-auto max-w-[600px]">
+          {/* Название позиции + переключатель между позициями раздела */}
+          <div className="flex items-center pb-2 pt-6">
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-1.5 rounded-[6px] text-left text-[14px] font-medium text-[#292524] transition hover:text-[#57534d]"
+                >
+                  <span className="truncate">{item.title}</span>
+                  <CaretDown size={13} className="shrink-0 text-[#79716b]" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="start">
+                {items.map((sibling) => (
+                  <DropdownActionItem key={sibling.id} onSelect={() => onSelectItem(sibling.id)}>
+                    <span className={cn("max-w-[280px] truncate", sibling.id === item.id && "font-semibold")}>
+                      {sibling.title}
+                    </span>
+                  </DropdownActionItem>
+                ))}
+              </DropdownContent>
+            </DropdownMenu.Root>
+          </div>
+
+          {/* Карточка редактора: табы + контент таба */}
+          <div className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+            <div className="flex items-center gap-2 border-b border-[#e7e5e4] px-3">
+              {EDITOR_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "-mb-px flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
+                    activeTab === tab.id
+                      ? "border-[#1c1917] font-medium text-[#1c1917]"
+                      : "border-transparent text-[#79716b] hover:text-[#44403b]",
+                  )}
+                >
+                  {tab.label}
+                  {tab.id === "options" && (
+                    <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
+                      {item.optionsCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="px-4 pb-4 pt-5">
+              {activeTab === "basic" && (
+                <BasicTab
                   item={item}
                   media={media}
-                  onOpenTab={openTab}
+                  onAddPhotoFile={addPhotoFile}
+                  onAddVideoFile={addVideoFile}
+                  onReorderMedia={reorderMedia}
+                  onRemoveMedia={removeMedia}
                 />
-              </div>
+              )}
+              {activeTab === "promo" && <PromoTab item={item} />}
+              {activeTab === "options" && (
+                <PlaceholderTab title="Опции и добавки">
+                  {item.optionsCount > 0 || item.modifiersCount > 0
+                    ? `${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")} · ${item.modifiersCount} ${plural(item.modifiersCount, "доп", "допа", "допов")}`
+                    : "У позиции нет опций и добавок."}
+                </PlaceholderTab>
+              )}
+              {activeTab === "availability" && (
+                <PlaceholderTab title="Доступность">
+                  Текущий статус: <span className="font-semibold text-[#292524]">{STATUS_LABELS[item.status]}</span>
+                  {item.scheduled && " · показ по расписанию"}
+                </PlaceholderTab>
+              )}
+              {activeTab === "display" && <DisplayTab item={item} />}
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="mt-5 flex items-center gap-0.5 border-b border-[#e7e5e4]">
-            {EDITOR_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition",
-                  activeTab === tab.id
-                    ? "border-[#292524] text-[#292524]"
-                    : "border-transparent text-[#79716b] hover:text-[#292524]",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="pt-5">
-            {activeTab === "basic" && (
-              <BasicTab
-                item={item}
-                media={media}
-                onAddPhotoFile={addPhotoFile}
-                onAddVideoFile={addVideoFile}
-                onReorderMedia={reorderMedia}
-                onRemoveMedia={removeMedia}
-              />
-            )}
-            {activeTab === "media" && (
-              <MediaTab
-                item={item}
-                media={media}
-                onAddPhotoFile={addPhotoFile}
-                onAddVideoFile={addVideoFile}
-                onReorder={reorderMedia}
-                onRemove={removeMedia}
-                onSetVideoCoverMode={setVideoCoverMode}
-              />
-            )}
-            {activeTab === "promo" && <PromoTab item={item} />}
-            {activeTab === "options" && (
-              <PlaceholderTab title="Опции и добавки">
-                {item.optionsCount > 0 || item.modifiersCount > 0
-                  ? `${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")} · ${item.modifiersCount} ${plural(item.modifiersCount, "доп", "допа", "допов")}`
-                  : "У позиции нет опций и добавок."}
-              </PlaceholderTab>
-            )}
-            {activeTab === "availability" && (
-              <PlaceholderTab title="Доступность">
-                Текущий статус: <span className="font-semibold text-[#292524]">{STATUS_LABELS[item.status]}</span>
-                {item.scheduled && " · показ по расписанию"}
-              </PlaceholderTab>
-            )}
-            {activeTab === "display" && <DisplayTab item={item} />}
-          </div>
+          {/* Опциональные блоки и «Ещё» — вне карточки, только для «Основного» */}
+          {activeTab === "basic" && (
+            <div className="mt-4 space-y-4">
+              {discountOpen && <DiscountBlock item={item} onRemove={() => setDiscountOpen(false)} />}
+              {kbjuOpen && <KbjuBlock onRemove={() => setKbjuOpen(false)} />}
+              {(!discountOpen || !kbjuOpen) && (
+                <div className="px-1.5 pt-1">
+                  <div className="mb-1 text-[13px] font-medium text-[#303030]">Ещё</div>
+                  <div className="flex flex-col items-start">
+                    {!kbjuOpen && (
+                      <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
+                        <CirclePlus size={16} className="text-[#a8a29e]" />
+                        Добавить КБЖУ (на 100 г)
+                      </button>
+                    )}
+                    {!discountOpen && (
+                      <button type="button" className={addRowClass} onClick={() => setDiscountOpen(true)}>
+                        <CirclePlus size={16} className="text-[#a8a29e]" />
+                        Добавить скидку
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2628,7 +2344,7 @@ function PopulatedWorkspace({
         )}
         {editing ? (
           selectedItem ? (
-            <PositionEditor item={selectedItem} />
+            <PositionEditor item={selectedItem} items={sectionItems} onSelectItem={openItem} />
           ) : (
             <SectionEmptyState sectionName={section?.name ?? "Раздел"} onAddItem={addPosition} />
           )
