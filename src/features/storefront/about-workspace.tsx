@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, Facebook, Globe, GripHorizontal, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Phone, Plus, Search, Send, Trash2, X, Youtube } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Phone, Plus, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -561,18 +562,8 @@ function GuestRulesWorkspace({
     serviceFeeRequireConsent,
     setServiceFeeRequireConsent,
   } = useAppSettings();
-  const [ageEnabled, setAgeEnabled] = useState(true);
-  const [minimumAge, setMinimumAge] = useState<18 | 21>(18);
   const [qrDiscountEnabled, setQrDiscountEnabled] = useState(true);
 
-  const updateAgeEnabled = (checked: boolean) => {
-    setAgeEnabled(checked);
-    onChange();
-  };
-  const updateMinimumAge = (value: 18 | 21) => {
-    setMinimumAge(value);
-    onChange();
-  };
   const updateQrDiscountEnabled = (checked: boolean) => {
     setQrDiscountEnabled(checked);
     onChange();
@@ -585,19 +576,6 @@ function GuestRulesWorkspace({
   return (
     <div className="w-full space-y-[18px]">
       <div className="space-y-2">
-        <WarningCard
-          title="Возрастное ограничение"
-          description="Требовать подтверждение возраста"
-          checked={ageEnabled}
-          onCheckedChange={updateAgeEnabled}
-          onMouseEnter={() => setPreviewScenario("age")}
-        >
-          <div className={cn("flex flex-wrap items-center gap-1 px-3 pb-3 pt-2", !ageEnabled && "opacity-60")}>
-            <AgeOption value={18} selected={minimumAge === 18} disabled={!ageEnabled} onClick={() => updateMinimumAge(18)} />
-            <AgeOption value={21} selected={minimumAge === 21} disabled={!ageEnabled} onClick={() => updateMinimumAge(21)} />
-          </div>
-        </WarningCard>
-
         <WarningCard
           title="Скидка на QR"
           description="Показывать размер скидки гостю"
@@ -651,81 +629,512 @@ function GuestRulesWorkspace({
 
 // ── Основное (basic info) ─────────────────────────────────────────────────────
 
-// Floating-label поле в стиле макета: белая карточка, подпись сверху, значение под ней.
+// Поле в стиле макета: подпись над полем, поле в белой рамке.
 function BasicField({
   label,
   value,
   onChange,
   className,
+  placeholder,
+  multiline = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  placeholder?: string;
+  multiline?: boolean;
 }) {
+  const inputClass =
+    "w-full rounded-[12px] border border-[#e7e5e4] bg-white px-3.5 text-[14px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
   return (
-    <label
-      className={cn(
-        "block rounded-[12px] border border-[#e7e5e4] bg-white px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition focus-within:border-[#c7c2bd]",
-        className,
+    <label className={cn("block", className)}>
+      <div className="mb-1.5 text-[13px] font-medium leading-[18px] text-[#292524]">{label}</div>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className={cn(inputClass, "resize-none py-2.5 leading-5")}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className={cn(inputClass, "h-10")}
+        />
       )}
-    >
-      <div className="text-[12px] leading-4 text-[#79716b]">{label}</div>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-0.5 w-full bg-transparent text-[14px] text-[#292524] outline-none"
-      />
     </label>
   );
 }
 
-// Свёрнутая секция: карточка-строка с плюсом справа.
-function CollapsedRow({ label }: { label: string }) {
-  return (
-    <button
-      type="button"
-      className="flex h-[52px] w-full items-center justify-between rounded-[12px] border border-[#e7e5e4] bg-white px-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition hover:bg-[#fafaf9]"
-    >
-      <span className="text-[14px] text-[#292524]">{label}</span>
-      <Plus size={18} className="text-[#79716b]" />
-    </button>
-  );
-}
+type ChannelDef = { id: string; label: string; icon: LucideIcon; linkPlaceholder?: string };
 
-const SOCIAL_CHANNELS = [
+const SOCIAL_CHANNELS: ChannelDef[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "2gis", label: "2GIS", icon: MapPin },
   { id: "facebook", label: "Facebook", icon: Facebook },
-  { id: "website", label: "Website", icon: Globe },
+  { id: "website", label: "Сайт", icon: Globe },
   { id: "youtube", label: "YouTube", icon: Youtube },
-] as const;
+];
 
-const CONTACT_CHANNELS = [
+const CONTACT_CHANNELS: ChannelDef[] = [
   { id: "telegram", label: "Telegram", icon: Send },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { id: "phone", label: "Телефон", icon: Phone },
-] as const;
+  { id: "phone", label: "Телефон", icon: Phone, linkPlaceholder: "Номер телефона" },
+];
 
-function BasicInfoWorkspace({ onChange }: { onChange: () => void }) {
+// ── График работы ─────────────────────────────────────────────────────────────
+
+const WEEK_DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+
+type DayMode = "custom" | "allday" | "closed";
+type DaySchedule = { mode: DayMode; from: string; to: string };
+
+const DAY_MODE_LABELS: Record<DayMode, string> = {
+  custom: "Своё время",
+  allday: "Круглосуточно",
+  closed: "Недоступно",
+};
+
+// Заголовок секции опционального блока: подпись + корзинка справа, как в макете.
+function BlockHeader({
+  label,
+  onRemove,
+  removeTitle,
+}: {
+  label: ReactNode;
+  onRemove: () => void;
+  removeTitle: string;
+}) {
+  return (
+    <div className="mb-1.5 flex h-7 items-center">
+      <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-[18px] text-[#292524]">
+        {label}
+      </div>
+      <div className="flex-1" />
+      <button
+        type="button"
+        title={removeTitle}
+        onClick={onRemove}
+        className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626]"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function ScheduleCard({ onChange, onRemove }: { onChange: () => void; onRemove: () => void }) {
+  const [expanded, setExpanded] = useState(true);
+  const [days, setDays] = useState<DaySchedule[]>(() =>
+    WEEK_DAYS.map(() => ({ mode: "custom" as DayMode, from: "10:00", to: "22:00" })),
+  );
+
+  const updateDay = (index: number, patch: Partial<DaySchedule>) => {
+    setDays((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+    onChange();
+  };
+
+  return (
+    <div>
+      <div className={cn("flex h-7 items-center", expanded && "mb-1.5")}>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1.5 rounded-[6px] text-[13px] font-medium leading-[18px] text-[#292524] transition hover:text-[#57534d]"
+        >
+          График работы
+          <ChevronDown size={15} className={cn("text-[#79716b] transition-transform", expanded && "rotate-180")} />
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          title="Удалить график"
+          onClick={onRemove}
+          className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626]"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="divide-y divide-[#eceae7] rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          {days.map((day, index) => (
+            <div key={WEEK_DAYS[index]} className="group flex h-[52px] items-center gap-3 px-4">
+              <span className={cn("w-[110px] shrink-0 text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
+                {WEEK_DAYS[index]}
+              </span>
+              {day.mode === "custom" ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="time"
+                    value={day.from}
+                    onChange={(event) => updateDay(index, { from: event.target.value })}
+                    className="h-9 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+                  />
+                  <span className="text-[13px] text-[#a8a29e]">–</span>
+                  <input
+                    type="time"
+                    value={day.to}
+                    onChange={(event) => updateDay(index, { to: event.target.value })}
+                    className="h-9 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+                  />
+                </div>
+              ) : (
+                <span className={cn("text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
+                  {DAY_MODE_LABELS[day.mode]}
+                </span>
+              )}
+              <div className="flex-1" />
+              {/* Переключатель режима дня — появляется при hover строки */}
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-8 items-center gap-1 rounded-[8px] px-2 text-[13px] text-[#79716b] opacity-0 transition hover:bg-[#f5f5f4] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+                  >
+                    {DAY_MODE_LABELS[day.mode]}
+                    <ChevronDown size={14} className="text-[#a8a29e]" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="end"
+                    sideOffset={6}
+                    className="z-50 min-w-[160px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+                  >
+                    {(Object.keys(DAY_MODE_LABELS) as DayMode[]).map((mode) => (
+                      <DropdownMenu.Item
+                        key={mode}
+                        onSelect={() => updateDay(index, { mode })}
+                        className="flex h-8 cursor-pointer select-none items-center rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      >
+                        {DAY_MODE_LABELS[mode]}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Ссылки по каналам (соцсети, контакты) ─────────────────────────────────────
+
+type ChannelEntry = { id: number; channel: string; link: string; text: string };
+
+// ponytail: модульный счётчик id — бэкенда нет, коллизии невозможны в рамках сессии
+let nextEntryId = 1;
+function createChannelEntry(channel: string): ChannelEntry {
+  return { id: nextEntryId++, channel, link: "", text: "" };
+}
+
+// Дропдаун выбора канала; используется и в карточке, и в списке «Ещё».
+function ChannelMenu({
+  channels,
+  onSelect,
+  children,
+}: {
+  channels: ChannelDef[];
+  onSelect: (channelId: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+        >
+          {channels.map((channel) => {
+            const Icon = channel.icon;
+            return (
+              <DropdownMenu.Item
+                key={channel.id}
+                onSelect={() => onSelect(channel.id)}
+                className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+              >
+                <Icon size={15} className="text-[#79716b]" />
+                {channel.label}
+              </DropdownMenu.Item>
+            );
+          })}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+function ChannelLinksCard({
+  title,
+  addLabel,
+  channels,
+  entries,
+  setEntries,
+  onChange,
+}: {
+  title: string;
+  addLabel: string;
+  channels: ChannelDef[];
+  entries: ChannelEntry[];
+  setEntries: (update: (prev: ChannelEntry[]) => ChannelEntry[]) => void;
+  onChange: () => void;
+}) {
+  const addEntry = (channel: string) => {
+    setEntries((prev) => [...prev, createChannelEntry(channel)]);
+    onChange();
+  };
+  const updateEntry = (id: number, patch: Partial<ChannelEntry>) => {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+    onChange();
+  };
+  const removeEntry = (id: number) => {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    onChange();
+  };
+
+  const [expanded, setExpanded] = useState(true);
+  const inputClass =
+    "h-10 w-full min-w-0 rounded-[10px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#292524] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
+
+  return (
+    <div>
+      <div className={cn("flex h-7 items-center", expanded && "mb-1.5")}>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1.5 rounded-[6px] text-[13px] font-medium leading-[18px] text-[#292524] transition hover:text-[#57534d]"
+        >
+          {title}
+          <ChevronDown size={15} className={cn("text-[#79716b] transition-transform", expanded && "rotate-180")} />
+        </button>
+      </div>
+      {expanded && (
+      <div className="rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+        {entries.length > 0 && (
+          <div className="space-y-2 p-3">
+            {entries.map((entry) => {
+              const channel = channels.find((c) => c.id === entry.channel) ?? channels[0];
+              const Icon = channel.icon;
+              return (
+                <div key={entry.id} className="flex items-center gap-2">
+                  {/* Иконка — переключатель типа канала */}
+                  <ChannelMenu channels={channels} onSelect={(id) => updateEntry(entry.id, { channel: id })}>
+                    <button
+                      type="button"
+                      title={`${channel.label} — сменить канал`}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f4] text-[#57534d] transition hover:bg-[#eeeeec]"
+                    >
+                      <Icon size={18} />
+                    </button>
+                  </ChannelMenu>
+                  <input
+                    value={entry.link}
+                    onChange={(event) => updateEntry(entry.id, { link: event.target.value })}
+                    placeholder={channel.linkPlaceholder ?? "Ссылка"}
+                    className={cn(inputClass, "flex-1")}
+                  />
+                  <input
+                    value={entry.text}
+                    onChange={(event) => updateEntry(entry.id, { text: event.target.value })}
+                    placeholder="Подпись (необязательно)"
+                    className={cn(inputClass, "flex-[1.2]")}
+                  />
+                  <button
+                    type="button"
+                    title="Удалить"
+                    onClick={() => removeEntry(entry.id)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <ChannelMenu channels={channels} onSelect={addEntry}>
+          <button
+            type="button"
+            className={cn(
+              "flex h-11 w-full items-center gap-2 rounded-b-[12px] px-3.5 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9]",
+              entries.length > 0 ? "border-t border-[#eceae7]" : "rounded-t-[12px]",
+            )}
+          >
+            <CirclePlus size={16} className="text-[#a8a29e]" />
+            {addLabel}
+          </button>
+        </ChannelMenu>
+      </div>
+      )}
+    </div>
+  );
+}
+
+// ── Возрастное ограничение (карточка на странице = ограничение включено) ──────
+
+const AGE_TOOLTIP =
+  "Перед открытием меню гость подтверждает, что достиг выбранного возраста — 18 лет или 21 года. Подходит барам, кальянным и меню с алкоголем.";
+
+function AgeRestrictionCard({
+  onChange,
+  setPreviewScenario,
+}: {
+  onChange: () => void;
+  setPreviewScenario: (scenario: PreviewScenario) => void;
+}) {
+  const { setAgeConfirmationEnabled, minimumAge, setMinimumAge } = useAppSettings();
+
+  return (
+    <div
+      onMouseEnter={() => setPreviewScenario("age")}
+      onMouseLeave={() => setPreviewScenario("about")}
+    >
+      <BlockHeader
+        label={
+          <Tooltip
+            label={AGE_TOOLTIP}
+            side="top"
+            contentClassName="max-w-[300px] whitespace-pre-line px-3 py-2 text-left leading-5"
+          >
+            <span className="cursor-default border-b border-dotted border-[#a8a29e] pb-px">
+              Возрастное ограничение
+            </span>
+          </Tooltip>
+        }
+        removeTitle="Убрать ограничение"
+        onRemove={() => {
+          setAgeConfirmationEnabled(false);
+          onChange();
+        }}
+      />
+      <div className="flex items-center gap-1">
+        {([18, 21] as const).map((age) => (
+          <AgeOption
+            key={age}
+            value={age}
+            selected={minimumAge === age}
+            onClick={() => {
+              setMinimumAge(age);
+              onChange();
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Wi-Fi ─────────────────────────────────────────────────────────────────────
+
+function WifiCard({ onChange, onRemove }: { onChange: () => void; onRemove: () => void }) {
+  const [network, setNetwork] = useState("");
+  const [password, setPassword] = useState("");
+  const inputClass =
+    "h-10 w-full min-w-0 rounded-[10px] border border-[#e7e5e4] bg-white px-3 text-[14px] text-[#292524] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
+
+  return (
+    <div>
+      <BlockHeader label="Wi-Fi" removeTitle="Удалить Wi-Fi" onRemove={onRemove} />
+      <div className="flex gap-2">
+        <input
+          value={network}
+          onChange={(event) => {
+            setNetwork(event.target.value);
+            onChange();
+          }}
+          placeholder="Название сети"
+          className={cn(inputClass, "flex-1")}
+        />
+        <input
+          value={password}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            onChange();
+          }}
+          placeholder="Пароль"
+          className={cn(inputClass, "flex-[1.6]")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BasicInfoWorkspace({
+  onChange,
+  setPreviewScenario,
+}: {
+  onChange: () => void;
+  setPreviewScenario: (scenario: PreviewScenario) => void;
+}) {
+  const { ageConfirmationEnabled, setAgeConfirmationEnabled } = useAppSettings();
   const [name, setName] = useState("Sweet affair");
   const [address, setAddress] = useState("Астана, Абылай-хана 34, д 18");
-  const [activeSocial, setActiveSocial] = useState<string>("website");
-  const [socialLink, setSocialLink] = useState("https://kimchi.events.kz");
-  const [socialText, setSocialText] = useState("Следите за нашими ивентами");
+  const [description, setDescription] = useState("");
+  const [wifiAdded, setWifiAdded] = useState(false);
+  const [scheduleAdded, setScheduleAdded] = useState(false);
+  // Один пустой ряд по умолчанию: показывает форму данных и экономит клик.
+  // Пустые ряды инертны — на витрину не попадают и нигде не считаются «незаполненными».
+  const [socialEntries, setSocialEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("instagram")]);
+  const [contactEntries, setContactEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("phone")]);
 
   const edit = (setter: (v: string) => void) => (v: string) => {
     setter(v);
     onChange();
   };
 
+  const addRowClass =
+    "flex h-9 items-center gap-2 rounded-[8px] px-1.5 text-[14px] text-[#44403b] transition hover:bg-[#f5f5f4]";
+
+  // Пустые строки «Ещё» показываются, пока соответствующий блок не добавлен.
+  const moreRows: ReactNode[] = [];
+  if (!wifiAdded) {
+    moreRows.push(
+      <button key="wifi" type="button" className={addRowClass} onClick={() => { setWifiAdded(true); onChange(); }}>
+        <CirclePlus size={16} className="text-[#a8a29e]" />
+        Добавить Wi-Fi
+      </button>,
+    );
+  }
+  if (!scheduleAdded) {
+    moreRows.push(
+      <button key="schedule" type="button" className={addRowClass} onClick={() => { setScheduleAdded(true); onChange(); }}>
+        <CirclePlus size={16} className="text-[#a8a29e]" />
+        Добавить график работы
+      </button>,
+    );
+  }
+  if (!ageConfirmationEnabled) {
+    moreRows.push(
+      <Tooltip
+        key="age"
+        label={AGE_TOOLTIP}
+        side="top"
+        contentClassName="max-w-[300px] whitespace-pre-line px-3 py-2 text-left leading-5"
+      >
+        <button type="button" className={addRowClass} onClick={() => { setAgeConfirmationEnabled(true); onChange(); }}>
+          <CirclePlus size={16} className="text-[#a8a29e]" />
+          Добавить возрастное ограничение
+        </button>
+      </Tooltip>,
+    );
+  }
   return (
-    <div className="w-full space-y-3">
+    <TooltipProvider delayDuration={300}>
+    <div className="w-full space-y-4">
       {/* Логотип + название */}
-      <div className="flex items-stretch gap-3">
+      <div className="flex items-end gap-3">
         <button
           type="button"
-          className="flex w-[58px] shrink-0 flex-col items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[#79716b] transition hover:bg-[#eeeeec]"
+          className="flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center rounded-[14px] bg-[#f5f5f4] text-[#79716b] transition hover:bg-[#eeeeec]"
         >
           <Plus size={16} />
           <span className="mt-0.5 text-[11px] leading-3">Лого</span>
@@ -735,94 +1144,50 @@ function BasicInfoWorkspace({ onChange }: { onChange: () => void }) {
 
       <BasicField label="Адрес" value={address} onChange={edit(setAddress)} />
 
-      <CollapsedRow label="Добавить описание" />
-      <CollapsedRow label="Добавить график работы" />
+      <BasicField
+        label="Описание"
+        value={description}
+        onChange={edit(setDescription)}
+        placeholder="Расскажите гостям о заведении: кухня, формат, атмосфера"
+        multiline
+      />
 
-      {/* Сайты и соцсети */}
-      <div className="space-y-4 rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <div className="text-[12px] font-medium text-[#79716b]">Сайты и соцсети</div>
+      {scheduleAdded && (
+        <ScheduleCard onChange={onChange} onRemove={() => { setScheduleAdded(false); onChange(); }} />
+      )}
 
-        <div className="flex items-start gap-2">
-          {SOCIAL_CHANNELS.map((channel) => {
-            const Icon = channel.icon;
-            const selected = activeSocial === channel.id;
-            return (
-              <div key={channel.id} className="flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  title={channel.label}
-                  onClick={() => setActiveSocial(channel.id)}
-                  className={cn(
-                    "flex h-12 w-12 items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[#57534d] transition hover:bg-[#eeeeec]",
-                    selected && "bg-white text-[#4f39f6] ring-2 ring-[#4f39f6] ring-offset-1",
-                  )}
-                >
-                  <Icon size={20} />
-                </button>
-                <GripHorizontal size={12} className="text-[#d6d3d1]" />
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            title="Добавить канал"
-            className="flex h-12 w-12 items-center justify-center rounded-[12px] border border-dashed border-[#e7e5e4] text-[#79716b] transition hover:bg-[#fafaf9]"
-          >
-            <Plus size={18} />
-          </button>
+      <ChannelLinksCard
+        title="Соцсети и сайты"
+        addLabel="Добавить ссылку"
+        channels={SOCIAL_CHANNELS}
+        entries={socialEntries}
+        setEntries={setSocialEntries}
+        onChange={onChange}
+      />
+
+      <ChannelLinksCard
+        title="Контакты"
+        addLabel="Добавить контакт"
+        channels={CONTACT_CHANNELS}
+        entries={contactEntries}
+        setEntries={setContactEntries}
+        onChange={onChange}
+      />
+
+      {wifiAdded && <WifiCard onChange={onChange} onRemove={() => { setWifiAdded(false); onChange(); }} />}
+
+      {ageConfirmationEnabled && (
+        <AgeRestrictionCard onChange={onChange} setPreviewScenario={setPreviewScenario} />
+      )}
+
+      {moreRows.length > 0 && (
+        <div className="pt-1">
+          <div className="mb-1 text-[13px] font-medium text-[#292524]">Ещё</div>
+          <div className="flex flex-col items-start">{moreRows}</div>
         </div>
-
-        <div className="space-y-3">
-          <BasicField label="Ссылка" value={socialLink} onChange={edit(setSocialLink)} />
-          <BasicField label="Текст" value={socialText} onChange={edit(setSocialText)} />
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 px-2 text-[13px] font-normal text-[#79716b] hover:bg-transparent hover:text-[#dc2626]"
-          >
-            <Trash2 size={15} />
-            Удалить
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-[13px] font-normal text-[#79716b]">
-              Свернуть
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[13px] font-medium text-[#292524]">
-              Сохранить
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <CollapsedRow label="Добавить Wi-Fi" />
-
-      {/* Контакты */}
-      <div className="space-y-3 rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <div className="text-[14px] font-semibold text-[#292524]">Контакты</div>
-        <div className="flex items-center gap-3">
-          {CONTACT_CHANNELS.map((channel) => {
-            const Icon = channel.icon;
-            return (
-              <button
-                key={channel.id}
-                type="button"
-                title={channel.label}
-                className="relative flex h-12 w-12 items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[#79716b] transition hover:bg-[#eeeeec]"
-              >
-                <Icon size={18} />
-                <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[#79716b] shadow-sm ring-1 ring-[#e7e5e4]">
-                  <Plus size={10} />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      )}
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -857,7 +1222,7 @@ export function AboutWorkspace({
           {/* ── Основное ── */}
           {tab === "info" && (
             <div onMouseEnter={() => setPreviewScenario("about")}>
-              <BasicInfoWorkspace onChange={() => registerChange("about")} />
+              <BasicInfoWorkspace onChange={() => registerChange("about")} setPreviewScenario={setPreviewScenario} />
             </div>
           )}
 
