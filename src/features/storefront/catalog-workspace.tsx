@@ -2,22 +2,37 @@ import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "r
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
+  Archive,
+  ArrowCounterClockwise,
+  ArrowLeft,
   CaretDown,
+  CaretRight,
+  CheckCircle,
   Clock,
   Dot,
   DotsThreeVertical,
+  DotsSixVertical,
   Fire,
   ForkKnife,
+  ImageBroken,
   List,
   Lock,
+  MagnifyingGlass,
   MegaphoneSimple,
+  Play,
+  Plus,
+  PlusCircle,
+  Prohibit,
   Tag,
+  Trash,
+  XCircle,
 } from "@phosphor-icons/react";
-import { ArrowLeft, CheckCircle, ChevronRight, CirclePlus, GripVertical, ImageOff, Play, Plus, Search, Trash2, X } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import type { Category } from "@/data/mock-data";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
-import type { CatalogItem, CatalogSection } from "@/data/catalog";
+import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
@@ -78,7 +93,17 @@ export function StopListShortcut({
   hidden?: boolean;
   onClick: () => void;
 }) {
-  const stopCount = catalogItems.filter((item) => item.status === "stopped").length;
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const onStatusChange = () => setVersion((value) => value + 1);
+    window.addEventListener("tasko-catalog-status-change", onStatusChange);
+    return () => window.removeEventListener("tasko-catalog-status-change", onStatusChange);
+  }, []);
+
+  const statusOverrides = readJsonRecord<Record<string, CatalogItem["status"]>>(CATALOG_STATUS_STORAGE_KEY, {});
+  const stopCount = catalogItems.filter((item) => (statusOverrides[item.id] ?? item.status) === "stopped").length;
+  void version;
   if (hidden) return null;
 
   return (
@@ -115,11 +140,15 @@ type CatalogWorkspaceProps = {
 /** Section node for the left panels: real sections carry imageUrl, mock/created ones an emoji. */
 type TreeSection = {
   id: string;
+  parentId?: string | null;
   name: string;
   imageUrl?: string | null;
   emoji?: string;
+  sortOrder?: number;
+  status?: SectionStatus;
   children?: TreeSection[];
 };
+type SectionStatus = "active" | "archive";
 type PanelRow = {
   id: string;
   label: string;
@@ -341,7 +370,7 @@ function CatalogSidePanel({
   onCreateAction?: (action: string) => void;
 }) {
   return (
-    <aside className="w-[228px] shrink-0 overflow-y-auto border-r border-border bg-[#fbfbf9] px-2 pt-4">
+    <aside className="w-[250px] shrink-0 overflow-y-auto border-r border-[#e7e5e4] bg-[#fbfbf9] px-2 pt-4">
       <div className="mb-4 flex items-center px-2">
         <h2 className="min-w-0 flex-1 text-[14px] font-normal leading-[1.4] text-[#292524]">{title}</h2>
         {actionLabel && onCreateAction && (
@@ -433,25 +462,43 @@ function CatalogPanelRow({
 
 function CatalogTreePanel({
   sections,
+  archivedSections = [],
   selectedId: controlledId,
+  archiveOpen = false,
   onSelectSection,
+  onArchiveOpenChange,
+  onRestoreSection,
+  onDeleteArchivedSection,
   onCreateAction,
 }: {
   sections: TreeSection[];
+  archivedSections?: TreeSection[];
   selectedId?: string | null;
+  archiveOpen?: boolean;
   onSelectSection?: (id: string) => void;
+  onArchiveOpenChange?: (open: boolean) => void;
+  onRestoreSection?: (section: TreeSection) => void;
+  onDeleteArchivedSection?: (section: TreeSection) => void;
   onCreateAction?: (action: string) => void;
 }) {
   const tree = sections;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ [tree[0]?.id ?? ""]: true });
   const [internalId, setInternalId] = useState<string | null>(tree[0]?.id ?? null);
+  const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const selectedId = controlledId !== undefined ? controlledId : internalId;
+  const archivedFlat = flattenSections(archivedSections);
   const selectSection = (id: string) => {
     if (onSelectSection) onSelectSection(id);
     else setInternalId(id);
   };
 
-  const renderSectionRow = (section: TreeSection, depth = 0) => {
+  useEffect(() => {
+    if (!archiveOpen || !selectedId || !archivedFlat.some((section) => section.id === selectedId)) return;
+    const timeout = window.setTimeout(() => selectedRowRef.current?.scrollIntoView({ block: "nearest" }), 0);
+    return () => window.clearTimeout(timeout);
+  }, [archiveOpen, archivedFlat.length, selectedId]);
+
+  const renderSectionRow = (section: TreeSection, depth = 0, archived = false) => {
     const hasChildren = Boolean(section.children?.length);
     const isExpanded = expanded[section.id] ?? true;
     const isSelected = section.id === selectedId;
@@ -459,6 +506,7 @@ function CatalogTreePanel({
     return (
       <div key={section.id}>
         <div
+          ref={isSelected ? selectedRowRef : undefined}
           role="button"
           tabIndex={0}
           onClick={() => selectSection(section.id)}
@@ -472,11 +520,13 @@ function CatalogTreePanel({
             "group relative flex h-8 items-center rounded-xl border text-[13px] leading-[18px] transition",
             isSelected &&
               "rounded-lg border-[#e7e5e4] bg-white text-[#292524] shadow-[0_0_2px_rgba(0,0,0,0.09)]",
-            !isSelected && "border-transparent text-[#79716b] hover:bg-[#f1f1ea]",
+            !isSelected && (archived
+              ? "border-transparent text-[#8a8179] hover:bg-[#f1f1ea]"
+              : "border-transparent text-[#79716b] hover:bg-[#f1f1ea]"),
           )}
           style={{ paddingLeft: 6 + depth * 10, paddingRight: 8 }}
         >
-          <GripVertical
+          <DotsSixVertical
             size={12}
             className="absolute -left-1.5 shrink-0 text-[#a8a29e] opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
           />
@@ -504,7 +554,7 @@ function CatalogTreePanel({
               )}
             </span>
             {hasChildren && (
-              <ChevronRight
+              <CaretRight
                 size={12}
                 className={cn(
                   "absolute opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100",
@@ -523,23 +573,70 @@ function CatalogTreePanel({
               onCreateAction?.(`Добавить позицию в «${section.name}»`);
             }}
             onKeyDown={(event) => event.stopPropagation()}
-            className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100"
+            className={cn(
+              "ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100",
+              archived && "hidden",
+            )}
             aria-label={`Добавить позицию в ${section.name}`}
             title="Добавить позицию"
           >
             <Plus size={14} />
           </button>
+          {archived && (
+            <span className="relative ml-1 flex h-6 w-6 shrink-0 items-center justify-end">
+              <Tooltip label="В архиве" side="top" delayDuration={200}>
+                <Archive
+                  size={14}
+                  className="text-[#a8a29e] transition group-hover:opacity-0 group-focus-within:opacity-0"
+                />
+              </Tooltip>
+              <Tooltip label="Восстановить из архива" side="top" delayDuration={200}>
+                <button
+                  type="button"
+                  aria-label="Восстановить из архива"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRestoreSection?.(section);
+                  }}
+                  className="absolute right-0 flex h-6 w-6 items-center justify-center rounded-[7px] text-[#79716b] opacity-0 transition hover:bg-[#efefeb] hover:text-[#292524] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  <ArrowCounterClockwise size={13} />
+                </button>
+              </Tooltip>
+            </span>
+          )}
+          {archived && (
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Действия с разделом ${section.name}`}
+                  onClick={(event) => event.stopPropagation()}
+                  className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] opacity-0 transition hover:bg-[#efefeb] hover:text-[#292524] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  <DotsThreeVertical size={15} weight="bold" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="end">
+                <DropdownActionItem onSelect={() => onRestoreSection?.(section)}>Восстановить из архива</DropdownActionItem>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                <DropdownActionItem tone="danger" onSelect={() => onDeleteArchivedSection?.(section)}>
+                  Удалить навсегда
+                </DropdownActionItem>
+              </DropdownContent>
+            </DropdownMenu.Root>
+          )}
         </div>
         {hasChildren && isExpanded && (
           <div className="space-y-1 pl-2 pt-1">
-            {section.children?.map((child) => renderSectionRow(child, depth + 1))}
+            {section.children?.map((child) => renderSectionRow(child, depth + 1, archived))}
           </div>
         )}
       </div>
     );
   };
 
-  const selectedSectionName = findTreeSectionName(tree, selectedId);
+  const selectedSectionName = findTreeSectionName(tree, selectedId) ?? findTreeSectionName(archivedSections, selectedId);
 
   return (
     <CatalogSidePanel
@@ -548,7 +645,26 @@ function CatalogTreePanel({
       selectedSectionName={selectedSectionName}
       onCreateAction={onCreateAction}
     >
-      <div className="space-y-1">{tree.map((section) => renderSectionRow(section))}</div>
+      <div className="flex min-h-0 flex-col">
+        <div className="space-y-1">{tree.map((section) => renderSectionRow(section))}</div>
+        {archivedFlat.length > 0 && (
+          <div className="mt-3 border-t border-[#eceae7] pt-2">
+            <button
+              type="button"
+              onClick={() => onArchiveOpenChange?.(!archiveOpen)}
+              className="flex h-7 w-full items-center rounded-[8px] px-1.5 text-left text-[12px] font-medium leading-5 text-[#a8a29e] transition hover:bg-[#f7f6f2] hover:text-[#79716b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <span className="min-w-0 flex-1 truncate">Архивные разделы · {archivedFlat.length}</span>
+              <CaretRight size={13} className={cn("shrink-0 transition", archiveOpen && "rotate-90")} />
+            </button>
+            {archiveOpen && (
+              <div className="mt-1.5 space-y-1">
+                {archivedSections.map((section) => renderSectionRow(section, 0, true))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </CatalogSidePanel>
   );
 }
@@ -561,6 +677,29 @@ function findTreeSectionName(sections: TreeSection[], id?: string | null): strin
     if (childName) return childName;
   }
   return null;
+}
+
+function buildLocalSectionTree(sections: TreeSection[]): TreeSection[] {
+  const nodes = new Map(sections.map((section) => [section.id, { ...section, children: [] as TreeSection[] }]));
+  const roots: TreeSection[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+    (parent ? parent.children ?? [] : roots).push(node);
+  }
+  const sortTree = (list: TreeSection[]) => {
+    list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, "ru"));
+    list.forEach((section) => sortTree(section.children ?? []));
+  };
+  sortTree(roots);
+  return roots;
+}
+
+function flattenSections(sections: TreeSection[]): TreeSection[] {
+  return sections.flatMap((section) => [section, ...flattenSections(section.children ?? [])]);
+}
+
+function sectionHasChildren(sectionId: string, sections: TreeSection[]) {
+  return sections.some((section) => section.parentId === sectionId);
 }
 
 function AddSectionDialog({
@@ -915,6 +1054,19 @@ function EmptyCatalog({
 // ── Position editor: back → summary header → tabs ─────────────────────────────
 
 type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
+type AvailabilityMode = "always" | "unavailable" | "schedule";
+type UnavailableDisplayMode = "hidden" | "comingSoon";
+type OutsideScheduleMode = "hidden" | "comingSoon";
+type ScheduleDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+type DaySchedule =
+  | { mode: "allDay" }
+  | { mode: "unavailable" }
+  | { mode: "custom"; intervals: Array<{ start: string; end: string }> };
+type WeeklySchedule = Record<ScheduleDayKey, DaySchedule>;
+type PreviousAvailabilityState = {
+  status: CatalogItem["status"];
+  scheduled: boolean;
+};
 
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
@@ -928,6 +1080,14 @@ const EDITOR_TABS: { id: EditorTab; label: string }[] = [
 const VIDEO_LIMIT_TOTAL = 10;
 const VIDEO_LIMIT_USED = 6;
 const VIDEO_PACKAGE_CONNECTED = true;
+const ACTIVE_POSITION_LIMIT = 600;
+const CATALOG_STATUS_STORAGE_KEY = "tasko.catalog.statusOverrides";
+const CATALOG_SCHEDULE_STORAGE_KEY = "tasko.catalog.scheduleOverrides";
+const CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY = "tasko.catalog.previousAvailability";
+const CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY = "tasko.catalog.unavailableDisplay";
+const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
+const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
+const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
 
 type MediaKind = "photo" | "video";
 type MediaEntry = {
@@ -1005,7 +1165,7 @@ function MediaTile({
     >
       {isVideo ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1">
-          <Play size={17} fill="currentColor" className="text-[#57534d]" />
+          <Play size={17} weight="fill" className="text-[#57534d]" />
           <span className="max-w-full truncate px-2 text-center text-[10px] leading-tight text-[#79716b]">
             {entry.fileName ?? "video-dish.mp4"}
           </span>
@@ -1016,12 +1176,12 @@ function MediaTile({
         <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <ImageOff size={18} className="text-[#a6a09b]" />
+          <ImageBroken size={18} className="text-[#a6a09b]" />
         </div>
       )}
 
       <span className="absolute bottom-1 left-1 flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-[#79716b] opacity-0 shadow-sm transition group-hover:opacity-100">
-        <GripVertical size={15} />
+        <DotsSixVertical size={15} />
       </span>
 
       <DropdownMenu.Root>
@@ -1161,10 +1321,13 @@ function BasicMediaStrip({
 }
 
 // Поле макета редактора: подпись сверху, контент в белой рамке h-9.
-function EditorField({ label, children }: { label: string; children: ReactNode }) {
+function EditorField({ label, rightSlot, children }: { label: string; rightSlot?: ReactNode; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{label}</div>
+      <div className="mb-1.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <div className="min-w-0 flex-1 text-[13px] leading-5 text-[#303030]">{label}</div>
+        {rightSlot}
+      </div>
       <div className="flex h-9 w-full items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]">
         {children}
       </div>
@@ -1174,9 +1337,325 @@ function EditorField({ label, children }: { label: string; children: ReactNode }
 
 const WEIGHT_UNITS = ["г", "кг", "мл", "л", "шт"];
 
+type DiscountSource = "percent" | "finalPrice";
+
+function parseMoneyInput(value: string): number | null {
+  const normalized = value.replace(/\s/g, "").replace(",", ".");
+  if (normalized === "") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoneyInput(value: number): string {
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(value));
+}
+
+function formatPlainNumber(value: number): string {
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(value);
+}
+
+function formatDiscountPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+}
+
+function calculateDiscountedPrice(basePrice: number, percent: number): number {
+  return Math.round(basePrice * (1 - percent / 100));
+}
+
+function calculateDiscountPercent(basePrice: number, discountedPrice: number): number {
+  if (basePrice <= 0) return 0;
+  return ((basePrice - discountedPrice) / basePrice) * 100;
+}
+
+function isNumericDraft(value: string): boolean {
+  return value === "" || /^\d*(?:[.,]\d*)?$/.test(value);
+}
+
+function isFormattedNumericDraft(value: string): boolean {
+  return value === "" || /^[\d\s]*(?:[.,]\d*)?$/.test(value);
+}
+
+const DESCRIPTION_LIMIT = 300;
+const ALLOWED_DESCRIPTION_TAGS = new Set(["P", "BR", "STRONG", "EM", "S", "UL", "LI"]);
+const DESCRIPTION_TAG_ALIASES: Record<string, string> = {
+  B: "strong",
+  I: "em",
+  STRIKE: "s",
+  DEL: "s",
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function stripHtmlTags(value: string) {
+  if (!value) return "";
+  const div = document.createElement("div");
+  div.innerHTML = value;
+  return div.textContent ?? "";
+}
+
+function sanitizeDescriptionHtml(value: string) {
+  if (!value.trim()) return "";
+  const parser = new DOMParser();
+  const source = /<\/?[a-z][\s\S]*>/i.test(value) ? value : `<p>${escapeHtml(value).replace(/\n/g, "<br>")}</p>`;
+  const doc = parser.parseFromString(source, "text/html");
+
+  const cleanNode = (node: Node): Node | DocumentFragment | null => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent ?? "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+    const element = node as HTMLElement;
+    const tagName = element.tagName.toUpperCase();
+    if (["IMG", "VIDEO", "IFRAME", "OBJECT", "EMBED", "SCRIPT", "STYLE"].includes(tagName)) return null;
+
+    const normalizedTag = DESCRIPTION_TAG_ALIASES[tagName] ?? tagName.toLowerCase();
+    const canKeepTag = ALLOWED_DESCRIPTION_TAGS.has(normalizedTag.toUpperCase());
+    const container = canKeepTag ? document.createElement(normalizedTag) : document.createDocumentFragment();
+
+    element.childNodes.forEach((child) => {
+      const cleaned = cleanNode(child);
+      if (cleaned) container.appendChild(cleaned);
+    });
+
+    return container;
+  };
+
+  const result = document.createElement("div");
+  doc.body.childNodes.forEach((child) => {
+    const cleaned = cleanNode(child);
+    if (cleaned) result.appendChild(cleaned);
+  });
+
+  return result.innerHTML
+    .replace(/<p><\/p>/g, "")
+    .replace(/<li><\/li>/g, "");
+}
+
+function getDescriptionTextLength(html: string) {
+  const root = document.createElement("div");
+  root.innerHTML = sanitizeDescriptionHtml(html);
+  let text = "";
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent ?? "";
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as HTMLElement;
+    if (element.tagName === "BR") {
+      text += "\n";
+      return;
+    }
+    element.childNodes.forEach(walk);
+    if (["P", "LI"].includes(element.tagName)) text += "\n";
+  };
+
+  root.childNodes.forEach(walk);
+  return text.replace(/\n$/, "").length;
+}
+
+function RichTextToolbarButton({
+  label,
+  active,
+  onMouseDown,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  onMouseDown: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        onMouseDown();
+      }}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-[7px] text-[13px] font-semibold leading-none text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        active && "bg-[#efefeb] text-[#292524] shadow-[inset_0_0_0_1px_rgba(41,37,36,0.08)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function DescriptionRichTextEditor({
+  initialValue,
+  placeholder,
+}: {
+  initialValue: string;
+  placeholder: string;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const [initialHtml, setInitialHtml] = useState(() => sanitizeDescriptionHtml(initialValue));
+  const [charCount, setCharCount] = useState(() => getDescriptionTextLength(initialValue));
+  const [activeMarks, setActiveMarks] = useState({ bold: false, italic: false, strike: false, list: false });
+  const overLimit = charCount > DESCRIPTION_LIMIT;
+  const counterTone = overLimit
+    ? "text-[#b42318]"
+    : charCount >= DESCRIPTION_LIMIT
+      ? "text-[#9f1239]"
+      : charCount >= 270
+        ? "text-[#b45309]"
+        : "text-[#79716b]";
+
+  useEffect(() => {
+    const nextHtml = sanitizeDescriptionHtml(initialValue);
+    setInitialHtml(nextHtml);
+    setCharCount(getDescriptionTextLength(nextHtml));
+    if (editorRef.current) editorRef.current.innerHTML = nextHtml;
+  }, [initialValue]);
+
+  const syncFromEditor = (sanitize = false) => {
+    const nextHtml = sanitizeDescriptionHtml(editorRef.current?.innerHTML ?? "");
+    if (sanitize && editorRef.current && editorRef.current.innerHTML !== nextHtml) {
+      editorRef.current.innerHTML = nextHtml;
+    }
+    setCharCount(getDescriptionTextLength(nextHtml));
+  };
+
+  const refreshActiveMarks = () => {
+    if (!editorRef.current || !document.activeElement || !editorRef.current.contains(document.activeElement)) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+      setActiveMarks({ bold: false, italic: false, strike: false, list: false });
+      return;
+    }
+    setActiveMarks({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      strike: document.queryCommandState("strikeThrough"),
+      list: document.queryCommandState("insertUnorderedList"),
+    });
+  };
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", refreshActiveMarks);
+    return () => document.removeEventListener("selectionchange", refreshActiveMarks);
+  }, []);
+
+  const applyCommand = (command: "bold" | "italic" | "strikeThrough" | "insertUnorderedList") => {
+    editorRef.current?.focus();
+    document.execCommand(command);
+    syncFromEditor();
+    window.setTimeout(refreshActiveMarks, 0);
+  };
+
+  const insertHtml = (nextHtml: string) => {
+    document.execCommand("insertHTML", false, nextHtml);
+    syncFromEditor();
+  };
+
+  const handleBeforeInput = (event: React.FormEvent<HTMLDivElement> & { nativeEvent: InputEvent }) => {
+    const inputEvent = event.nativeEvent;
+    if (!inputEvent.data || inputEvent.inputType.startsWith("delete")) return;
+    if (!overLimit && charCount + inputEvent.data.length <= DESCRIPTION_LIMIT) return;
+    event.preventDefault();
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const htmlData = event.clipboardData.getData("text/html");
+    const plainData = event.clipboardData.getData("text/plain");
+    const sanitized = sanitizeDescriptionHtml(htmlData || plainData);
+    const remaining = DESCRIPTION_LIMIT - charCount;
+    if (remaining <= 0 && !overLimit) return;
+
+    if (getDescriptionTextLength(sanitized) <= remaining || overLimit) {
+      insertHtml(sanitized);
+      return;
+    }
+
+    const plain = stripHtmlTags(sanitized).slice(0, Math.max(0, remaining));
+    if (plain) insertHtml(escapeHtml(plain).replace(/\n/g, "<br>"));
+  };
+
+  return (
+    <div>
+      <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">Описание</div>
+      <div
+        className={cn(
+          "overflow-hidden rounded-[8px] border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]",
+          overLimit ? "border-[#fda29b]" : "border-[#e5e5e5]",
+        )}
+      >
+        <div className="flex h-8 items-center gap-0.5 border-b border-[#e5e5e5] px-1.5">
+          <RichTextToolbarButton label="Жирный" active={activeMarks.bold} onMouseDown={() => applyCommand("bold")}>
+            B
+          </RichTextToolbarButton>
+          <RichTextToolbarButton label="Курсив" active={activeMarks.italic} onMouseDown={() => applyCommand("italic")}>
+            <span className="italic">I</span>
+          </RichTextToolbarButton>
+          <RichTextToolbarButton label="Зачёркнутый" active={activeMarks.strike} onMouseDown={() => applyCommand("strikeThrough")}>
+            <span className="line-through">S</span>
+          </RichTextToolbarButton>
+          <RichTextToolbarButton label="Маркированный список" active={activeMarks.list} onMouseDown={() => applyCommand("insertUnorderedList")}>
+            •
+          </RichTextToolbarButton>
+          <div className={cn("ml-auto text-[12px] leading-5", counterTone)}>
+            {charCount} / {DESCRIPTION_LIMIT}
+          </div>
+        </div>
+        <div
+          ref={(element) => {
+            editorRef.current = element;
+            if (element && !element.dataset.richTextInitialized) {
+              element.innerHTML = initialHtml;
+              element.dataset.richTextInitialized = "true";
+            }
+          }}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label="Описание"
+          aria-multiline="true"
+          data-placeholder={placeholder}
+          onInput={() => syncFromEditor()}
+          onBlur={() => syncFromEditor(true)}
+          onKeyUp={refreshActiveMarks}
+          onMouseUp={refreshActiveMarks}
+          onBeforeInput={handleBeforeInput}
+          onPaste={handlePaste}
+          className="min-h-[96px] px-3 py-2 text-[13px] leading-5 text-[#292524] outline-none empty:before:pointer-events-none empty:before:text-[#a8a29e] empty:before:content-[attr(data-placeholder)] [&_em]:italic [&_li]:ml-4 [&_li]:list-disc [&_p]:my-0 [&_s]:line-through [&_strong]:font-semibold [&_ul]:my-0 [&_ul]:pl-2"
+        />
+      </div>
+      {overLimit && (
+        <div className="mt-1.5 text-[12px] leading-5 text-[#b42318]">
+          Сократите описание до 300 символов
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BasicTab({
   item,
   media,
+  basePriceText,
+  basePrice,
+  weightUnit,
+  discountOpen,
+  discountAutofocusKey,
+  onWeightUnitChange,
+  onBasePriceChange,
+  onBasePriceBlur,
+  onAddDiscount,
+  onRemoveDiscount,
   onAddPhotoFile,
   onAddVideoFile,
   onReorderMedia,
@@ -1184,6 +1663,16 @@ function BasicTab({
 }: {
   item: CatalogItem;
   media: MediaEntry[];
+  basePriceText: string;
+  basePrice: number | null;
+  weightUnit: string;
+  discountOpen: boolean;
+  discountAutofocusKey: number;
+  onWeightUnitChange: (unit: string) => void;
+  onBasePriceChange: (value: string) => void;
+  onBasePriceBlur: () => void;
+  onAddDiscount: () => void;
+  onRemoveDiscount: () => void;
   onAddPhotoFile: (file: File) => void;
   onAddVideoFile: (file: File) => void;
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
@@ -1192,11 +1681,11 @@ function BasicTab({
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
     : ["", "г"];
-  const [unit, setUnit] = useState(initialWeightUnit);
+  const [weightText, setWeightText] = useState(initialWeightValue ? formatPlainNumber(parseMoneyInput(initialWeightValue) ?? 0) : "");
 
   useEffect(() => {
-    setUnit(initialWeightUnit);
-  }, [item.id, initialWeightUnit]);
+    setWeightText(initialWeightValue ? formatPlainNumber(parseMoneyInput(initialWeightValue) ?? 0) : "");
+  }, [item.id, initialWeightUnit, initialWeightValue]);
 
   const inlineInputClass =
     "min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]";
@@ -1220,39 +1709,66 @@ function BasicTab({
         plain
       />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <EditorField label="Цена">
+            <input value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
+            <span className="shrink-0 text-[13px] text-[#a6a09b]">₸</span>
+          </EditorField>
+          {!discountOpen && (
+            <button
+              type="button"
+              onClick={onAddDiscount}
+              className="mt-1.5 inline-flex h-5 items-center gap-1 rounded-[6px] px-0.5 text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <PlusCircle size={14} className="text-[#a8a29e]" />
+              Добавить скидку
+            </button>
+          )}
+        </div>
+
         <EditorField label="Объем">
-          <input defaultValue={initialWeightValue} placeholder="—" className={inlineInputClass} />
+          <input
+            value={weightText}
+            onChange={(event) => {
+              if (isFormattedNumericDraft(event.target.value)) setWeightText(event.target.value);
+            }}
+            onBlur={() => {
+              const value = parseMoneyInput(weightText);
+              if (value != null) setWeightText(formatPlainNumber(value));
+            }}
+            placeholder="—"
+            className={inlineInputClass}
+          />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-[6px] text-[13px] text-[#666] transition hover:text-[#292524]">
-                {unit}
+                {weightUnit}
                 <CaretDown size={13} className="text-[#a8a29e]" />
               </button>
             </DropdownMenu.Trigger>
             <DropdownContent align="end">
               {WEIGHT_UNITS.map((u) => (
-                <DropdownActionItem key={u} onSelect={() => setUnit(u)}>{u}</DropdownActionItem>
+                <DropdownActionItem key={u} onSelect={() => onWeightUnitChange(u)}>{u}</DropdownActionItem>
               ))}
             </DropdownContent>
           </DropdownMenu.Root>
         </EditorField>
-
-        <EditorField label="Цена">
-          <input defaultValue={item.price || ""} placeholder="0" className={inlineInputClass} />
-          <span className="shrink-0 text-[13px] text-[#666]">₸</span>
-        </EditorField>
       </div>
 
-      <TranslatableField
+      {discountOpen && (
+        <DiscountBlock
+          item={item}
+          basePrice={basePrice}
+          autofocusKey={discountAutofocusKey}
+          onRemove={onRemoveDiscount}
+        />
+      )}
+
+      <DescriptionRichTextEditor
         key={`desc-${item.id}`}
-        label="Описание"
-        multiline
-        rows={3}
-        initialTranslations={{ ru: item.description }}
+        initialValue={item.description}
         placeholder="Кратко опишите состав, вкус или способ подачи"
-        showTranslationMeta={false}
-        plain
       />
     </div>
   );
@@ -1260,58 +1776,337 @@ function BasicTab({
 
 // ── Скидка и КБЖУ — опциональные блоки под карточкой (паттерн «Ещё») ──────────
 
-function EditorBlockHeader({ label, onRemove }: { label: string; onRemove: () => void }) {
+function EditorBlockHeader({
+  label,
+  meta,
+  onRemove,
+  removeLabel,
+}: {
+  label: string;
+  meta?: ReactNode;
+  onRemove: () => void;
+  removeLabel: string;
+}) {
   return (
     <div className="mb-1.5 flex h-7 items-center">
-      <div className="text-[13px] font-medium leading-[18px] text-[#303030]">{label}</div>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <div className="text-[13px] font-medium leading-[18px] text-[#303030]">{label}</div>
+        {meta && <div className="truncate text-[12px] leading-5 text-[#79716b]">{meta}</div>}
+      </div>
       <div className="flex-1" />
       <button
         type="button"
-        title="Убрать блок"
+        title={removeLabel}
+        aria-label={removeLabel}
         onClick={onRemove}
-        className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626]"
+        className="ml-1 flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100"
       >
-        <Trash2 size={15} />
+        <Trash size={15} />
       </button>
     </div>
   );
 }
 
-function DiscountBlock({ item, onRemove }: { item: CatalogItem; onRemove: () => void }) {
+function DiscountInputField({
+  label,
+  value,
+  suffix,
+  onChange,
+  onBlur,
+  onStep,
+  disabled,
+  autoFocus,
+}: {
+  label: string;
+  value: string;
+  suffix: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  onStep?: (direction: 1 | -1, large: boolean) => void;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}) {
   return (
-    <div>
-      <EditorBlockHeader label="Скидка" onRemove={onRemove} />
-      <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[#e7e5e4] bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <input
-          defaultValue="10"
-          className="h-8 w-16 rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+    <label className="min-w-0">
+      <div className="mb-1 text-[13px] leading-5 text-[#79716b]">{label}</div>
+      <div className={cn(
+        "flex h-[30px] w-full items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-[#c7c2bd]",
+        disabled && "bg-[#fafaf9] text-[#a8a29e]",
+      )}>
+        <Input
+          size="compact"
+          type="text"
+          inputMode="decimal"
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!onStep || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+            event.preventDefault();
+            onStep(event.key === "ArrowUp" ? 1 : -1, event.shiftKey);
+          }}
+          onBlur={onBlur}
+          disabled={disabled}
+          placeholder="0"
+          className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 shadow-none disabled:text-[#a8a29e]"
         />
-        <span className="text-[13px] text-[#79716b]">%</span>
-        <span className="text-[13px] text-[#79716b]">Цена со скидкой:</span>
-        <div className="flex h-8 items-center gap-1 rounded-[8px] border border-[#e5e5e5] px-2">
-          <input
-            defaultValue={item.priceWithSale ?? Math.round(item.price * 0.9)}
-            placeholder="0"
-            className="w-24 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+        <span className="shrink-0 text-[13px] text-[#a6a09b]">{suffix}</span>
+      </div>
+    </label>
+  );
+}
+
+function DiscountBlock({
+  item,
+  basePrice,
+  autofocusKey,
+  onRemove,
+}: {
+  item: CatalogItem;
+  basePrice: number | null;
+  autofocusKey: number;
+  onRemove: () => void;
+}) {
+  const initialFinalPrice = item.priceWithSale ?? (item.price > 0 ? calculateDiscountedPrice(item.price, 10) : null);
+  const initialPercent =
+    item.price > 0 && initialFinalPrice != null
+      ? calculateDiscountPercent(item.price, initialFinalPrice)
+      : 10;
+  const [, setDiscountSource] = useState<DiscountSource | null>("percent");
+  const discountSourceRef = useRef<DiscountSource | null>("percent");
+  const [percentText, setPercentText] = useState(formatDiscountPercent(initialPercent));
+  const [finalPriceText, setFinalPriceText] = useState(initialFinalPrice == null ? "" : formatMoneyInput(initialFinalPrice));
+
+  useEffect(() => {
+    const nextFinalPrice = item.priceWithSale ?? (item.price > 0 ? calculateDiscountedPrice(item.price, 10) : null);
+    const nextPercent =
+      item.price > 0 && nextFinalPrice != null
+        ? calculateDiscountPercent(item.price, nextFinalPrice)
+        : 10;
+    discountSourceRef.current = "percent";
+    setDiscountSource("percent");
+    setPercentText(formatDiscountPercent(nextPercent));
+    setFinalPriceText(nextFinalPrice == null ? "" : formatMoneyInput(nextFinalPrice));
+  }, [item.id, item.price, item.priceWithSale]);
+
+  useEffect(() => {
+    if (!basePrice || basePrice <= 0) return;
+    if (discountSourceRef.current === "percent") {
+      const percent = parseMoneyInput(percentText);
+      if (percent == null || percent < 0 || percent > 100) return;
+      setFinalPriceText(formatMoneyInput(calculateDiscountedPrice(basePrice, percent)));
+      return;
+    }
+    if (discountSourceRef.current === "finalPrice") {
+      const finalPrice = parseMoneyInput(finalPriceText);
+      if (finalPrice == null || finalPrice < 0) return;
+      setPercentText(formatDiscountPercent(calculateDiscountPercent(basePrice, finalPrice)));
+    }
+  }, [basePrice, percentText, finalPriceText]);
+
+  const baseMissing = !basePrice || basePrice <= 0;
+  const percentValue = parseMoneyInput(percentText);
+  const finalPriceValue = parseMoneyInput(finalPriceText);
+  const percentError = percentText !== "" && percentValue != null && percentValue > 100
+    ? "Скидка не может быть больше 100%"
+    : "";
+  const finalPriceError =
+    !baseMissing && finalPriceText !== "" && finalPriceValue != null && finalPriceValue > basePrice
+      ? "Цена после скидки не может быть выше основной цены"
+      : "";
+
+  const handlePercentChange = (value: string) => {
+    if (!isNumericDraft(value)) return;
+    discountSourceRef.current = "percent";
+    setDiscountSource("percent");
+    setPercentText(value);
+    const percent = parseMoneyInput(value);
+    if (baseMissing || percent == null || percent < 0 || percent > 100) return;
+    setFinalPriceText(formatMoneyInput(calculateDiscountedPrice(basePrice, percent)));
+  };
+
+  const handleFinalPriceChange = (value: string) => {
+    if (!isNumericDraft(value)) return;
+    discountSourceRef.current = "finalPrice";
+    setDiscountSource("finalPrice");
+    setFinalPriceText(value);
+    const finalPrice = parseMoneyInput(value);
+    if (baseMissing || finalPrice == null || finalPrice < 0 || finalPrice > basePrice) return;
+    setPercentText(formatDiscountPercent(calculateDiscountPercent(basePrice, finalPrice)));
+  };
+
+  const normalizePercentOnBlur = () => {
+    const percent = parseMoneyInput(percentText);
+    if (percent == null) return;
+    const normalized = Math.min(100, Math.max(0, percent));
+    discountSourceRef.current = "percent";
+    setPercentText(formatDiscountPercent(normalized));
+    if (!baseMissing) setFinalPriceText(formatMoneyInput(calculateDiscountedPrice(basePrice, normalized)));
+  };
+
+  const normalizeFinalPriceOnBlur = () => {
+    const finalPrice = parseMoneyInput(finalPriceText);
+    if (finalPrice == null || baseMissing) return;
+    if (finalPrice < 0) {
+      setFinalPriceText("0");
+      setPercentText("100");
+      discountSourceRef.current = "finalPrice";
+    }
+  };
+
+  const stepPercent = (direction: 1 | -1, large: boolean) => {
+    const current = parseMoneyInput(percentText) ?? 0;
+    const next = Math.min(100, Math.max(0, current + direction * (large ? 5 : 1)));
+    handlePercentChange(formatDiscountPercent(next));
+  };
+
+  const stepFinalPrice = (direction: 1 | -1, large: boolean) => {
+    const current = parseMoneyInput(finalPriceText) ?? 0;
+    const step = large ? 1000 : 100;
+    const max = basePrice && basePrice > 0 ? basePrice : Number.POSITIVE_INFINITY;
+    const next = Math.min(max, Math.max(0, current + direction * step));
+    handleFinalPriceChange(formatMoneyInput(next));
+  };
+
+  const removeDiscount = () => {
+    discountSourceRef.current = null;
+    setDiscountSource(null);
+    setPercentText("");
+    setFinalPriceText("");
+    onRemove();
+  };
+
+  return (
+    <div className="relative pt-1.5">
+      <div className="pointer-events-none absolute -top-0.5 left-[24%] hidden h-0 w-0 border-x-[7px] border-b-[7px] border-x-transparent border-b-[#f5f5f4] sm:block" />
+      <div className="rounded-[10px] bg-[#f5f5f4]/90 px-3 pb-3 pt-2">
+        <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px]">
+          <DiscountInputField
+            label="Размер скидки"
+            value={percentText}
+            suffix="%"
+            onChange={handlePercentChange}
+            onBlur={normalizePercentOnBlur}
+            onStep={stepPercent}
+            disabled={baseMissing}
+            autoFocus={autofocusKey > 0}
           />
-          <span className="text-[13px] text-[#666]">₸</span>
+          <DiscountInputField
+            label="Цена после скидки"
+            value={finalPriceText}
+            suffix="₸"
+            onChange={handleFinalPriceChange}
+            onBlur={normalizeFinalPriceOnBlur}
+            onStep={stepFinalPrice}
+            disabled={baseMissing}
+          />
+          <Tooltip label="Убрать скидку" side="top">
+            <button
+              type="button"
+              aria-label="Убрать скидку"
+              onClick={removeDiscount}
+              className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-white hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 sm:mb-0"
+            >
+              <XCircle size={16} />
+            </button>
+          </Tooltip>
         </div>
+        {baseMissing ? (
+          <div className="mt-2 text-[12px] leading-4 text-[#79716b]">Сначала укажите основную цену</div>
+        ) : finalPriceError ? (
+          <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{finalPriceError}</div>
+        ) : percentError ? (
+          <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{percentError}</div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function KbjuBlock({ onRemove }: { onRemove: () => void }) {
+type NutritionBase = "100g" | "100ml" | "portion";
+type NutritionKey = "calories" | "protein" | "fat" | "carbs";
+
+const NUTRITION_BASE_LABELS: Record<NutritionBase, string> = {
+  "100g": "На 100 г",
+  "100ml": "На 100 мл",
+  portion: "На позицию",
+};
+
+const NUTRITION_FIELDS: { key: NutritionKey; label: string; suffix: string }[] = [
+  { key: "calories", label: "Калорийность", suffix: "ккал" },
+  { key: "protein", label: "Белки", suffix: "г" },
+  { key: "fat", label: "Жиры", suffix: "г" },
+  { key: "carbs", label: "Углеводы", suffix: "г" },
+];
+
+function getAutoNutritionBase(unit: string): NutritionBase {
+  const normalized = unit.trim().toLowerCase();
+  if (normalized === "г" || normalized === "кг") return "100g";
+  if (normalized === "мл" || normalized === "л") return "100ml";
+  return "portion";
+}
+
+function KbjuBlock({ weightUnit, onRemove }: { weightUnit: string; onRemove: () => void }) {
+  const [values, setValues] = useState<Record<NutritionKey, string>>({
+    calories: "",
+    protein: "",
+    fat: "",
+    carbs: "",
+  });
+
+  const base = getAutoNutritionBase(weightUnit);
+  const hasValues = Object.values(values).some((value) => value.trim() !== "");
+  const calories = parseMoneyInput(values.calories);
+  const protein = parseMoneyInput(values.protein);
+  const fat = parseMoneyInput(values.fat);
+  const carbs = parseMoneyInput(values.carbs);
+  const macroSum = (protein ?? 0) + (fat ?? 0) + (carbs ?? 0);
+  const warning =
+    calories != null && calories > 1200
+      ? "Проверьте значение — оно выглядит слишком высоким"
+      : base === "100g" && macroSum > 100
+        ? "Проверьте значение — сумма БЖУ больше 100 г"
+        : "";
+
+  const removeNutrition = () => {
+    if (hasValues && !window.confirm("Удалить заполненное КБЖУ?")) return;
+    setValues({ calories: "", protein: "", fat: "", carbs: "" });
+    onRemove();
+  };
+
   return (
-    <div>
-      <EditorBlockHeader label="КБЖУ на 100 г" onRemove={onRemove} />
-      <div className="grid grid-cols-4 gap-2">
-        {["Ккал", "Белки", "Жиры", "Углеводы"].map((macro) => (
-          <label key={macro} className="rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]">
-            <div className="text-[11px] text-[#79716b]">{macro}</div>
-            <input placeholder="—" className="w-full bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
-          </label>
-        ))}
+    <div className="group">
+      <EditorBlockHeader
+        label="КБЖУ"
+        meta={NUTRITION_BASE_LABELS[base]}
+        removeLabel="Удалить КБЖУ"
+        onRemove={removeNutrition}
+      />
+      <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(12,12,13,0.05)]">
+        <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 lg:grid-cols-4">
+          {NUTRITION_FIELDS.map((field) => (
+            <label key={field.key} className="min-w-0">
+              <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{field.label}</div>
+              <div className="flex h-[30px] items-center gap-1 rounded-[8px] border border-[#e5e5e5] bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition focus-within:border-[#c7c2bd]">
+                <Input
+                  size="compact"
+                  type="text"
+                  inputMode="decimal"
+                  value={values[field.key]}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (!isNumericDraft(next)) return;
+                    setValues((current) => ({ ...current, [field.key]: next }));
+                  }}
+                  placeholder="0"
+                  className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 shadow-none"
+                />
+                <span className="shrink-0 text-[12px] text-[#a6a09b]">{field.suffix}</span>
+              </div>
+            </label>
+          ))}
+        </div>
+        {warning && <div className="mt-2 text-[12px] leading-5 text-[#b45309]">{warning}</div>}
       </div>
     </div>
   );
@@ -1386,12 +2181,427 @@ function PlaceholderTab({ title, children }: { title: string; children: ReactNod
   );
 }
 
-const STATUS_LABELS: Record<CatalogItem["status"], string> = {
-  active: "В меню",
-  stopped: "На стопе",
-  archive: "В архиве",
-  "coming-soon": "Скоро будет",
+function StopQuickActionButton({
+  item,
+  busy,
+  onToggleStop,
+  compact = false,
+}: {
+  item: CatalogItem;
+  busy: boolean;
+  onToggleStop: (item: CatalogItem) => void;
+  compact?: boolean;
+}) {
+  if (item.status !== "active" && item.status !== "stopped") return null;
+  const stopped = item.status === "stopped";
+  const label = stopped ? "Вернуть в продажу" : "Поставить на стоп";
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Tooltip label={label} side="top" delayDuration={200}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={busy}
+        onClick={() => onToggleStop(item)}
+        className={cn(
+          "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-transparent text-[12px] font-medium leading-5 text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-50",
+          compact ? "w-7 px-0" : "px-2",
+        )}
+      >
+        {busy ? (
+          <span className="h-3 w-3 animate-spin rounded-full border border-[#a8a29e] border-t-transparent" />
+        ) : stopped ? (
+          <ArrowCounterClockwise size={13} />
+        ) : (
+          <Prohibit size={13} />
+        )}
+        {!compact && <span className="hidden min-[520px]:inline">{label}</span>}
+      </button>
+      </Tooltip>
+    </div>
+  );
+}
+
+function getAvailabilityMode(item: CatalogItem): AvailabilityMode {
+  if (item.status === "stopped") return "unavailable";
+  if (item.scheduled) return "schedule";
+  return "always";
+}
+
+const DAY_LABELS: { key: ScheduleDayKey; label: string }[] = [
+  { key: "monday", label: "Понедельник" },
+  { key: "tuesday", label: "Вторник" },
+  { key: "wednesday", label: "Среда" },
+  { key: "thursday", label: "Четверг" },
+  { key: "friday", label: "Пятница" },
+  { key: "saturday", label: "Суббота" },
+  { key: "sunday", label: "Воскресенье" },
+];
+
+const JS_DAY_TO_SCHEDULE_KEY: Record<number, ScheduleDayKey> = {
+  0: "sunday",
+  1: "monday",
+  2: "tuesday",
+  3: "wednesday",
+  4: "thursday",
+  5: "friday",
+  6: "saturday",
 };
+
+function createDefaultWeeklySchedule(): WeeklySchedule {
+  return {
+    monday: { mode: "custom", intervals: [{ start: "09:00", end: "18:00" }] },
+    tuesday: { mode: "allDay" },
+    wednesday: { mode: "unavailable" },
+    thursday: { mode: "allDay" },
+    friday: { mode: "unavailable" },
+    saturday: { mode: "allDay" },
+    sunday: { mode: "allDay" },
+  };
+}
+
+function timeToMinutes(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function validateDaySchedule(day: DaySchedule): string[] {
+  if (day.mode !== "custom") return [];
+  const errors: string[] = [];
+  const intervals = day.intervals;
+  const normalized = intervals.map((interval) => ({
+    start: timeToMinutes(interval.start),
+    end: timeToMinutes(interval.end),
+  }));
+
+  normalized.forEach((interval) => {
+    if (interval.start == null || interval.end == null) {
+      errors.push("Укажите время");
+    } else if (interval.start >= interval.end) {
+      errors.push("Время начала должно быть раньше времени окончания");
+    }
+  });
+
+  const valid = normalized
+    .filter((interval): interval is { start: number; end: number } => interval.start != null && interval.end != null && interval.start < interval.end)
+    .sort((a, b) => a.start - b.start);
+  for (let index = 1; index < valid.length; index += 1) {
+    if (valid[index - 1].end > valid[index].start) {
+      errors.push("Интервалы не должны пересекаться");
+      break;
+    }
+  }
+
+  return Array.from(new Set(errors));
+}
+
+function isWeeklyScheduleValid(schedule: WeeklySchedule) {
+  return DAY_LABELS.every((day) => validateDaySchedule(schedule[day.key]).length === 0);
+}
+
+export function getEffectiveAvailability(
+  item: CatalogItem,
+  now: Date,
+  settings: {
+    unavailableDisplayMode: UnavailableDisplayMode;
+    outsideScheduleMode: OutsideScheduleMode;
+    weeklySchedule: WeeklySchedule;
+  },
+) {
+  if (item.status === "archive") return { visible: false, orderable: false, badge: "В архиве" as const };
+  if (getAvailabilityMode(item) === "unavailable") {
+    return {
+      visible: settings.unavailableDisplayMode === "comingSoon",
+      orderable: false,
+      badge: settings.unavailableDisplayMode === "comingSoon" ? ("Скоро будет" as const) : null,
+    };
+  }
+  if (getAvailabilityMode(item) === "always") return { visible: true, orderable: true, badge: null };
+
+  const day = settings.weeklySchedule[JS_DAY_TO_SCHEDULE_KEY[now.getDay()]];
+  if (day.mode === "allDay") return { visible: true, orderable: true, badge: null };
+  if (day.mode === "unavailable") {
+    return {
+      visible: settings.outsideScheduleMode === "comingSoon",
+      orderable: false,
+      badge: settings.outsideScheduleMode === "comingSoon" ? ("Скоро будет" as const) : null,
+    };
+  }
+  const minute = now.getHours() * 60 + now.getMinutes();
+  const inside = day.intervals.some((interval) => {
+    const start = timeToMinutes(interval.start);
+    const end = timeToMinutes(interval.end);
+    return start != null && end != null && start < end && minute >= start && minute < end;
+  });
+  return inside
+    ? { visible: true, orderable: true, badge: null }
+    : {
+        visible: settings.outsideScheduleMode === "comingSoon",
+        orderable: false,
+        badge: settings.outsideScheduleMode === "comingSoon" ? ("Скоро будет" as const) : null,
+      };
+}
+
+function AvailabilityTab({
+  item,
+  stopBusy,
+  onSetAvailabilityMode,
+  unavailableDisplayMode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onUnavailableDisplayModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
+}: {
+  item: CatalogItem;
+  stopBusy: boolean;
+  onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
+  unavailableDisplayMode: UnavailableDisplayMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  const mode = getAvailabilityMode(item);
+  const options: { id: AvailabilityMode; title: string; description: string }[] = [
+    {
+      id: "always",
+      title: "Можно заказать",
+      description: "Доступно для заказа в любое время",
+    },
+    {
+      id: "unavailable",
+      title: "Нельзя заказать",
+      description: "Гости не смогут добавить позицию в заказ",
+    },
+    {
+      id: "schedule",
+      title: "По расписанию",
+      description: "Доступно только в указанные дни и часы",
+    },
+  ];
+  const updateDay = (dayKey: ScheduleDayKey, day: DaySchedule) => {
+    onWeeklyScheduleChange({ ...weeklySchedule, [dayKey]: day });
+  };
+
+  const renderSegmented = <T extends string,>(
+    value: T,
+    onChange: (next: T) => void,
+    options: { id: T; label: string }[],
+    ariaLabel: string,
+  ) => (
+    <div role="group" aria-label={ariaLabel} className="inline-flex h-7 rounded-[8px] bg-[#f5f5f4] p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => onChange(option.id)}
+          className={cn(
+            "rounded-[7px] px-2.5 text-[12px] font-medium leading-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            value === option.id ? "bg-white text-[#292524] shadow-sm" : "text-[#79716b] hover:text-[#292524]",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderNestedDisplay = (
+    label: string,
+    value: UnavailableDisplayMode | OutsideScheduleMode,
+    onChange: (next: "hidden" | "comingSoon") => void,
+    hiddenText: string,
+    comingSoonText: string,
+  ) => (
+    <div className="ml-[9px] border-l border-[#e7e5e4] py-2 pl-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13px] leading-5 text-[#79716b]">{label}</span>
+        {renderSegmented(value, onChange, [
+          { id: "hidden", label: "Скрыто" },
+          { id: "comingSoon", label: "Скоро будет" },
+        ], label)}
+      </div>
+      <div className="mt-2 text-[13px] leading-5 text-[#57534d]">
+        {value === "hidden" ? hiddenText : comingSoonText}
+      </div>
+    </div>
+  );
+
+  const renderDayRow = (dayKey: ScheduleDayKey, label: string) => {
+    const day = weeklySchedule[dayKey];
+    const errors = validateDaySchedule(day);
+    const muted = day.mode === "unavailable";
+    const setMode = (nextMode: DaySchedule["mode"]) => {
+      if (nextMode === "custom") {
+        updateDay(dayKey, day.mode === "custom" ? day : { mode: "custom", intervals: [{ start: "09:00", end: "18:00" }] });
+      } else {
+        updateDay(dayKey, { mode: nextMode });
+      }
+    };
+    const intervals = day.mode === "custom" ? day.intervals : [];
+
+    return (
+      <div key={dayKey} className={cn("border-b border-[#eceae7] last:border-b-0", muted && "text-[#a8a29e]")}>
+        <div className="flex min-h-[46px] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+          <div className={cn("w-[112px] shrink-0 text-[13px] font-medium leading-5", muted ? "text-[#a8a29e]" : "text-[#44403b]")}>
+            {label}
+          </div>
+          <div className="min-w-[190px] flex-1">
+            {day.mode === "allDay" && <div className="text-[13px] leading-5 text-[#79716b]">Круглосуточно</div>}
+            {day.mode === "unavailable" && <div className="text-[13px] leading-5 text-[#a8a29e]">Недоступно</div>}
+            {day.mode === "custom" && (
+              <div className="space-y-1.5">
+                {intervals.map((interval, index) => {
+                  const errorId = `${item.id}-${dayKey}-${index}-time-error`;
+                  const intervalErrors = validateDaySchedule({ mode: "custom", intervals: [interval] });
+                  return (
+                    <div key={index} className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="time"
+                        value={interval.start}
+                        aria-label={`${label}: начало интервала ${index + 1}`}
+                        aria-describedby={intervalErrors.length > 0 ? errorId : undefined}
+                        onChange={(event) => {
+                          const nextIntervals = intervals.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, start: event.target.value } : current,
+                          );
+                          updateDay(dayKey, { mode: "custom", intervals: nextIntervals });
+                        }}
+                        className="h-[30px] rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+                      />
+                      <span className="text-[13px] text-[#a8a29e]">—</span>
+                      <input
+                        type="time"
+                        value={interval.end}
+                        aria-label={`${label}: конец интервала ${index + 1}`}
+                        aria-describedby={intervalErrors.length > 0 ? errorId : undefined}
+                        onChange={(event) => {
+                          const nextIntervals = intervals.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, end: event.target.value } : current,
+                          );
+                          updateDay(dayKey, { mode: "custom", intervals: nextIntervals });
+                        }}
+                        className="h-[30px] rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
+                      />
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          aria-label={`${label}: удалить интервал ${index + 1}`}
+                          onClick={() => updateDay(dayKey, { mode: "custom", intervals: intervals.filter((_, currentIndex) => currentIndex !== index) })}
+                          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                        >
+                          <Trash size={14} />
+                        </button>
+                      )}
+                      {intervalErrors.length > 0 && <div id={errorId} className="basis-full text-[12px] leading-4 text-[#b42318]">{intervalErrors[0]}</div>}
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => updateDay(dayKey, { mode: "custom", intervals: [...intervals, { start: "17:00", end: "22:00" }] })}
+                  className="inline-flex h-7 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <PlusCircle size={13} />
+                  Добавить интервал
+                </button>
+              </div>
+            )}
+          </div>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="ml-auto flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                aria-label={`${label}: режим доступности`}
+              >
+                {day.mode === "allDay" ? "Круглосуточно" : day.mode === "custom" ? "Свое время" : "Недоступно"}
+                <CaretDown size={12} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              <DropdownActionItem onSelect={() => setMode("allDay")}>Круглосуточно</DropdownActionItem>
+              <DropdownActionItem onSelect={() => setMode("custom")}>Свое время</DropdownActionItem>
+              <DropdownActionItem onSelect={() => setMode("unavailable")}>Недоступно</DropdownActionItem>
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </div>
+        {errors.length > 0 && day.mode === "custom" && (
+          <div className="px-3 pb-2 pl-[128px] text-[12px] leading-4 text-[#b42318]">{errors[0]}</div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div
+        role="radiogroup"
+        aria-label="Доступность позиции"
+        className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(12,12,13,0.05)]"
+      >
+        {options.map((option) => {
+          const selected = option.id === mode;
+          return (
+            <div key={option.id} className="border-b border-[#eceae7] last:border-b-0">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onSetAvailabilityMode(item, option.id)}
+                disabled={option.id === "unavailable" && stopBusy}
+                className="flex w-full items-start gap-4 p-4 text-left transition hover:bg-[#fbfbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-60"
+              >
+                <span className={cn(
+                  "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                  selected ? "border-[#292524] bg-[#292524]" : "border-[#d6d3d1] bg-white",
+                )}>
+                  {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium leading-5 text-[#292524]">{option.title}</span>
+                  <span className="mt-0.5 block text-[13px] leading-5 text-[#79716b]">{option.description}</span>
+                </span>
+              </button>
+              {option.id === "unavailable" && selected && (
+                <div className="px-4 pb-4">
+                  {renderNestedDisplay(
+                    "В меню:",
+                    unavailableDisplayMode,
+                    onUnavailableDisplayModeChange,
+                    "Позиция не будет отображаться в меню, пока недоступна",
+                    "Позиция останется в меню с отметкой «Скоро будет»",
+                  )}
+                </div>
+              )}
+              {option.id === "schedule" && selected && (
+                <div className="px-4 pb-4">
+                  {renderNestedDisplay(
+                    "Вне расписания:",
+                    outsideScheduleMode,
+                    onOutsideScheduleModeChange,
+                    "Позиция не будет отображаться в меню вне расписания",
+                    "Позиция останется в меню с отметкой «Скоро будет» вне расписания",
+                  )}
+                  <div className="mt-4 overflow-hidden rounded-[10px] border border-[#e7e5e4] bg-white">
+                    {DAY_LABELS.map((day) => renderDayRow(day.key, day.label))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type DisplayModeOption = CatalogItem["displayMode"];
 
@@ -1409,7 +2619,7 @@ function DisplayModePreview({ item, mode }: { item: CatalogItem; mode: DisplayMo
           {item.thumbnailUrl ? (
             <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <ImageOff size={15} className="text-[#bc4a08]" />
+            <ImageBroken size={15} className="text-[#bc4a08]" />
           )}
         </span>
         <div className="min-w-0 flex-1">
@@ -1501,21 +2711,50 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
 
 function PositionEditor({
   item,
-  items,
-  onSelectItem,
+  stopBusy,
+  onArchiveItem,
+  onRestoreItem,
+  onMoveItem,
+  onToggleStop,
+  onSetAvailabilityMode,
+  unavailableDisplayMode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onUnavailableDisplayModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
+  onRequestPermanentDelete,
 }: {
   item: CatalogItem;
-  items: CatalogItem[];
-  onSelectItem: (id: string) => void;
+  stopBusy: boolean;
+  onArchiveItem: (item: CatalogItem) => void;
+  onRestoreItem: (item: CatalogItem) => void;
+  onMoveItem: (item: CatalogItem) => void;
+  onToggleStop: (item: CatalogItem) => void;
+  onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
+  unavailableDisplayMode: UnavailableDisplayMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+  onRequestPermanentDelete: (item: CatalogItem) => void;
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>("basic");
   const [media, setMedia] = useState<MediaEntry[]>(() => getInitialMedia(item));
+  const [basePriceText, setBasePriceText] = useState(item.price ? formatMoneyInput(item.price) : "");
+  const initialEditorWeightUnit = item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г";
+  const [weightUnit, setWeightUnit] = useState(initialEditorWeightUnit);
   const [discountOpen, setDiscountOpen] = useState(item.hasDiscount);
+  const [discountAutofocusKey, setDiscountAutofocusKey] = useState(0);
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
 
   useEffect(() => {
     setMedia(getInitialMedia(item));
+    setBasePriceText(item.price ? formatMoneyInput(item.price) : "");
+    setWeightUnit(item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г");
     setDiscountOpen(item.hasDiscount);
+    setDiscountAutofocusKey(0);
     setKbjuOpen(item.nutritionFilledCount > 0);
   }, [item]);
 
@@ -1547,6 +2786,24 @@ function PositionEditor({
   };
   const removeMedia = (id: string) =>
     setMedia((m) => m.filter((x) => x.id !== id));
+  const updateBasePrice = (value: string) => {
+    if (!isFormattedNumericDraft(value)) return;
+    setBasePriceText(value);
+  };
+  const formatBasePrice = () => {
+    const value = parseMoneyInput(basePriceText);
+    if (value != null) setBasePriceText(formatMoneyInput(value));
+  };
+  const addDiscount = () => {
+    setDiscountOpen(true);
+    setDiscountAutofocusKey((value) => value + 1);
+  };
+  const removeDiscount = () => {
+    setDiscountOpen(false);
+    setDiscountAutofocusKey(0);
+  };
+  const basePrice = parseMoneyInput(basePriceText);
+  const isArchived = item.status === "archive";
 
   const addRowClass =
     "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
@@ -1555,26 +2812,55 @@ function PositionEditor({
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
         <div className="mx-auto max-w-[600px]">
-          {/* Название позиции + переключатель между позициями раздела */}
-          <div className="flex items-center pb-2 pt-6">
+          {/* Название позиции + действия с позицией */}
+          <div className="flex items-center gap-2 pb-2 pt-6">
+            <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
+              <span className="truncate">{item.title}</span>
+              {isArchived && (
+                <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+                  В архиве
+                </span>
+              )}
+              {item.status === "stopped" && !isArchived && (
+                <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+                  На стопе
+                </span>
+              )}
+            </h2>
+            <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="flex min-w-0 items-center gap-1.5 rounded-[6px] text-left text-[14px] font-medium text-[#292524] transition hover:text-[#57534d]"
+                  aria-label="Действия с позицией"
+                  title="Действия с позицией"
+                  className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  <span className="truncate">{item.title}</span>
-                  <CaretDown size={13} className="shrink-0 text-[#79716b]" />
+                  <DotsThreeVertical size={18} weight="bold" />
                 </button>
               </DropdownMenu.Trigger>
-              <DropdownContent align="start">
-                {items.map((sibling) => (
-                  <DropdownActionItem key={sibling.id} onSelect={() => onSelectItem(sibling.id)}>
-                    <span className={cn("max-w-[280px] truncate", sibling.id === item.id && "font-semibold")}>
-                      {sibling.title}
-                    </span>
-                  </DropdownActionItem>
-                ))}
+              <DropdownContent align="end">
+                {isArchived ? (
+                  <>
+                    <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                    <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
+                      Удалить навсегда
+                    </DropdownActionItem>
+                  </>
+                ) : (
+                  <>
+                    {(item.status === "active" || item.status === "stopped") && (
+                      <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
+                        {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
+                      </DropdownActionItem>
+                    )}
+                    <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                    <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
+                  </>
+                )}
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
@@ -1609,6 +2895,16 @@ function PositionEditor({
                 <BasicTab
                   item={item}
                   media={media}
+                  basePriceText={basePriceText}
+                  basePrice={basePrice}
+                  weightUnit={weightUnit}
+                  discountOpen={discountOpen}
+                  discountAutofocusKey={discountAutofocusKey}
+                  onWeightUnitChange={setWeightUnit}
+                  onBasePriceChange={updateBasePrice}
+                  onBasePriceBlur={formatBasePrice}
+                  onAddDiscount={addDiscount}
+                  onRemoveDiscount={removeDiscount}
                   onAddPhotoFile={addPhotoFile}
                   onAddVideoFile={addVideoFile}
                   onReorderMedia={reorderMedia}
@@ -1624,10 +2920,17 @@ function PositionEditor({
                 </PlaceholderTab>
               )}
               {activeTab === "availability" && (
-                <PlaceholderTab title="Доступность">
-                  Текущий статус: <span className="font-semibold text-[#292524]">{STATUS_LABELS[item.status]}</span>
-                  {item.scheduled && " · показ по расписанию"}
-                </PlaceholderTab>
+                <AvailabilityTab
+                  item={item}
+                  stopBusy={stopBusy}
+                  onSetAvailabilityMode={onSetAvailabilityMode}
+                  unavailableDisplayMode={unavailableDisplayMode}
+                  outsideScheduleMode={outsideScheduleMode}
+                  weeklySchedule={weeklySchedule}
+                  onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
+                  onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+                  onWeeklyScheduleChange={onWeeklyScheduleChange}
+                />
               )}
               {activeTab === "display" && <DisplayTab item={item} />}
             </div>
@@ -1636,24 +2939,14 @@ function PositionEditor({
           {/* Опциональные блоки и «Ещё» — вне карточки, только для «Основного» */}
           {activeTab === "basic" && (
             <div className="mt-4 space-y-4">
-              {discountOpen && <DiscountBlock item={item} onRemove={() => setDiscountOpen(false)} />}
-              {kbjuOpen && <KbjuBlock onRemove={() => setKbjuOpen(false)} />}
-              {(!discountOpen || !kbjuOpen) && (
+              {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => setKbjuOpen(false)} />}
+              {!kbjuOpen && (
                 <div className="px-1.5 pt-1">
-                  <div className="mb-1 text-[13px] font-medium text-[#303030]">Ещё</div>
                   <div className="flex flex-col items-start">
-                    {!kbjuOpen && (
-                      <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
-                        <CirclePlus size={16} className="text-[#a8a29e]" />
-                        Добавить КБЖУ (на 100 г)
-                      </button>
-                    )}
-                    {!discountOpen && (
-                      <button type="button" className={addRowClass} onClick={() => setDiscountOpen(true)}>
-                        <CirclePlus size={16} className="text-[#a8a29e]" />
-                        Добавить скидку
-                      </button>
-                    )}
+                    <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
+                      <PlusCircle size={16} className="text-[#a8a29e]" />
+                      Добавить КБЖУ
+                    </button>
                   </div>
                 </div>
               )}
@@ -1707,7 +3000,7 @@ function SectionItemRow({
         {item.thumbnailUrl ? (
           <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
         ) : (
-          <ImageOff size={14} className="text-[#bc4a08]" />
+          <ImageBroken size={14} className="text-[#bc4a08]" />
         )}
       </span>
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 flex-col gap-1 text-left">
@@ -1737,7 +3030,7 @@ function SectionItemList({
   onBulkAction,
   onOpenItem,
 }: {
-  section: { name: string; imageUrl?: string | null } | null;
+  section: { name: string; imageUrl?: string | null; status?: SectionStatus } | null;
   items: CatalogItem[];
   selectedIds: Set<string>;
   feedback: string;
@@ -1749,6 +3042,7 @@ function SectionItemList({
   onOpenItem: (id: string) => void;
 }) {
   const sectionName = section?.name ?? "Раздел";
+  const isArchivedSection = section?.status === "archive";
   const selectedCount = selectedIds.size;
   const allSelected = items.length > 0 && items.every((item) => selectedIds.has(item.id));
   const someSelected = items.some((item) => selectedIds.has(item.id));
@@ -1766,21 +3060,30 @@ function SectionItemList({
               )}
             </span>
             <div className="min-w-0">
-              <h2 className="truncate text-[20px] font-semibold leading-6 text-[#292524]">{sectionName}</h2>
+              <h2 className="flex min-w-0 items-center gap-2 text-[20px] font-semibold leading-6 text-[#292524]">
+                <span className="truncate">{sectionName}</span>
+                {isArchivedSection && (
+                  <span className="shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+                    В архиве
+                  </span>
+                )}
+              </h2>
               <p className="mt-1 text-[13px] text-[#a8a29e]">
                 {items.length} {plural(items.length, "позиция", "позиции", "позиций")}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onSectionAction("Добавить позицию")}
-              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
-            >
-              <Plus size={14} />
-              Добавить позицию
-            </button>
+            {!isArchivedSection && (
+              <button
+                type="button"
+                onClick={() => onSectionAction("Добавить позицию")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+              >
+                <Plus size={14} />
+                Добавить позицию
+              </button>
+            )}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -1792,13 +3095,25 @@ function SectionItemList({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
-                {["Переименовать", "Поменять иконку", "Настроить доступность", "Переместить"].map((action) => (
-                  <DropdownActionItem key={action} onSelect={() => onSectionAction(action)}>{action}</DropdownActionItem>
-                ))}
+                {isArchivedSection ? (
+                  <DropdownActionItem onSelect={() => onSectionAction("Восстановить из архива")}>Восстановить из архива</DropdownActionItem>
+                ) : (
+                  <>
+                    {["Переименовать", "Поменять иконку", "Настроить доступность", "Переместить"].map((action) => (
+                      <DropdownActionItem key={action} onSelect={() => onSectionAction(action)}>{action}</DropdownActionItem>
+                    ))}
+                  </>
+                )}
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">
-                  Архивировать
-                </DropdownActionItem>
+                {isArchivedSection ? (
+                  <DropdownActionItem onSelect={() => onSectionAction("Удалить навсегда")} tone="danger">
+                    Удалить навсегда
+                  </DropdownActionItem>
+                ) : (
+                  <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">
+                    Архивировать
+                  </DropdownActionItem>
+                )}
               </DropdownContent>
             </DropdownMenu.Root>
             <DropdownMenu.Root>
@@ -1812,12 +3127,22 @@ function SectionItemList({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
-                <DropdownActionItem onSelect={() => onSectionAction("Переименовать")}>Переименовать</DropdownActionItem>
-                <DropdownActionItem onSelect={() => onSectionAction("Поменять иконку")}>Поменять иконку</DropdownActionItem>
-                <DropdownActionItem onSelect={() => onSectionAction("Настроить доступность")}>Настроить доступность</DropdownActionItem>
-                <DropdownActionItem onSelect={() => onSectionAction("Переместить")}>Переместить</DropdownActionItem>
+                {isArchivedSection ? (
+                  <DropdownActionItem onSelect={() => onSectionAction("Восстановить из архива")}>Восстановить из архива</DropdownActionItem>
+                ) : (
+                  <>
+                    <DropdownActionItem onSelect={() => onSectionAction("Переименовать")}>Переименовать</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction("Поменять иконку")}>Поменять иконку</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction("Настроить доступность")}>Настроить доступность</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction("Переместить")}>Переместить</DropdownActionItem>
+                  </>
+                )}
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
+                {isArchivedSection ? (
+                  <DropdownActionItem onSelect={() => onSectionAction("Удалить навсегда")} tone="danger">Удалить навсегда</DropdownActionItem>
+                ) : (
+                  <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
+                )}
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
@@ -1944,263 +3269,285 @@ function SectionBulkToolbar({
   );
 }
 
-function buildSectionNavMeta(item: CatalogItem, active = false): string[] {
-  const status: string[] = [];
-  if (item.status === "archive") status.push("В архиве");
-  if (item.status === "stopped") status.push("На стопе");
-  if (item.status === "coming-soon") status.push("Скоро будет");
-  if (item.scheduled) status.push("По расписанию");
-
-  const problems: string[] = [];
-  if (!item.thumbnailUrl) problems.push("Нет фото");
-  if (!item.hasDescription) problems.push("Нет описания");
-  if (!item.weightLabel) problems.push("Нет веса");
-  if (item.nutritionFilledCount === 0) problems.push("Нет КБЖУ");
-  if (item.translationFilledCount < item.translationTotalCount) problems.push("Нет перевода");
-
-  const counters: string[] = [];
-  if (item.optionsCount > 0) {
-    counters.push(`${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")}`);
-  }
-  if (item.recommendationsCount > 0) {
-    counters.push(`${item.recommendationsCount} ${plural(item.recommendationsCount, "рекомендация", "рекомендации", "рекомендаций")}`);
-  }
-
-  if (status.length === 0 && problems.length > 2 && !active) {
-    return [`${problems.length} ${plural(problems.length, "поле", "поля", "полей")} не заполнены`];
-  }
-
-  return [...status, ...problems, ...counters].slice(0, 2);
-}
-
 function SectionPositionNav({
   sectionId,
   sectionName,
   items,
+  archiveOpen,
   selectedItemId,
   onBackToSections,
   onSelectSection,
   onSelectItem,
   onAddPosition,
   onSectionAction,
+  onArchiveOpenChange,
+  onRestoreItem,
+  onToggleStop,
+  stopBusyIds,
 }: {
   sectionId: string | null;
   sectionName: string;
   items: CatalogItem[];
+  archiveOpen: boolean;
   selectedItemId: string | null;
   onBackToSections: () => void;
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onAddPosition: () => void;
   onSectionAction: (action: string) => void;
+  onArchiveOpenChange: (open: boolean) => void;
+  onRestoreItem: (item: CatalogItem) => void;
+  onToggleStop: (item: CatalogItem) => void;
+  stopBusyIds: Set<string>;
 }) {
-  const [query, setQuery] = useState("");
   const [sectionQuery, setSectionQuery] = useState("");
-  // Поиск по позициям — вторичное действие: скрыт по умолчанию, но в больших
-  // разделах (>25 позиций) показывается сразу. «+ Добавить позицию» всегда сверху.
-  const [searchOpen, setSearchOpen] = useState(false);
-  const bigSection = items.length > 25;
-  const showSearch = searchOpen || bigSection;
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const closeSearch = () => { setQuery(""); setSearchOpen(false); };
-  useEffect(() => { if (searchOpen) searchInputRef.current?.focus(); }, [searchOpen]);
-  // Смена раздела — свежий старт: сбрасываем поиск (в большом разделе он снова покажется).
-  useEffect(() => { setQuery(""); setSearchOpen(false); }, [sectionId]);
-  const normalizedQuery = query.trim().toLowerCase();
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
   const normalizedSectionQuery = sectionQuery.trim().toLowerCase();
-  const visibleItems = normalizedQuery
-    ? items.filter((item) => item.title.toLowerCase().includes(normalizedQuery))
-    : items;
   const visibleSections = catalogSections.filter((section) =>
     section.name.toLowerCase().includes(normalizedSectionQuery),
   );
+  const activeSection = catalogSections.find((section) => section.id === sectionId) ?? null;
+  const activeItems = items.filter((item) => item.status !== "archive");
+  const archivedItems = items.filter((item) => item.status === "archive");
+
+  useEffect(() => {
+    if (!selectedItemId || !archiveOpen) return;
+    const timeout = window.setTimeout(() => {
+      selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [archiveOpen, selectedItemId, archivedItems.length]);
+
+  const renderPositionRow = (item: CatalogItem, archived = false) => {
+    const active = item.id === selectedItemId;
+    const stopped = item.status === "stopped";
+    const canToggleStop = !archived && (item.status === "active" || item.status === "stopped");
+    const stopBusy = stopBusyIds.has(item.id);
+    const stopActionLabel = stopped ? "Вернуть в продажу" : "Поставить на стоп";
+    return (
+      <button
+        key={item.id}
+        ref={active ? selectedRowRef : undefined}
+        type="button"
+        onClick={() => onSelectItem(item.id)}
+        className={cn(
+          "group flex h-8 w-full items-center gap-2 rounded-[8px] border px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          active
+            ? "border-[#e7e5e4] bg-white shadow-[0_2px_6px_rgba(41,37,36,0.13)]"
+            : "border-transparent hover:bg-[#f7f6f2]",
+        )}
+      >
+        <span
+          className={cn(
+            "flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]",
+            active && "border border-[#6d5dfc] bg-white p-[2px]",
+          )}
+        >
+          {item.thumbnailUrl ? (
+            <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full rounded-[4px] object-cover" />
+          ) : (
+            <span className="h-full w-full rounded-[6px] bg-[#e9e9df]" />
+          )}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[13px] leading-5",
+            active ? "font-semibold text-[#292524]" : archived ? "font-medium text-[#8a8179]" : "font-medium text-[#79716b]",
+          )}
+        >
+          {item.title}
+        </span>
+        {stopped && (
+          <span className="relative flex h-6 w-9 shrink-0 items-center justify-end">
+            <span
+              title="Временно недоступно"
+              className="inline-flex h-5 items-center rounded-[5px] bg-[#f1f1ea] px-1.5 text-[10px] font-medium leading-4 text-[#79716b] transition group-hover:opacity-0 group-focus-within:opacity-0"
+            >
+              Стоп
+            </span>
+            <Tooltip label={stopActionLabel} side="top" delayDuration={200}>
+              <button
+                type="button"
+                aria-label={stopActionLabel}
+                disabled={stopBusy}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleStop(item);
+                }}
+                className="absolute right-0 flex h-6 w-6 items-center justify-center rounded-[7px] text-[#79716b] opacity-0 transition hover:bg-[#efefeb] hover:text-[#292524] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-50 group-hover:opacity-100 group-focus-within:opacity-100"
+              >
+                {stopBusy ? <span className="h-3 w-3 animate-spin rounded-full border border-[#a8a29e] border-t-transparent" /> : <ArrowCounterClockwise size={13} />}
+              </button>
+            </Tooltip>
+          </span>
+        )}
+        {canToggleStop && !stopped && (
+          <Tooltip label={stopActionLabel} side="top" delayDuration={200}>
+            <button
+              type="button"
+              aria-label={stopActionLabel}
+              disabled={stopBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleStop(item);
+              }}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] opacity-0 transition hover:bg-[#efefeb] hover:text-[#292524] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-50 group-hover:opacity-100 group-focus-within:opacity-100"
+            >
+              {stopBusy ? <span className="h-3 w-3 animate-spin rounded-full border border-[#a8a29e] border-t-transparent" /> : <Prohibit size={13} />}
+            </button>
+          </Tooltip>
+        )}
+        {archived && (
+          <span title="В архиве" className="relative flex h-6 w-6 shrink-0 items-center justify-end">
+            <Archive
+              size={14}
+              className="text-[#a8a29e] transition group-hover:opacity-0 group-focus-within:opacity-0"
+            />
+            <Tooltip label="Восстановить из архива" side="top" delayDuration={200}>
+              <button
+                type="button"
+                aria-label="Восстановить из архива"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRestoreItem(item);
+                }}
+                className="absolute right-0 flex h-6 w-6 items-center justify-center rounded-[7px] text-[#79716b] opacity-0 transition hover:bg-[#efefeb] hover:text-[#292524] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100"
+              >
+                <ArrowCounterClockwise size={13} />
+              </button>
+            </Tooltip>
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-[#fbfbf9]">
-      <div className="shrink-0 px-2 pt-3">
+    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-4 pb-4 pt-4">
         <button
           type="button"
           onClick={onBackToSections}
-          className="mb-3 flex h-8 w-full items-center gap-1.5 rounded-[8px] px-1.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
+          className="mb-3 flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] font-normal leading-5 text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
         >
           <ArrowLeft size={14} />
           Все разделы
         </button>
-        <div className="px-1.5">
-          <div className="flex items-center gap-1">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] text-left text-[14px] font-medium leading-5 text-[#292524] transition hover:text-[#57534d]"
-              >
-                <span className="min-w-0 truncate">{sectionName}</span>
-                <CaretDown size={12} weight="bold" className="shrink-0 text-[#a8a29e]" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="start"
-                sideOffset={6}
-                className="z-[100002] w-[280px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-              >
-                <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e]">
-                  <Search size={14} />
-                  <input
-                    value={sectionQuery}
-                    onChange={(event) => setSectionQuery(event.target.value)}
-                    placeholder="Найти раздел"
-                    className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                  />
-                </label>
-                <div className="max-h-[320px] overflow-y-auto">
-                  {visibleSections.map((section) => {
-                    const active = section.id === sectionId;
-                    const count = catalogItems.filter((item) => item.sectionId === section.id).length;
-                    return (
-                      <DropdownMenu.Item
-                        key={section.id}
-                        onSelect={() => onSelectSection(section.id)}
-                        className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                      >
-                        <span className="w-4 shrink-0 text-center text-[12px] text-[#2563eb]">{active ? "✓" : ""}</span>
-                        <span className="min-w-0 flex-1 truncate">{section.name}</span>
-                        <span className="shrink-0 text-[12px] text-[#a8a29e]">{count}</span>
-                      </DropdownMenu.Item>
-                    );
-                  })}
-                  {visibleSections.length === 0 && (
-                    <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
-                  )}
-                </div>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#f1f1ea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 data-[state=open]:bg-[#f1f1ea]"
-                aria-label="Действия с разделом"
-              >
-                <DotsThreeVertical size={16} weight="bold" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSectionAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownActionItem onSelect={() => onSectionAction("Изменить раздел")}>Изменить раздел</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSectionAction("Скрыть раздел")}>Скрыть раздел</DropdownActionItem>
-              <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Архивировать раздел")}>Архивировать раздел</DropdownActionItem>
-            </DropdownContent>
-          </DropdownMenu.Root>
-          </div>
-          <p className="mt-0.5 text-[12px] leading-4 text-[#a8a29e]">
-            {items.length} {plural(items.length, "позиция", "позиции", "позиций")}
-          </p>
-        </div>
-        {/* Основное действие — добавить позицию. Поиск вторичен: иконка справа. */}
-        <div className="mt-3 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onAddPosition}
-            className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-[8px] px-1.5 text-left text-[13px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
-          >
-            <Plus size={15} />
-            Добавить позицию
-          </button>
-          {!showSearch && (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
             <button
               type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f1f1ea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              aria-label="Поиск по позициям"
-              title="Поиск по позициям"
+              className="flex h-8 w-full items-center gap-2 rounded-[10px] bg-[#f6f6f1] px-2 text-left text-[#292524] transition hover:bg-[#efefe8]"
             >
-              <Search size={15} />
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-white text-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                {activeSection?.imageUrl ? (
+                  <img src={activeSection.imageUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <ForkKnife size={12} weight="fill" className="text-[#57534d]" />
+                )}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5">{sectionName}</span>
+              <CaretDown size={14} weight="bold" className="shrink-0 text-black" />
             </button>
-          )}
-        </div>
-        {showSearch && (
-          <label className="mt-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e]">
-            <Search size={14} className="shrink-0" />
-            <input
-              ref={searchInputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }}
-              onBlur={() => { if (!query.trim()) closeSearch(); }}
-              placeholder="Поиск по позициям"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={closeSearch}
-                aria-label="Очистить поиск"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#a8a29e] transition hover:bg-[#efefeb] hover:text-[#57534d]"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </label>
-        )}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="start"
+              sideOffset={6}
+              className="z-[100002] w-[280px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+            >
+              <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e]">
+                <MagnifyingGlass size={14} />
+                <input
+                  value={sectionQuery}
+                  onChange={(event) => setSectionQuery(event.target.value)}
+                  placeholder="Найти раздел"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+                />
+              </label>
+              <div className="max-h-[320px] overflow-y-auto">
+                {visibleSections.map((section) => {
+                  const active = section.id === sectionId;
+                  const count = catalogItems.filter((item) => item.sectionId === section.id).length;
+                  return (
+                    <DropdownMenu.Item
+                      key={section.id}
+                      onSelect={() => onSelectSection(section.id)}
+                      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                    >
+                      <span className="w-4 shrink-0 text-center text-[12px] text-[#2563eb]">{active ? "✓" : ""}</span>
+                      <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                      <span className="shrink-0 text-[12px] text-[#a8a29e]">{count}</span>
+                    </DropdownMenu.Item>
+                  );
+                })}
+                {visibleSections.length === 0 && (
+                  <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+                )}
+              </div>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+        <button
+          type="button"
+          onClick={onAddPosition}
+          className="mt-3 flex h-8 min-w-0 items-center gap-2 rounded-[8px] px-1 text-left text-[13px] font-normal leading-5 text-[#44403b] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
+        >
+          <PlusCircle size={16} />
+          Добавить позицию
+        </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-3">
-        {visibleItems.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
+        {activeItems.length === 0 && archivedItems.length === 0 ? (
           <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4 text-[13px] leading-5 text-[#79716b]">
             Позиции не найдены
           </div>
         ) : (
-          <div className="space-y-1">
-            {visibleItems.map((item) => {
-              const active = item.id === selectedItemId;
-              const meta = buildSectionNavMeta(item, active);
-              return (
+          <div className="space-y-1.5">
+            {activeItems.map((item) => renderPositionRow(item))}
+            {archivedItems.length > 0 && (
+              <div className="pt-2">
                 <button
-                  key={item.id}
                   type="button"
-                  onClick={() => onSelectItem(item.id)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-[8px] border p-1.5 text-left transition",
-                    active
-                      ? "border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.08)]"
-                      : "border-transparent hover:bg-[#f1f1ea]",
-                  )}
+                  onClick={() => onArchiveOpenChange(!archiveOpen)}
+                  className="flex h-7 w-full items-center rounded-[8px] px-1.5 text-left text-[12px] font-medium leading-5 text-[#a8a29e] transition hover:bg-[#f7f6f2] hover:text-[#79716b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  <span
-                    className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[6px]",
-                      item.thumbnailUrl ? "bg-[#f5f5f4]" : "bg-[#faf0e6]",
-                    )}
-                  >
-                    {item.thumbnailUrl ? (
-                      <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageOff size={13} className="text-[#bc4a08]" />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1 pt-0.5">
-                    <span className={cn("block truncate text-[13px] font-medium leading-4", active ? "text-[#292524]" : "text-[#57534d]")}>
-                      {item.title}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[11px] leading-4 text-[#a8a29e]">
-                      {meta.join(" · ")}
-                    </span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate">Архивные · {archivedItems.length}</span>
+                  <CaretRight size={13} className={cn("shrink-0 transition", archiveOpen && "rotate-90")} />
                 </button>
-              );
-            })}
+                {archiveOpen && (
+                  <div className="mt-1.5 space-y-1.5">
+                    {archivedItems.map((item) => renderPositionRow(item, true))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              className="sr-only"
+              aria-label="Действия с разделом"
+            />
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSectionAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownActionItem onSelect={() => onSectionAction("Изменить раздел")}>Изменить раздел</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSectionAction("Скрыть раздел")}>Скрыть раздел</DropdownActionItem>
+            <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Архивировать раздел")}>Архивировать раздел</DropdownActionItem>
+          </DropdownContent>
+        </DropdownMenu.Root>
       </div>
     </aside>
   );
 }
 
 let draftSeq = 0;
-function makeDraftItem(section: CatalogSection | null): CatalogItem {
+function makeDraftItem(section: { id: string; name: string } | null): CatalogItem {
   draftSeq += 1;
   return {
     id: `draft-${Date.now()}-${draftSeq}`,
@@ -2228,28 +3575,248 @@ function makeDraftItem(section: CatalogSection | null): CatalogItem {
   };
 }
 
+function getLinkedEntitiesCount(item: CatalogItem) {
+  return item.recommendationsCount + item.optionsCount + item.modifiersCount;
+}
+
+function PermanentDeleteDialog({
+  item,
+  onCancel,
+  onConfirm,
+}: {
+  item: CatalogItem;
+  onCancel: () => void;
+  onConfirm: (item: CatalogItem) => void;
+}) {
+  const linkedCount = getLinkedEntitiesCount(item);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="permanent-delete-title"
+        className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]"
+      >
+        <h2 id="permanent-delete-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
+          Удалить позицию навсегда?
+        </h2>
+        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+          Позицию нельзя будет восстановить. Она будет удалена из архива, рекомендаций и связанных настроек.
+        </p>
+        {linkedCount > 0 && (
+          <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+            Связанные настройки: {linkedCount}. Они будут очищены вместе с позицией.
+          </p>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(item)}
+            className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20"
+          >
+            Удалить навсегда
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+type SectionDeleteDialogState = {
+  section: TreeSection;
+  mode: "confirm" | "blocked";
+  reason?: "items" | "children" | "both";
+};
+
+function SectionDeleteDialog({
+  state,
+  onCancel,
+  onConfirm,
+  onOpenSection,
+}: {
+  state: SectionDeleteDialogState;
+  onCancel: () => void;
+  onConfirm: (section: TreeSection) => void;
+  onOpenSection: (section: TreeSection) => void;
+}) {
+  const blockedDescription =
+    state.reason === "both"
+      ? "Раздел не пуст. Сначала переместите или удалите позиции и подразделы."
+      : state.reason === "children"
+        ? "В разделе есть подразделы. Сначала переместите или удалите их."
+        : "В разделе есть позиции. Сначала переместите или удалите их.";
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="section-delete-title"
+        className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]"
+      >
+        <h2 id="section-delete-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
+          {state.mode === "confirm" ? "Удалить раздел навсегда?" : "Нельзя удалить раздел"}
+        </h2>
+        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+          {state.mode === "confirm" ? "Раздел нельзя будет восстановить." : blockedDescription}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Отмена
+          </button>
+          {state.mode === "confirm" ? (
+            <button
+              type="button"
+              onClick={() => onConfirm(state.section)}
+              className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20"
+            >
+              Удалить навсегда
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onOpenSection(state.section)}
+              className="h-8 rounded-[9px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              Открыть позиции раздела
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function readJsonRecord<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonRecord(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
 function PopulatedWorkspace({
   sections,
 }: {
   sections: TreeSection[];
 }) {
-  const firstSectionId = SECTIONS_WITH_ITEMS[0]?.id ?? catalogSections[0]?.id ?? null;
+  const preferredSectionId =
+    catalogSections.find((section) => section.name === "Горячие блюда")?.id ??
+    SECTIONS_WITH_ITEMS[0]?.id ??
+    catalogSections[0]?.id ??
+    null;
+  const preferredSectionItems = catalogItems.filter((item) => item.sectionId === preferredSectionId);
+  const preferredItemId =
+    catalogItems.find((item) => item.sectionId === preferredSectionId && item.title.includes("Пицца"))?.id ??
+    preferredSectionItems[2]?.id ??
+    preferredSectionItems[0]?.id ??
+    null;
+  const firstSectionId = preferredSectionId;
+  const firstItemId = preferredItemId;
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(Boolean(firstItemId));
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   // Черновики, созданные кнопкой «Добавить позицию» (статичные catalogItems не мутируем).
   const [extraItems, setExtraItems] = useState<CatalogItem[]>([]);
+  const [itemStatusOverrides, setItemStatusOverrides] = useState<Record<string, CatalogItem["status"]>>(() =>
+    readJsonRecord<Record<string, CatalogItem["status"]>>(CATALOG_STATUS_STORAGE_KEY, {}),
+  );
+  const [itemScheduledOverrides, setItemScheduledOverrides] = useState<Record<string, boolean>>(() =>
+    readJsonRecord<Record<string, boolean>>(CATALOG_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const [previousAvailabilityByItem, setPreviousAvailabilityByItem] = useState<Record<string, PreviousAvailabilityState>>(() =>
+    readJsonRecord<Record<string, PreviousAvailabilityState>>(CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY, {}),
+  );
+  const [unavailableDisplayByItem, setUnavailableDisplayByItem] = useState<Record<string, UnavailableDisplayMode>>(() =>
+    readJsonRecord<Record<string, UnavailableDisplayMode>>(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, {}),
+  );
+  const [outsideScheduleByItem, setOutsideScheduleByItem] = useState<Record<string, OutsideScheduleMode>>(() =>
+    readJsonRecord<Record<string, OutsideScheduleMode>>(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const [weeklyScheduleByItem, setWeeklyScheduleByItem] = useState<Record<string, WeeklySchedule>>(() =>
+    readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const [sectionStatusOverrides, setSectionStatusOverrides] = useState<Record<string, SectionStatus>>(() =>
+    readJsonRecord<Record<string, SectionStatus>>(CATALOG_SECTION_STATUS_STORAGE_KEY, {}),
+  );
+  const [deletedItemIds, setDeletedItemIds] = useState<Set<string>>(new Set());
+  const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
+  const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
+  const [stopBusyIds, setStopBusyIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
 
-  const allItems = extraItems.length ? [...catalogItems, ...extraItems] : catalogItems;
-  const section = catalogSections.find((s) => s.id === selectedSectionId) ?? null;
+  const allSections = catalogSections
+    .filter((section) => !deletedSectionIds.has(section.id))
+    .map<TreeSection>((section) => ({
+      ...section,
+      status: sectionStatusOverrides[section.id] ?? "active",
+    }));
+  const activeSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status !== "archive"));
+  const archivedSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status === "archive"));
+  const activeSections = allSections.filter((candidate) => candidate.status !== "archive");
+  void sections;
+
+  const baseItems = extraItems.length ? [...catalogItems, ...extraItems] : catalogItems;
+  const allItems = baseItems
+    .filter((item) => !deletedItemIds.has(item.id))
+    .map((item) => {
+      const status = itemStatusOverrides[item.id];
+      const scheduled = itemScheduledOverrides[item.id];
+      return {
+        ...item,
+        status: status ?? item.status,
+        scheduled: scheduled ?? item.scheduled,
+      };
+    });
+  const section = allSections.find((s) => s.id === selectedSectionId) ?? null;
   const sectionItems = allItems.filter((item) => item.sectionId === selectedSectionId);
+  const activeSectionItems = sectionItems.filter((item) => item.status !== "archive");
   const selectedItem = selectedItemId
     ? allItems.find((item) => item.id === selectedItemId) ?? null
     : null;
@@ -2276,7 +3843,7 @@ function PopulatedWorkspace({
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
     setSelectedIds(new Set());
-    const items = allItems.filter((item) => item.sectionId === id);
+    const items = allItems.filter((item) => item.sectionId === id && item.status !== "archive");
     const remembered = lastItemBySection[id];
     const nextId = remembered && items.some((i) => i.id === remembered)
       ? remembered
@@ -2303,14 +3870,232 @@ function PopulatedWorkspace({
     });
   };
   const setAllSectionSelected = (selected: boolean) => {
-    setSelectedIds(selected ? new Set(sectionItems.map((item) => item.id)) : new Set());
+    setSelectedIds(selected ? new Set(activeSectionItems.map((item) => item.id)) : new Set());
   };
   const showPlaceholderFeedback = (message: string) => {
     setFeedback(message);
   };
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_STATUS_STORAGE_KEY, itemStatusOverrides);
+    window.dispatchEvent(new Event("tasko-catalog-status-change"));
+  }, [itemStatusOverrides]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SCHEDULE_STORAGE_KEY, itemScheduledOverrides);
+  }, [itemScheduledOverrides]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY, previousAvailabilityByItem);
+  }, [previousAvailabilityByItem]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem);
+  }, [unavailableDisplayByItem]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, outsideScheduleByItem);
+  }, [outsideScheduleByItem]);
+
+  useEffect(() => {
+    const validSchedules = Object.fromEntries(
+      Object.entries(weeklyScheduleByItem).filter(([, schedule]) => isWeeklyScheduleValid(schedule)),
+    );
+    writeJsonRecord(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, validSchedules);
+  }, [weeklyScheduleByItem]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_STATUS_STORAGE_KEY, sectionStatusOverrides);
+  }, [sectionStatusOverrides]);
+
+  const archiveSection = (target: TreeSection | null = section) => {
+    if (!target) return;
+    setSectionStatusOverrides((prev) => ({ ...prev, [target.id]: "archive" }));
+    setSelectedSectionId(target.id);
+    setSelectedIds(new Set());
+    setSectionArchiveOpen(true);
+    setFeedback("Раздел перенесён в архив");
+  };
+
+  const restoreSection = (target: TreeSection) => {
+    if (target.parentId) {
+      const parent = allSections.find((candidate) => candidate.id === target.parentId);
+      if (parent?.status === "archive") {
+        setFeedback("Сначала восстановите родительский раздел");
+        return;
+      }
+    }
+    setSectionStatusOverrides((prev) => ({ ...prev, [target.id]: "active" }));
+    setSelectedSectionId(target.id);
+    setFeedback("Раздел восстановлен");
+  };
+
+  const requestDeleteArchivedSection = (target: TreeSection) => {
+    if (target.status !== "archive") return;
+    const hasItems = allItems.some((item) => item.sectionId === target.id);
+    const hasChildren = sectionHasChildren(target.id, allSections);
+    if (hasItems || hasChildren) {
+      setPendingSectionDelete({
+        section: target,
+        mode: "blocked",
+        reason: hasItems && hasChildren ? "both" : hasChildren ? "children" : "items",
+      });
+      return;
+    }
+    setPendingSectionDelete({ section: target, mode: "confirm" });
+  };
+
+  const confirmDeleteArchivedSection = (target: TreeSection) => {
+    setDeletedSectionIds((prev) => new Set(prev).add(target.id));
+    setSectionStatusOverrides((prev) => {
+      const next = { ...prev };
+      delete next[target.id];
+      return next;
+    });
+    setPendingSectionDelete(null);
+    if (selectedSectionId === target.id) {
+      const replacement = activeSections.find((candidate) => candidate.id !== target.id) ?? null;
+      setSelectedSectionId(replacement?.id ?? null);
+      setSelectedItemId(null);
+      setEditing(false);
+    }
+    setFeedback("Раздел удалён навсегда");
+  };
+
+  const openSectionFromDeleteDialog = (target: TreeSection) => {
+    setPendingSectionDelete(null);
+    setSelectedSectionId(target.id);
+    setEditing(false);
+    if (target.status === "archive") setSectionArchiveOpen(true);
+  };
+
+  const handleSectionAction = (action: string) => {
+    if (action === "Архивировать" || action === "Архивировать раздел") {
+      archiveSection();
+      return;
+    }
+    if (action === "Восстановить из архива" && section) {
+      restoreSection(section);
+      return;
+    }
+    if (action === "Удалить навсегда" && section) {
+      requestDeleteArchivedSection(section);
+      return;
+    }
+    showPlaceholderFeedback(`${action}: placeholder`);
+  };
+
+  const archiveItem = (item: CatalogItem) => {
+    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "archive" }));
+    setArchiveOpen(true);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+    setFeedback("Позиция перемещена в архив");
+  };
+  const restoreItem = (item: CatalogItem) => {
+    const activeCount = allItems.filter((candidate) => candidate.status !== "archive" && candidate.id !== item.id).length;
+    if (activeCount >= ACTIVE_POSITION_LIMIT) {
+      setFeedback("Нельзя восстановить позицию: достигнут лимит тарифа");
+      return;
+    }
+    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "active" }));
+    setFeedback("Позиция восстановлена");
+  };
+
+  const setAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
+    if (item.status === "archive") return;
+    if (mode === "unavailable") {
+      if (item.status !== "stopped") {
+        setPreviousAvailabilityByItem((prev) => ({
+          ...prev,
+          [item.id]: { status: item.status, scheduled: item.scheduled },
+        }));
+      }
+      setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "stopped" }));
+      setFeedback("Позиция поставлена на стоп");
+      return;
+    }
+
+    setPreviousAvailabilityByItem((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "active" }));
+    setItemScheduledOverrides((prev) => ({ ...prev, [item.id]: mode === "schedule" }));
+    setFeedback(mode === "schedule" ? "Позиция доступна по расписанию" : "Позиция снова доступна для заказа");
+  };
+
+  const toggleStopItem = (item: CatalogItem) => {
+    if ((item.status !== "active" && item.status !== "stopped") || stopBusyIds.has(item.id)) return;
+    setStopBusyIds((current) => new Set(current).add(item.id));
+    window.setTimeout(() => {
+      if (item.status === "stopped") {
+        const previous = previousAvailabilityByItem[item.id] ?? { status: "active", scheduled: false };
+        setItemStatusOverrides((prev) => ({ ...prev, [item.id]: previous.status }));
+        setItemScheduledOverrides((prev) => ({ ...prev, [item.id]: previous.scheduled }));
+        setPreviousAvailabilityByItem((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setFeedback("Позиция снова доступна для заказа");
+      } else {
+        setPreviousAvailabilityByItem((prev) => ({
+          ...prev,
+          [item.id]: { status: item.status, scheduled: item.scheduled },
+        }));
+        setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "stopped" }));
+        setFeedback("Позиция поставлена на стоп");
+      }
+      setStopBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
+      });
+    }, 250);
+  };
+  const requestPermanentDelete = (item: CatalogItem) => {
+    if (item.status !== "archive") return;
+    setPendingPermanentDelete(item);
+  };
+  const confirmPermanentDelete = (item: CatalogItem) => {
+    setDeletedItemIds((prev) => new Set(prev).add(item.id));
+    setPendingPermanentDelete(null);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+    setLastItemBySection((current) => {
+      const next = { ...current };
+      if (next[item.sectionId] === item.id) delete next[item.sectionId];
+      return next;
+    });
+    const replacement = allItems.find((candidate) =>
+      candidate.id !== item.id &&
+      candidate.sectionId === item.sectionId &&
+      candidate.status !== "archive"
+    );
+    setSelectedItemId(replacement?.id ?? null);
+    setFeedback("Позиция удалена навсегда");
+  };
   const handleBulkAction = (action: string) => {
     showPlaceholderFeedback(`${action}: ${selectedIds.size} ${plural(selectedIds.size, "позиция", "позиции", "позиций")}`);
-    if (action === "Архивировать") setSelectedIds(new Set());
+    if (action === "Архивировать") {
+      setItemStatusOverrides((prev) => {
+        const next = { ...prev };
+        selectedIds.forEach((id) => {
+          next[id] = "archive";
+        });
+        return next;
+      });
+      setArchiveOpen(true);
+      setSelectedIds(new Set());
+    }
   };
 
   useEffect(() => {
@@ -2320,46 +4105,96 @@ function PopulatedWorkspace({
   }, [feedback]);
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
         {editing ? (
           <SectionPositionNav
             sectionId={selectedSectionId}
             sectionName={section?.name ?? selectedItem?.sectionName ?? "Раздел"}
             items={sectionItems}
+            archiveOpen={archiveOpen}
             selectedItemId={selectedItemId}
             onBackToSections={() => setEditing(false)}
             onSelectSection={selectSectionInEditor}
             onSelectItem={openItem}
             onAddPosition={addPosition}
-            onSectionAction={(action) => showPlaceholderFeedback(`${action}: placeholder`)}
+            onSectionAction={handleSectionAction}
+            onArchiveOpenChange={setArchiveOpen}
+            onRestoreItem={restoreItem}
+            onToggleStop={toggleStopItem}
+            stopBusyIds={stopBusyIds}
           />
         ) : (
           <CatalogTreePanel
-            sections={sections}
+            sections={activeSectionTree}
+            archivedSections={archivedSectionTree}
             selectedId={selectedSectionId}
+            archiveOpen={sectionArchiveOpen}
             onSelectSection={selectSectionOverview}
+            onArchiveOpenChange={setSectionArchiveOpen}
+            onRestoreSection={restoreSection}
+            onDeleteArchivedSection={requestDeleteArchivedSection}
             onCreateAction={(action) => showPlaceholderFeedback(`${action}: placeholder`)}
           />
         )}
         {editing ? (
           selectedItem ? (
-            <PositionEditor item={selectedItem} items={sectionItems} onSelectItem={openItem} />
+            <PositionEditor
+              item={selectedItem}
+              stopBusy={stopBusyIds.has(selectedItem.id)}
+              onArchiveItem={archiveItem}
+              onRestoreItem={restoreItem}
+              onMoveItem={(item) => showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`)}
+              onToggleStop={toggleStopItem}
+              onSetAvailabilityMode={setAvailabilityMode}
+              unavailableDisplayMode={unavailableDisplayByItem[selectedItem.id] ?? "hidden"}
+              outsideScheduleMode={outsideScheduleByItem[selectedItem.id] ?? "hidden"}
+              weeklySchedule={weeklyScheduleByItem[selectedItem.id] ?? createDefaultWeeklySchedule()}
+              onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((prev) => ({ ...prev, [selectedItem.id]: mode }))}
+              onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: mode }))}
+              onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: schedule }))}
+              onRequestPermanentDelete={requestPermanentDelete}
+            />
           ) : (
             <SectionEmptyState sectionName={section?.name ?? "Раздел"} onAddItem={addPosition} />
           )
         ) : (
-          <SectionItemList
+            <SectionItemList
             section={section}
-            items={sectionItems}
+            items={activeSectionItems}
             selectedIds={selectedIds}
             feedback={feedback}
             onSelectedChange={setItemSelected}
             onSelectAll={setAllSectionSelected}
             onClearSelection={() => setSelectedIds(new Set())}
-            onSectionAction={(action) => showPlaceholderFeedback(`${action}: placeholder`)}
+            onSectionAction={handleSectionAction}
             onBulkAction={handleBulkAction}
             onOpenItem={openItem}
+          />
+        )}
+        {selectedItem?.status === "archive" && (
+          <div className="pointer-events-none fixed bottom-5 right-8 z-[100001] rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-2 text-[13px] font-medium text-[#79716b] shadow-[0_12px_36px_rgba(41,37,36,0.12)]">
+            Архивные позиции не отображаются в меню
+          </div>
+        )}
+        {editing && feedback && (
+          <div className="fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
+            {feedback}
+          </div>
+        )}
+        {pendingPermanentDelete && (
+          <PermanentDeleteDialog
+            item={pendingPermanentDelete}
+            onCancel={() => setPendingPermanentDelete(null)}
+            onConfirm={confirmPermanentDelete}
+          />
+        )}
+        {pendingSectionDelete && (
+          <SectionDeleteDialog
+            state={pendingSectionDelete}
+            onCancel={() => setPendingSectionDelete(null)}
+            onConfirm={confirmDeleteArchivedSection}
+            onOpenSection={openSectionFromDeleteDialog}
           />
         )}
       </div>
@@ -2458,7 +4293,7 @@ function TableHeaderRow({
           onChange={onSelectAll}
         />
         <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
-          <Search size={14} className="shrink-0 text-[#a6a09b]" />
+          <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
@@ -2613,16 +4448,19 @@ function DropdownActionItem({
   children,
   onSelect,
   tone = "default",
+  disabled = false,
 }: {
   children: ReactNode;
   onSelect: () => void;
   tone?: "default" | "danger";
+  disabled?: boolean;
 }) {
   return (
     <DropdownMenu.Item
+      disabled={disabled}
       onSelect={onSelect}
       className={cn(
-        "flex h-8 cursor-pointer select-none items-center rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+        "flex h-8 cursor-pointer select-none items-center rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4]",
         tone === "danger" ? "text-[#9f1239]" : "text-[#44403b]",
       )}
     >
@@ -2707,7 +4545,7 @@ function AuditDishRow({
             {item.thumbnailUrl ? (
               <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
             ) : (
-              <ImageOff size={14} className="text-[#bc4a08]" />
+              <ImageBroken size={14} className="text-[#bc4a08]" />
             )}
           </span>
           <div className="flex min-w-0 flex-col justify-center gap-1.5">
@@ -3459,7 +5297,7 @@ export function CatalogWorkspace({
     );
 
   return (
-    <>
+    <TooltipProvider delayDuration={200}>
       {workspace}
       {sectionDialogOpen && (
         <AddSectionDialog
@@ -3471,6 +5309,6 @@ export function CatalogWorkspace({
           onCancel={() => setSectionDialogOpen(false)}
         />
       )}
-    </>
+    </TooltipProvider>
   );
 }

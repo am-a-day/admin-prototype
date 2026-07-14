@@ -29,6 +29,64 @@ import { cn } from "@/lib/utils";
 
 /** Стиль наведения для кликабельных навигационных сущностей в превью. */
 const NAV_HOVER = "cursor-pointer transition hover:ring-2 hover:ring-blue-400/60";
+const PREVIEW_DESCRIPTION_TAGS = new Set(["P", "BR", "STRONG", "EM", "S", "UL", "LI"]);
+const PREVIEW_DESCRIPTION_ALIASES: Record<string, string> = {
+  B: "strong",
+  I: "em",
+  STRIKE: "s",
+  DEL: "s",
+};
+
+function escapePreviewHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function sanitizePreviewDescription(value: string) {
+  if (!value.trim()) return "";
+  const parser = new DOMParser();
+  const source = /<\/?[a-z][\s\S]*>/i.test(value) ? value : `<p>${escapePreviewHtml(value).replace(/\n/g, "<br>")}</p>`;
+  const doc = parser.parseFromString(source, "text/html");
+
+  const cleanNode = (node: Node): Node | DocumentFragment | null => {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent ?? "");
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+    const element = node as HTMLElement;
+    const tagName = element.tagName.toUpperCase();
+    if (["IMG", "VIDEO", "IFRAME", "OBJECT", "EMBED", "SCRIPT", "STYLE"].includes(tagName)) return null;
+
+    const normalizedTag = PREVIEW_DESCRIPTION_ALIASES[tagName] ?? tagName.toLowerCase();
+    const canKeepTag = PREVIEW_DESCRIPTION_TAGS.has(normalizedTag.toUpperCase());
+    const container = canKeepTag ? document.createElement(normalizedTag) : document.createDocumentFragment();
+
+    element.childNodes.forEach((child) => {
+      const cleaned = cleanNode(child);
+      if (cleaned) container.appendChild(cleaned);
+    });
+
+    return container;
+  };
+
+  const result = document.createElement("div");
+  doc.body.childNodes.forEach((child) => {
+    const cleaned = cleanNode(child);
+    if (cleaned) result.appendChild(cleaned);
+  });
+  return result.innerHTML;
+}
+
+function RichDescriptionPreview({ value }: { value: string }) {
+  return (
+    <div
+      className="mt-2 text-sm leading-5 text-zinc-500 [&_em]:italic [&_li]:ml-4 [&_li]:list-disc [&_p]:my-0 [&_s]:line-through [&_strong]:font-semibold [&_ul]:my-1 [&_ul]:pl-1"
+      dangerouslySetInnerHTML={{ __html: sanitizePreviewDescription(value) }}
+    />
+  );
+}
 
 /**
  * Пассивный административный плейсхолдер незаполненного слота витрины.
@@ -287,7 +345,7 @@ export function PhoneDish({
       </div>
       <div className="rounded-t-[28px] bg-white px-5 pt-5">
         <h2 className="text-xl font-black leading-tight">{dish.name}</h2>
-        <p className="mt-2 text-sm leading-5 text-zinc-500">{dish.description}</p>
+        <RichDescriptionPreview value={dish.description} />
         <div className="mt-5 flex items-center justify-between">
           <div className="text-xl font-black">{dish.price}</div>
           <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">

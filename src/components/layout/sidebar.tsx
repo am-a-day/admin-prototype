@@ -155,11 +155,11 @@ function MoreMenu({
           type="button"
           onClick={handleToggle}
           className={cn(
-            "flex cursor-pointer items-center gap-1.5 rounded-[7px] px-[7px] py-[6px] text-left text-[13px] font-normal leading-4 transition",
+            "flex cursor-pointer items-center gap-1.5 rounded-[8px] px-2 py-[7px] text-left text-[13px] font-normal leading-4 transition",
             !compact && "w-full",
             isMoreActive || open
-              ? "bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/70"
-              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800",
+              ? "bg-white text-zinc-950 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+              : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
           )}
         >
           <Ellipsis size={16} className="shrink-0" />
@@ -334,9 +334,9 @@ function SidebarSearch({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-            className="flex h-7 cursor-pointer items-center rounded-[7px] px-[7px] text-zinc-400 transition hover:bg-zinc-200/50 hover:text-zinc-700"
+            className="flex h-[30px] w-8 cursor-pointer items-center justify-center rounded-[8px] text-[#5a5a5c] transition hover:bg-white/70 hover:text-zinc-800"
           >
-            <MagnifyingGlass size={14} className="shrink-0" />
+            <MagnifyingGlass size={16} className="shrink-0" />
           </button>
         </Tooltip>
       ) : (
@@ -371,7 +371,7 @@ function SidebarSearch({
 // пункты — 28px в обоих режимах: rail и flyout стоят на одних Y-координатах (Figma 1058:5517 / 1058:5611).
 function GroupHeaderRow({ compact, title }: { compact: boolean; title: string }) {
   return (
-    <div className={cn("flex h-7 items-center", compact ? "px-[7px]" : "pl-2")}>
+    <div className={cn("flex h-7 items-center", compact ? "hidden" : "pl-2")}>
       {compact ? (
         <div className="h-px w-4 bg-border" />
       ) : (
@@ -395,12 +395,12 @@ function NavList({
   showTooltips?: boolean;
 }) {
   return (
-    <nav className="mt-2 flex-1 space-y-[6px] overflow-y-auto px-2 pb-2 pt-1">
+    <nav className={cn("flex-1 overflow-y-auto pb-2", compact ? "mt-4 space-y-5 px-[7px]" : "mt-2 space-y-[6px] px-2 pt-1")}>
 
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
           <GroupHeaderRow compact={compact} title={group.title} />
-          <div>
+          <div className={compact ? "space-y-1" : undefined}>
             {group.items.map((item) => {
               const Icon = item.icon;
               const active = section === item.section && activeTab === item.tab;
@@ -411,11 +411,12 @@ function NavList({
                     data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
                     onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
                     className={cn(
-                      "relative flex cursor-pointer items-center gap-1.5 rounded-[7px] px-[7px] py-[6px] text-left text-[13px] font-normal leading-4 transition",
+                      "relative flex cursor-pointer items-center gap-1.5 rounded-[8px] text-left text-[13px] font-normal leading-4 transition",
+                      compact ? "h-[30px] w-8 justify-center p-0" : "px-[7px] py-[6px]",
                       !compact && "w-full",
                       active
-                        ? "bg-white text-[#1c1917] shadow-sm"
-                        : "text-[#5a5a5c] hover:bg-zinc-200/50 hover:text-zinc-800",
+                        ? "bg-white text-[#1c1917] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                        : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
                     )}
                   >
                     <Icon size={16} weight="fill" className="shrink-0" />
@@ -587,7 +588,7 @@ function RailSidebar({ section, activeTab, onNavigate, showTooltips = false }: N
         <MiniLogo className="text-zinc-900" />
       </div>
       {/* Search — тот же wrapper (px-3 pb-1), что и в FullSidebar: одинаковый Y-ритм */}
-      <div className="shrink-0 px-3 pb-1">
+      <div className="shrink-0 px-[7px] pb-1">
         <SidebarSearch compact onNavigate={onNavigate} showTooltip={showTooltips} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} />

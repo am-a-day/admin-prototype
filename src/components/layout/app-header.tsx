@@ -28,7 +28,7 @@ export function AppHeaderRight({
   pageTitle,
 }: AppHeaderRightProps) {
   return (
-    <header className="flex h-[59px] shrink-0 items-center pr-3 gap-1">
+    <header className="flex h-[59px] shrink-0 items-center gap-1 bg-[#fbf9f6] pr-3">
 
       {/* ── Left: mobile logo+hamburger, OR fixed collapse toggle + page title (collapsed) ── */}
       {showHamburger ? (
@@ -44,22 +44,22 @@ export function AppHeaderRight({
           </button>
         </div>
       ) : onToggleSidebar ? (
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-[7px]">
           <button
             type="button"
             onClick={onToggleSidebar}
             title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#79716b] transition hover:bg-white/70 hover:text-[#44403b]"
           >
             {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
           </button>
           {sidebarCollapsed && pageTitle && (
-            <span className="shrink-0 text-sm  text-zinc-800">{pageTitle}</span>
+            <span className="shrink-0 text-[12px] leading-4 text-black">{pageTitle}</span>
           )}
         </div>
       ) : sidebarCollapsed && pageTitle ? (
         <div className="flex shrink-0 items-center gap-2">
-          <span className="shrink-0 text-sm text-zinc-800">{pageTitle}</span>
+          <span className="shrink-0 text-[12px] leading-4 text-black">{pageTitle}</span>
         </div>
       ) : null}
 
@@ -69,7 +69,7 @@ export function AppHeaderRight({
       </div>
 
       {/* ── Right: status + account ── */}
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-[15px]">
         <PublishStatusControl />
         <UserMenu compact placement="down" onNavigate={onNavigate} />
       </div>

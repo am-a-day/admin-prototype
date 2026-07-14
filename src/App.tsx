@@ -414,19 +414,17 @@ function AppShell() {
     };
   }, []);
 
-  // Sidebar visibility / collapse — catalog can force rail without changing the user's preference.
+  // Sidebar visibility / collapse — the current Figma shell uses a fixed rail on desktop.
   const [userSidebarPreference, setUserSidebarPreference] = useState<SidebarPreference>(() => {
     const saved = window.localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
-    return saved === "expanded" || saved === "collapsed" ? saved : null;
+    return saved === "expanded" || saved === "collapsed" ? saved : "collapsed";
   });
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
 
   const wide = viewportWidth >= 1024;        // inline full sidebar fits
   const showInlineSidebar = viewportWidth >= 768; // tablet+ shows at least a rail
-  // Состояние сайдбара — настройка пользователя, а не свойство страницы.
-  // Страницы (включая Каталог) навигацию не переключают.
-  const sidebarCollapsed = userSidebarPreference === "collapsed";
-  const inlineSidebarMode: SidebarMode = wide && !sidebarCollapsed ? "full" : "rail";
+  // Desktop follows the current Figma screen: fixed icon rail.
+  const inlineSidebarMode: SidebarMode = "rail";
   const desktopRail = wide && inlineSidebarMode === "rail"; // пользователь свернул сайдбар на десктопе
 
   const setPreference = (next: Exclude<SidebarPreference, null>) => {
@@ -691,14 +689,14 @@ function AppShell() {
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f5f4] text-zinc-950">
+    <div className="flex h-screen overflow-hidden bg-[#fbf9f6] text-zinc-950">
 
       {/* ── Left: full-height sidebar (+ desktop hover flyout) ────────────────── */}
       {showInlineSidebar && (
         <div
           className={cn(
             "relative z-30 flex shrink-0 flex-col transition-[width] duration-300 ease-out",
-            inlineSidebarMode === "rail" ? "w-12" : "w-48",
+            inlineSidebarMode === "rail" ? "w-[46px]" : "w-48",
           )}
           onMouseEnter={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
           onMouseLeave={desktopRail ? () => scheduleFlyout(false, 150) : undefined}
@@ -721,7 +719,7 @@ function AppShell() {
                 flyoutOpen ? "w-48 shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
               )}
             >
-              <div className="flex h-full w-48 flex-col bg-[#f5f5f4]">
+              <div className="flex h-full w-48 flex-col bg-[#fbf9f6]">
                 <FullSidebar
                   section={section}
                   activeTab={activeTab}
@@ -743,7 +741,7 @@ function AppShell() {
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
           onToggleSidebar={wide ? toggleNav : undefined}
-          sidebarCollapsed={inlineSidebarMode === "rail"}
+          sidebarCollapsed
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
         />
@@ -761,7 +759,7 @@ function AppShell() {
           />
 
           {/* Work area */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-2 pb-3 pr-3 pl-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1">
             {/* Toolbar: tabs left + language right */}
             {(isHomePage || isCatalogPage || isAboutPage || pageMeta.showLanguage || previewVisible) && (
               <div className={cn(
@@ -815,7 +813,7 @@ function AppShell() {
             )}
 
             {/* Editor card */}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
               <ContentHeader
                 title={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
                 description={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}

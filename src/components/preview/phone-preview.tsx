@@ -272,11 +272,11 @@ export function PhonePreview({
       style={{ width: 390 }}
       className="relative flex shrink-0 flex-col bg-white"
     >
-        <div className="flex h-full flex-col overflow-hidden px-3 pt-4">
+        <div className="flex h-full flex-col overflow-hidden px-3 pt-5">
           {/* Header: «Предпросмотр» + статус */}
-          <div className="mb-3 flex w-full items-start justify-between px-1 pr-12">
-            <div className="flex flex-col gap-1">
-              <span className="text-[16px] font-medium tracking-[-0.38px] text-black">
+          <div className="mb-[15px] flex w-full items-start justify-between px-1 pr-12">
+            <div className="flex flex-col gap-[3px]">
+              <span className="text-[14px] font-medium tracking-[-0.38px] text-[#292524]">
                 Предпросмотр
               </span>
 
@@ -303,7 +303,7 @@ export function PhonePreview({
           </div>
 
           {/* Flat preview viewport — заполняет всю высоту панели */}
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-t-2xl border border-b-0 border-[#e7e5e4] bg-[#f5f5f5]">
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-t-[24px] border border-b-0 border-[#f5f5f4] bg-[#f5f5f5]">
             <div className="flex h-full flex-col">
               <div className="flex-1 overflow-y-auto scrollbar-none">{screen}</div>
               {showBottomNav && (
