@@ -82,10 +82,12 @@ export type MockVitrine = {
   address: string;
   /** Public URL slug, e.g. "kimchi-abaya.tsqr.me" */
   url: string;
+  /** Country selected when this organization/location was registered. */
+  registrationCountryCode: string;
 };
 
 export const MOCK_VITRINES: MockVitrine[] = [
-  { id: "abaya",    initials: "АБ", avatarColor: "bg-zinc-900",    name: "Kimchi Astana", address: "Абая, 10",      url: "kimchi-abaya.tsqr.me"    },
+  { id: "abaya",    initials: "АБ", avatarColor: "bg-zinc-900",    name: "Kimchi Astana", address: "Абая, 10",      url: "kimchi-abaya.tsqr.me",    registrationCountryCode: "KZ" },
 ];
 
 /** ID of the vitrine currently being edited (mock). */

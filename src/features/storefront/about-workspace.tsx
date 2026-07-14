@@ -1,14 +1,15 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Music2, Phone, Plus, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/components/workspace/description-rich-text-editor";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
-import { type PreviewScenario } from "@/data/mock-data";
+import { CURRENT_VITRINE_ID, MOCK_VITRINES, type PreviewScenario } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
 export type AboutTab = "info" | "guest-rules" | "public-display" | "rec-titles";
@@ -697,6 +698,8 @@ type ChannelDef = { id: string; label: string; icon: LucideIcon };
 
 const SOCIAL_CHANNELS: ChannelDef[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "telegram", label: "Telegram", icon: Send },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "2gis", label: "2GIS", icon: MapPin },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "tiktok", label: "TikTok", icon: Music2 },
@@ -866,27 +869,55 @@ const SOCIAL_DOMAIN_RULES: Record<string, { label: string; hosts: string[] }> = 
   instagram: { label: "Instagram", hosts: ["instagram.com"] },
   "2gis": { label: "2GIS", hosts: ["2gis.kz", "2gis.ru", "2gis.com"] },
   facebook: { label: "Facebook", hosts: ["facebook.com", "fb.com"] },
+  telegram: { label: "Telegram", hosts: ["t.me", "telegram.me"] },
+  whatsapp: { label: "WhatsApp", hosts: ["wa.me", "whatsapp.com"] },
   tiktok: { label: "TikTok", hosts: ["tiktok.com"] },
   youtube: { label: "YouTube", hosts: ["youtube.com", "youtu.be"] },
 };
 
-const LINK_PLACEHOLDERS: Record<ChannelGroup, Record<string, string>> = {
-  social: {
-    instagram: "instagram.com/tasko",
-    "2gis": "2gis.kz",
-    facebook: "facebook.com/tasko",
-    tiktok: "tiktok.com/@tasko",
-    website: "tasko.kz",
-    youtube: "youtube.com/@tasko",
-  },
-  contact: {
-    telegram: "t.me/tasko",
-    whatsapp: "wa.me/77771234567",
-    phone: "+7 (___) ___-__-__",
-  },
+const DESCRIPTION_LIMIT = 500;
+const COUNTRY_CALLING_CODES: Record<string, string> = {
+  KZ: "+7",
+  RU: "+7",
+  RS: "+381",
+  US: "+1",
 };
 
-const DESCRIPTION_LIMIT = 500;
+const CYRILLIC_SLUG_MAP: Record<string, string> = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "e",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "h",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "sch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+};
 
 function isRowBlank(entry: ChannelEntry) {
   return entry.link.trim().length === 0 && entry.text.trim().length === 0;
@@ -896,8 +927,52 @@ function hasUrlScheme(value: string) {
   return /^[a-z][a-z\d+\-.]*:\/\//i.test(value);
 }
 
-function getLinkPlaceholder(group: ChannelGroup, channelId: string) {
-  return LINK_PLACEHOLDERS[group][channelId] ?? "Ссылка";
+function getVenueExampleSlug(venueName: string) {
+  const transliterated = venueName
+    .toLowerCase()
+    .split("")
+    .map((char) => CYRILLIC_SLUG_MAP[char] ?? char)
+    .join("");
+  const slug = transliterated.replace(/[^a-z0-9]/g, "");
+  return slug || "yourrestaurant";
+}
+
+function getCountryCallingCode(countryCode?: string) {
+  if (!countryCode) return null;
+  return COUNTRY_CALLING_CODES[countryCode.toUpperCase()] ?? null;
+}
+
+function getPhonePlaceholder(countryCode?: string) {
+  const callingCode = getCountryCallingCode(countryCode);
+  if (callingCode === "+7") return "+7 (___) ___-__-__";
+  if (callingCode === "+381") return "Например, +381 64 123 4567";
+  if (callingCode === "+1") return "Например, +1 555 123 4567";
+  return "Например, + 123 456 7890";
+}
+
+function getWhatsappExample(countryCode?: string) {
+  const callingCode = getCountryCallingCode(countryCode);
+  if (callingCode === "+7") return "77771234567";
+  if (callingCode === "+381") return "381641234567";
+  if (callingCode === "+1") return "15551234567";
+  return "1234567890";
+}
+
+function getLinkPlaceholder(group: ChannelGroup, channelId: string, venueName: string, countryCode?: string) {
+  const slug = getVenueExampleSlug(venueName);
+  if (group === "social") {
+    if (channelId === "instagram") return `instagram.com/${slug}`;
+    if (channelId === "2gis") return "2gis.kz";
+    if (channelId === "facebook") return `facebook.com/${slug}`;
+    if (channelId === "tiktok") return `tiktok.com/@${slug}`;
+    if (channelId === "website") return `${slug}.kz`;
+    if (channelId === "youtube") return `youtube.com/@${slug}`;
+  }
+
+  if (channelId === "telegram") return `t.me/${slug}`;
+  if (channelId === "whatsapp") return `wa.me/${getWhatsappExample(countryCode)}`;
+  if (channelId === "phone") return getPhonePlaceholder(countryCode);
+  return "Ссылка";
 }
 
 function getLinkInputMode(group: ChannelGroup, channelId: string) {
@@ -974,43 +1049,77 @@ function formatGenericPhone(value: string) {
   return `${hasPlus ? "+" : ""}${groups.join(" ")}`;
 }
 
-function canFormatPhoneInput(value: string) {
-  if (!value) return true;
-  if (/[^+\d\s()-]/.test(value)) return false;
-
-  const plusCount = (value.match(/\+/g) ?? []).length;
-  return plusCount <= 1 && (plusCount === 0 || value.trim().startsWith("+"));
+function sanitizePhoneInput(value: string) {
+  const trimmed = value.trimStart();
+  const hasLeadingPlus = trimmed.startsWith("+");
+  const digits = value.replace(/\D/g, "");
+  return `${hasLeadingPlus ? "+" : ""}${digits}`;
 }
 
-function formatPhoneInput(value: string) {
-  if (!canFormatPhoneInput(value)) return value;
+function isOnlyCallingCode(value: string, countryCode?: string) {
+  const callingCode = getCountryCallingCode(countryCode);
+  if (!callingCode) return value.trim() === "+";
+  return sanitizePhoneInput(value) === callingCode;
+}
 
-  const trimmed = value.trimStart();
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return trimmed.startsWith("+") ? "+" : "";
+function formatInternationalPhone(sanitized: string, countryCode?: string) {
+  const callingCode = getCountryCallingCode(countryCode);
+  if (callingCode && sanitized.startsWith(callingCode)) {
+    const rest = sanitized.slice(callingCode.length);
+    if (!rest) return callingCode;
 
-  if (trimmed.startsWith("+7")) {
-    return formatLocalPhone("+7", digits.startsWith("7") ? digits.slice(1, 11) : digits.slice(0, 10));
+    if (callingCode === "+381") {
+      const operator = rest.slice(0, 2);
+      const first = rest.slice(2, 5);
+      const second = rest.slice(5, 9);
+      return [callingCode, operator, first, second].filter(Boolean).join(" ");
+    }
+
+    if (callingCode === "+1") {
+      const area = rest.slice(0, 3);
+      const first = rest.slice(3, 6);
+      const second = rest.slice(6, 10);
+      return [callingCode, area, first, second].filter(Boolean).join(" ");
+    }
   }
 
-  if (!trimmed.startsWith("+") && digits.startsWith("8")) {
-    return formatLocalPhone("8", digits.slice(1, 11));
+  return formatGenericPhone(sanitized);
+}
+
+function formatPhoneInput(value: string, countryCode?: string) {
+  const sanitized = sanitizePhoneInput(value);
+  const digits = sanitized.replace(/\D/g, "");
+  if (!digits) return sanitized.startsWith("+") ? "+" : "";
+
+  const callingCode = getCountryCallingCode(countryCode);
+
+  if (callingCode === "+7") {
+    if (sanitized.startsWith("+7")) {
+      return formatLocalPhone("+7", digits.startsWith("7") ? digits.slice(1, 11) : digits.slice(0, 10));
+    }
+    if (!sanitized.startsWith("+") && digits.startsWith("8")) {
+      return formatLocalPhone("+7", digits.slice(1, 11));
+    }
+    if (!sanitized.startsWith("+") && digits.length <= 10) {
+      return formatLocalPhone("+7", digits.slice(0, 10));
+    }
   }
 
-  if (!trimmed.startsWith("+") && digits.length <= 10) {
-    return formatLocalPhone("", digits.slice(0, 10)).trim();
+  if (callingCode && sanitized === callingCode) return callingCode;
+  if (sanitized.startsWith("+")) return formatInternationalPhone(sanitized, countryCode);
+  if (callingCode && value.trim().startsWith(callingCode)) return formatInternationalPhone(`${callingCode}${digits.slice(callingCode.replace(/\D/g, "").length)}`, countryCode);
+  if (callingCode && value.trim() === callingCode) return callingCode;
+
+  if (callingCode && value.trimStart().startsWith(callingCode)) {
+    return formatInternationalPhone(`${callingCode}${digits}`, countryCode);
   }
 
-  return formatGenericPhone(value);
+  return formatGenericPhone(sanitized);
 }
 
 function normalizePhone(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/[^+\d\s()-]/.test(trimmed)) return null;
-
-  const plusCount = (trimmed.match(/\+/g) ?? []).length;
-  if (plusCount > 1 || (plusCount === 1 && !trimmed.startsWith("+"))) return null;
+  const trimmed = sanitizePhoneInput(value);
+  if (!trimmed || trimmed === "+") return null;
 
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length < 10 || digits.length > 15) return null;
@@ -1161,6 +1270,8 @@ function ChannelLinksCard({
   channels,
   entries,
   setEntries,
+  venueName,
+  countryCode,
   onChange,
 }: {
   group: ChannelGroup;
@@ -1169,6 +1280,8 @@ function ChannelLinksCard({
   channels: ChannelDef[];
   entries: ChannelEntry[];
   setEntries: (update: (prev: ChannelEntry[]) => ChannelEntry[]) => void;
+  venueName: string;
+  countryCode?: string;
   onChange: () => void;
 }) {
   const [touchedRows, setTouchedRows] = useState<TouchedRows>({});
@@ -1181,13 +1294,13 @@ function ChannelLinksCard({
     setEntries((prev) => [...prev, createChannelEntry(channel)]);
     onChange();
   };
-  const updateEntry = (id: number, patch: Partial<ChannelEntry>) => {
+  const updateEntry = (id: number, patch: Partial<ChannelEntry>, markChange = true) => {
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-    onChange();
+    if (markChange) onChange();
   };
   const updateLinkValue = (entry: ChannelEntry, value: string, caretPosition: number | null, input: HTMLInputElement) => {
-    const shouldFormatPhone = group === "contact" && (entry.channel === "phone" || canFormatPhoneInput(value));
-    const nextValue = shouldFormatPhone ? formatPhoneInput(value) : value;
+    const shouldFormatPhone = group === "contact" && entry.channel === "phone";
+    const nextValue = shouldFormatPhone ? formatPhoneInput(value, countryCode) : value;
     updateEntry(entry.id, { link: nextValue });
 
     if (shouldFormatPhone && caretPosition !== null && nextValue !== value) {
@@ -1215,6 +1328,11 @@ function ChannelLinksCard({
   const handleLinkBlur = (entry: ChannelEntry) => {
     touchEntry(entry.id);
 
+    if (group === "contact" && entry.channel === "phone" && isOnlyCallingCode(entry.link, countryCode)) {
+      updateEntry(entry.id, { link: "" }, false);
+      return;
+    }
+
     const normalized = normalizeUrl(entry.link);
     const shouldNormalizeUrl =
       group === "social" ||
@@ -1226,10 +1344,30 @@ function ChannelLinksCard({
       return;
     }
 
-    if (group === "contact" && (entry.channel === "phone" || normalizePhone(entry.link))) {
-      const formatted = formatPhoneInput(entry.link);
+    if (group === "contact" && entry.channel === "phone") {
+      const formatted = formatPhoneInput(entry.link, countryCode);
       if (formatted !== entry.link) updateEntry(entry.id, { link: formatted });
     }
+  };
+  const handleLinkFocus = (entry: ChannelEntry, input: HTMLInputElement) => {
+    if (group !== "contact" || entry.channel !== "phone" || entry.link.trim()) return;
+
+    const starter = getCountryCallingCode(countryCode) ?? "+";
+    updateEntry(entry.id, { link: starter }, false);
+    window.requestAnimationFrame(() => {
+      input.setSelectionRange(starter.length, starter.length);
+    });
+  };
+  const handleLinkPaste = (entry: ChannelEntry, event: ClipboardEvent<HTMLInputElement>) => {
+    if (group !== "contact" || entry.channel !== "phone") return;
+
+    event.preventDefault();
+    const pasted = event.clipboardData.getData("text");
+    const formatted = formatPhoneInput(pasted, countryCode);
+    updateEntry(entry.id, { link: formatted });
+    window.requestAnimationFrame(() => {
+      event.currentTarget.setSelectionRange(formatted.length, formatted.length);
+    });
   };
 
   const [expanded, setExpanded] = useState(true);
@@ -1275,8 +1413,10 @@ function ChannelLinksCard({
                       onChange={(event) =>
                         updateLinkValue(entry, event.target.value, event.target.selectionStart, event.currentTarget)
                       }
+                      onFocus={(event) => handleLinkFocus(entry, event.currentTarget)}
+                      onPaste={(event) => handleLinkPaste(entry, event)}
                       onBlur={() => handleLinkBlur(entry)}
-                      placeholder={getLinkPlaceholder(group, entry.channel)}
+                      placeholder={getLinkPlaceholder(group, entry.channel, venueName, countryCode)}
                       inputMode={getLinkInputMode(group, entry.channel)}
                       autoComplete={getLinkAutocomplete(group, entry.channel)}
                       aria-invalid={Boolean(error)}
@@ -1422,6 +1562,8 @@ function BasicInfoWorkspace({
   setPreviewScenario: (scenario: PreviewScenario) => void;
 }) {
   const { ageConfirmationEnabled, setAgeConfirmationEnabled } = useAppSettings();
+  const currentVitrine = MOCK_VITRINES.find((vitrine) => vitrine.id === CURRENT_VITRINE_ID) ?? MOCK_VITRINES[0];
+  const registrationCountryCode = currentVitrine?.registrationCountryCode;
   const [name, setName] = useState("Sweet affair");
   const [address, setAddress] = useState("Астана, Абылай-хана 34, д 18");
   const [description, setDescription] = useState("");
@@ -1442,7 +1584,7 @@ function BasicInfoWorkspace({
       name: basicTouched.name && !name.trim() ? "Введите название заведения" : undefined,
       address: basicTouched.address && !address.trim() ? "Введите адрес" : undefined,
       description:
-        basicTouched.description && description.trim().length > DESCRIPTION_LIMIT
+        basicTouched.description && getDescriptionTextLength(description) > DESCRIPTION_LIMIT
           ? `Сократите описание до ${DESCRIPTION_LIMIT} символов`
           : undefined,
     }),
@@ -1527,16 +1669,13 @@ function BasicInfoWorkspace({
         placeholder="Например, ул. Кунаева, 12"
       />
 
-      <BasicField
-        id="about-description"
-        label="Описание"
+      <DescriptionRichTextEditor
         value={description}
         onChange={edit(setDescription)}
         onBlur={() => touchBasicField("description")}
         error={basicErrors.description}
-        helperText={`${description.length}/${DESCRIPTION_LIMIT}`}
-        placeholder="Расскажите гостям о заведении: кухня, формат, атмосфера"
-        multiline
+        placeholder="Кратко расскажите о заведении, кухне и атмосфере"
+        limit={DESCRIPTION_LIMIT}
       />
 
       {scheduleAdded && (
@@ -1550,6 +1689,8 @@ function BasicInfoWorkspace({
         channels={SOCIAL_CHANNELS}
         entries={socialEntries}
         setEntries={setSocialEntries}
+        venueName={name}
+        countryCode={registrationCountryCode}
         onChange={onChange}
       />
 
@@ -1560,6 +1701,8 @@ function BasicInfoWorkspace({
         channels={CONTACT_CHANNELS}
         entries={contactEntries}
         setEntries={setContactEntries}
+        venueName={name}
+        countryCode={registrationCountryCode}
         onChange={onChange}
       />
 
