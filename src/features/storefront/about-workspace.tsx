@@ -1,6 +1,6 @@
 import { useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Music2, Phone, Plus, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -698,8 +698,6 @@ type ChannelDef = { id: string; label: string; icon: LucideIcon };
 
 const SOCIAL_CHANNELS: ChannelDef[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
-  { id: "telegram", label: "Telegram", icon: Send },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "2gis", label: "2GIS", icon: MapPin },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "tiktok", label: "TikTok", icon: Music2 },
@@ -718,13 +716,57 @@ const CONTACT_CHANNELS: ChannelDef[] = [
 const WEEK_DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
 type DayMode = "custom" | "allday" | "closed";
-type DaySchedule = { mode: DayMode; from: string; to: string };
+type DayBreak = { from: string; to: string };
+type DaySchedule = { mode: DayMode; from: string; to: string; breakInterval?: DayBreak };
 
 const DAY_MODE_LABELS: Record<DayMode, string> = {
   custom: "Своё время",
   allday: "Круглосуточно",
   closed: "Недоступно",
 };
+
+const DEFAULT_BREAK: DayBreak = { from: "13:00", to: "14:00" };
+
+function timeToMinutes(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(minutes: number) {
+  const hours = Math.floor(minutes / 60).toString().padStart(2, "0");
+  const rest = (minutes % 60).toString().padStart(2, "0");
+  return `${hours}:${rest}`;
+}
+
+function clampMinutes(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function fitBreakIntoWorkInterval(day: DaySchedule, breakInterval: DayBreak = DEFAULT_BREAK): DayBreak {
+  const workFrom = timeToMinutes(day.from);
+  const workTo = timeToMinutes(day.to);
+  const breakFrom = timeToMinutes(breakInterval.from);
+  const breakTo = timeToMinutes(breakInterval.to);
+
+  if (workFrom === null || workTo === null || breakFrom === null || breakTo === null || workFrom >= workTo) {
+    return breakInterval;
+  }
+
+  const minimumBreak = Math.min(15, Math.max(0, workTo - workFrom));
+  const latestStart = Math.max(workFrom, workTo - minimumBreak);
+  const nextFrom = clampMinutes(breakFrom, workFrom, latestStart);
+  const earliestEnd = Math.min(workTo, nextFrom + minimumBreak);
+  const nextTo = clampMinutes(Math.max(breakTo, earliestEnd), earliestEnd, workTo);
+
+  return {
+    from: minutesToTime(nextFrom),
+    to: minutesToTime(nextTo),
+  };
+}
 
 // Заголовок секции опционального блока: подпись + корзинка справа, как в макете.
 function BlockHeader({
@@ -761,9 +803,58 @@ function ScheduleCard({ onChange, onRemove }: { onChange: () => void; onRemove: 
   );
 
   const updateDay = (index: number, patch: Partial<DaySchedule>) => {
-    setDays((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+    setDays((prev) =>
+      prev.map((day, i) => {
+        if (i !== index) return day;
+        const nextDay = { ...day, ...patch };
+        if (patch.mode && patch.mode !== "custom") {
+          delete nextDay.breakInterval;
+        } else if (nextDay.breakInterval) {
+          nextDay.breakInterval = fitBreakIntoWorkInterval(nextDay, nextDay.breakInterval);
+        }
+        return nextDay;
+      }),
+    );
     onChange();
   };
+
+  const addBreak = (index: number) => {
+    setDays((prev) =>
+      prev.map((day, i) =>
+        i === index && day.mode === "custom" && !day.breakInterval
+          ? { ...day, breakInterval: fitBreakIntoWorkInterval(day) }
+          : day,
+      ),
+    );
+    onChange();
+  };
+
+  const updateBreak = (index: number, patch: Partial<DayBreak>) => {
+    setDays((prev) =>
+      prev.map((day, i) => {
+        if (i !== index || day.mode !== "custom" || !day.breakInterval) return day;
+        return {
+          ...day,
+          breakInterval: fitBreakIntoWorkInterval(day, { ...day.breakInterval, ...patch }),
+        };
+      }),
+    );
+    onChange();
+  };
+
+  const removeBreak = (index: number) => {
+    setDays((prev) =>
+      prev.map((day, i) => {
+        if (i !== index || !day.breakInterval) return day;
+        const { breakInterval: _breakInterval, ...rest } = day;
+        return rest;
+      }),
+    );
+    onChange();
+  };
+
+  const timeInputClass =
+    "h-[30px] w-[86px] shrink-0 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]";
 
   return (
     <div>
@@ -789,61 +880,111 @@ function ScheduleCard({ onChange, onRemove }: { onChange: () => void; onRemove: 
       {expanded && (
         <div className="divide-y divide-[#eceae7] rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
           {days.map((day, index) => (
-            <div key={WEEK_DAYS[index]} className="group flex h-[52px] items-center gap-3 px-4">
-              <span className={cn("w-[110px] shrink-0 text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
-                {WEEK_DAYS[index]}
-              </span>
-              {day.mode === "custom" ? (
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="time"
-                    value={day.from}
-                    onChange={(event) => updateDay(index, { from: event.target.value })}
-                    className="h-9 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
-                  />
-                  <span className="text-[13px] text-[#a8a29e]">–</span>
-                  <input
-                    type="time"
-                    value={day.to}
-                    onChange={(event) => updateDay(index, { to: event.target.value })}
-                    className="h-9 rounded-[10px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
-                  />
-                </div>
-              ) : (
-                <span className={cn("text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
-                  {DAY_MODE_LABELS[day.mode]}
+            <div key={WEEK_DAYS[index]} className="group/day">
+              <div className="flex min-h-[46px] items-center px-3">
+                <span className={cn("w-[120px] shrink-0 text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
+                  {WEEK_DAYS[index]}
                 </span>
-              )}
-              <div className="flex-1" />
-              {/* Переключатель режима дня — появляется при hover строки */}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <button
-                    type="button"
-                    className="flex h-8 items-center gap-1 rounded-[8px] px-2 text-[13px] text-[#79716b] opacity-0 transition hover:bg-[#f5f5f4] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
-                  >
+                {day.mode === "custom" ? (
+                  <div className="flex items-center gap-2">
+                    {day.breakInterval ? (
+                      <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <Tooltip label="Добавить перерыв" side="top">
+                        <button
+                          type="button"
+                          aria-label="Добавить перерыв"
+                          onClick={() => addBreak(index)}
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#78716c] transition hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d6d3d1]"
+                        >
+                          <PlusCircle size={20} />
+                        </button>
+                      </Tooltip>
+                    )}
+                    <input
+                      type="time"
+                      value={day.from}
+                      onChange={(event) => updateDay(index, { from: event.target.value })}
+                      className={timeInputClass}
+                    />
+                    <span className="text-[13px] text-[#a8a29e]">–</span>
+                    <input
+                      type="time"
+                      value={day.to}
+                      onChange={(event) => updateDay(index, { to: event.target.value })}
+                      className={timeInputClass}
+                    />
+                  </div>
+                ) : (
+                  <span className={cn("text-[14px]", day.mode === "closed" ? "text-[#a8a29e]" : "text-[#292524]")}>
                     {DAY_MODE_LABELS[day.mode]}
-                    <ChevronDown size={14} className="text-[#a8a29e]" />
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content
-                    align="end"
-                    sideOffset={6}
-                    className="z-50 min-w-[160px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-                  >
-                    {(Object.keys(DAY_MODE_LABELS) as DayMode[]).map((mode) => (
-                      <DropdownMenu.Item
-                        key={mode}
-                        onSelect={() => updateDay(index, { mode })}
-                        className="flex h-8 cursor-pointer select-none items-center rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  </span>
+                )}
+                <div className="flex-1" />
+                {/* Переключатель режима дня — появляется при hover строки */}
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-8 items-center gap-1 rounded-[8px] px-2 text-[13px] text-[#79716b] opacity-0 transition hover:bg-[#f5f5f4] focus-visible:opacity-100 group-hover/day:opacity-100 data-[state=open]:opacity-100"
+                    >
+                      {DAY_MODE_LABELS[day.mode]}
+                      <ChevronDown size={14} className="text-[#a8a29e]" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content
+                      align="end"
+                      sideOffset={6}
+                      className="z-50 min-w-[160px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+                    >
+                      {(Object.keys(DAY_MODE_LABELS) as DayMode[]).map((mode) => (
+                        <DropdownMenu.Item
+                          key={mode}
+                          onSelect={() => updateDay(index, { mode })}
+                          className="flex h-8 cursor-pointer select-none items-center rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                        >
+                          {DAY_MODE_LABELS[mode]}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+              {day.mode === "custom" && day.breakInterval && (
+                <div className="flex h-[38px] items-center px-3">
+                  <span className="w-[120px] shrink-0 text-[14px] text-[#79716b]">Перерыв</span>
+                  <div className="flex items-center gap-2">
+                    <Tooltip label="Удалить перерыв" side="top">
+                      <button
+                        type="button"
+                        aria-label="Удалить перерыв"
+                        onClick={() => removeBreak(index)}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#a8a29e] transition hover:text-[#78716c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d6d3d1]"
                       >
-                        {DAY_MODE_LABELS[mode]}
-                      </DropdownMenu.Item>
-                    ))}
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+                        <MinusCircle size={20} />
+                      </button>
+                    </Tooltip>
+                    <input
+                      type="time"
+                      value={day.breakInterval.from}
+                      min={day.from}
+                      max={day.breakInterval.to}
+                      onChange={(event) => updateBreak(index, { from: event.target.value })}
+                      className={timeInputClass}
+                    />
+                    <span className="text-[13px] text-[#a8a29e]">–</span>
+                    <input
+                      type="time"
+                      value={day.breakInterval.to}
+                      min={day.breakInterval.from}
+                      max={day.to}
+                      onChange={(event) => updateBreak(index, { to: event.target.value })}
+                      className={timeInputClass}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -869,8 +1010,6 @@ const SOCIAL_DOMAIN_RULES: Record<string, { label: string; hosts: string[] }> = 
   instagram: { label: "Instagram", hosts: ["instagram.com"] },
   "2gis": { label: "2GIS", hosts: ["2gis.kz", "2gis.ru", "2gis.com"] },
   facebook: { label: "Facebook", hosts: ["facebook.com", "fb.com"] },
-  telegram: { label: "Telegram", hosts: ["t.me", "telegram.me"] },
-  whatsapp: { label: "WhatsApp", hosts: ["wa.me", "whatsapp.com"] },
   tiktok: { label: "TikTok", hosts: ["tiktok.com"] },
   youtube: { label: "YouTube", hosts: ["youtube.com", "youtu.be"] },
 };
@@ -1160,7 +1299,7 @@ function normalizeContactInput(entry: ChannelEntry) {
 function validateEntryValue(group: ChannelGroup, entry: ChannelEntry): ChannelEntryError {
   if (isRowBlank(entry)) return {};
   if (!entry.link.trim()) {
-    return { link: group === "social" ? "Заполните ссылку или удалите строку" : "Заполните контакт или удалите строку" };
+    return { link: group === "social" ? "Укажите ссылку или удалите строку" : "Укажите номер или удалите строку" };
   }
 
   if (group === "social") {
@@ -1210,7 +1349,7 @@ function validateChannelEntries(group: ChannelGroup, entries: ChannelEntry[], to
   });
 
   entries.forEach((entry) => {
-    if (!touched[entry.id]) return;
+    if (!touched[entry.id] && !entry.text.trim()) return;
     const entryError = validateEntryValue(group, entry);
     const duplicateKey = getEntryDuplicateKey(group, entry);
     const isDuplicate = duplicateKey ? (duplicateKeys.get(duplicateKey)?.length ?? 0) > 1 : false;
@@ -1292,7 +1431,6 @@ function ChannelLinksCard({
   };
   const addEntry = (channel: string) => {
     setEntries((prev) => [...prev, createChannelEntry(channel)]);
-    onChange();
   };
   const updateEntry = (id: number, patch: Partial<ChannelEntry>, markChange = true) => {
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -1316,6 +1454,7 @@ function ChannelLinksCard({
     updateEntry(entry.id, { channel: channelId });
   };
   const removeEntry = (id: number) => {
+    const removedEntry = entries.find((entry) => entry.id === id);
     setEntries((prev) => prev.filter((e) => e.id !== id));
     setTouchedRows((prev) => {
       if (!prev[id]) return prev;
@@ -1323,7 +1462,7 @@ function ChannelLinksCard({
       delete next[id];
       return next;
     });
-    onChange();
+    if (!removedEntry || !isRowBlank(removedEntry)) onChange();
   };
   const handleLinkBlur = (entry: ChannelEntry) => {
     touchEntry(entry.id);
@@ -1395,6 +1534,12 @@ function ChannelLinksCard({
               const Icon = channel.icon;
               const error = errors[entry.id]?.link;
               const errorId = error ? `channel-${group}-${entry.id}-error` : undefined;
+              const hint =
+                !error && isRowBlank(entry)
+                  ? group === "social"
+                    ? "Заполните ссылку, чтобы она появилась в онлайн-меню"
+                    : "Заполните номер, чтобы он появился в онлайн-меню"
+                  : undefined;
               return (
                 <div key={entry.id} className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -1439,8 +1584,14 @@ function ChannelLinksCard({
                       <X size={16} />
                     </button>
                   </div>
-                  <div id={errorId} className="min-h-[16px] pl-12 text-[12px] leading-4 text-[#dc2626]">
-                    {error}
+                  <div
+                    id={errorId}
+                    className={cn(
+                      "min-h-[16px] pl-12 text-[12px] leading-4",
+                      error ? "text-[#dc2626]" : "text-[#a8a29e]",
+                    )}
+                  >
+                    {error ?? hint}
                   </div>
                 </div>
               );
