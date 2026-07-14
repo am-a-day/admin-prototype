@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Phone, Plus, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MoreVertical, Music2, Phone, Plus, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -634,6 +634,10 @@ function BasicField({
   label,
   value,
   onChange,
+  onBlur,
+  error,
+  id,
+  helperText,
   className,
   placeholder,
   multiline = false,
@@ -641,10 +645,15 @@ function BasicField({
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  id?: string;
+  helperText?: string;
   className?: string;
   placeholder?: string;
   multiline?: boolean;
 }) {
+  const errorId = error && id ? `${id}-error` : undefined;
   const inputClass =
     "w-full rounded-[12px] border border-[#e7e5e4] bg-white px-3.5 text-[14px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
   return (
@@ -652,30 +661,45 @@ function BasicField({
       <div className="mb-1.5 text-[13px] font-medium leading-[18px] text-[#292524]">{label}</div>
       {multiline ? (
         <textarea
+          id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           rows={3}
-          className={cn(inputClass, "resize-none py-2.5 leading-5")}
+          aria-invalid={Boolean(error)}
+          aria-describedby={errorId}
+          className={cn(inputClass, "resize-none py-2.5 leading-5", error && "border-[#dc2626] focus:border-[#dc2626]")}
         />
       ) : (
         <input
+          id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
-          className={cn(inputClass, "h-10")}
+          aria-invalid={Boolean(error)}
+          aria-describedby={errorId}
+          className={cn(inputClass, "h-10", error && "border-[#dc2626] focus:border-[#dc2626]")}
         />
       )}
+      <div
+        id={errorId}
+        className={cn("mt-1 min-h-[16px] text-[12px] leading-4", error ? "text-[#dc2626]" : "text-[#a8a29e]")}
+      >
+        {error ?? helperText}
+      </div>
     </label>
   );
 }
 
-type ChannelDef = { id: string; label: string; icon: LucideIcon; linkPlaceholder?: string };
+type ChannelDef = { id: string; label: string; icon: LucideIcon };
 
 const SOCIAL_CHANNELS: ChannelDef[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "2gis", label: "2GIS", icon: MapPin },
   { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "tiktok", label: "TikTok", icon: Music2 },
   { id: "website", label: "Сайт", icon: Globe },
   { id: "youtube", label: "YouTube", icon: Youtube },
 ];
@@ -683,7 +707,7 @@ const SOCIAL_CHANNELS: ChannelDef[] = [
 const CONTACT_CHANNELS: ChannelDef[] = [
   { id: "telegram", label: "Telegram", icon: Send },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { id: "phone", label: "Телефон", icon: Phone, linkPlaceholder: "Номер телефона" },
+  { id: "phone", label: "Телефон", icon: Phone },
 ];
 
 // ── График работы ─────────────────────────────────────────────────────────────
@@ -828,11 +852,268 @@ function ScheduleCard({ onChange, onRemove }: { onChange: () => void; onRemove: 
 // ── Ссылки по каналам (соцсети, контакты) ─────────────────────────────────────
 
 type ChannelEntry = { id: number; channel: string; link: string; text: string };
+type ChannelGroup = "social" | "contact";
+type ChannelEntryError = { link?: string };
+type TouchedRows = Record<number, boolean>;
 
 // ponytail: модульный счётчик id — бэкенда нет, коллизии невозможны в рамках сессии
 let nextEntryId = 1;
 function createChannelEntry(channel: string): ChannelEntry {
   return { id: nextEntryId++, channel, link: "", text: "" };
+}
+
+const SOCIAL_DOMAIN_RULES: Record<string, { label: string; hosts: string[] }> = {
+  instagram: { label: "Instagram", hosts: ["instagram.com"] },
+  "2gis": { label: "2GIS", hosts: ["2gis.kz", "2gis.ru", "2gis.com"] },
+  facebook: { label: "Facebook", hosts: ["facebook.com", "fb.com"] },
+  tiktok: { label: "TikTok", hosts: ["tiktok.com"] },
+  youtube: { label: "YouTube", hosts: ["youtube.com", "youtu.be"] },
+};
+
+const LINK_PLACEHOLDERS: Record<ChannelGroup, Record<string, string>> = {
+  social: {
+    instagram: "instagram.com/tasko",
+    "2gis": "2gis.kz",
+    facebook: "facebook.com/tasko",
+    tiktok: "tiktok.com/@tasko",
+    website: "tasko.kz",
+    youtube: "youtube.com/@tasko",
+  },
+  contact: {
+    telegram: "t.me/tasko",
+    whatsapp: "wa.me/77771234567",
+    phone: "+7 (___) ___-__-__",
+  },
+};
+
+const DESCRIPTION_LIMIT = 500;
+
+function isRowBlank(entry: ChannelEntry) {
+  return entry.link.trim().length === 0 && entry.text.trim().length === 0;
+}
+
+function hasUrlScheme(value: string) {
+  return /^[a-z][a-z\d+\-.]*:\/\//i.test(value);
+}
+
+function getLinkPlaceholder(group: ChannelGroup, channelId: string) {
+  return LINK_PLACEHOLDERS[group][channelId] ?? "Ссылка";
+}
+
+function getLinkInputMode(group: ChannelGroup, channelId: string) {
+  if (group === "social") return "url";
+  if (channelId === "phone" || channelId === "whatsapp") return "tel";
+  return "url";
+}
+
+function getLinkAutocomplete(group: ChannelGroup, channelId: string) {
+  if (group === "social") return "url";
+  if (channelId === "phone" || channelId === "whatsapp") return "tel";
+  return "url";
+}
+
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+
+  try {
+    const url = new URL(hasUrlScheme(trimmed) ? trimmed : `https://${trimmed}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname.includes(".")) return null;
+
+    const host = url.host.toLowerCase();
+    const path = url.pathname === "/" && !url.search && !url.hash ? "" : url.pathname;
+    return `${url.protocol}//${host}${path}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function hostMatches(host: string, allowedHost: string) {
+  return host === allowedHost || host.endsWith(`.${allowedHost}`);
+}
+
+function getUrlHost(value: string) {
+  const normalized = normalizeUrl(value);
+  if (!normalized) return null;
+  return new URL(normalized).hostname.toLowerCase();
+}
+
+function getDigitPosition(value: string, digitCount: number) {
+  if (digitCount <= 0) return 0;
+
+  let seen = 0;
+  for (let index = 0; index < value.length; index++) {
+    if (/\d/.test(value[index])) seen++;
+    if (seen === digitCount) return index + 1;
+  }
+
+  return value.length;
+}
+
+function formatLocalPhone(prefix: string, digits: string) {
+  const area = digits.slice(0, 3);
+  const first = digits.slice(3, 6);
+  const second = digits.slice(6, 8);
+  const third = digits.slice(8, 10);
+
+  if (!area) return prefix;
+  if (area.length < 3) return `${prefix} (${area}`;
+  if (!first) return `${prefix} (${area})`;
+  if (first.length < 3) return `${prefix} (${area}) ${first}`;
+  if (!second) return `${prefix} (${area}) ${first}`;
+  if (second.length < 2) return `${prefix} (${area}) ${first}-${second}`;
+  if (!third) return `${prefix} (${area}) ${first}-${second}`;
+  return `${prefix} (${area}) ${first}-${second}-${third}`;
+}
+
+function formatGenericPhone(value: string) {
+  const hasPlus = value.trim().startsWith("+");
+  const digits = value.replace(/\D/g, "");
+  const groups = digits.match(/.{1,3}/g) ?? [];
+  return `${hasPlus ? "+" : ""}${groups.join(" ")}`;
+}
+
+function canFormatPhoneInput(value: string) {
+  if (!value) return true;
+  if (/[^+\d\s()-]/.test(value)) return false;
+
+  const plusCount = (value.match(/\+/g) ?? []).length;
+  return plusCount <= 1 && (plusCount === 0 || value.trim().startsWith("+"));
+}
+
+function formatPhoneInput(value: string) {
+  if (!canFormatPhoneInput(value)) return value;
+
+  const trimmed = value.trimStart();
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return trimmed.startsWith("+") ? "+" : "";
+
+  if (trimmed.startsWith("+7")) {
+    return formatLocalPhone("+7", digits.startsWith("7") ? digits.slice(1, 11) : digits.slice(0, 10));
+  }
+
+  if (!trimmed.startsWith("+") && digits.startsWith("8")) {
+    return formatLocalPhone("8", digits.slice(1, 11));
+  }
+
+  if (!trimmed.startsWith("+") && digits.length <= 10) {
+    return formatLocalPhone("", digits.slice(0, 10)).trim();
+  }
+
+  return formatGenericPhone(value);
+}
+
+function normalizePhone(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/[^+\d\s()-]/.test(trimmed)) return null;
+
+  const plusCount = (trimmed.match(/\+/g) ?? []).length;
+  if (plusCount > 1 || (plusCount === 1 && !trimmed.startsWith("+"))) return null;
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return null;
+
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  if (digits.length === 11 && digits.startsWith("8")) return `+7${digits.slice(1)}`;
+  return `+${digits}`;
+}
+
+function normalizeTelegramInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^@[a-zA-Z0-9_]{5,32}$/.test(trimmed)) return trimmed.toLowerCase();
+
+  const url = normalizeUrl(trimmed);
+  if (!url) return null;
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase();
+  if (!hostMatches(host, "t.me") && !hostMatches(host, "telegram.me")) return null;
+  return url.toLowerCase();
+}
+
+function normalizeContactInput(entry: ChannelEntry) {
+  if (entry.channel === "telegram") {
+    return normalizeTelegramInput(entry.link) ?? normalizePhone(entry.link);
+  }
+  if (entry.channel === "whatsapp") {
+    const phone = normalizePhone(entry.link);
+    if (phone) return phone;
+    const url = normalizeUrl(entry.link);
+    if (!url) return null;
+    const host = new URL(url).hostname.toLowerCase();
+    return hostMatches(host, "wa.me") || hostMatches(host, "whatsapp.com") ? url.toLowerCase() : null;
+  }
+  return normalizePhone(entry.link);
+}
+
+function validateEntryValue(group: ChannelGroup, entry: ChannelEntry): ChannelEntryError {
+  if (isRowBlank(entry)) return {};
+  if (!entry.link.trim()) {
+    return { link: group === "social" ? "Заполните ссылку или удалите строку" : "Заполните контакт или удалите строку" };
+  }
+
+  if (group === "social") {
+    const normalized = normalizeUrl(entry.link);
+    if (!normalized) return { link: "Введите корректную ссылку" };
+
+    const rule = SOCIAL_DOMAIN_RULES[entry.channel];
+    if (rule) {
+      const host = getUrlHost(normalized);
+      if (!host || !rule.hosts.some((allowedHost) => hostMatches(host, allowedHost))) {
+        return { link: `Укажите ссылку на ${rule.label}` };
+      }
+    }
+
+    return {};
+  }
+
+  if (entry.channel === "telegram") {
+    return normalizeContactInput(entry) ? {} : { link: "Введите @username, ссылку t.me или телефон" };
+  }
+
+  if (entry.channel === "whatsapp") {
+    return normalizeContactInput(entry) ? {} : { link: "Введите корректный номер WhatsApp" };
+  }
+
+  return normalizeContactInput(entry) ? {} : { link: "Введите корректный номер телефона" };
+}
+
+function getEntryDuplicateKey(group: ChannelGroup, entry: ChannelEntry) {
+  if (isRowBlank(entry) || !entry.link.trim()) return null;
+
+  if (group === "social") {
+    return normalizeUrl(entry.link)?.toLowerCase() ?? null;
+  }
+
+  return normalizeContactInput(entry)?.toLowerCase() ?? null;
+}
+
+function validateChannelEntries(group: ChannelGroup, entries: ChannelEntry[], touched: TouchedRows) {
+  const errors: Record<number, ChannelEntryError> = {};
+  const duplicateKeys = new Map<string, number[]>();
+
+  entries.forEach((entry) => {
+    const key = getEntryDuplicateKey(group, entry);
+    if (!key) return;
+    duplicateKeys.set(key, [...(duplicateKeys.get(key) ?? []), entry.id]);
+  });
+
+  entries.forEach((entry) => {
+    if (!touched[entry.id]) return;
+    const entryError = validateEntryValue(group, entry);
+    const duplicateKey = getEntryDuplicateKey(group, entry);
+    const isDuplicate = duplicateKey ? (duplicateKeys.get(duplicateKey)?.length ?? 0) > 1 : false;
+
+    if (isDuplicate && !entryError.link) {
+      entryError.link = group === "social" ? "Такая ссылка уже добавлена" : "Такой контакт уже добавлен";
+    }
+
+    if (entryError.link) errors[entry.id] = entryError;
+  });
+
+  return errors;
 }
 
 // Дропдаун выбора канала; используется и в карточке, и в списке «Ещё».
@@ -874,6 +1155,7 @@ function ChannelMenu({
 }
 
 function ChannelLinksCard({
+  group,
   title,
   addLabel,
   channels,
@@ -881,6 +1163,7 @@ function ChannelLinksCard({
   setEntries,
   onChange,
 }: {
+  group: ChannelGroup;
   title: string;
   addLabel: string;
   channels: ChannelDef[];
@@ -888,6 +1171,12 @@ function ChannelLinksCard({
   setEntries: (update: (prev: ChannelEntry[]) => ChannelEntry[]) => void;
   onChange: () => void;
 }) {
+  const [touchedRows, setTouchedRows] = useState<TouchedRows>({});
+  const errors = useMemo(() => validateChannelEntries(group, entries, touchedRows), [entries, group, touchedRows]);
+
+  const touchEntry = (id: number) => {
+    setTouchedRows((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+  };
   const addEntry = (channel: string) => {
     setEntries((prev) => [...prev, createChannelEntry(channel)]);
     onChange();
@@ -896,9 +1185,51 @@ function ChannelLinksCard({
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
     onChange();
   };
+  const updateLinkValue = (entry: ChannelEntry, value: string, caretPosition: number | null, input: HTMLInputElement) => {
+    const shouldFormatPhone = group === "contact" && (entry.channel === "phone" || canFormatPhoneInput(value));
+    const nextValue = shouldFormatPhone ? formatPhoneInput(value) : value;
+    updateEntry(entry.id, { link: nextValue });
+
+    if (shouldFormatPhone && caretPosition !== null && nextValue !== value) {
+      const digitsBeforeCaret = value.slice(0, caretPosition).replace(/\D/g, "").length;
+      const nextCaret = getDigitPosition(nextValue, digitsBeforeCaret);
+      window.requestAnimationFrame(() => {
+        input.setSelectionRange(nextCaret, nextCaret);
+      });
+    }
+  };
+  const updateChannel = (entry: ChannelEntry, channelId: string) => {
+    if (!isRowBlank(entry)) touchEntry(entry.id);
+    updateEntry(entry.id, { channel: channelId });
+  };
   const removeEntry = (id: number) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
+    setTouchedRows((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     onChange();
+  };
+  const handleLinkBlur = (entry: ChannelEntry) => {
+    touchEntry(entry.id);
+
+    const normalized = normalizeUrl(entry.link);
+    const shouldNormalizeUrl =
+      group === "social" ||
+      (entry.channel === "telegram" && normalized && ["t.me", "telegram.me"].some((host) => hostMatches(new URL(normalized).hostname.toLowerCase(), host))) ||
+      (entry.channel === "whatsapp" && normalized && ["wa.me", "whatsapp.com"].some((host) => hostMatches(new URL(normalized).hostname.toLowerCase(), host)));
+
+    if (shouldNormalizeUrl && normalized && normalized !== entry.link.trim()) {
+      updateEntry(entry.id, { link: normalized });
+      return;
+    }
+
+    if (group === "contact" && (entry.channel === "phone" || normalizePhone(entry.link))) {
+      const formatted = formatPhoneInput(entry.link);
+      if (formatted !== entry.link) updateEntry(entry.id, { link: formatted });
+    }
   };
 
   const [expanded, setExpanded] = useState(true);
@@ -924,38 +1255,53 @@ function ChannelLinksCard({
             {entries.map((entry) => {
               const channel = channels.find((c) => c.id === entry.channel) ?? channels[0];
               const Icon = channel.icon;
+              const error = errors[entry.id]?.link;
+              const errorId = error ? `channel-${group}-${entry.id}-error` : undefined;
               return (
-                <div key={entry.id} className="flex items-center gap-2">
-                  {/* Иконка — переключатель типа канала */}
-                  <ChannelMenu channels={channels} onSelect={(id) => updateEntry(entry.id, { channel: id })}>
+                <div key={entry.id} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    {/* Иконка — переключатель типа канала */}
+                    <ChannelMenu channels={channels} onSelect={(id) => updateChannel(entry, id)}>
+                      <button
+                        type="button"
+                        title={`${channel.label} — сменить канал`}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f4] text-[#57534d] transition hover:bg-[#eeeeec]"
+                      >
+                        <Icon size={18} />
+                      </button>
+                    </ChannelMenu>
+                    <input
+                      value={entry.link}
+                      onChange={(event) =>
+                        updateLinkValue(entry, event.target.value, event.target.selectionStart, event.currentTarget)
+                      }
+                      onBlur={() => handleLinkBlur(entry)}
+                      placeholder={getLinkPlaceholder(group, entry.channel)}
+                      inputMode={getLinkInputMode(group, entry.channel)}
+                      autoComplete={getLinkAutocomplete(group, entry.channel)}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={errorId}
+                      className={cn(inputClass, "flex-1", error && "border-[#dc2626] focus:border-[#dc2626]")}
+                    />
+                    <input
+                      value={entry.text}
+                      onChange={(event) => updateEntry(entry.id, { text: event.target.value })}
+                      onBlur={() => touchEntry(entry.id)}
+                      placeholder="Подпись (необязательно)"
+                      className={cn(inputClass, "flex-[1.2]")}
+                    />
                     <button
                       type="button"
-                      title={`${channel.label} — сменить канал`}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f5f5f4] text-[#57534d] transition hover:bg-[#eeeeec]"
+                      title="Удалить"
+                      onClick={() => removeEntry(entry.id)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]"
                     >
-                      <Icon size={18} />
+                      <X size={16} />
                     </button>
-                  </ChannelMenu>
-                  <input
-                    value={entry.link}
-                    onChange={(event) => updateEntry(entry.id, { link: event.target.value })}
-                    placeholder={channel.linkPlaceholder ?? "Ссылка"}
-                    className={cn(inputClass, "flex-1")}
-                  />
-                  <input
-                    value={entry.text}
-                    onChange={(event) => updateEntry(entry.id, { text: event.target.value })}
-                    placeholder="Подпись (необязательно)"
-                    className={cn(inputClass, "flex-[1.2]")}
-                  />
-                  <button
-                    type="button"
-                    title="Удалить"
-                    onClick={() => removeEntry(entry.id)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]"
-                  >
-                    <X size={16} />
-                  </button>
+                  </div>
+                  <div id={errorId} className="min-h-[16px] pl-12 text-[12px] leading-4 text-[#dc2626]">
+                    {error}
+                  </div>
                 </div>
               );
             })}
@@ -1081,10 +1427,31 @@ function BasicInfoWorkspace({
   const [description, setDescription] = useState("");
   const [wifiAdded, setWifiAdded] = useState(false);
   const [scheduleAdded, setScheduleAdded] = useState(false);
+  const [basicTouched, setBasicTouched] = useState<Record<"name" | "address" | "description", boolean>>({
+    name: false,
+    address: false,
+    description: false,
+  });
   // Один пустой ряд по умолчанию: показывает форму данных и экономит клик.
   // Пустые ряды инертны — на витрину не попадают и нигде не считаются «незаполненными».
   const [socialEntries, setSocialEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("instagram")]);
   const [contactEntries, setContactEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("phone")]);
+
+  const basicErrors = useMemo(
+    () => ({
+      name: basicTouched.name && !name.trim() ? "Введите название заведения" : undefined,
+      address: basicTouched.address && !address.trim() ? "Введите адрес" : undefined,
+      description:
+        basicTouched.description && description.trim().length > DESCRIPTION_LIMIT
+          ? `Сократите описание до ${DESCRIPTION_LIMIT} символов`
+          : undefined,
+    }),
+    [address, basicTouched, description, name],
+  );
+
+  const touchBasicField = (field: keyof typeof basicTouched) => {
+    setBasicTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  };
 
   const edit = (setter: (v: string) => void) => (v: string) => {
     setter(v);
@@ -1139,15 +1506,35 @@ function BasicInfoWorkspace({
           <Plus size={16} />
           <span className="mt-0.5 text-[11px] leading-3">Лого</span>
         </button>
-        <BasicField label="Название заведения" value={name} onChange={edit(setName)} className="flex-1" />
+        <BasicField
+          id="about-name"
+          label="Название заведения"
+          value={name}
+          onChange={edit(setName)}
+          onBlur={() => touchBasicField("name")}
+          error={basicErrors.name}
+          className="flex-1"
+        />
       </div>
 
-      <BasicField label="Адрес" value={address} onChange={edit(setAddress)} />
+      <BasicField
+        id="about-address"
+        label="Адрес"
+        value={address}
+        onChange={edit(setAddress)}
+        onBlur={() => touchBasicField("address")}
+        error={basicErrors.address}
+        placeholder="Например, ул. Кунаева, 12"
+      />
 
       <BasicField
+        id="about-description"
         label="Описание"
         value={description}
         onChange={edit(setDescription)}
+        onBlur={() => touchBasicField("description")}
+        error={basicErrors.description}
+        helperText={`${description.length}/${DESCRIPTION_LIMIT}`}
         placeholder="Расскажите гостям о заведении: кухня, формат, атмосфера"
         multiline
       />
@@ -1157,6 +1544,7 @@ function BasicInfoWorkspace({
       )}
 
       <ChannelLinksCard
+        group="social"
         title="Соцсети и сайты"
         addLabel="Добавить ссылку"
         channels={SOCIAL_CHANNELS}
@@ -1166,6 +1554,7 @@ function BasicInfoWorkspace({
       />
 
       <ChannelLinksCard
+        group="contact"
         title="Контакты"
         addLabel="Добавить контакт"
         channels={CONTACT_CHANNELS}
