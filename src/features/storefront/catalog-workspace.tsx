@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -31,7 +31,10 @@ import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { useAppSettings } from "@/contexts/app-settings-context";
+import { usePublish } from "@/contexts/publish-context";
 import type { Category } from "@/data/mock-data";
+import type { LanguageCode } from "@/data/languages";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
@@ -1068,6 +1071,15 @@ type PreviousAvailabilityState = {
   status: CatalogItem["status"];
   scheduled: boolean;
 };
+type LocalizedStringList = Partial<Record<LanguageCode, string[]>>;
+type LocalizedStringValue = Partial<Record<LanguageCode, string | null>>;
+type CatalogItemUpsellState = {
+  recommendationIds?: string[];
+  sticker?: LocalizedStringValue;
+  tags?: LocalizedStringList;
+  keywords?: LocalizedStringList;
+};
+type CatalogUpsellStateByItem = Record<string, CatalogItemUpsellState>;
 
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
@@ -1089,6 +1101,9 @@ const CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY = "tasko.catalog.unavailableDispla
 const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
 const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
 const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
+const CATALOG_UPSELL_STORAGE_KEY = "tasko.catalog.upsellByItem";
+const STICKER_OPTIONS = ["Хит", "Новинка", "Акция", "Выбор гостей"];
+const KEYWORD_SUGGESTIONS = ["Обед", "Халяль", "Фастфуд", "Семейное", "Острое", "Завтрак"];
 
 type MediaKind = "photo" | "video";
 type MediaEntry = {
@@ -1109,17 +1124,74 @@ function buildPositionProblems(item: CatalogItem): string[] {
   return problems;
 }
 
-function AddInlineButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-1 rounded-md px-1 py-0.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
-    >
-      <Plus size={14} />
-      {label}
-    </button>
-  );
+function normalizeTokenList(values: string[]) {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  values.forEach((value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    next.push(trimmed);
+  });
+  return next;
+}
+
+function getLocalizedList(
+  values: LocalizedStringList | undefined,
+  language: LanguageCode,
+  fallback: string[] = [],
+) {
+  if (values && Object.prototype.hasOwnProperty.call(values, language)) {
+    return values[language] ?? [];
+  }
+  if (values && Object.prototype.hasOwnProperty.call(values, "ru")) {
+    return values.ru ?? [];
+  }
+  return fallback;
+}
+
+function getLocalizedValue(
+  values: LocalizedStringValue | undefined,
+  language: LanguageCode,
+  fallback: string | null = null,
+) {
+  if (values && Object.prototype.hasOwnProperty.call(values, language)) {
+    return values[language] ?? null;
+  }
+  if (values && Object.prototype.hasOwnProperty.call(values, "ru")) {
+    return values.ru ?? null;
+  }
+  return fallback;
+}
+
+function buildDefaultRecommendationIds(item: CatalogItem, items: CatalogItem[]) {
+  if (item.recommendationsCount <= 0) return [];
+  return items
+    .filter((candidate) => candidate.id !== item.id && candidate.status !== "archive")
+    .slice(0, item.recommendationsCount)
+    .map((candidate) => candidate.id);
+}
+
+function resolveRecommendationIds(
+  item: CatalogItem,
+  items: CatalogItem[],
+  state?: CatalogItemUpsellState,
+) {
+  return state?.recommendationIds ?? buildDefaultRecommendationIds(item, items);
+}
+
+function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+function getItemSearchText(item: CatalogItem) {
+  return `${item.title} ${item.sectionName}`.toLowerCase();
 }
 
 function MediaTile({
@@ -1849,61 +1921,502 @@ function KbjuBlock({ weightUnit, onRemove }: { weightUnit: string; onRemove: () 
   );
 }
 
-function PromoSectionBlock({ title, empty, addLabel, chips, note }: {
-  title: string;
-  empty: string;
-  addLabel: string;
-  chips?: GuestProperty[];
-  note?: string;
-}) {
+function CatalogThumb({ item, size = 30 }: { item: CatalogItem; size?: number }) {
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[13px] font-semibold text-[#292524]">{title}</h3>
-        <AddInlineButton label={addLabel} onClick={() => {}} />
-      </div>
-      {note ? (
-        <p className="text-[13px] text-[#57534d]">{note}</p>
-      ) : chips && chips.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {chips.map((chip) => (
-            <AttributeBadge key={chip.label} property={chip} />
-          ))}
-        </div>
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f5f5f4]"
+      style={{ width: size, height: size }}
+    >
+      {item.thumbnailUrl ? (
+        <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
       ) : (
-        <p className="text-[13px] text-zinc-400">{empty}</p>
+        <ImageBroken size={size <= 24 ? 13 : 16} className="text-[#a8a29e]" />
       )}
-    </div>
+    </span>
   );
 }
 
-function PromoTab({ item }: { item: CatalogItem }) {
+function PromoChip({ children }: { children: ReactNode }) {
   return (
-    <div className="space-y-5">
-      <PromoSectionBlock
-        title="Рекомендации"
-        empty="Нет рекомендаций"
-        addLabel="Добавить рекомендацию"
-        note={
-          item.recommendationsCount > 0
-            ? `${item.recommendationsCount} ${plural(item.recommendationsCount, "рекомендация настроена", "рекомендации настроено", "рекомендаций настроено")}`
-            : undefined
-        }
-      />
-      <div className="h-px bg-[#f0efe9]" />
-      <PromoSectionBlock
-        title="Стикеры"
-        empty="Нет стикеров"
-        addLabel="Добавить стикер"
-        chips={item.guestLabels.map((label) => ({ label, icon: "label" }))}
-      />
-      <div className="h-px bg-[#f0efe9]" />
-      <PromoSectionBlock
-        title="Теги"
-        empty="Нет тегов"
-        addLabel="Добавить тег"
-        chips={item.tags.map((tag) => ({ label: tag, icon: "tag" }))}
-      />
+    <span className="inline-flex h-[18px] max-w-[180px] items-center rounded-[5px] bg-[#f5f5f4] px-1.5 text-[11px] font-medium leading-[18px] text-[#292524]">
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function PromoLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <Tooltip label={tooltip} side="top">
+      <span className="cursor-default border-b border-dotted border-[#a8a29e] text-[13px] font-medium leading-5 text-[#292524]">
+        {label}
+      </span>
+    </Tooltip>
+  );
+}
+
+function ItemSelectorDialog({
+  currentItem,
+  items,
+  selectedIds,
+  onAdd,
+  onClose,
+}: {
+  currentItem: CatalogItem;
+  items: CatalogItem[];
+  selectedIds: string[];
+  onAdd: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const selectedSet = new Set(selectedIds);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleItems = items
+    .filter((candidate) => candidate.status !== "archive")
+    .filter((candidate) => !normalizedQuery || getItemSearchText(candidate).includes(normalizedQuery))
+    .slice(0, 80);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const toggle = (id: string) => {
+    setCheckedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
+  const submit = () => {
+    const next = checkedIds.filter((id) => id !== currentItem.id && !selectedSet.has(id));
+    if (next.length === 0) return;
+    onAdd(next);
+    onClose();
+  };
+
+  return (
+    createPortal(
+      <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Добавить рекомендацию">
+        <div className="w-full max-w-[420px] overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+          <div className="border-b border-[#eceae7] px-4 py-3">
+            <div className="text-[14px] font-medium text-[#292524]">Добавить рекомендацию</div>
+            <label className="mt-3 flex h-9 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[#a8a29e]">
+              <MagnifyingGlass size={15} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoFocus
+                placeholder="Найти позицию"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+              />
+            </label>
+          </div>
+          <div className="max-h-[340px] overflow-y-auto p-2">
+            {visibleItems.map((candidate) => {
+              const isSelf = candidate.id === currentItem.id;
+              const isDuplicate = selectedSet.has(candidate.id);
+              const disabled = isSelf || isDuplicate;
+              const checked = checkedIds.includes(candidate.id);
+              return (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggle(candidate.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    disabled ? "cursor-not-allowed opacity-45" : "hover:bg-[#f5f5f4]",
+                  )}
+                >
+                  <CatalogThumb item={candidate} size={30} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium leading-4 text-[#292524]">{candidate.title}</span>
+                    <span className="block truncate text-[12px] leading-4 text-[#79716b]">
+                      {isSelf ? "Текущая позиция" : isDuplicate ? "Уже добавлена" : candidate.sectionName}
+                    </span>
+                  </span>
+                  <span className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                    checked ? "border-[#292524] bg-[#292524] text-white" : "border-[#d6d3d1] text-transparent",
+                  )}>
+                    <CheckCircle size={14} weight="fill" />
+                  </span>
+                </button>
+              );
+            })}
+            {visibleItems.length === 0 && (
+              <div className="px-3 py-5 text-center text-[13px] text-[#79716b]">Позиции не найдены</div>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
+            <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
+              Отмена
+            </button>
+            <button
+              type="button"
+              disabled={checkedIds.length === 0}
+              onClick={submit}
+              className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]"
+            >
+              Добавить
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+  );
+}
+
+function TokenSelectorDialog({
+  title,
+  description,
+  values,
+  suggestions,
+  placeholder,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  values: string[];
+  suggestions: string[];
+  placeholder: string;
+  onSave: (values: string[]) => void;
+  onClose: () => void;
+}) {
+  const [draftValues, setDraftValues] = useState(values);
+  const [draft, setDraft] = useState("");
+  const normalizedSet = new Set(draftValues.map((value) => value.trim().toLowerCase()));
+  const addValue = (value: string) => {
+    const [normalized] = normalizeTokenList([value]);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (normalizedSet.has(key)) return;
+    setDraftValues((current) => [...current, normalized]);
+    setDraft("");
+  };
+  const removeValue = (value: string) => {
+    setDraftValues((current) => current.filter((candidate) => candidate !== value));
+  };
+  const submit = () => {
+    onSave(normalizeTokenList(draftValues));
+    onClose();
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="flex max-h-[82vh] w-full max-w-[380px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+        <div className="border-b border-[#eceae7] px-4 py-3">
+          <div className="text-[14px] font-medium text-[#292524]">{title}</div>
+          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">{description}</div>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <div className="flex flex-wrap gap-1.5">
+            {draftValues.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => removeValue(value)}
+                className="inline-flex h-6 max-w-[180px] items-center gap-1 rounded-[7px] bg-[#f5f5f4] px-2 text-[12px] font-medium text-[#292524] transition hover:bg-[#eceae7]"
+                title="Убрать значение"
+              >
+                <span className="truncate">{value}</span>
+                <XCircle size={13} className="text-[#a8a29e]" />
+              </button>
+            ))}
+            {draftValues.length === 0 && <div className="text-[13px] text-[#a8a29e]">Значения не добавлены</div>}
+          </div>
+          <label className="flex h-9 items-center gap-2 rounded-[9px] border border-[#e7e5e4] px-2.5">
+            <PlusCircle size={15} className="text-[#a8a29e]" />
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                addValue(draft);
+              }}
+              placeholder={placeholder}
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+            />
+          </label>
+          {suggestions.length > 0 && (
+            <div className="flex max-h-[150px] flex-wrap gap-1.5 overflow-y-auto pr-1">
+              {suggestions.map((suggestion) => {
+                const disabled = normalizedSet.has(suggestion.toLowerCase());
+                return (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => addValue(suggestion)}
+                    className="h-6 rounded-[7px] bg-[#fafaf9] px-2 text-[12px] text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {suggestion}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
+          <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
+            Отмена
+          </button>
+          <button type="button" onClick={submit} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">
+            Сохранить
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function PromoCompactCard({
+  label,
+  tooltip,
+  children,
+  onClick,
+}: {
+  label: string;
+  tooltip: string;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    >
+      <span className="shrink-0">
+        <PromoLabel label={label} tooltip={tooltip} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</span>
+    </button>
+  );
+}
+
+function PromoTab({
+  item,
+  allItems,
+  upsell,
+  onChange,
+}: {
+  item: CatalogItem;
+  allItems: CatalogItem[];
+  upsell: CatalogItemUpsellState;
+  onChange: (next: CatalogItemUpsellState) => void;
+}) {
+  const { contentLanguage } = useAppSettings();
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [tokenDialog, setTokenDialog] = useState<"tags" | "keywords" | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const recommendationIds = resolveRecommendationIds(item, allItems, upsell);
+  const recommendations = recommendationIds
+    .map((id) => allItems.find((candidate) => candidate.id === id))
+    .filter((candidate): candidate is CatalogItem => Boolean(candidate));
+  const sticker = getLocalizedValue(upsell.sticker, contentLanguage, item.guestLabels[0] ?? null);
+  const tags = getLocalizedList(upsell.tags, contentLanguage, item.tags);
+  const keywords = getLocalizedList(upsell.keywords, contentLanguage, []);
+  const tagSuggestions = useMemo(
+    () => normalizeTokenList([...allItems.flatMap((candidate) => candidate.tags), "Содержит орехи"]).slice(0, 24),
+    [allItems],
+  );
+
+  const patch = (next: CatalogItemUpsellState) => onChange(next);
+  const setRecommendationIds = (ids: string[]) => patch({ ...upsell, recommendationIds: ids });
+  const updateLocalizedList = (key: "tags" | "keywords", values: string[]) => {
+    patch({
+      ...upsell,
+      [key]: {
+        ...(upsell[key] ?? {}),
+        [contentLanguage]: normalizeTokenList(values),
+      },
+    });
+  };
+  const updateSticker = (value: string | null) => {
+    patch({
+      ...upsell,
+      sticker: {
+        ...(upsell.sticker ?? {}),
+        [contentLanguage]: value,
+      },
+    });
+  };
+  const reorderRecommendation = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setRecommendationIds(moveArrayItem(recommendationIds, fromIndex, toIndex));
+  };
+  const handleDrop = (toIndex: number) => {
+    if (dragIndex == null) return;
+    reorderRecommendation(dragIndex, toIndex);
+    setDragIndex(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(12,12,13,0.05)]">
+        <div className="px-4 py-3">
+          <h3 className="text-[15px] font-medium leading-5 text-[#292524]">Рекомендации</h3>
+          <p className="text-[13px] leading-5 text-[#79716b]">показываются гостю при открытии позиции</p>
+        </div>
+        {recommendations.length > 0 ? (
+          <div className="space-y-3 px-4 pb-3">
+            {recommendations.map((recommended, index) => (
+              <div
+                key={recommended.id}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleDrop(index);
+                }}
+                className={cn(
+                  "group flex h-[30px] items-center gap-2 rounded-[8px] transition hover:bg-[#f8f7f4]",
+                  dragIndex === index && "bg-[#f5f5f4] opacity-70",
+                )}
+              >
+                <Tooltip label="Изменить порядок" side="top">
+                  <button
+                    type="button"
+                    draggable
+                    aria-label="Изменить порядок рекомендации"
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      setDragIndex(index);
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        reorderRecommendation(index, Math.max(0, index - 1));
+                      }
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        reorderRecommendation(index, Math.min(recommendations.length - 1, index + 1));
+                      }
+                    }}
+                    className="flex h-[30px] w-5 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <DotsSixVertical size={16} />
+                  </button>
+                </Tooltip>
+                <CatalogThumb item={recommended} size={30} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#292524]">{recommended.title}</span>
+                <Tooltip label="Удалить рекомендацию" side="top">
+                  <button
+                    type="button"
+                    aria-label="Удалить рекомендацию"
+                    onClick={() => setRecommendationIds(recommendationIds.filter((id) => id !== recommended.id))}
+                    className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100"
+                  >
+                    <XCircle size={18} />
+                  </button>
+                </Tooltip>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 pb-3">
+            <div className="rounded-[10px] bg-[#fafaf9] px-3 py-3">
+              <div className="text-[13px] font-medium text-[#292524]">Рекомендации не добавлены</div>
+              <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Добавьте позиции, которые увидит гость при открытии этой позиции</div>
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setSelectorOpen(true)}
+          className="flex h-[34px] w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+        >
+          <PlusCircle size={16} className="text-[#79716b]" />
+          Добавить рекомендацию
+        </button>
+      </div>
+
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="shrink-0">
+              <PromoLabel label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {sticker ? <PromoChip>{sticker}</PromoChip> : <span className="text-[13px] text-[#a8a29e]">Добавить стикер</span>}
+            </span>
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="start">
+          {STICKER_OPTIONS.map((option) => (
+            <DropdownActionItem key={option} onSelect={() => updateSticker(option)}>
+              <span className="flex w-full items-center justify-between gap-3">
+                <span>{option}</span>
+                {sticker === option && <CheckCircle size={14} weight="fill" className="text-[#292524]" />}
+              </span>
+            </DropdownActionItem>
+          ))}
+          {sticker && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <DropdownActionItem tone="danger" onSelect={() => updateSticker(null)}>Убрать стикер</DropdownActionItem>
+            </>
+          )}
+        </DropdownContent>
+      </DropdownMenu.Root>
+
+      <PromoCompactCard label="Теги" tooltip="Помогают гостю понять особенности и состав позиции" onClick={() => setTokenDialog("tags")}>
+        {tags.length > 0 ? tags.map((tag) => <PromoChip key={tag}>{tag}</PromoChip>) : <span className="text-[13px] text-[#a8a29e]">Добавить тег</span>}
+        <PlusCircle size={16} className="shrink-0 text-[#79716b]" />
+      </PromoCompactCard>
+
+      <PromoCompactCard label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню" onClick={() => setTokenDialog("keywords")}>
+        {keywords.length > 0 ? keywords.map((keyword) => <PromoChip key={keyword}>{keyword}</PromoChip>) : <span className="text-[13px] text-[#a8a29e]">Добавить ключевое слово</span>}
+        <PlusCircle size={16} className="shrink-0 text-[#79716b]" />
+      </PromoCompactCard>
+
+      {selectorOpen && (
+        <ItemSelectorDialog
+          currentItem={item}
+          items={allItems}
+          selectedIds={recommendationIds}
+          onAdd={(ids) => setRecommendationIds([...recommendationIds, ...ids.filter((id) => !recommendationIds.includes(id) && id !== item.id)])}
+          onClose={() => setSelectorOpen(false)}
+        />
+      )}
+      {tokenDialog === "tags" && (
+        <TokenSelectorDialog
+          title="Теги"
+          description="Помогают гостю понять особенности и состав позиции"
+          values={tags}
+          suggestions={tagSuggestions}
+          placeholder="Например, Содержит орехи"
+          onSave={(values) => updateLocalizedList("tags", values)}
+          onClose={() => setTokenDialog(null)}
+        />
+      )}
+      {tokenDialog === "keywords" && (
+        <TokenSelectorDialog
+          title="Ключевые слова"
+          description="Используются для поиска позиции в онлайн-меню"
+          values={keywords}
+          suggestions={KEYWORD_SUGGESTIONS}
+          placeholder="Например, Обед"
+          onSave={(values) => updateLocalizedList("keywords", values)}
+          onClose={() => setTokenDialog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2448,6 +2961,9 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
 
 function PositionEditor({
   item,
+  allItems,
+  upsell,
+  onUpsellChange,
   stopBusy,
   onArchiveItem,
   onRestoreItem,
@@ -2463,6 +2979,9 @@ function PositionEditor({
   onRequestPermanentDelete,
 }: {
   item: CatalogItem;
+  allItems: CatalogItem[];
+  upsell: CatalogItemUpsellState;
+  onUpsellChange: (next: CatalogItemUpsellState) => void;
   stopBusy: boolean;
   onArchiveItem: (item: CatalogItem) => void;
   onRestoreItem: (item: CatalogItem) => void;
@@ -2648,7 +3167,14 @@ function PositionEditor({
                   onRemoveMedia={removeMedia}
                 />
               )}
-              {activeTab === "promo" && <PromoTab item={item} />}
+              {activeTab === "promo" && (
+                <PromoTab
+                  item={item}
+                  allItems={allItems}
+                  upsell={upsell}
+                  onChange={onUpsellChange}
+                />
+              )}
               {activeTab === "options" && (
                 <PlaceholderTab title="Опции и добавки">
                   {item.optionsCount > 0 || item.modifiersCount > 0
@@ -3474,6 +4000,8 @@ function PopulatedWorkspace({
 }: {
   sections: TreeSection[];
 }) {
+  const { contentLanguage } = useAppSettings();
+  const { registerChange } = usePublish();
   const preferredSectionId =
     catalogSections.find((section) => section.name === "Горячие блюда")?.id ??
     SECTIONS_WITH_ITEMS[0]?.id ??
@@ -3518,6 +4046,9 @@ function PopulatedWorkspace({
   const [sectionStatusOverrides, setSectionStatusOverrides] = useState<Record<string, SectionStatus>>(() =>
     readJsonRecord<Record<string, SectionStatus>>(CATALOG_SECTION_STATUS_STORAGE_KEY, {}),
   );
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
+    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
+  );
   const [deletedItemIds, setDeletedItemIds] = useState<Set<string>>(new Set());
   const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
@@ -3545,10 +4076,21 @@ function PopulatedWorkspace({
     .map((item) => {
       const status = itemStatusOverrides[item.id];
       const scheduled = itemScheduledOverrides[item.id];
+      const upsell = upsellByItem[item.id];
+      const recommendationIds = resolveRecommendationIds(
+        { ...item, status: status ?? item.status, scheduled: scheduled ?? item.scheduled },
+        baseItems,
+        upsell,
+      );
+      const sticker = getLocalizedValue(upsell?.sticker, contentLanguage, item.guestLabels[0] ?? null);
+      const tags = getLocalizedList(upsell?.tags, contentLanguage, item.tags);
       return {
         ...item,
         status: status ?? item.status,
         scheduled: scheduled ?? item.scheduled,
+        guestLabels: sticker ? [sticker] : [],
+        tags,
+        recommendationsCount: recommendationIds.length,
       };
     });
   const section = allSections.find((s) => s.id === selectedSectionId) ?? null;
@@ -3644,6 +4186,15 @@ function PopulatedWorkspace({
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_STATUS_STORAGE_KEY, sectionStatusOverrides);
   }, [sectionStatusOverrides]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
+  }, [upsellByItem]);
+
+  const updateUpsell = (itemId: string, next: CatalogItemUpsellState) => {
+    setUpsellByItem((prev) => ({ ...prev, [itemId]: next }));
+    registerChange("catalog");
+  };
 
   const archiveSection = (target: TreeSection | null = section) => {
     if (!target) return;
@@ -3878,6 +4429,9 @@ function PopulatedWorkspace({
           selectedItem ? (
             <PositionEditor
               item={selectedItem}
+              allItems={allItems}
+              upsell={upsellByItem[selectedItem.id] ?? {}}
+              onUpsellChange={(next) => updateUpsell(selectedItem.id, next)}
               stopBusy={stopBusyIds.has(selectedItem.id)}
               onArchiveItem={archiveItem}
               onRestoreItem={restoreItem}
