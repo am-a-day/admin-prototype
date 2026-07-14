@@ -423,8 +423,7 @@ function AppShell() {
 
   const wide = viewportWidth >= 1024;        // inline full sidebar fits
   const showInlineSidebar = viewportWidth >= 768; // tablet+ shows at least a rail
-  // Desktop follows the current Figma screen: fixed icon rail.
-  const inlineSidebarMode: SidebarMode = "rail";
+  const inlineSidebarMode: SidebarMode = wide && userSidebarPreference === "expanded" ? "full" : "rail";
   const desktopRail = wide && inlineSidebarMode === "rail"; // пользователь свернул сайдбар на десктопе
 
   const setPreference = (next: Exclude<SidebarPreference, null>) => {
@@ -444,16 +443,41 @@ function AppShell() {
   // навигацию поверх контента, не сдвигая layout. Задержки — hover intent.
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const flyoutTimer = useRef<number | null>(null);
+  const pointerX = useRef<number>(Number.POSITIVE_INFINITY);
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      pointerX.current = event.clientX;
+    };
+
+    document.addEventListener("pointermove", onPointerMove);
+    return () => document.removeEventListener("pointermove", onPointerMove);
+  }, []);
   const scheduleFlyout = (open: boolean, delay: number) => {
     if (flyoutTimer.current) window.clearTimeout(flyoutTimer.current);
-    flyoutTimer.current = window.setTimeout(() => setFlyoutOpen(open), delay);
+    flyoutTimer.current = window.setTimeout(() => {
+      if (!open && desktopRail && pointerX.current <= 192) return;
+      setFlyoutOpen(open);
+    }, delay);
   };
   const pinSidebar = () => {
     setPreference("expanded");
     setFlyoutOpen(false);
   };
+  const unpinSidebar = () => {
+    setPreference("collapsed");
+  };
   useEffect(() => {
     if (!desktopRail && flyoutOpen) setFlyoutOpen(false);
+  }, [desktopRail, flyoutOpen]);
+  useEffect(() => {
+    if (!desktopRail || !flyoutOpen) return;
+
+    const onPointerMove = () => {
+      scheduleFlyout(pointerX.current <= 192, pointerX.current <= 192 ? 0 : 150);
+    };
+
+    document.addEventListener("pointermove", onPointerMove);
+    return () => document.removeEventListener("pointermove", onPointerMove);
   }, [desktopRail, flyoutOpen]);
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
@@ -699,15 +723,19 @@ function AppShell() {
             inlineSidebarMode === "rail" ? "w-[46px]" : "w-48",
           )}
           onMouseEnter={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
-          onMouseLeave={desktopRail ? () => scheduleFlyout(false, 150) : undefined}
+          onMouseMove={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
         >
-          <Sidebar
-            section={section}
-            activeTab={activeTab}
-            onNavigate={guardedNavigate}
-            mode={inlineSidebarMode}
-            showTooltips={!wide}
-          />
+          <div className={cn("flex min-h-0 flex-1 flex-col", desktopRail && flyoutOpen && "pointer-events-none")}>
+            <Sidebar
+              section={section}
+              activeTab={activeTab}
+              onNavigate={guardedNavigate}
+              mode={inlineSidebarMode}
+              onPin={inlineSidebarMode === "full" ? unpinSidebar : undefined}
+              pinned={inlineSidebarMode === "full"}
+              showTooltips={!wide}
+            />
+          </div>
 
           {/* Flyout: панель «вырастает» из рейла по ширине (48→192), без fade.
               Внутренний слой фиксирован на 192px и не переверстывается — контейнер
@@ -715,9 +743,11 @@ function AppShell() {
           {desktopRail && (
             <div
               className={cn(
-                "absolute inset-y-0 left-0 z-40 overflow-hidden transition-[width] duration-150 ease-out",
-                flyoutOpen ? "w-48 shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
+                "fixed inset-y-0 left-0 z-40 overflow-hidden transition-[width] duration-150 ease-out",
+                flyoutOpen ? "z-[80] w-48 pointer-events-auto shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
               )}
+              onMouseEnter={() => scheduleFlyout(true, 0)}
+              onMouseLeave={() => scheduleFlyout(false, 150)}
             >
               <div className="flex h-full w-48 flex-col bg-[#fbf9f6]">
                 <FullSidebar
@@ -725,6 +755,7 @@ function AppShell() {
                   activeTab={activeTab}
                   onNavigate={guardedNavigate}
                   onPin={pinSidebar}
+                  pinned={false}
                 />
               </div>
             </div>
@@ -741,7 +772,7 @@ function AppShell() {
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
           onToggleSidebar={wide ? toggleNav : undefined}
-          sidebarCollapsed
+          sidebarCollapsed={inlineSidebarMode === "rail"}
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
         />

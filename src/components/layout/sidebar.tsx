@@ -520,6 +520,8 @@ type NavProps = {
   onNavigate: (section: SectionId, tab: string) => void;
   onResetCatalog?: () => void;
   onToggleSidebar?: () => void;
+  onPin?: () => void;
+  pinned?: boolean;
 };
 
 function StartPlanBlock() {
@@ -550,7 +552,7 @@ function StartPlanBlock() {
   );
 }
 
-export function FullSidebar({ section, activeTab, onNavigate, onPin }: NavProps & { onPin?: () => void }) {
+export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false }: NavProps) {
   const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -560,8 +562,12 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin }: NavProps 
         {onPin && (
           <button
             type="button"
-            onClick={onPin}
-            title="Закрепить меню"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPin();
+            }}
+            title={pinned ? "Открепить меню" : "Закрепить меню"}
+            aria-pressed={pinned}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-700"
           >
             <Pin size={15} />
@@ -609,7 +615,7 @@ type SidebarProps = NavProps & {
   showTooltips?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false }: SidebarProps) {
   const isRail = mode === "rail";
 
   if (mode === "topbar") return null;
@@ -619,7 +625,7 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
       {isRail ? (
         <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} />
       ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} />
       )}
     </TooltipProvider>
   );
