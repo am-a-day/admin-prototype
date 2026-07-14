@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -34,7 +34,7 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
 import type { Category } from "@/data/mock-data";
-import type { LanguageCode } from "@/data/languages";
+import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
@@ -1071,13 +1071,16 @@ type PreviousAvailabilityState = {
   status: CatalogItem["status"];
   scheduled: boolean;
 };
-type LocalizedStringList = Partial<Record<LanguageCode, string[]>>;
-type LocalizedStringValue = Partial<Record<LanguageCode, string | null>>;
+type LocalizedValue = {
+  ru: string;
+  kk?: string;
+  en?: string;
+};
 type CatalogItemUpsellState = {
   recommendationIds?: string[];
-  sticker?: LocalizedStringValue;
-  tags?: LocalizedStringList;
-  keywords?: LocalizedStringList;
+  sticker?: LocalizedValue | null;
+  tags?: LocalizedValue[];
+  keywords?: LocalizedValue[];
 };
 type CatalogUpsellStateByItem = Record<string, CatalogItemUpsellState>;
 
@@ -1102,8 +1105,11 @@ const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
 const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
 const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
 const CATALOG_UPSELL_STORAGE_KEY = "tasko.catalog.upsellByItem";
-const STICKER_OPTIONS = ["Хит", "Новинка", "Акция", "Выбор гостей"];
-const KEYWORD_SUGGESTIONS = ["Обед", "Халяль", "Фастфуд", "Семейное", "Острое", "Завтрак"];
+const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
+  ru: "Например, Хит",
+  kk: "Мысалы, Хит",
+  en: "For example, Hit",
+};
 
 type MediaKind = "photo" | "video";
 type MediaEntry = {
@@ -1124,46 +1130,93 @@ function buildPositionProblems(item: CatalogItem): string[] {
   return problems;
 }
 
-function normalizeTokenList(values: string[]) {
+function getStringField(value: unknown, key: LanguageCode) {
+  if (!value || typeof value !== "object") return "";
+  const field = (value as Partial<Record<LanguageCode, unknown>>)[key];
+  return typeof field === "string" ? field : "";
+}
+
+function normalizeLocalizedValue(value: Partial<Record<LanguageCode, string>>): LocalizedValue | null {
+  const trimmed: Partial<Record<LanguageCode, string>> = {};
+  LANGUAGES.forEach((language) => {
+    const text = value[language.code]?.trim();
+    if (text) trimmed[language.code] = text;
+  });
+  const primary = trimmed.ru || trimmed.kk || trimmed.en;
+  if (!primary) return null;
+  return {
+    ru: trimmed.ru || primary,
+    ...(trimmed.kk ? { kk: trimmed.kk } : {}),
+    ...(trimmed.en ? { en: trimmed.en } : {}),
+  };
+}
+
+function normalizeLocalizedValues(values: Array<Partial<Record<LanguageCode, string>>>) {
   const seen = new Set<string>();
-  const next: string[] = [];
+  const normalized: LocalizedValue[] = [];
   values.forEach((value) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    const key = trimmed.toLowerCase();
+    const next = normalizeLocalizedValue(value);
+    if (!next) return;
+    const key = next.ru.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    next.push(trimmed);
+    normalized.push(next);
   });
-  return next;
+  return normalized;
 }
 
-function getLocalizedList(
-  values: LocalizedStringList | undefined,
-  language: LanguageCode,
-  fallback: string[] = [],
-) {
-  if (values && Object.prototype.hasOwnProperty.call(values, language)) {
-    return values[language] ?? [];
-  }
-  if (values && Object.prototype.hasOwnProperty.call(values, "ru")) {
-    return values.ru ?? [];
-  }
-  return fallback;
+function getLocalizedValueLabel(value: LocalizedValue | null | undefined, language: LanguageCode) {
+  if (!value) return null;
+  return value[language]?.trim() || value.ru.trim() || value.kk?.trim() || value.en?.trim() || null;
 }
 
-function getLocalizedValue(
-  values: LocalizedStringValue | undefined,
-  language: LanguageCode,
-  fallback: string | null = null,
-) {
-  if (values && Object.prototype.hasOwnProperty.call(values, language)) {
-    return values[language] ?? null;
+function getLocalizedValueFromUnknown(value: unknown, fallback: string | null = null) {
+  if (value === null) return null;
+  if (value === undefined) return fallback ? normalizeLocalizedValue({ ru: fallback }) : null;
+  const normalized = normalizeLocalizedValue({
+    ru: getStringField(value, "ru"),
+    kk: getStringField(value, "kk"),
+    en: getStringField(value, "en"),
+  });
+  return normalized ?? (fallback ? normalizeLocalizedValue({ ru: fallback }) : null);
+}
+
+function getLocalizedValuesFromUnknown(value: unknown, fallback: string[] = []) {
+  if (value === undefined) return normalizeLocalizedValues(fallback.map((text) => ({ ru: text })));
+  if (Array.isArray(value)) {
+    return normalizeLocalizedValues(
+      value.map((entry) => {
+        if (typeof entry === "string") return { ru: entry };
+        return {
+          ru: getStringField(entry, "ru"),
+          kk: getStringField(entry, "kk"),
+          en: getStringField(entry, "en"),
+        };
+      }),
+    );
   }
-  if (values && Object.prototype.hasOwnProperty.call(values, "ru")) {
-    return values.ru ?? null;
+  if (value && typeof value === "object") {
+    const legacy = value as Partial<Record<LanguageCode, unknown>>;
+    const lists = LANGUAGES.map((language) => ({
+      code: language.code,
+      values: Array.isArray(legacy[language.code]) ? legacy[language.code] as unknown[] : [],
+    }));
+    const length = Math.max(0, ...lists.map((entry) => entry.values.length));
+    return normalizeLocalizedValues(
+      Array.from({ length }, (_, index) => ({
+        ru: typeof lists[0].values[index] === "string" ? lists[0].values[index] as string : "",
+        kk: typeof lists[1].values[index] === "string" ? lists[1].values[index] as string : "",
+        en: typeof lists[2].values[index] === "string" ? lists[2].values[index] as string : "",
+      })),
+    );
   }
-  return fallback;
+  return [];
+}
+
+function getLocalizedValueLabels(values: LocalizedValue[], language: LanguageCode) {
+  return values
+    .map((value) => getLocalizedValueLabel(value, language))
+    .filter((value): value is string => Boolean(value));
 }
 
 function buildDefaultRecommendationIds(item: CatalogItem, items: CatalogItem[]) {
@@ -1936,10 +1989,41 @@ function CatalogThumb({ item, size = 30 }: { item: CatalogItem; size?: number })
   );
 }
 
-function PromoChip({ children }: { children: ReactNode }) {
+function PromoChip({
+  children,
+  onClick,
+  onRemove,
+  removeLabel,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  onRemove?: () => void;
+  removeLabel?: string;
+}) {
   return (
-    <span className="inline-flex h-[18px] max-w-[180px] items-center rounded-[5px] bg-[#f5f5f4] px-1.5 text-[11px] font-medium leading-[18px] text-[#292524]">
-      <span className="truncate">{children}</span>
+    <span className="group/chip inline-flex h-[22px] max-w-[190px] items-center rounded-[6px] bg-[#f5f5f4] pl-2 pr-1 text-[12px] font-medium leading-[22px] text-[#292524]">
+      <button
+        type="button"
+        onClick={onClick}
+        className="min-w-0 truncate rounded-[4px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        {children}
+      </button>
+      {onRemove && (
+        <Tooltip label={removeLabel ?? "Удалить"} side="top">
+          <button
+            type="button"
+            aria-label={removeLabel ?? "Удалить"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemove();
+            }}
+            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[#a8a29e] opacity-0 transition hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover/chip:opacity-100"
+          >
+            <XCircle size={13} />
+          </button>
+        </Tooltip>
+      )}
     </span>
   );
 }
@@ -2068,41 +2152,43 @@ function ItemSelectorDialog({
   );
 }
 
-function TokenSelectorDialog({
-  title,
-  description,
-  values,
-  suggestions,
-  placeholder,
+function LocalizedValueInputs({
+  value,
+  onChange,
+  autoFocus = false,
+}: {
+  value: Partial<Record<LanguageCode, string>>;
+  onChange: (next: Partial<Record<LanguageCode, string>>) => void;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {LANGUAGES.map((language, index) => (
+        <label key={language.code} className="block">
+          <span className="mb-1 block text-[12px] leading-4 text-[#79716b]">{language.label}</span>
+          <input
+            value={value[language.code] ?? ""}
+            onChange={(event) => onChange({ ...value, [language.code]: event.target.value })}
+            autoFocus={autoFocus && index === 0}
+            placeholder={LOCALIZED_VALUE_PLACEHOLDERS[language.code]}
+            className="h-9 w-full rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function StickerEditorDialog({
+  value,
   onSave,
   onClose,
 }: {
-  title: string;
-  description: string;
-  values: string[];
-  suggestions: string[];
-  placeholder: string;
-  onSave: (values: string[]) => void;
+  value: LocalizedValue | null;
+  onSave: (value: LocalizedValue | null) => void;
   onClose: () => void;
 }) {
-  const [draftValues, setDraftValues] = useState(values);
-  const [draft, setDraft] = useState("");
-  const normalizedSet = new Set(draftValues.map((value) => value.trim().toLowerCase()));
-  const addValue = (value: string) => {
-    const [normalized] = normalizeTokenList([value]);
-    if (!normalized) return;
-    const key = normalized.toLowerCase();
-    if (normalizedSet.has(key)) return;
-    setDraftValues((current) => [...current, normalized]);
-    setDraft("");
-  };
-  const removeValue = (value: string) => {
-    setDraftValues((current) => current.filter((candidate) => candidate !== value));
-  };
-  const submit = () => {
-    onSave(normalizeTokenList(draftValues));
-    onClose();
-  };
+  const [draft, setDraft] = useState<Partial<Record<LanguageCode, string>>>(value ?? { ru: "" });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2112,61 +2198,121 @@ function TokenSelectorDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const submit = () => {
+    onSave(normalizeLocalizedValue(draft));
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Стикер">
+      <div className="flex max-h-[82vh] w-full max-w-[380px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+        <div className="border-b border-[#eceae7] px-4 py-3">
+          <div className="text-[14px] font-medium text-[#292524]">Стикер</div>
+          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Заполните значение для нужных языков</div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <LocalizedValueInputs value={draft} onChange={setDraft} autoFocus />
+        </div>
+        <div className="flex shrink-0 justify-between gap-2 border-t border-[#eceae7] px-4 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              onSave(null);
+              onClose();
+            }}
+            className="h-8 rounded-[8px] px-3 text-[13px] text-[#dc2626] transition hover:bg-[#fef2f2]"
+          >
+            Убрать
+          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
+              Отмена
+            </button>
+            <button type="button" onClick={submit} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">
+              Сохранить
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function LocalizedValuesDialog({
+  title,
+  description,
+  values,
+  valueLabel,
+  addLabel,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  values: LocalizedValue[];
+  valueLabel: string;
+  addLabel: string;
+  onSave: (values: LocalizedValue[]) => void;
+  onClose: () => void;
+}) {
+  const [draftValues, setDraftValues] = useState<Array<Partial<Record<LanguageCode, string>>>>(
+    values.length > 0 ? values : [{ ru: "" }],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const updateValue = (index: number, value: Partial<Record<LanguageCode, string>>) => {
+    setDraftValues((current) => current.map((entry, entryIndex) => entryIndex === index ? value : entry));
+  };
+  const removeValue = (index: number) => {
+    setDraftValues((current) => current.filter((_, entryIndex) => entryIndex !== index));
+  };
+  const submit = () => {
+    onSave(normalizeLocalizedValues(draftValues));
+    onClose();
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="flex max-h-[82vh] w-full max-w-[380px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+      <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
         <div className="border-b border-[#eceae7] px-4 py-3">
           <div className="text-[14px] font-medium text-[#292524]">{title}</div>
           <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">{description}</div>
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          <div className="flex flex-wrap gap-1.5">
-            {draftValues.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => removeValue(value)}
-                className="inline-flex h-6 max-w-[180px] items-center gap-1 rounded-[7px] bg-[#f5f5f4] px-2 text-[12px] font-medium text-[#292524] transition hover:bg-[#eceae7]"
-                title="Убрать значение"
-              >
-                <span className="truncate">{value}</span>
-                <XCircle size={13} className="text-[#a8a29e]" />
-              </button>
-            ))}
-            {draftValues.length === 0 && <div className="text-[13px] text-[#a8a29e]">Значения не добавлены</div>}
-          </div>
-          <label className="flex h-9 items-center gap-2 rounded-[9px] border border-[#e7e5e4] px-2.5">
-            <PlusCircle size={15} className="text-[#a8a29e]" />
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                addValue(draft);
-              }}
-              placeholder={placeholder}
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-            />
-          </label>
-          {suggestions.length > 0 && (
-            <div className="flex max-h-[150px] flex-wrap gap-1.5 overflow-y-auto pr-1">
-              {suggestions.map((suggestion) => {
-                const disabled = normalizedSet.has(suggestion.toLowerCase());
-                return (
+          {draftValues.map((value, index) => (
+            <div key={index} className="rounded-[11px] border border-[#eceae7] bg-[#fafaf9] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-[13px] font-medium text-[#292524]">{valueLabel} {index + 1}</div>
+                <Tooltip label="Удалить значение" side="top">
                   <button
-                    key={suggestion}
                     type="button"
-                    disabled={disabled}
-                    onClick={() => addValue(suggestion)}
-                    className="h-6 rounded-[7px] bg-[#fafaf9] px-2 text-[12px] text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Удалить значение"
+                    onClick={() => removeValue(index)}
+                    className="flex h-6 w-6 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-white hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    {suggestion}
+                    <XCircle size={16} />
                   </button>
-                );
-              })}
+                </Tooltip>
+              </div>
+              <LocalizedValueInputs value={value} onChange={(next) => updateValue(index, next)} autoFocus={index === 0} />
             </div>
-          )}
+          ))}
+          <button
+            type="button"
+            onClick={() => setDraftValues((current) => [...current, { ru: "" }])}
+            className="flex h-8 items-center gap-2 rounded-[8px] px-1 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
+          >
+            <PlusCircle size={16} className="text-[#79716b]" />
+            {addLabel}
+          </button>
         </div>
         <div className="flex shrink-0 justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
           <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
@@ -2194,16 +2340,16 @@ function PromoCompactCard({
   onClick?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-    >
-      <span className="shrink-0">
+    <div className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc]">
+      <button
+        type="button"
+        onClick={onClick}
+        className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
         <PromoLabel label={label} tooltip={tooltip} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</span>
-    </button>
+      </button>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
+    </div>
   );
 }
 
@@ -2220,39 +2366,24 @@ function PromoTab({
 }) {
   const { contentLanguage } = useAppSettings();
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const [tokenDialog, setTokenDialog] = useState<"tags" | "keywords" | null>(null);
+  const [localizedDialog, setLocalizedDialog] = useState<"sticker" | "tags" | "keywords" | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const recommendationIds = resolveRecommendationIds(item, allItems, upsell);
   const recommendations = recommendationIds
     .map((id) => allItems.find((candidate) => candidate.id === id))
     .filter((candidate): candidate is CatalogItem => Boolean(candidate));
-  const sticker = getLocalizedValue(upsell.sticker, contentLanguage, item.guestLabels[0] ?? null);
-  const tags = getLocalizedList(upsell.tags, contentLanguage, item.tags);
-  const keywords = getLocalizedList(upsell.keywords, contentLanguage, []);
-  const tagSuggestions = useMemo(
-    () => normalizeTokenList([...allItems.flatMap((candidate) => candidate.tags), "Содержит орехи"]).slice(0, 24),
-    [allItems],
-  );
+  const stickerValue = getLocalizedValueFromUnknown(upsell.sticker, item.guestLabels[0] ?? null);
+  const tagValues = getLocalizedValuesFromUnknown(upsell.tags, item.tags);
+  const keywordValues = getLocalizedValuesFromUnknown(upsell.keywords, []);
+  const sticker = getLocalizedValueLabel(stickerValue, contentLanguage);
 
   const patch = (next: CatalogItemUpsellState) => onChange(next);
   const setRecommendationIds = (ids: string[]) => patch({ ...upsell, recommendationIds: ids });
-  const updateLocalizedList = (key: "tags" | "keywords", values: string[]) => {
-    patch({
-      ...upsell,
-      [key]: {
-        ...(upsell[key] ?? {}),
-        [contentLanguage]: normalizeTokenList(values),
-      },
-    });
+  const updateLocalizedList = (key: "tags" | "keywords", values: LocalizedValue[]) => {
+    patch({ ...upsell, [key]: normalizeLocalizedValues(values) });
   };
-  const updateSticker = (value: string | null) => {
-    patch({
-      ...upsell,
-      sticker: {
-        ...(upsell.sticker ?? {}),
-        [contentLanguage]: value,
-      },
-    });
+  const updateSticker = (value: LocalizedValue | null) => {
+    patch({ ...upsell, sticker: value });
   };
   const reorderRecommendation = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
@@ -2327,11 +2458,8 @@ function PromoTab({
             ))}
           </div>
         ) : (
-          <div className="px-4 pb-3">
-            <div className="rounded-[10px] bg-[#fafaf9] px-3 py-3">
-              <div className="text-[13px] font-medium text-[#292524]">Рекомендации не добавлены</div>
-              <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Добавьте позиции, которые увидит гость при открытии этой позиции</div>
-            </div>
+          <div className="px-4 pb-3 text-[13px] leading-5 text-[#a8a29e]">
+            Рекомендации не добавлены
           </div>
         )}
         <button
@@ -2344,46 +2472,90 @@ function PromoTab({
         </button>
       </div>
 
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
+      <PromoCompactCard label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню" onClick={() => setLocalizedDialog("sticker")}>
+        {sticker ? (
+          <PromoChip
+            onClick={() => setLocalizedDialog("sticker")}
+            onRemove={() => updateSticker(null)}
+            removeLabel="Убрать стикер"
+          >
+            {sticker}
+          </PromoChip>
+        ) : (
           <button
             type="button"
-            className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            onClick={() => setLocalizedDialog("sticker")}
+            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <span className="shrink-0">
-              <PromoLabel label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню" />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              {sticker ? <PromoChip>{sticker}</PromoChip> : <span className="text-[13px] text-[#a8a29e]">Добавить стикер</span>}
-            </span>
+            Добавить стикер
           </button>
-        </DropdownMenu.Trigger>
-        <DropdownContent align="start">
-          {STICKER_OPTIONS.map((option) => (
-            <DropdownActionItem key={option} onSelect={() => updateSticker(option)}>
-              <span className="flex w-full items-center justify-between gap-3">
-                <span>{option}</span>
-                {sticker === option && <CheckCircle size={14} weight="fill" className="text-[#292524]" />}
-              </span>
-            </DropdownActionItem>
-          ))}
-          {sticker && (
-            <>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownActionItem tone="danger" onSelect={() => updateSticker(null)}>Убрать стикер</DropdownActionItem>
-            </>
-          )}
-        </DropdownContent>
-      </DropdownMenu.Root>
-
-      <PromoCompactCard label="Теги" tooltip="Помогают гостю понять особенности и состав позиции" onClick={() => setTokenDialog("tags")}>
-        {tags.length > 0 ? tags.map((tag) => <PromoChip key={tag}>{tag}</PromoChip>) : <span className="text-[13px] text-[#a8a29e]">Добавить тег</span>}
-        <PlusCircle size={16} className="shrink-0 text-[#79716b]" />
+        )}
       </PromoCompactCard>
 
-      <PromoCompactCard label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню" onClick={() => setTokenDialog("keywords")}>
-        {keywords.length > 0 ? keywords.map((keyword) => <PromoChip key={keyword}>{keyword}</PromoChip>) : <span className="text-[13px] text-[#a8a29e]">Добавить ключевое слово</span>}
-        <PlusCircle size={16} className="shrink-0 text-[#79716b]" />
+      <PromoCompactCard label="Теги" tooltip="Помогают гостю понять особенности и состав позиции" onClick={() => setLocalizedDialog("tags")}>
+        {tagValues.length > 0 ? tagValues.map((tag, index) => {
+          const label = getLocalizedValueLabel(tag, contentLanguage);
+          if (!label) return null;
+          return (
+            <PromoChip
+              key={`${tag.ru}-${index}`}
+              onClick={() => setLocalizedDialog("tags")}
+              onRemove={() => updateLocalizedList("tags", tagValues.filter((_, valueIndex) => valueIndex !== index))}
+              removeLabel="Удалить тег"
+            >
+              {label}
+            </PromoChip>
+          );
+        }) : (
+          <button
+            type="button"
+            onClick={() => setLocalizedDialog("tags")}
+            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Добавить тег
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="Добавить тег"
+          onClick={() => setLocalizedDialog("tags")}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <PlusCircle size={16} />
+        </button>
+      </PromoCompactCard>
+
+      <PromoCompactCard label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню" onClick={() => setLocalizedDialog("keywords")}>
+        {keywordValues.length > 0 ? keywordValues.map((keyword, index) => {
+          const label = getLocalizedValueLabel(keyword, contentLanguage);
+          if (!label) return null;
+          return (
+            <PromoChip
+              key={`${keyword.ru}-${index}`}
+              onClick={() => setLocalizedDialog("keywords")}
+              onRemove={() => updateLocalizedList("keywords", keywordValues.filter((_, valueIndex) => valueIndex !== index))}
+              removeLabel="Удалить ключевое слово"
+            >
+              {label}
+            </PromoChip>
+          );
+        }) : (
+          <button
+            type="button"
+            onClick={() => setLocalizedDialog("keywords")}
+            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Добавить ключевое слово
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="Добавить ключевое слово"
+          onClick={() => setLocalizedDialog("keywords")}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <PlusCircle size={16} />
+        </button>
       </PromoCompactCard>
 
       {selectorOpen && (
@@ -2395,26 +2567,33 @@ function PromoTab({
           onClose={() => setSelectorOpen(false)}
         />
       )}
-      {tokenDialog === "tags" && (
-        <TokenSelectorDialog
-          title="Теги"
-          description="Помогают гостю понять особенности и состав позиции"
-          values={tags}
-          suggestions={tagSuggestions}
-          placeholder="Например, Содержит орехи"
-          onSave={(values) => updateLocalizedList("tags", values)}
-          onClose={() => setTokenDialog(null)}
+      {localizedDialog === "sticker" && (
+        <StickerEditorDialog
+          value={stickerValue}
+          onSave={updateSticker}
+          onClose={() => setLocalizedDialog(null)}
         />
       )}
-      {tokenDialog === "keywords" && (
-        <TokenSelectorDialog
+      {localizedDialog === "tags" && (
+        <LocalizedValuesDialog
+          title="Теги"
+          description="Помогают гостю понять особенности и состав позиции"
+          values={tagValues}
+          valueLabel="Тег"
+          addLabel="Добавить тег"
+          onSave={(values) => updateLocalizedList("tags", values)}
+          onClose={() => setLocalizedDialog(null)}
+        />
+      )}
+      {localizedDialog === "keywords" && (
+        <LocalizedValuesDialog
           title="Ключевые слова"
           description="Используются для поиска позиции в онлайн-меню"
-          values={keywords}
-          suggestions={KEYWORD_SUGGESTIONS}
-          placeholder="Например, Обед"
+          values={keywordValues}
+          valueLabel="Ключевое слово"
+          addLabel="Добавить ключевое слово"
           onSave={(values) => updateLocalizedList("keywords", values)}
-          onClose={() => setTokenDialog(null)}
+          onClose={() => setLocalizedDialog(null)}
         />
       )}
     </div>
@@ -4082,8 +4261,14 @@ function PopulatedWorkspace({
         baseItems,
         upsell,
       );
-      const sticker = getLocalizedValue(upsell?.sticker, contentLanguage, item.guestLabels[0] ?? null);
-      const tags = getLocalizedList(upsell?.tags, contentLanguage, item.tags);
+      const sticker = getLocalizedValueLabel(
+        getLocalizedValueFromUnknown(upsell?.sticker, item.guestLabels[0] ?? null),
+        contentLanguage,
+      );
+      const tags = getLocalizedValueLabels(
+        getLocalizedValuesFromUnknown(upsell?.tags, item.tags),
+        contentLanguage,
+      );
       return {
         ...item,
         status: status ?? item.status,
