@@ -1105,6 +1105,7 @@ const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
 const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
 const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
 const CATALOG_UPSELL_STORAGE_KEY = "tasko.catalog.upsellByItem";
+const CATALOG_POSITION_ORDER_STORAGE_KEY = "tasko.catalog.positionOrderBySection";
 const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
   kk: "Мысалы, Хит",
@@ -1128,6 +1129,49 @@ function buildPositionProblems(item: CatalogItem): string[] {
   if (item.translationFilledCount < item.translationTotalCount) problems.push("Нет перевода");
   if (!item.hasDescription) problems.push("Нет описания");
   return problems;
+}
+
+function EditorPositionEmptyState({
+  sectionName,
+  itemCount,
+  onAddItem,
+  onSectionSettings,
+}: {
+  sectionName: string;
+  itemCount: number;
+  onAddItem: () => void;
+  onSectionSettings: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-center p-8">
+      <div className="w-full max-w-[360px] rounded-[12px] border border-[#e7e5e4] bg-white px-5 py-4 shadow-[0_2px_8px_rgba(41,37,36,0.05)]">
+        <h2 className="truncate text-[15px] font-semibold text-[#292524]">{sectionName}</h2>
+        <p className="mt-0.5 text-[12px] text-[#a8a29e]">
+          {itemCount} {plural(itemCount, "позиция", "позиции", "позиций")}
+        </p>
+        <p className="mt-3 text-[13px] leading-5 text-[#57534d]">Выберите позицию слева, чтобы открыть редактор.</p>
+        <div className="mt-4 flex items-center gap-2">
+          {itemCount === 0 && (
+            <button
+              type="button"
+              onClick={onAddItem}
+              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+            >
+              <Plus size={14} />
+              Добавить позицию
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSectionSettings}
+            className="inline-flex h-8 items-center rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524]"
+          >
+            Настройки раздела
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getStringField(value: unknown, key: LanguageCode) {
@@ -2052,13 +2096,40 @@ function ItemSelectorDialog({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [sectionFilterId, setSectionFilterId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const selectedSet = new Set(selectedIds);
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleItems = items
-    .filter((candidate) => candidate.status !== "archive")
+  const baseItems = items.filter((candidate) =>
+    candidate.id !== currentItem.id &&
+    candidate.status !== "archive" &&
+    !selectedSet.has(candidate.id)
+  );
+  const sectionOrder = new Map(catalogSections.map((section, index) => [section.id, index]));
+  const sectionOptions = Array.from(
+    new Map(baseItems.map((candidate) => [candidate.sectionId, { id: candidate.sectionId, name: candidate.sectionName }])).values(),
+  ).sort((a, b) => (sectionOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (sectionOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name, "ru"));
+  const selectedSection = sectionOptions.find((section) => section.id === sectionFilterId) ?? null;
+  const visibleItems = baseItems
+    .filter((candidate) => !sectionFilterId || candidate.sectionId === sectionFilterId)
     .filter((candidate) => !normalizedQuery || getItemSearchText(candidate).includes(normalizedQuery))
-    .slice(0, 80);
+    .slice(0, 120);
+  const groupedItems = Array.from(
+    visibleItems.reduce((groups, candidate) => {
+      const existing = groups.get(candidate.sectionId);
+      if (existing) {
+        existing.items.push(candidate);
+      } else {
+        groups.set(candidate.sectionId, {
+          id: candidate.sectionId,
+          name: candidate.sectionName,
+          items: [candidate],
+        });
+      }
+      return groups;
+    }, new Map<string, { id: string; name: string; items: CatalogItem[] }>()),
+  ).map(([, group]) => group);
+  const checkedCount = checkedIds.length;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2080,69 +2151,109 @@ function ItemSelectorDialog({
 
   return (
     createPortal(
-      <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Добавить рекомендацию">
-        <div className="w-full max-w-[420px] overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-          <div className="border-b border-[#eceae7] px-4 py-3">
-            <div className="text-[14px] font-medium text-[#292524]">Добавить рекомендацию</div>
-            <label className="mt-3 flex h-9 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[#a8a29e]">
-              <MagnifyingGlass size={15} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoFocus
-                placeholder="Найти позицию"
-                className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-              />
-            </label>
+      <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Добавить рекомендуемые позиции">
+        <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+          <div className="shrink-0 border-b border-[#eceae7] px-4 py-3">
+            <div className="text-[14px] font-medium text-[#292524]">Добавить рекомендуемые позиции</div>
+            <div className="mt-3 flex items-center gap-2">
+              <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[#a8a29e]">
+                <MagnifyingGlass size={15} />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoFocus
+                  placeholder="Найти позицию"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+                />
+              </label>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Фильтр по разделу"
+                    className="flex h-9 max-w-[150px] shrink-0 items-center gap-1.5 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <span className="min-w-0 truncate">{selectedSection?.name ?? "Все разделы"}</span>
+                    <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="end"
+                    sideOffset={6}
+                    className="z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+                  >
+                    <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Все разделы</DropdownActionItem>
+                    {sectionOptions.map((section) => (
+                      <DropdownActionItem key={section.id} onSelect={() => setSectionFilterId(section.id)}>
+                        <span className="min-w-0 truncate">{section.name}</span>
+                      </DropdownActionItem>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
           </div>
-          <div className="max-h-[340px] overflow-y-auto p-2">
-            {visibleItems.map((candidate) => {
-              const isSelf = candidate.id === currentItem.id;
-              const isDuplicate = selectedSet.has(candidate.id);
-              const disabled = isSelf || isDuplicate;
-              const checked = checkedIds.includes(candidate.id);
-              return (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => toggle(candidate.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                    disabled ? "cursor-not-allowed opacity-45" : "hover:bg-[#f5f5f4]",
-                  )}
-                >
-                  <CatalogThumb item={candidate} size={30} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium leading-4 text-[#292524]">{candidate.title}</span>
-                    <span className="block truncate text-[12px] leading-4 text-[#79716b]">
-                      {isSelf ? "Текущая позиция" : isDuplicate ? "Уже добавлена" : candidate.sectionName}
-                    </span>
-                  </span>
-                  <span className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                    checked ? "border-[#292524] bg-[#292524] text-white" : "border-[#d6d3d1] text-transparent",
-                  )}>
-                    <CheckCircle size={14} weight="fill" />
-                  </span>
-                </button>
-              );
-            })}
+          <div className="min-h-[220px] flex-1 overflow-y-auto px-2 py-2">
+            {groupedItems.map((group) => (
+              <div key={group.id} className="py-1">
+                <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#a8a29e]">{group.name}</div>
+                {group.items.map((candidate) => {
+                  const checked = checkedIds.includes(candidate.id);
+                  const statusText = candidate.status === "stopped"
+                    ? "На стопе"
+                    : candidate.status === "coming-soon"
+                      ? "Скоро будет"
+                      : candidate.scheduled
+                        ? "По расписанию"
+                        : "";
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => toggle(candidate.id)}
+                      className={cn(
+                        "flex h-[52px] w-full items-center gap-2 rounded-[10px] px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                        checked ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]",
+                      )}
+                    >
+                      <CatalogThumb item={candidate} size={32} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium leading-4 text-[#292524]">{candidate.title}</span>
+                        <span className="block truncate text-[12px] leading-4 text-[#79716b]">
+                          {statusText ? `${candidate.sectionName} · ${statusText}` : candidate.sectionName}
+                        </span>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition",
+                          checked ? "border-[#292524] bg-[#292524] text-white" : "border-[#d6d3d1] bg-white text-transparent",
+                        )}
+                      >
+                        <CheckCircle size={14} weight="fill" />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
             {visibleItems.length === 0 && (
-              <div className="px-3 py-5 text-center text-[13px] text-[#79716b]">Позиции не найдены</div>
+              <div className="px-3 py-6 text-center text-[13px] text-[#79716b]">Подходящие позиции не найдены</div>
             )}
           </div>
-          <div className="flex items-center justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
+          <div className="flex shrink-0 items-center gap-2 border-t border-[#eceae7] px-4 py-3">
+            <div className="min-w-0 flex-1 text-[13px] text-[#79716b]">Выбрано: {checkedCount}</div>
             <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
               Отмена
             </button>
             <button
               type="button"
-              disabled={checkedIds.length === 0}
+              disabled={checkedCount === 0}
               onClick={submit}
               className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]"
             >
-              Добавить
+              {checkedCount === 0 ? "Добавить" : `Добавить ${checkedCount}`}
             </button>
           </div>
         </div>
@@ -2179,13 +2290,21 @@ function LocalizedValueInputs({
   );
 }
 
-function StickerEditorDialog({
+function LocalizedValueDialog({
+  title,
+  description,
   value,
+  deleteLabel,
   onSave,
+  onDelete,
   onClose,
 }: {
+  title: string;
+  description: string;
   value: LocalizedValue | null;
+  deleteLabel?: string;
   onSave: (value: LocalizedValue | null) => void;
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<Partial<Record<LanguageCode, string>>>(value ?? { ru: "" });
@@ -2204,26 +2323,30 @@ function StickerEditorDialog({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Стикер">
-      <div className="flex max-h-[82vh] w-full max-w-[380px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
         <div className="border-b border-[#eceae7] px-4 py-3">
-          <div className="text-[14px] font-medium text-[#292524]">Стикер</div>
-          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Заполните значение для нужных языков</div>
+          <div className="text-[14px] font-medium text-[#292524]">{title}</div>
+          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">{description}</div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
           <LocalizedValueInputs value={draft} onChange={setDraft} autoFocus />
         </div>
         <div className="flex shrink-0 justify-between gap-2 border-t border-[#eceae7] px-4 py-3">
-          <button
-            type="button"
-            onClick={() => {
-              onSave(null);
-              onClose();
-            }}
-            className="h-8 rounded-[8px] px-3 text-[13px] text-[#dc2626] transition hover:bg-[#fef2f2]"
-          >
-            Убрать
-          </button>
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="h-8 rounded-[8px] px-3 text-[13px] text-[#dc2626] transition hover:bg-[#fef2f2]"
+            >
+              {deleteLabel ?? "Удалить"}
+            </button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
               Отмена
@@ -2239,121 +2362,46 @@ function StickerEditorDialog({
   );
 }
 
-function LocalizedValuesDialog({
-  title,
-  description,
-  values,
-  valueLabel,
-  addLabel,
-  onSave,
-  onClose,
-}: {
-  title: string;
-  description: string;
-  values: LocalizedValue[];
-  valueLabel: string;
-  addLabel: string;
-  onSave: (values: LocalizedValue[]) => void;
-  onClose: () => void;
-}) {
-  const [draftValues, setDraftValues] = useState<Array<Partial<Record<LanguageCode, string>>>>(
-    values.length > 0 ? values : [{ ru: "" }],
-  );
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  const updateValue = (index: number, value: Partial<Record<LanguageCode, string>>) => {
-    setDraftValues((current) => current.map((entry, entryIndex) => entryIndex === index ? value : entry));
-  };
-  const removeValue = (index: number) => {
-    setDraftValues((current) => current.filter((_, entryIndex) => entryIndex !== index));
-  };
-  const submit = () => {
-    onSave(normalizeLocalizedValues(draftValues));
-    onClose();
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-        <div className="border-b border-[#eceae7] px-4 py-3">
-          <div className="text-[14px] font-medium text-[#292524]">{title}</div>
-          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">{description}</div>
-        </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          {draftValues.map((value, index) => (
-            <div key={index} className="rounded-[11px] border border-[#eceae7] bg-[#fafaf9] p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-[13px] font-medium text-[#292524]">{valueLabel} {index + 1}</div>
-                <Tooltip label="Удалить значение" side="top">
-                  <button
-                    type="button"
-                    aria-label="Удалить значение"
-                    onClick={() => removeValue(index)}
-                    className="flex h-6 w-6 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-white hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <XCircle size={16} />
-                  </button>
-                </Tooltip>
-              </div>
-              <LocalizedValueInputs value={value} onChange={(next) => updateValue(index, next)} autoFocus={index === 0} />
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setDraftValues((current) => [...current, { ru: "" }])}
-            className="flex h-8 items-center gap-2 rounded-[8px] px-1 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
-          >
-            <PlusCircle size={16} className="text-[#79716b]" />
-            {addLabel}
-          </button>
-        </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
-          <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
-            Отмена
-          </button>
-          <button type="button" onClick={submit} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">
-            Сохранить
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 function PromoCompactCard({
   label,
   tooltip,
+  cardName,
   children,
-  onClick,
 }: {
   label: string;
   tooltip: string;
+  cardName: "sticker" | "tags" | "keywords";
   children: ReactNode;
-  onClick?: () => void;
 }) {
   return (
-    <div className="flex min-h-11 w-full items-center gap-2 rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(12,12,13,0.05)] transition hover:bg-[#fdfdfc]">
-      <button
-        type="button"
-        onClick={onClick}
-        className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
+    <div
+      data-upsell-card={cardName}
+      className="flex min-h-12 w-full items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-left shadow-sm transition hover:bg-[#fdfdfc] focus-within:ring-2 focus-within:ring-[#292524]/10"
+    >
+      <span className="shrink-0">
         <PromoLabel label={label} tooltip={tooltip} />
-      </button>
+      </span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
 }
 
-function PromoTab({
+function PromoAddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Tooltip label={label} side="top">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <PlusCircle size={16} />
+      </button>
+    </Tooltip>
+  );
+}
+
+function PromoRecommendationsCard({
   item,
   allItems,
   upsell,
@@ -2364,27 +2412,13 @@ function PromoTab({
   upsell: CatalogItemUpsellState;
   onChange: (next: CatalogItemUpsellState) => void;
 }) {
-  const { contentLanguage } = useAppSettings();
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const [localizedDialog, setLocalizedDialog] = useState<"sticker" | "tags" | "keywords" | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const recommendationIds = resolveRecommendationIds(item, allItems, upsell);
   const recommendations = recommendationIds
     .map((id) => allItems.find((candidate) => candidate.id === id))
     .filter((candidate): candidate is CatalogItem => Boolean(candidate));
-  const stickerValue = getLocalizedValueFromUnknown(upsell.sticker, item.guestLabels[0] ?? null);
-  const tagValues = getLocalizedValuesFromUnknown(upsell.tags, item.tags);
-  const keywordValues = getLocalizedValuesFromUnknown(upsell.keywords, []);
-  const sticker = getLocalizedValueLabel(stickerValue, contentLanguage);
-
-  const patch = (next: CatalogItemUpsellState) => onChange(next);
-  const setRecommendationIds = (ids: string[]) => patch({ ...upsell, recommendationIds: ids });
-  const updateLocalizedList = (key: "tags" | "keywords", values: LocalizedValue[]) => {
-    patch({ ...upsell, [key]: normalizeLocalizedValues(values) });
-  };
-  const updateSticker = (value: LocalizedValue | null) => {
-    patch({ ...upsell, sticker: value });
-  };
+  const setRecommendationIds = (ids: string[]) => onChange({ ...upsell, recommendationIds: ids });
   const reorderRecommendation = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
     setRecommendationIds(moveArrayItem(recommendationIds, fromIndex, toIndex));
@@ -2396,14 +2430,14 @@ function PromoTab({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(12,12,13,0.05)]">
-        <div className="px-4 py-3">
-          <h3 className="text-[15px] font-medium leading-5 text-[#292524]">Рекомендации</h3>
+    <>
+      <div data-upsell-card="recommendations" className="border-t border-[#e7e5e4]">
+        <div className="px-4 pb-2 pt-4">
+          <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Рекомендации</h3>
           <p className="text-[13px] leading-5 text-[#79716b]">показываются гостю при открытии позиции</p>
         </div>
         {recommendations.length > 0 ? (
-          <div className="space-y-3 px-4 pb-3">
+          <div className="space-y-2 px-4 pb-3">
             {recommendations.map((recommended, index) => (
               <div
                 key={recommended.id}
@@ -2465,98 +2499,12 @@ function PromoTab({
         <button
           type="button"
           onClick={() => setSelectorOpen(true)}
-          className="flex h-[34px] w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
         >
           <PlusCircle size={16} className="text-[#79716b]" />
           Добавить рекомендацию
         </button>
       </div>
-
-      <PromoCompactCard label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню" onClick={() => setLocalizedDialog("sticker")}>
-        {sticker ? (
-          <PromoChip
-            onClick={() => setLocalizedDialog("sticker")}
-            onRemove={() => updateSticker(null)}
-            removeLabel="Убрать стикер"
-          >
-            {sticker}
-          </PromoChip>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setLocalizedDialog("sticker")}
-            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            Добавить стикер
-          </button>
-        )}
-      </PromoCompactCard>
-
-      <PromoCompactCard label="Теги" tooltip="Помогают гостю понять особенности и состав позиции" onClick={() => setLocalizedDialog("tags")}>
-        {tagValues.length > 0 ? tagValues.map((tag, index) => {
-          const label = getLocalizedValueLabel(tag, contentLanguage);
-          if (!label) return null;
-          return (
-            <PromoChip
-              key={`${tag.ru}-${index}`}
-              onClick={() => setLocalizedDialog("tags")}
-              onRemove={() => updateLocalizedList("tags", tagValues.filter((_, valueIndex) => valueIndex !== index))}
-              removeLabel="Удалить тег"
-            >
-              {label}
-            </PromoChip>
-          );
-        }) : (
-          <button
-            type="button"
-            onClick={() => setLocalizedDialog("tags")}
-            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            Добавить тег
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label="Добавить тег"
-          onClick={() => setLocalizedDialog("tags")}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <PlusCircle size={16} />
-        </button>
-      </PromoCompactCard>
-
-      <PromoCompactCard label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню" onClick={() => setLocalizedDialog("keywords")}>
-        {keywordValues.length > 0 ? keywordValues.map((keyword, index) => {
-          const label = getLocalizedValueLabel(keyword, contentLanguage);
-          if (!label) return null;
-          return (
-            <PromoChip
-              key={`${keyword.ru}-${index}`}
-              onClick={() => setLocalizedDialog("keywords")}
-              onRemove={() => updateLocalizedList("keywords", keywordValues.filter((_, valueIndex) => valueIndex !== index))}
-              removeLabel="Удалить ключевое слово"
-            >
-              {label}
-            </PromoChip>
-          );
-        }) : (
-          <button
-            type="button"
-            onClick={() => setLocalizedDialog("keywords")}
-            className="text-[13px] text-[#a8a29e] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            Добавить ключевое слово
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label="Добавить ключевое слово"
-          onClick={() => setLocalizedDialog("keywords")}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <PlusCircle size={16} />
-        </button>
-      </PromoCompactCard>
 
       {selectorOpen && (
         <ItemSelectorDialog
@@ -2567,36 +2515,150 @@ function PromoTab({
           onClose={() => setSelectorOpen(false)}
         />
       )}
-      {localizedDialog === "sticker" && (
-        <StickerEditorDialog
-          value={stickerValue}
-          onSave={updateSticker}
+    </>
+  );
+}
+
+type PromoLocalizedDialogState =
+  | { kind: "sticker"; index: 0 | null }
+  | { kind: "tags" | "keywords"; index: number | null };
+
+function PromoTab({
+  item,
+  upsell,
+  onChange,
+}: {
+  item: CatalogItem;
+  upsell: CatalogItemUpsellState;
+  onChange: (next: CatalogItemUpsellState) => void;
+}) {
+  const { contentLanguage } = useAppSettings();
+  const [localizedDialog, setLocalizedDialog] = useState<PromoLocalizedDialogState | null>(null);
+  const stickerValue = getLocalizedValueFromUnknown(upsell.sticker, item.guestLabels[0] ?? null);
+  const tagValues = getLocalizedValuesFromUnknown(upsell.tags, item.tags);
+  const keywordValues = getLocalizedValuesFromUnknown(upsell.keywords, []);
+  const sticker = getLocalizedValueLabel(stickerValue, contentLanguage);
+
+  const patch = (next: CatalogItemUpsellState) => onChange(next);
+  const updateLocalizedList = (key: "tags" | "keywords", values: LocalizedValue[]) => {
+    patch({ ...upsell, [key]: normalizeLocalizedValues(values) });
+  };
+  const updateSticker = (value: LocalizedValue | null) => {
+    patch({ ...upsell, sticker: value });
+  };
+  const saveLocalizedDialogValue = (value: LocalizedValue | null) => {
+    if (!localizedDialog) return;
+    if (localizedDialog.kind === "sticker") {
+      updateSticker(value);
+      return;
+    }
+
+    const currentValues = localizedDialog.kind === "tags" ? tagValues : keywordValues;
+    const nextValues = localizedDialog.index == null
+      ? value ? [...currentValues, value] : currentValues
+      : value
+        ? currentValues.map((entry, index) => index === localizedDialog.index ? value : entry)
+        : currentValues.filter((_, index) => index !== localizedDialog.index);
+    updateLocalizedList(localizedDialog.kind, nextValues);
+  };
+  const deleteLocalizedDialogValue = () => {
+    if (!localizedDialog) return;
+    if (localizedDialog.kind === "sticker") {
+      updateSticker(null);
+      return;
+    }
+    if (localizedDialog.index == null) return;
+    const currentValues = localizedDialog.kind === "tags" ? tagValues : keywordValues;
+    updateLocalizedList(localizedDialog.kind, currentValues.filter((_, index) => index !== localizedDialog.index));
+  };
+  const dialogValue = localizedDialog?.kind === "sticker"
+    ? localizedDialog.index === 0 ? stickerValue : null
+    : localizedDialog?.kind === "tags"
+      ? localizedDialog.index == null ? null : tagValues[localizedDialog.index] ?? null
+      : localizedDialog?.kind === "keywords"
+        ? localizedDialog.index == null ? null : keywordValues[localizedDialog.index] ?? null
+        : null;
+  const dialogTitle = localizedDialog?.kind === "sticker"
+    ? "Стикер"
+    : localizedDialog?.kind === "tags"
+      ? "Тег"
+      : "Ключевое слово";
+  const dialogDescription = localizedDialog?.kind === "sticker"
+    ? "Заполните значение для нужных языков"
+    : localizedDialog?.kind === "tags"
+      ? "Помогает гостю понять особенности и состав позиции"
+      : "Используется для поиска позиции в онлайн-меню";
+  const dialogDeleteLabel = localizedDialog?.kind === "sticker"
+    ? "Убрать"
+    : localizedDialog?.kind === "tags"
+      ? "Удалить тег"
+      : "Удалить ключевое слово";
+
+  return (
+    <>
+      <div data-upsell-stack className="flex flex-col gap-2">
+        <PromoCompactCard cardName="sticker" label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню">
+          {sticker && (
+            <PromoChip
+              onClick={() => setLocalizedDialog({ kind: "sticker", index: 0 })}
+              onRemove={() => updateSticker(null)}
+              removeLabel="Убрать стикер"
+            >
+              {sticker}
+            </PromoChip>
+          )}
+          <PromoAddButton label="Добавить стикер" onClick={() => setLocalizedDialog({ kind: "sticker", index: null })} />
+        </PromoCompactCard>
+
+        <PromoCompactCard cardName="tags" label="Теги" tooltip="Помогают гостю понять особенности и состав позиции">
+          {tagValues.map((tag, index) => {
+            const label = getLocalizedValueLabel(tag, contentLanguage);
+            if (!label) return null;
+            return (
+              <PromoChip
+                key={`${tag.ru}-${index}`}
+                onClick={() => setLocalizedDialog({ kind: "tags", index })}
+                onRemove={() => updateLocalizedList("tags", tagValues.filter((_, valueIndex) => valueIndex !== index))}
+                removeLabel="Удалить тег"
+              >
+                {label}
+              </PromoChip>
+            );
+          })}
+          <PromoAddButton label="Добавить тег" onClick={() => setLocalizedDialog({ kind: "tags", index: null })} />
+        </PromoCompactCard>
+
+        <PromoCompactCard cardName="keywords" label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню">
+          {keywordValues.map((keyword, index) => {
+            const label = getLocalizedValueLabel(keyword, contentLanguage);
+            if (!label) return null;
+            return (
+              <PromoChip
+                key={`${keyword.ru}-${index}`}
+                onClick={() => setLocalizedDialog({ kind: "keywords", index })}
+                onRemove={() => updateLocalizedList("keywords", keywordValues.filter((_, valueIndex) => valueIndex !== index))}
+                removeLabel="Удалить ключевое слово"
+              >
+                {label}
+              </PromoChip>
+            );
+          })}
+          <PromoAddButton label="Добавить ключевое слово" onClick={() => setLocalizedDialog({ kind: "keywords", index: null })} />
+        </PromoCompactCard>
+      </div>
+
+      {localizedDialog && (
+        <LocalizedValueDialog
+          title={dialogTitle}
+          description={dialogDescription}
+          value={dialogValue}
+          deleteLabel={dialogDeleteLabel}
+          onSave={saveLocalizedDialogValue}
+          onDelete={localizedDialog.index == null ? undefined : deleteLocalizedDialogValue}
           onClose={() => setLocalizedDialog(null)}
         />
       )}
-      {localizedDialog === "tags" && (
-        <LocalizedValuesDialog
-          title="Теги"
-          description="Помогают гостю понять особенности и состав позиции"
-          values={tagValues}
-          valueLabel="Тег"
-          addLabel="Добавить тег"
-          onSave={(values) => updateLocalizedList("tags", values)}
-          onClose={() => setLocalizedDialog(null)}
-        />
-      )}
-      {localizedDialog === "keywords" && (
-        <LocalizedValuesDialog
-          title="Ключевые слова"
-          description="Используются для поиска позиции в онлайн-меню"
-          values={keywordValues}
-          valueLabel="Ключевое слово"
-          addLabel="Добавить ключевое слово"
-          onSave={(values) => updateLocalizedList("keywords", values)}
-          onClose={() => setLocalizedDialog(null)}
-        />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -3300,82 +3362,93 @@ function PositionEditor({
             </DropdownMenu.Root>
           </div>
 
-          {/* Карточка редактора: табы + контент таба */}
-          <div className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-            <div className="flex items-center gap-2 border-b border-[#e7e5e4] px-3">
-              {EDITOR_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "-mb-px flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
-                    activeTab === tab.id
-                      ? "border-[#1c1917] font-medium text-[#1c1917]"
-                      : "border-transparent text-[#79716b] hover:text-[#44403b]",
-                  )}
-                >
-                  {tab.label}
-                  {tab.id === "options" && (
-                    <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                      {item.optionsCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="px-4 pb-4 pt-5">
-              {activeTab === "basic" && (
-                <BasicTab
-                  item={item}
-                  media={media}
-                  basePriceText={basePriceText}
-                  basePrice={basePrice}
-                  weightUnit={weightUnit}
-                  discountOpen={discountOpen}
-                  discountAutofocusKey={discountAutofocusKey}
-                  onWeightUnitChange={setWeightUnit}
-                  onBasePriceChange={updateBasePrice}
-                  onBasePriceBlur={formatBasePrice}
-                  onAddDiscount={addDiscount}
-                  onRemoveDiscount={removeDiscount}
-                  onAddPhotoFile={addPhotoFile}
-                  onAddVideoFile={addVideoFile}
-                  onReorderMedia={reorderMedia}
-                  onRemoveMedia={removeMedia}
-                />
-              )}
+          <div className="space-y-2">
+            <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+              <div className="flex items-center gap-2 px-3">
+                {EDITOR_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
+                      activeTab === tab.id
+                        ? "border-[#1c1917] font-medium text-[#1c1917]"
+                        : "border-transparent text-[#79716b] hover:text-[#44403b]",
+                    )}
+                  >
+                    {tab.label}
+                    {tab.id === "options" && (
+                      <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
+                        {item.optionsCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
               {activeTab === "promo" && (
-                <PromoTab
+                <PromoRecommendationsCard
                   item={item}
                   allItems={allItems}
                   upsell={upsell}
                   onChange={onUpsellChange}
                 />
               )}
-              {activeTab === "options" && (
-                <PlaceholderTab title="Опции и добавки">
-                  {item.optionsCount > 0 || item.modifiersCount > 0
-                    ? `${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")} · ${item.modifiersCount} ${plural(item.modifiersCount, "доп", "допа", "допов")}`
-                    : "У позиции нет опций и добавок."}
-                </PlaceholderTab>
+              {activeTab === "basic" && (
+                <div className="border-t border-[#e7e5e4] px-4 pb-4 pt-5">
+                  <BasicTab
+                    item={item}
+                    media={media}
+                    basePriceText={basePriceText}
+                    basePrice={basePrice}
+                    weightUnit={weightUnit}
+                    discountOpen={discountOpen}
+                    discountAutofocusKey={discountAutofocusKey}
+                    onWeightUnitChange={setWeightUnit}
+                    onBasePriceChange={updateBasePrice}
+                    onBasePriceBlur={formatBasePrice}
+                    onAddDiscount={addDiscount}
+                    onRemoveDiscount={removeDiscount}
+                    onAddPhotoFile={addPhotoFile}
+                    onAddVideoFile={addVideoFile}
+                    onReorderMedia={reorderMedia}
+                    onRemoveMedia={removeMedia}
+                  />
+                </div>
               )}
-              {activeTab === "availability" && (
-                <AvailabilityTab
-                  item={item}
-                  stopBusy={stopBusy}
-                  onSetAvailabilityMode={onSetAvailabilityMode}
-                  unavailableDisplayMode={unavailableDisplayMode}
-                  outsideScheduleMode={outsideScheduleMode}
-                  weeklySchedule={weeklySchedule}
-                  onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
-                  onOutsideScheduleModeChange={onOutsideScheduleModeChange}
-                  onWeeklyScheduleChange={onWeeklyScheduleChange}
-                />
-              )}
-              {activeTab === "display" && <DisplayTab item={item} />}
             </div>
+
+            {activeTab === "promo" ? (
+              <PromoTab
+                item={item}
+                upsell={upsell}
+                onChange={onUpsellChange}
+              />
+            ) : activeTab === "basic" ? null : (
+              <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+                {activeTab === "options" && (
+                  <PlaceholderTab title="Опции и добавки">
+                    {item.optionsCount > 0 || item.modifiersCount > 0
+                      ? `${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")} · ${item.modifiersCount} ${plural(item.modifiersCount, "доп", "допа", "допов")}`
+                      : "У позиции нет опций и добавок."}
+                  </PlaceholderTab>
+                )}
+                {activeTab === "availability" && (
+                  <AvailabilityTab
+                    item={item}
+                    stopBusy={stopBusy}
+                    onSetAvailabilityMode={onSetAvailabilityMode}
+                    unavailableDisplayMode={unavailableDisplayMode}
+                    outsideScheduleMode={outsideScheduleMode}
+                    weeklySchedule={weeklySchedule}
+                    onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
+                    onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+                    onWeeklyScheduleChange={onWeeklyScheduleChange}
+                  />
+                )}
+                {activeTab === "display" && <DisplayTab item={item} />}
+              </div>
+            )}
           </div>
 
           {/* Опциональные блоки и «Ещё» — вне карточки, только для «Основного» */}
@@ -3711,9 +3784,32 @@ function SectionBulkToolbar({
   );
 }
 
+function filterSectionTree(sections: TreeSection[], query: string): TreeSection[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return sections;
+
+  return sections.flatMap((section) => {
+    const children = filterSectionTree(section.children ?? [], normalizedQuery);
+    if (section.name.toLowerCase().includes(normalizedQuery) || children.length > 0) {
+      return [{ ...section, children }];
+    }
+    return [];
+  });
+}
+
+function orderSectionItems(items: CatalogItem[], order: string[] | undefined): CatalogItem[] {
+  if (!order?.length) return items;
+  const positions = new Map(order.map((id, index) => [id, index]));
+  return [...items].sort((left, right) =>
+    (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
 function SectionPositionNav({
   sectionId,
   sectionName,
+  sections,
+  allItems,
   items,
   archiveOpen,
   selectedItemId,
@@ -3721,14 +3817,18 @@ function SectionPositionNav({
   onSelectSection,
   onSelectItem,
   onAddPosition,
+  onOpenOverview,
   onSectionAction,
   onArchiveOpenChange,
   onRestoreItem,
   onToggleStop,
+  onReorderItems,
   stopBusyIds,
 }: {
   sectionId: string | null;
   sectionName: string;
+  sections: TreeSection[];
+  allItems: CatalogItem[];
   items: CatalogItem[];
   archiveOpen: boolean;
   selectedItemId: string | null;
@@ -3736,29 +3836,36 @@ function SectionPositionNav({
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onAddPosition: () => void;
+  onOpenOverview: () => void;
   onSectionAction: (action: string) => void;
   onArchiveOpenChange: (open: boolean) => void;
   onRestoreItem: (item: CatalogItem) => void;
   onToggleStop: (item: CatalogItem) => void;
+  onReorderItems: (draggedId: string, targetId: string) => void;
   stopBusyIds: Set<string>;
 }) {
   const [sectionQuery, setSectionQuery] = useState("");
+  const [positionQuery, setPositionQuery] = useState("");
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
-  const normalizedSectionQuery = sectionQuery.trim().toLowerCase();
-  const visibleSections = catalogSections.filter((section) =>
-    section.name.toLowerCase().includes(normalizedSectionQuery),
-  );
-  const activeSection = catalogSections.find((section) => section.id === sectionId) ?? null;
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const visibleSections = filterSectionTree(sections, sectionQuery);
+  const flatSections = flattenSections(sections);
+  const activeSection = flatSections.find((section) => section.id === sectionId) ?? null;
   const activeItems = items.filter((item) => item.status !== "archive");
   const archivedItems = items.filter((item) => item.status === "archive");
+  const normalizedPositionQuery = positionQuery.trim().toLowerCase();
+  const visibleActiveItems = activeItems.filter((item) => item.title.toLowerCase().includes(normalizedPositionQuery));
+  const visibleArchivedItems = archivedItems.filter((item) => item.title.toLowerCase().includes(normalizedPositionQuery));
 
   useEffect(() => {
-    if (!selectedItemId || !archiveOpen) return;
+    if (!selectedItemId) return;
     const timeout = window.setTimeout(() => {
       selectedRowRef.current?.scrollIntoView({ block: "nearest" });
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [archiveOpen, selectedItemId, archivedItems.length]);
+  }, [archiveOpen, selectedItemId, activeItems.length, archivedItems.length]);
 
   const renderPositionRow = (item: CatalogItem, archived = false) => {
     const active = item.id === selectedItemId;
@@ -3766,19 +3873,59 @@ function SectionPositionNav({
     const canToggleStop = !archived && (item.status === "active" || item.status === "stopped");
     const stopBusy = stopBusyIds.has(item.id);
     const stopActionLabel = stopped ? "Вернуть в продажу" : "Поставить на стоп";
+    const isDragTarget = !archived && dragOverItemId === item.id && draggedItemId !== item.id;
     return (
-      <button
+      <div
         key={item.id}
-        ref={active ? selectedRowRef : undefined}
-        type="button"
-        onClick={() => onSelectItem(item.id)}
+        onDragOver={(event) => {
+          if (archived || !draggedItemId || draggedItemId === item.id) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setDragOverItemId(item.id);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (draggedItemId && draggedItemId !== item.id) onReorderItems(draggedItemId, item.id);
+          setDraggedItemId(null);
+          setDragOverItemId(null);
+        }}
         className={cn(
-          "group flex h-8 w-full items-center gap-2 rounded-[8px] border px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          "group relative flex h-8 w-full items-center rounded-[8px] border text-left transition",
           active
             ? "border-[#e7e5e4] bg-white shadow-[0_2px_6px_rgba(41,37,36,0.13)]"
             : "border-transparent hover:bg-[#f7f6f2]",
+          isDragTarget && "border-[#c7c2ff] bg-[#f5f3ff]",
         )}
       >
+        {!archived && (
+          <span
+            draggable
+            role="button"
+            tabIndex={0}
+            aria-label={`Изменить порядок позиции ${item.title}`}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", item.id);
+              setDraggedItemId(item.id);
+            }}
+            onDragEnd={() => {
+              setDraggedItemId(null);
+              setDragOverItemId(null);
+            }}
+            className="flex h-full w-5 shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-0 transition hover:text-[#57534d] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none active:cursor-grabbing"
+          >
+            <DotsSixVertical size={13} />
+          </span>
+        )}
+        <button
+          ref={active ? selectedRowRef : undefined}
+          type="button"
+          onClick={() => onSelectItem(item.id)}
+          className={cn(
+            "flex h-full min-w-0 flex-1 items-center gap-2 rounded-[8px] pr-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            archived && "pl-1.5",
+          )}
+        >
         <span
           className={cn(
             "flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]",
@@ -3860,7 +4007,30 @@ function SectionPositionNav({
             </Tooltip>
           </span>
         )}
-      </button>
+        </button>
+      </div>
+    );
+  };
+
+  const renderSectionOption = (section: TreeSection, depth = 0): ReactNode => {
+    const active = section.id === sectionId;
+    const count = allItems.filter((item) => item.sectionId === section.id && item.status !== "archive").length;
+    return (
+      <div key={section.id}>
+        <DropdownMenu.Item
+          onSelect={() => onSelectSection(section.id)}
+          className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg pr-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+          style={{ paddingLeft: 8 + depth * 16 }}
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#a8a29e]">
+            {section.children?.length ? <CaretRight size={12} /> : null}
+          </span>
+          <span className={cn("min-w-0 flex-1 truncate", active && "font-semibold text-[#292524]")}>{section.name}</span>
+          <span className="shrink-0 text-[12px] text-[#a8a29e]">{count}</span>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[12px] text-[#2563eb]">{active ? "✓" : ""}</span>
+        </DropdownMenu.Item>
+        {section.children?.map((child) => renderSectionOption(child, depth + 1))}
+      </div>
     );
   };
 
@@ -3875,61 +4045,70 @@ function SectionPositionNav({
           <ArrowLeft size={14} />
           Все разделы
         </button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              className="flex h-8 w-full items-center gap-2 rounded-[10px] bg-[#f6f6f1] px-2 text-left text-[#292524] transition hover:bg-[#efefe8]"
-            >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-white text-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                {activeSection?.imageUrl ? (
-                  <img src={activeSection.imageUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <ForkKnife size={12} weight="fill" className="text-[#57534d]" />
-                )}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5">{sectionName}</span>
-              <CaretDown size={14} weight="bold" className="shrink-0 text-black" />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="start"
-              sideOffset={6}
-              className="z-[100002] w-[280px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-            >
-              <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e]">
-                <MagnifyingGlass size={14} />
-                <input
-                  value={sectionQuery}
-                  onChange={(event) => setSectionQuery(event.target.value)}
-                  placeholder="Найти раздел"
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                />
-              </label>
-              <div className="max-h-[320px] overflow-y-auto">
-                {visibleSections.map((section) => {
-                  const active = section.id === sectionId;
-                  const count = catalogItems.filter((item) => item.sectionId === section.id).length;
-                  return (
-                    <DropdownMenu.Item
-                      key={section.id}
-                      onSelect={() => onSelectSection(section.id)}
-                      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                    >
-                      <span className="w-4 shrink-0 text-center text-[12px] text-[#2563eb]">{active ? "✓" : ""}</span>
-                      <span className="min-w-0 flex-1 truncate">{section.name}</span>
-                      <span className="shrink-0 text-[12px] text-[#a8a29e]">{count}</span>
-                    </DropdownMenu.Item>
-                  );
-                })}
-                {visibleSections.length === 0 && (
-                  <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
-                )}
-              </div>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+        <div className="flex items-center gap-1">
+          <DropdownMenu.Root onOpenChange={(open) => !open && setSectionQuery("")}>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-[#f6f6f1] px-2 text-left text-[#292524] transition hover:bg-[#efefe8]"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-white text-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                  {activeSection?.imageUrl ? (
+                    <img src={activeSection.imageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <ForkKnife size={12} weight="fill" className="text-[#57534d]" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5">{sectionName}</span>
+                <CaretDown size={14} weight="bold" className="shrink-0 text-black" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="start"
+                sideOffset={6}
+                className="z-[100002] w-[300px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+              >
+                <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+                  <MagnifyingGlass size={14} />
+                  <input
+                    value={sectionQuery}
+                    onChange={(event) => setSectionQuery(event.target.value)}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    placeholder="Найти раздел"
+                    autoFocus
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+                  />
+                </label>
+                <div className="max-h-[360px] overflow-y-auto overscroll-contain">
+                  {visibleSections.map((section) => renderSectionOption(section))}
+                  {visibleSections.length === 0 && (
+                    <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+                  )}
+                </div>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label={`Действия с разделом ${sectionName}`}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#efefe8] hover:text-[#292524]"
+              >
+                <DotsThreeVertical size={17} weight="bold" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              <DropdownActionItem onSelect={() => onSectionAction("Изменить раздел")}>Изменить раздел</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSectionAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+              <DropdownActionItem onSelect={onOpenOverview}>Обзор раздела</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSectionAction("Переместить")}>Переместить</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </div>
         <button
           type="button"
           onClick={onAddPosition}
@@ -3938,51 +4117,63 @@ function SectionPositionNav({
           <PlusCircle size={16} />
           Добавить позицию
         </button>
+        <label className="mt-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+          <MagnifyingGlass size={14} />
+          <input
+            value={positionQuery}
+            onChange={(event) => setPositionQuery(event.target.value)}
+            placeholder="Найти позицию"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+          />
+          {positionQuery && (
+            <button
+              type="button"
+              onClick={() => setPositionQuery("")}
+              aria-label="Очистить поиск позиций"
+              className="flex h-5 w-5 items-center justify-center rounded-[6px] text-[#a8a29e] hover:bg-[#f5f5f4] hover:text-[#57534d]"
+            >
+              <XCircle size={13} />
+            </button>
+          )}
+        </label>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
-        {activeItems.length === 0 && archivedItems.length === 0 ? (
+      <div
+        ref={listScrollRef}
+        onDragOver={(event) => {
+          if (!draggedItemId || !listScrollRef.current) return;
+          const bounds = listScrollRef.current.getBoundingClientRect();
+          const edge = 40;
+          if (event.clientY < bounds.top + edge) listScrollRef.current.scrollTop -= 10;
+          else if (event.clientY > bounds.bottom - edge) listScrollRef.current.scrollTop += 10;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3"
+      >
+        {visibleActiveItems.length === 0 && visibleArchivedItems.length === 0 ? (
           <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4 text-[13px] leading-5 text-[#79716b]">
-            Позиции не найдены
+            {normalizedPositionQuery ? "Подходящие позиции не найдены" : "В разделе пока нет позиций"}
           </div>
         ) : (
           <div className="space-y-1.5">
-            {activeItems.map((item) => renderPositionRow(item))}
-            {archivedItems.length > 0 && (
+            {visibleActiveItems.map((item) => renderPositionRow(item))}
+            {visibleArchivedItems.length > 0 && (
               <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => onArchiveOpenChange(!archiveOpen)}
                   className="flex h-7 w-full items-center rounded-[8px] px-1.5 text-left text-[12px] font-medium leading-5 text-[#a8a29e] transition hover:bg-[#f7f6f2] hover:text-[#79716b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  <span className="min-w-0 flex-1 truncate">Архивные · {archivedItems.length}</span>
+                  <span className="min-w-0 flex-1 truncate">Архивные · {visibleArchivedItems.length}</span>
                   <CaretRight size={13} className={cn("shrink-0 transition", archiveOpen && "rotate-90")} />
                 </button>
                 {archiveOpen && (
                   <div className="mt-1.5 space-y-1.5">
-                    {archivedItems.map((item) => renderPositionRow(item, true))}
+                    {visibleArchivedItems.map((item) => renderPositionRow(item, true))}
                   </div>
                 )}
               </div>
             )}
           </div>
         )}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              className="sr-only"
-              aria-label="Действия с разделом"
-            />
-          </DropdownMenu.Trigger>
-          <DropdownContent align="end">
-            <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSectionAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            <DropdownActionItem onSelect={() => onSectionAction("Изменить раздел")}>Изменить раздел</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSectionAction("Скрыть раздел")}>Скрыть раздел</DropdownActionItem>
-            <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Архивировать раздел")}>Архивировать раздел</DropdownActionItem>
-          </DropdownContent>
-        </DropdownMenu.Root>
       </div>
     </aside>
   );
@@ -4194,12 +4385,18 @@ function PopulatedWorkspace({
     null;
   const firstSectionId = preferredSectionId;
   const firstItemId = preferredItemId;
+  // Add ?editorNav=legacy to compare the experiment with the previous section-first flow.
+  const editorNavExperiment = typeof window === "undefined"
+    || new URLSearchParams(window.location.search).get("editorNav") !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(editorNavExperiment ? null : firstItemId);
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
-  const [editing, setEditing] = useState(Boolean(firstItemId));
+  const [editing, setEditing] = useState(editorNavExperiment ? false : Boolean(firstItemId));
+  const [positionOrderBySection, setPositionOrderBySection] = useState<Record<string, string[]>>(() =>
+    readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {}),
+  );
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   // Черновики, созданные кнопкой «Добавить позицию» (статичные catalogItems не мутируем).
@@ -4279,7 +4476,10 @@ function PopulatedWorkspace({
       };
     });
   const section = allSections.find((s) => s.id === selectedSectionId) ?? null;
-  const sectionItems = allItems.filter((item) => item.sectionId === selectedSectionId);
+  const sectionItems = orderSectionItems(
+    allItems.filter((item) => item.sectionId === selectedSectionId),
+    selectedSectionId ? positionOrderBySection[selectedSectionId] : undefined,
+  );
   const activeSectionItems = sectionItems.filter((item) => item.status !== "archive");
   const selectedItem = selectedItemId
     ? allItems.find((item) => item.id === selectedItemId) ?? null
@@ -4303,17 +4503,34 @@ function PopulatedWorkspace({
     rememberItem(id);
   };
 
-  // Правило 2: смена раздела внутри редактора сохраняет editor mode.
+  // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
     setSelectedIds(new Set());
-    const items = allItems.filter((item) => item.sectionId === id && item.status !== "archive");
+    const items = allItems.filter((item) => item.sectionId === id);
     const remembered = lastItemBySection[id];
-    const nextId = remembered && items.some((i) => i.id === remembered)
-      ? remembered
-      : items[0]?.id ?? null; // null → пустой раздел → empty state в редакторе
+    const nextId = remembered && items.some((item) => item.id === remembered) ? remembered : null;
     setSelectedItemId(nextId);
-    if (nextId) setLastItemBySection((prev) => ({ ...prev, [id]: nextId }));
+    setEditing(true);
+  };
+
+  const openSectionOverview = () => {
+    setSelectedItemId(null);
+    setEditing(false);
+    setSelectedIds(new Set());
+  };
+
+  const reorderSectionItems = (draggedId: string, targetId: string) => {
+    if (!selectedSectionId || draggedId === targetId) return;
+    const ids = activeSectionItems.map((item) => item.id);
+    const fromIndex = ids.indexOf(draggedId);
+    const toIndex = ids.indexOf(targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextIds = [...ids];
+    const [draggedIdValue] = nextIds.splice(fromIndex, 1);
+    nextIds.splice(toIndex, 0, draggedIdValue);
+    setPositionOrderBySection((current) => ({ ...current, [selectedSectionId]: nextIds }));
+    setFeedback("Порядок позиций изменён");
   };
 
   // «Добавить позицию» в текущий раздел → создаём черновик и сразу открываем.
@@ -4375,6 +4592,10 @@ function PopulatedWorkspace({
   useEffect(() => {
     writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
   }, [upsellByItem]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_POSITION_ORDER_STORAGE_KEY, positionOrderBySection);
+  }, [positionOrderBySection]);
 
   const updateUpsell = (itemId: string, next: CatalogItemUpsellState) => {
     setUpsellByItem((prev) => ({ ...prev, [itemId]: next }));
@@ -4438,6 +4659,7 @@ function PopulatedWorkspace({
   const openSectionFromDeleteDialog = (target: TreeSection) => {
     setPendingSectionDelete(null);
     setSelectedSectionId(target.id);
+    setSelectedItemId(null);
     setEditing(false);
     if (target.status === "archive") setSectionArchiveOpen(true);
   };
@@ -4584,17 +4806,24 @@ function PopulatedWorkspace({
           <SectionPositionNav
             sectionId={selectedSectionId}
             sectionName={section?.name ?? selectedItem?.sectionName ?? "Раздел"}
+            sections={activeSectionTree}
+            allItems={allItems}
             items={sectionItems}
             archiveOpen={archiveOpen}
             selectedItemId={selectedItemId}
-            onBackToSections={() => setEditing(false)}
+            onBackToSections={() => {
+              setSelectedItemId(null);
+              setEditing(false);
+            }}
             onSelectSection={selectSectionInEditor}
             onSelectItem={openItem}
             onAddPosition={addPosition}
+            onOpenOverview={openSectionOverview}
             onSectionAction={handleSectionAction}
             onArchiveOpenChange={setArchiveOpen}
             onRestoreItem={restoreItem}
             onToggleStop={toggleStopItem}
+            onReorderItems={reorderSectionItems}
             stopBusyIds={stopBusyIds}
           />
         ) : (
@@ -4603,7 +4832,7 @@ function PopulatedWorkspace({
             archivedSections={archivedSectionTree}
             selectedId={selectedSectionId}
             archiveOpen={sectionArchiveOpen}
-            onSelectSection={selectSectionOverview}
+            onSelectSection={editorNavExperiment ? selectSectionInEditor : selectSectionOverview}
             onArchiveOpenChange={setSectionArchiveOpen}
             onRestoreSection={restoreSection}
             onDeleteArchivedSection={requestDeleteArchivedSection}
@@ -4630,6 +4859,13 @@ function PopulatedWorkspace({
               onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: mode }))}
               onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: schedule }))}
               onRequestPermanentDelete={requestPermanentDelete}
+            />
+          ) : editorNavExperiment ? (
+            <EditorPositionEmptyState
+              sectionName={section?.name ?? "Раздел"}
+              itemCount={activeSectionItems.length}
+              onAddItem={addPosition}
+              onSectionSettings={() => handleSectionAction("Изменить раздел")}
             />
           ) : (
             <SectionEmptyState sectionName={section?.name ?? "Раздел"} onAddItem={addPosition} />
