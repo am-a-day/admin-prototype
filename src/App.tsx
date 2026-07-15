@@ -615,6 +615,7 @@ function AppShell() {
           catalogTab={catalogTab}
           overviewFilterId={catalogOverviewFilterId}
           onOverviewFilterChange={setCatalogOverviewFilterId}
+          onCatalogTabChange={setCatalogTab}
           onAdvancePhase={(next) => {
             setCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");

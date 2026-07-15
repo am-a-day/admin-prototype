@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -138,6 +138,7 @@ type CatalogWorkspaceProps = {
   catalogTab: CatalogTab;
   overviewFilterId: OverviewFilterId;
   onOverviewFilterChange: (id: OverviewFilterId) => void;
+  onCatalogTabChange: (tab: CatalogTab) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
@@ -153,6 +154,10 @@ type TreeSection = {
   children?: TreeSection[];
 };
 type SectionStatus = "active" | "archive";
+type SectionDraftOverride = {
+  name?: string;
+  imageUrl?: string | null;
+};
 type PanelRow = {
   id: string;
   label: string;
@@ -1091,6 +1096,7 @@ const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "availability", label: "Доступность" },
   { id: "display", label: "Отображение" },
 ];
+const editorTabByItem = new Map<string, EditorTab>();
 
 // Demo video-package limits (prototype constants, no backend).
 const VIDEO_LIMIT_TOTAL = 10;
@@ -1104,8 +1110,10 @@ const CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY = "tasko.catalog.unavailableDispla
 const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
 const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
 const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
+const CATALOG_SECTION_DRAFT_STORAGE_KEY = "tasko.catalog.sectionDraftOverrides";
 const CATALOG_UPSELL_STORAGE_KEY = "tasko.catalog.upsellByItem";
 const CATALOG_POSITION_ORDER_STORAGE_KEY = "tasko.catalog.positionOrderBySection";
+const CATALOG_SECTION_ORDER_STORAGE_KEY = "tasko.catalog.sectionOrderByParent";
 const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
   kk: "Мысалы, Хит",
@@ -3237,7 +3245,7 @@ function PositionEditor({
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onRequestPermanentDelete: (item: CatalogItem) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<EditorTab>("basic");
+  const [activeTab, setActiveTab] = useState<EditorTab>(() => editorTabByItem.get(item.id) ?? "basic");
   const [media, setMedia] = useState<MediaEntry[]>(() => getInitialMedia(item));
   const [basePriceText, setBasePriceText] = useState(item.price ? formatMoneyInput(item.price) : "");
   const initialEditorWeightUnit = item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г";
@@ -3247,6 +3255,7 @@ function PositionEditor({
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
 
   useEffect(() => {
+    setActiveTab(editorTabByItem.get(item.id) ?? "basic");
     setMedia(getInitialMedia(item));
     setBasePriceText(item.price ? formatMoneyInput(item.price) : "");
     setWeightUnit(item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г");
@@ -3254,6 +3263,11 @@ function PositionEditor({
     setDiscountAutofocusKey(0);
     setKbjuOpen(item.nutritionFilledCount > 0);
   }, [item]);
+
+  const selectEditorTab = (tab: EditorTab) => {
+    editorTabByItem.set(item.id, tab);
+    setActiveTab(tab);
+  };
 
   const addPhotoFile = (file: File) => {
     const previewUrl = URL.createObjectURL(file);
@@ -3369,7 +3383,7 @@ function PositionEditor({
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => selectEditorTab(tab.id)}
                     className={cn(
                       "flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
                       activeTab === tab.id
@@ -3802,6 +3816,608 @@ function orderSectionItems(items: CatalogItem[], order: string[] | undefined): C
   const positions = new Map(order.map((id, index) => [id, index]));
   return [...items].sort((left, right) =>
     (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
+function findSectionPath(sections: TreeSection[], targetId: string): string[] {
+  for (const section of sections) {
+    if (section.id === targetId) return [section.id];
+    const childPath = findSectionPath(section.children ?? [], targetId);
+    if (childPath.length > 0) return [section.id, ...childPath];
+  }
+  return [];
+}
+
+function UnifiedCatalogTreePanel({
+  sections,
+  items,
+  selectedSectionId,
+  selectedItemId,
+  sectionEditingEnabled,
+  includeArchived,
+  positionOrderBySection,
+  onSelectSection,
+  onSelectItem,
+  onAddSection,
+  onAddPosition,
+  onSectionAction,
+  onReorderItems,
+  onReorderSections,
+}: {
+  sections: TreeSection[];
+  items: CatalogItem[];
+  selectedSectionId: string | null;
+  selectedItemId: string | null;
+  sectionEditingEnabled: boolean;
+  includeArchived: boolean;
+  positionOrderBySection: Record<string, string[]>;
+  onSelectSection: (id: string) => void;
+  onSelectItem: (id: string) => void;
+  onAddSection: () => void;
+  onAddPosition: (sectionId: string) => void;
+  onSectionAction: (section: TreeSection, action: string) => void;
+  onReorderItems: (sectionId: string, draggedId: string, targetId: string) => void;
+  onReorderSections: (parentId: string | null, draggedId: string, targetId: string) => void;
+}) {
+  const selectedItem = selectedItemId ? items.find((item) => item.id === selectedItemId) ?? null : null;
+  const initialExpandedPath = selectedItem
+    ? findSectionPath(sections, selectedItem.sectionId)
+    : sectionEditingEnabled && selectedSectionId
+      ? findSectionPath(sections, selectedSectionId)
+      : [sections[0]?.id ?? ""];
+  const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(initialExpanded);
+  const [query, setQuery] = useState("");
+  const [draggedItem, setDraggedItem] = useState<{ id: string; sectionId: string } | null>(null);
+  const [draggedSection, setDraggedSection] = useState<{ id: string; parentId: string | null } | null>(null);
+  const [dragTargetId, setDragTargetId] = useState<string | null>(null);
+  const panelScrollRef = useRef<HTMLDivElement | null>(null);
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const flatSections = flattenSections(sections);
+  const sectionById = new Map(flatSections.map((section) => [section.id, section]));
+  const itemsBySection = new Map<string, CatalogItem[]>();
+
+  items.forEach((item) => {
+    if (!includeArchived && item.status === "archive" && item.id !== selectedItemId) return;
+    const current = itemsBySection.get(item.sectionId) ?? [];
+    current.push(item);
+    itemsBySection.set(item.sectionId, current);
+  });
+
+  const aggregateItemCountBySection = new Map<string, number>();
+  const getAggregateItemCount = (section: TreeSection): number => {
+    const cachedCount = aggregateItemCountBySection.get(section.id);
+    if (cachedCount !== undefined) return cachedCount;
+    const ownCount = (itemsBySection.get(section.id) ?? []).filter((item) => item.status !== "archive").length;
+    const totalCount = ownCount + (section.children ?? []).reduce((total, child) => total + getAggregateItemCount(child), 0);
+    aggregateItemCountBySection.set(section.id, totalCount);
+    return totalCount;
+  };
+
+  const visibleSectionIds = new Set<string>();
+  const visibleItemIds = new Set<string>();
+
+  const markSectionAndParents = (section: TreeSection) => {
+    let current: TreeSection | undefined = section;
+    while (current) {
+      visibleSectionIds.add(current.id);
+      current = current.parentId ? sectionById.get(current.parentId) : undefined;
+    }
+  };
+
+  if (normalizedQuery) {
+    flatSections.forEach((section) => {
+      const sectionItems = itemsBySection.get(section.id) ?? [];
+      const sectionMatches = section.name.toLowerCase().includes(normalizedQuery);
+      const matchingItems = sectionItems.filter((item) => item.title.toLowerCase().includes(normalizedQuery));
+      if (!sectionMatches && matchingItems.length === 0) return;
+      markSectionAndParents(section);
+      if (sectionMatches) {
+        sectionItems.forEach((item) => visibleItemIds.add(item.id));
+      } else {
+        matchingItems.forEach((item) => visibleItemIds.add(item.id));
+      }
+    });
+  }
+
+  useEffect(() => {
+    const path = selectedItem
+      ? findSectionPath(sections, selectedItem.sectionId)
+      : sectionEditingEnabled && selectedSectionId
+        ? findSectionPath(sections, selectedSectionId)
+        : [];
+    if (path.length > 0) {
+      setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
+    }
+    const timeout = window.setTimeout(() => selectedRowRef.current?.scrollIntoView({ block: "nearest" }), 0);
+    return () => window.clearTimeout(timeout);
+  }, [sectionEditingEnabled, selectedItem?.id, selectedItem?.sectionId, selectedSectionId]);
+
+  useEffect(() => {
+    const focusSectionSorting = (event: Event) => {
+      const sectionId = (event as CustomEvent<string>).detail;
+      if (!sectionId) return;
+      const path = findSectionPath(sections, sectionId);
+      setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
+      window.setTimeout(() => {
+        const handle = Array.from(document.querySelectorAll<HTMLElement>("[data-position-section-id]"))
+          .find((candidate) => candidate.dataset.positionSectionId === sectionId);
+        handle?.focus();
+        handle?.scrollIntoView({ block: "nearest" });
+      }, 0);
+    };
+    window.addEventListener("tasko-focus-section-sorting", focusSectionSorting);
+    return () => window.removeEventListener("tasko-focus-section-sorting", focusSectionSorting);
+  }, [sections]);
+
+  const toggleSection = (id: string) => {
+    setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
+  };
+
+  const handlePanelDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if ((!draggedItem && !draggedSection) || !panelScrollRef.current) return;
+    const bounds = panelScrollRef.current.getBoundingClientRect();
+    const edge = 44;
+    if (event.clientY < bounds.top + edge) panelScrollRef.current.scrollTop -= 12;
+    else if (event.clientY > bounds.bottom - edge) panelScrollRef.current.scrollTop += 12;
+  };
+
+  const renderPosition = (item: CatalogItem, section: TreeSection, depth: number) => {
+    const active = item.id === selectedItemId;
+    const isDragTarget = draggedItem?.sectionId === section.id && dragTargetId === item.id && draggedItem.id !== item.id;
+    const positionDragHandle = (
+      <span
+        draggable
+        data-position-section-id={section.id}
+        role="button"
+        tabIndex={0}
+        aria-label={`Изменить порядок позиции ${item.title}`}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", item.id);
+          setDraggedItem({ id: item.id, sectionId: section.id });
+        }}
+        onDragEnd={() => {
+          setDraggedItem(null);
+          setDragTargetId(null);
+        }}
+        className={cn(
+          "flex h-full shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none active:cursor-grabbing",
+          sectionEditingEnabled ? "w-6 rounded-[7px] hover:bg-white hover:text-[#57534d]" : "w-5",
+        )}
+      >
+        <DotsSixVertical size={12} />
+      </span>
+    );
+    return (
+      <div
+        key={item.id}
+        onDragOver={(event) => {
+          if (!draggedItem || draggedItem.sectionId !== section.id || draggedItem.id === item.id) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setDragTargetId(item.id);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (draggedItem && draggedItem.sectionId === section.id && draggedItem.id !== item.id) {
+            onReorderItems(section.id, draggedItem.id, item.id);
+          }
+          setDraggedItem(null);
+          setDragTargetId(null);
+        }}
+        className={cn(
+          "group flex h-[34px] items-center rounded-[7px] border border-transparent transition",
+          active ? "bg-[#efefea] shadow-[0_1px_2px_rgba(41,37,36,0.06)]" : "hover:bg-[#f5f5f1]",
+          isDragTarget && "border-[#c7c2ff] bg-[#f5f3ff]",
+        )}
+        style={{ marginLeft: (sectionEditingEnabled ? 30 : 18) + depth * 12 }}
+      >
+        {!sectionEditingEnabled && positionDragHandle}
+        <button
+          ref={active ? selectedRowRef : undefined}
+          type="button"
+          onClick={() => onSelectItem(item.id)}
+          title={item.title}
+          className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]">
+            {item.thumbnailUrl ? (
+              <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <ImageBroken size={12} className="text-[#a8a29e]" />
+            )}
+          </span>
+          <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", active ? "font-medium text-[#292524]" : "font-normal text-[#79716b]")}>{item.title}</span>
+          {sectionEditingEnabled && item.status === "stopped" && (
+            <Tooltip label="На стопе" side="top" delayDuration={200}>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
+            </Tooltip>
+          )}
+          {sectionEditingEnabled && item.status === "archive" && (
+            <Tooltip label="В архиве" side="top" delayDuration={200}>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+            </Tooltip>
+          )}
+        </button>
+        {sectionEditingEnabled && <div className="h-full w-6 shrink-0">{positionDragHandle}</div>}
+      </div>
+    );
+  };
+
+  const renderSection = (section: TreeSection, depth = 0): ReactNode => {
+    if (normalizedQuery && !visibleSectionIds.has(section.id)) return null;
+    const sectionItems = orderSectionItems(itemsBySection.get(section.id) ?? [], positionOrderBySection[section.id]);
+    const visibleItems = normalizedQuery
+      ? sectionItems.filter((item) => visibleItemIds.has(item.id))
+      : sectionItems;
+    const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
+    const parentId = section.parentId ?? null;
+    const isSectionDragTarget = draggedSection?.parentId === parentId && dragTargetId === section.id && draggedSection.id !== section.id;
+    const active = sectionEditingEnabled && selectedSectionId === section.id && !selectedItemId;
+    const activeCount = getAggregateItemCount(section);
+    const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
+
+    return (
+      <div key={section.id}>
+        <div
+          onDragOver={(event) => {
+            if (!draggedSection || draggedSection.parentId !== parentId || draggedSection.id === section.id) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setDragTargetId(section.id);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (draggedSection && draggedSection.parentId === parentId && draggedSection.id !== section.id) {
+              onReorderSections(parentId, draggedSection.id, section.id);
+            }
+            setDraggedSection(null);
+            setDragTargetId(null);
+          }}
+          className={cn(
+            "group flex h-8 items-center rounded-[7px] border border-transparent transition",
+            active ? "bg-[#efefea] shadow-[0_1px_2px_rgba(41,37,36,0.06)]" : "hover:bg-[#f1f1ea]",
+            isSectionDragTarget && "border-[#c7c2ff] bg-[#f5f3ff]",
+          )}
+          style={{ paddingLeft: 4 + depth * 12 }}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleSection(section.id);
+            }}
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
+            className="flex h-7 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretRight size={12} className={cn("transition-transform", isExpanded && "rotate-90")} />
+          </button>
+          <button
+            ref={active ? selectedRowRef : undefined}
+            type="button"
+            onClick={() => {
+              toggleSection(section.id);
+              onSelectSection(section.id);
+            }}
+            title={section.name}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+          >
+            {sectionEditingEnabled && (
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#a8a29e]">
+                {section.imageUrl ? <img src={section.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageBroken size={11} />}
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{section.name}</span>
+            {sectionEditingEnabled && section.status === "archive" && (
+              <Tooltip label="В архиве" side="top" delayDuration={200}>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+              </Tooltip>
+            )}
+          </button>
+          <div className="grid w-12 shrink-0 grid-cols-1 items-center pr-1">
+            <span className="col-start-1 row-start-1 justify-self-end text-[11px] tabular-nums text-[#a8a29e] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+              {activeCount}
+            </span>
+            <div className="pointer-events-none col-start-1 row-start-1 flex justify-end opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <span
+                draggable
+                role="button"
+                tabIndex={0}
+                aria-label={`Изменить порядок раздела ${section.name}`}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", section.id);
+                  setDraggedSection({ id: section.id, parentId });
+                }}
+                onDragEnd={() => {
+                  setDraggedSection(null);
+                  setDragTargetId(null);
+                }}
+                className="flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded-[7px] text-[#a8a29e] hover:bg-white hover:text-[#57534d] focus-visible:outline-none active:cursor-grabbing"
+              >
+                <DotsSixVertical size={11} />
+              </span>
+              <div className="flex">
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Действия с разделом ${section.name}`}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] hover:bg-white hover:text-[#292524] focus-visible:outline-none"
+                    >
+                      <DotsThreeVertical size={14} weight="bold" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownContent align="end">
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onAddPosition(section.id)}>Добавить позицию</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                    {section.status === "archive" ? (
+                      <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
+                    ) : (
+                      <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
+                    )}
+                  </DropdownContent>
+                </DropdownMenu.Root>
+              </div>
+            </div>
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="space-y-px">
+            {visibleItems.map((item) => renderPosition(item, section, depth))}
+            {visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
+              <div className="flex h-8 items-center gap-2 text-[12px] text-[#a8a29e]" style={{ paddingLeft: 42 + depth * 12 }}>
+                <span className="min-w-0 flex-1 truncate">В разделе пока нет позиций</span>
+                <button type="button" onClick={() => onAddPosition(section.id)} className="mr-2 inline-flex shrink-0 items-center gap-1 text-[#57534d] hover:text-[#292524]">
+                  <PlusCircle size={13} />
+                  Добавить
+                </button>
+              </div>
+            )}
+            {section.children?.map((child) => renderSection(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
+        <div className="flex h-8 items-center justify-between gap-2">
+          <h2 className="text-[14px] font-semibold text-[#292524]">Разделы</h2>
+          <button type="button" onClick={onAddSection} className="inline-flex h-7 items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524]">
+            <Plus size={13} />
+            Добавить
+          </button>
+        </div>
+        <label className="mt-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+          <MagnifyingGlass size={14} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Разделы и позиции"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="flex h-5 w-5 items-center justify-center rounded-[6px] hover:bg-[#f5f5f4] hover:text-[#57534d]">
+              <XCircle size={13} />
+            </button>
+          )}
+        </label>
+      </div>
+      <div ref={panelScrollRef} onDragOver={handlePanelDragOver} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+        <div className="space-y-px">{sections.map((section) => renderSection(section))}</div>
+        {normalizedQuery && visibleSectionIds.size === 0 && (
+          <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function SectionEditorContext({
+  section,
+  itemCount,
+  onEdit,
+  onAddPosition,
+  onAction,
+}: {
+  section: TreeSection;
+  itemCount: number;
+  onEdit: () => void;
+  onAddPosition: () => void;
+  onAction: (action: string) => void;
+}) {
+  return (
+    <div className="h-12 shrink-0 border-b border-[#e7e5e4] bg-[#fbfbf9] px-6">
+      <div className="mx-auto flex h-full max-w-[600px] items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#57534d]">
+          {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : section.emoji ?? <ForkKnife size={13} weight="fill" />}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#44403b]">
+          {section.name} <span className="font-normal text-[#a8a29e]">· {itemCount} {plural(itemCount, "позиция", "позиции", "позиций")}</span>
+        </span>
+        <button type="button" onClick={onEdit} className="inline-flex h-7 items-center rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524]">Изменить</button>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" aria-label={`Действия с разделом ${section.name}`} className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]">
+              <DotsThreeVertical size={16} weight="bold" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <DropdownActionItem onSelect={onEdit}>Изменить раздел</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+            <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onAction("Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownActionItem tone="danger" onSelect={() => onAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
+          </DropdownContent>
+        </DropdownMenu.Root>
+      </div>
+    </div>
+  );
+}
+
+function SectionEditor({
+  section,
+  onNameChange,
+  onImageChange,
+  positionCount,
+  stoppedPositionCount,
+  archivedPositionCount,
+  onAddPosition,
+  onFocusSorting,
+  onOpenInOverview,
+  onArchive,
+  onRestore,
+  onAction,
+}: {
+  section: TreeSection;
+  onNameChange: (name: string) => void;
+  onImageChange: (imageUrl: string | null) => void;
+  positionCount: number;
+  stoppedPositionCount: number;
+  archivedPositionCount: number;
+  onAddPosition: () => void;
+  onFocusSorting: () => void;
+  onOpenInOverview: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onAction: (action: string) => void;
+}) {
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const archived = section.status === "archive";
+  const positionSummary = [
+    `${positionCount} ${plural(positionCount, "позиция", "позиции", "позиций")}`,
+    stoppedPositionCount > 0 ? `${stoppedPositionCount} на стопе` : null,
+    archivedPositionCount > 0 ? `${archivedPositionCount} в архиве` : null,
+  ].filter(Boolean).join(" · ");
+
+  const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") onImageChange(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
+        <div className="mx-auto max-w-[600px]">
+          <div className="flex items-center gap-2 pb-2 pt-6">
+            <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
+            {archived && <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium text-[#79716b]">В архиве</span>}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" aria-label="Действия с разделом" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                  <DotsThreeVertical size={18} weight="bold" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="end">
+                <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
+                <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
+              </DropdownContent>
+            </DropdownMenu.Root>
+          </div>
+
+          <div className="space-y-2">
+            <section className="rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
+              <div className="border-b border-[#eceae7] px-4 py-3 text-[13px] font-medium text-[#292524]">Основное</div>
+              <div className="space-y-4 p-4">
+                <div>
+                  <div className="mb-2 text-[13px] font-medium text-[#44403b]">Иконка раздела</div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#f1f1ea] text-[#a8a29e]">
+                      {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={20} />}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => imageInputRef.current?.click()} className="h-8 rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">
+                        {section.imageUrl ? "Заменить" : "Загрузить"}
+                      </button>
+                      {section.imageUrl && (
+                        <Tooltip label="Удалить иконку" side="top">
+                          <button type="button" onClick={() => onImageChange(null)} aria-label="Удалить иконку" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]">
+                            <Trash size={14} />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-[13px] font-medium text-[#44403b]">Название</span>
+                  <input
+                    value={section.name}
+                    onChange={(event) => onNameChange(event.target.value)}
+                    className="h-9 w-full rounded-[9px] border border-[#e7e5e4] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(12,12,13,0.04)] outline-none transition focus:border-[#a8a29e] focus:ring-2 focus:ring-[#292524]/5"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
+              <div className="text-[13px] font-medium text-[#292524]">Доступность и отображение</div>
+              <div className="mt-3 flex min-h-9 items-center gap-3">
+                <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px]", archived ? "bg-[#f1f1ea] text-[#79716b]" : "bg-[#eef5ec] text-[#55704d]")}>{archived ? <Archive size={14} /> : <CheckCircle size={14} weight="fill" />}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-[#44403b]">Статус</div>
+                  <div className="text-[12px] text-[#a8a29e]">{archived ? "Раздел находится в архиве" : "Раздел активен"}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
+              <div className="text-[13px] font-medium text-[#292524]">Позиции · {positionCount}</div>
+              <div className="mt-1 text-[12px] text-[#79716b]">{positionSummary}</div>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
+                  <Plus size={13} />
+                  Добавить позицию
+                </button>
+                <button type="button" onClick={onFocusSorting} disabled={positionCount === 0} className="h-8 rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:cursor-default disabled:opacity-40">
+                  Изменить порядок
+                </button>
+                <button type="button" onClick={onOpenInOverview} className="h-8 rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">
+                  Открыть в таблице
+                </button>
+              </div>
+            </section>
+
+            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
+              <div className="text-[13px] font-medium text-[#292524]">Архивирование</div>
+              <div className="mt-1 text-[12px] leading-5 text-[#79716b]">{archived ? "Раздел находится в архиве и не показывается гостям." : "Архивный раздел не показывается гостям и остаётся доступен для восстановления."}</div>
+              <button type="button" onClick={archived ? onRestore : onArchive} className={cn("mt-3 h-8 rounded-[8px] border px-3 text-[12px] font-medium transition", archived ? "border-[#d8d5d0] text-[#57534d] hover:bg-[#f5f5f4]" : "border-[#e7c6c2] text-[#9f3a31] hover:bg-[#fff7f6]")}>{archived ? "Восстановить раздел" : "Архивировать раздел"}</button>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnifiedCatalogSelectionState() {
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-center p-8">
+      <div className="max-w-[320px] text-center">
+        <h2 className="text-[14px] font-semibold text-[#292524]">Выберите позицию</h2>
+        <p className="mt-1 text-[13px] leading-5 text-[#79716b]">Раскройте раздел слева и откройте позицию для редактирования.</p>
+      </div>
+    </div>
   );
 }
 
@@ -4367,8 +4983,10 @@ function writeJsonRecord(key: string, value: unknown) {
 
 function PopulatedWorkspace({
   sections,
+  onOpenOverviewForSection,
 }: {
   sections: TreeSection[];
+  onOpenOverviewForSection: (sectionId: string) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -4383,19 +5001,32 @@ function PopulatedWorkspace({
     preferredSectionItems[2]?.id ??
     preferredSectionItems[0]?.id ??
     null;
-  const firstSectionId = preferredSectionId;
-  const firstItemId = preferredItemId;
-  // Add ?editorNav=legacy to compare the experiment with the previous section-first flow.
-  const editorNavExperiment = typeof window === "undefined"
-    || new URLSearchParams(window.location.search).get("editorNav") !== "legacy";
+  const editorNavParam = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("editorNav");
+  const editorNavMode: "entity" | "unified" | "section" | "legacy" = editorNavParam === "legacy"
+    ? "legacy"
+    : editorNavParam === "section"
+      ? "section"
+      : editorNavParam === "unified"
+        ? "unified"
+        : "entity";
+  const directPositionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("positionId");
+  const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
+  const directItem = directPositionId ? catalogItems.find((item) => item.id === directPositionId) ?? null : null;
+  const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
+  const firstSectionId = directItem?.sectionId ?? directSection?.id ?? preferredSectionId;
+  const firstItemId = editorNavMode === "entity" || editorNavMode === "unified" ? directItem?.id ?? null : preferredItemId;
+  const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(editorNavExperiment ? null : firstItemId);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
-  const [editing, setEditing] = useState(editorNavExperiment ? false : Boolean(firstItemId));
+  const [editing, setEditing] = useState(editorNavMode === "section" ? false : Boolean(firstItemId));
   const [positionOrderBySection, setPositionOrderBySection] = useState<Record<string, string[]>>(() =>
     readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {}),
+  );
+  const [sectionOrderByParent, setSectionOrderByParent] = useState<Record<string, string[]>>(() =>
+    readJsonRecord<Record<string, string[]>>(CATALOG_SECTION_ORDER_STORAGE_KEY, {}),
   );
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
@@ -4422,6 +5053,9 @@ function PopulatedWorkspace({
   const [sectionStatusOverrides, setSectionStatusOverrides] = useState<Record<string, SectionStatus>>(() =>
     readJsonRecord<Record<string, SectionStatus>>(CATALOG_SECTION_STATUS_STORAGE_KEY, {}),
   );
+  const [sectionDraftOverrides, setSectionDraftOverrides] = useState<Record<string, SectionDraftOverride>>(() =>
+    readJsonRecord<Record<string, SectionDraftOverride>>(CATALOG_SECTION_DRAFT_STORAGE_KEY, {}),
+  );
   const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
     readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
   );
@@ -4439,8 +5073,15 @@ function PopulatedWorkspace({
     .filter((section) => !deletedSectionIds.has(section.id))
     .map<TreeSection>((section) => ({
       ...section,
+      ...sectionDraftOverrides[section.id],
       status: sectionStatusOverrides[section.id] ?? "active",
+      sortOrder: (() => {
+        const storedOrder = sectionOrderByParent[section.parentId ?? "__root__"];
+        const storedIndex = storedOrder?.indexOf(section.id) ?? -1;
+        return storedIndex >= 0 ? storedIndex : 10_000 + (section.sortOrder ?? 0);
+      })(),
     }));
+  const allSectionTree = buildLocalSectionTree(allSections);
   const activeSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status !== "archive"));
   const archivedSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status === "archive"));
   const activeSections = allSections.filter((candidate) => candidate.status !== "archive");
@@ -4496,11 +5137,37 @@ function PopulatedWorkspace({
     setSelectedIds(new Set());
   };
 
+  const openSectionEditor = (id: string) => {
+    setSelectedSectionId(id);
+    setSelectedItemId(null);
+    setSelectedIds(new Set());
+    setEditing(false);
+    if (editorNavMode === "entity") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("positionId");
+      url.searchParams.set("sectionId", id);
+      window.history.replaceState(null, "", url);
+    }
+  };
+
+  const focusSectionSorting = (sectionId: string) => {
+    window.dispatchEvent(new CustomEvent("tasko-focus-section-sorting", { detail: sectionId }));
+    setFeedback("Перетащите позиции за handle в дереве");
+  };
+
   // Открыть позицию (из обзора или sibling-навигации) → войти в editor mode.
   const openItem = (id: string) => {
+    const item = allItems.find((candidate) => candidate.id === id);
+    if (item) setSelectedSectionId(item.sectionId);
     setSelectedItemId(id);
     setEditing(true);
     rememberItem(id);
+    if (editorNavMode === "entity") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sectionId");
+      url.searchParams.set("positionId", id);
+      window.history.replaceState(null, "", url);
+    }
   };
 
   // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
@@ -4520,27 +5187,51 @@ function PopulatedWorkspace({
     setSelectedIds(new Set());
   };
 
-  const reorderSectionItems = (draggedId: string, targetId: string) => {
-    if (!selectedSectionId || draggedId === targetId) return;
-    const ids = activeSectionItems.map((item) => item.id);
+  const reorderItemsInSection = (sectionId: string, draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const ids = orderSectionItems(
+      allItems.filter((item) => item.sectionId === sectionId && item.status !== "archive"),
+      positionOrderBySection[sectionId],
+    ).map((item) => item.id);
     const fromIndex = ids.indexOf(draggedId);
     const toIndex = ids.indexOf(targetId);
     if (fromIndex < 0 || toIndex < 0) return;
     const nextIds = [...ids];
     const [draggedIdValue] = nextIds.splice(fromIndex, 1);
     nextIds.splice(toIndex, 0, draggedIdValue);
-    setPositionOrderBySection((current) => ({ ...current, [selectedSectionId]: nextIds }));
+    setPositionOrderBySection((current) => ({ ...current, [sectionId]: nextIds }));
     setFeedback("Порядок позиций изменён");
   };
 
+  const reorderSections = (parentId: string | null, draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const ids = allSections
+      .filter((candidate) => (candidate.parentId ?? null) === parentId && candidate.status !== "archive")
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+      .map((candidate) => candidate.id);
+    const fromIndex = ids.indexOf(draggedId);
+    const toIndex = ids.indexOf(targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextIds = [...ids];
+    const [draggedIdValue] = nextIds.splice(fromIndex, 1);
+    nextIds.splice(toIndex, 0, draggedIdValue);
+    setSectionOrderByParent((current) => ({ ...current, [parentId ?? "__root__"]: nextIds }));
+    setFeedback("Порядок разделов изменён");
+  };
+
   // «Добавить позицию» в текущий раздел → создаём черновик и сразу открываем.
-  const addPosition = () => {
-    if (!selectedSectionId) return;
-    const draft = makeDraftItem(section);
+  const addPositionToSection = (sectionId: string) => {
+    const targetSection = allSections.find((candidate) => candidate.id === sectionId) ?? null;
+    if (!targetSection) return;
+    const draft = makeDraftItem(targetSection);
     setExtraItems((prev) => [...prev, draft]);
+    setSelectedSectionId(sectionId);
     setSelectedItemId(draft.id);
     setEditing(true);
-    setLastItemBySection((prev) => ({ ...prev, [selectedSectionId]: draft.id }));
+    setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
+  };
+  const addPosition = () => {
+    if (selectedSectionId) addPositionToSection(selectedSectionId);
   };
   const setItemSelected = (id: string, selected: boolean) => {
     setSelectedIds((current) => {
@@ -4590,6 +5281,10 @@ function PopulatedWorkspace({
   }, [sectionStatusOverrides]);
 
   useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_DRAFT_STORAGE_KEY, sectionDraftOverrides);
+  }, [sectionDraftOverrides]);
+
+  useEffect(() => {
     writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
   }, [upsellByItem]);
 
@@ -4597,8 +5292,20 @@ function PopulatedWorkspace({
     writeJsonRecord(CATALOG_POSITION_ORDER_STORAGE_KEY, positionOrderBySection);
   }, [positionOrderBySection]);
 
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_ORDER_STORAGE_KEY, sectionOrderByParent);
+  }, [sectionOrderByParent]);
+
   const updateUpsell = (itemId: string, next: CatalogItemUpsellState) => {
     setUpsellByItem((prev) => ({ ...prev, [itemId]: next }));
+    registerChange("catalog");
+  };
+
+  const updateSectionDraft = (sectionId: string, patch: SectionDraftOverride) => {
+    setSectionDraftOverrides((current) => ({
+      ...current,
+      [sectionId]: { ...current[sectionId], ...patch },
+    }));
     registerChange("catalog");
   };
 
@@ -4608,6 +5315,11 @@ function PopulatedWorkspace({
     setSelectedSectionId(target.id);
     setSelectedIds(new Set());
     setSectionArchiveOpen(true);
+    if (editorNavMode === "entity" || (editorNavMode === "unified" && selectedItem?.sectionId === target.id)) {
+      setSelectedItemId(null);
+      setEditing(false);
+    }
+    registerChange("catalog");
     setFeedback("Раздел перенесён в архив");
   };
 
@@ -4621,6 +5333,8 @@ function PopulatedWorkspace({
     }
     setSectionStatusOverrides((prev) => ({ ...prev, [target.id]: "active" }));
     setSelectedSectionId(target.id);
+    if (editorNavMode === "entity") setSelectedItemId(null);
+    registerChange("catalog");
     setFeedback("Раздел восстановлен");
   };
 
@@ -4675,6 +5389,23 @@ function PopulatedWorkspace({
     }
     if (action === "Удалить навсегда" && section) {
       requestDeleteArchivedSection(section);
+      return;
+    }
+    showPlaceholderFeedback(`${action}: placeholder`);
+  };
+
+  const handleUnifiedSectionAction = (target: TreeSection, action: string) => {
+    if (action === "Настроить раздел" || action === "Изменить раздел") {
+      if (editorNavMode === "entity") openSectionEditor(target.id);
+      else showPlaceholderFeedback(`${action}: placeholder`);
+      return;
+    }
+    if (action === "Архивировать" || action === "Архивировать раздел") {
+      archiveSection(target);
+      return;
+    }
+    if (action === "Восстановить раздел" || action === "Восстановить из архива") {
+      restoreSection(target);
       return;
     }
     showPlaceholderFeedback(`${action}: placeholder`);
@@ -4799,10 +5530,49 @@ function PopulatedWorkspace({
     return () => window.clearTimeout(timeout);
   }, [feedback]);
 
+  const renderPositionEditor = (item: CatalogItem) => (
+    <PositionEditor
+      item={item}
+      allItems={allItems}
+      upsell={upsellByItem[item.id] ?? {}}
+      onUpsellChange={(next) => updateUpsell(item.id, next)}
+      stopBusy={stopBusyIds.has(item.id)}
+      onArchiveItem={archiveItem}
+      onRestoreItem={restoreItem}
+      onMoveItem={(targetItem) => showPlaceholderFeedback(`Переместить «${targetItem.title}»: placeholder`)}
+      onToggleStop={toggleStopItem}
+      onSetAvailabilityMode={setAvailabilityMode}
+      unavailableDisplayMode={unavailableDisplayByItem[item.id] ?? "hidden"}
+      outsideScheduleMode={outsideScheduleByItem[item.id] ?? "hidden"}
+      weeklySchedule={weeklyScheduleByItem[item.id] ?? createDefaultWeeklySchedule()}
+      onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((prev) => ({ ...prev, [item.id]: mode }))}
+      onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((prev) => ({ ...prev, [item.id]: mode }))}
+      onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((prev) => ({ ...prev, [item.id]: schedule }))}
+      onRequestPermanentDelete={requestPermanentDelete}
+    />
+  );
+
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
-        {editing ? (
+        {editorNavMode === "entity" || editorNavMode === "unified" ? (
+          <UnifiedCatalogTreePanel
+            sections={editorNavMode === "entity" ? allSectionTree : activeSectionTree}
+            items={allItems}
+            selectedSectionId={selectedSectionId}
+            selectedItemId={selectedItemId}
+            sectionEditingEnabled={editorNavMode === "entity"}
+            includeArchived={editorNavMode === "entity"}
+            positionOrderBySection={positionOrderBySection}
+            onSelectSection={openSectionEditor}
+            onSelectItem={openItem}
+            onAddSection={() => showPlaceholderFeedback("Добавить раздел: placeholder")}
+            onAddPosition={addPositionToSection}
+            onSectionAction={handleUnifiedSectionAction}
+            onReorderItems={reorderItemsInSection}
+            onReorderSections={reorderSections}
+          />
+        ) : editing ? (
           <SectionPositionNav
             sectionId={selectedSectionId}
             sectionName={section?.name ?? selectedItem?.sectionName ?? "Раздел"}
@@ -4823,7 +5593,9 @@ function PopulatedWorkspace({
             onArchiveOpenChange={setArchiveOpen}
             onRestoreItem={restoreItem}
             onToggleStop={toggleStopItem}
-            onReorderItems={reorderSectionItems}
+            onReorderItems={(draggedId, targetId) => {
+              if (selectedSectionId) reorderItemsInSection(selectedSectionId, draggedId, targetId);
+            }}
             stopBusyIds={stopBusyIds}
           />
         ) : (
@@ -4832,34 +5604,59 @@ function PopulatedWorkspace({
             archivedSections={archivedSectionTree}
             selectedId={selectedSectionId}
             archiveOpen={sectionArchiveOpen}
-            onSelectSection={editorNavExperiment ? selectSectionInEditor : selectSectionOverview}
+            onSelectSection={editorNavMode === "section" ? selectSectionInEditor : selectSectionOverview}
             onArchiveOpenChange={setSectionArchiveOpen}
             onRestoreSection={restoreSection}
             onDeleteArchivedSection={requestDeleteArchivedSection}
             onCreateAction={(action) => showPlaceholderFeedback(`${action}: placeholder`)}
           />
         )}
-        {editing ? (
+        {editorNavMode === "entity" ? (
           selectedItem ? (
-            <PositionEditor
-              item={selectedItem}
-              allItems={allItems}
-              upsell={upsellByItem[selectedItem.id] ?? {}}
-              onUpsellChange={(next) => updateUpsell(selectedItem.id, next)}
-              stopBusy={stopBusyIds.has(selectedItem.id)}
-              onArchiveItem={archiveItem}
-              onRestoreItem={restoreItem}
-              onMoveItem={(item) => showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`)}
-              onToggleStop={toggleStopItem}
-              onSetAvailabilityMode={setAvailabilityMode}
-              unavailableDisplayMode={unavailableDisplayByItem[selectedItem.id] ?? "hidden"}
-              outsideScheduleMode={outsideScheduleByItem[selectedItem.id] ?? "hidden"}
-              weeklySchedule={weeklyScheduleByItem[selectedItem.id] ?? createDefaultWeeklySchedule()}
-              onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((prev) => ({ ...prev, [selectedItem.id]: mode }))}
-              onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: mode }))}
-              onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((prev) => ({ ...prev, [selectedItem.id]: schedule }))}
-              onRequestPermanentDelete={requestPermanentDelete}
+            renderPositionEditor(selectedItem)
+          ) : section ? (
+            <SectionEditor
+              section={section}
+              onNameChange={(name) => updateSectionDraft(section.id, { name })}
+              onImageChange={(imageUrl) => updateSectionDraft(section.id, { imageUrl })}
+              positionCount={sectionItems.length}
+              stoppedPositionCount={sectionItems.filter((item) => item.status === "stopped").length}
+              archivedPositionCount={sectionItems.filter((item) => item.status === "archive").length}
+              onAddPosition={() => addPositionToSection(section.id)}
+              onFocusSorting={() => focusSectionSorting(section.id)}
+              onOpenInOverview={() => onOpenOverviewForSection(section.id)}
+              onArchive={() => archiveSection(section)}
+              onRestore={() => restoreSection(section)}
+              onAction={(action) => handleUnifiedSectionAction(section, action)}
             />
+          ) : (
+            <UnifiedCatalogSelectionState />
+          )
+        ) : editorNavMode === "unified" ? (
+          selectedItem ? (
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              {(() => {
+                const selectedItemSection = allSections.find((candidate) => candidate.id === selectedItem.sectionId) ?? null;
+                if (!selectedItemSection) return null;
+                const itemCount = allItems.filter((candidate) => candidate.sectionId === selectedItemSection.id && candidate.status !== "archive").length;
+                return (
+                  <SectionEditorContext
+                    section={selectedItemSection}
+                    itemCount={itemCount}
+                    onEdit={() => handleUnifiedSectionAction(selectedItemSection, "Изменить раздел")}
+                    onAddPosition={() => addPositionToSection(selectedItemSection.id)}
+                    onAction={(action) => handleUnifiedSectionAction(selectedItemSection, action)}
+                  />
+                );
+              })()}
+              {renderPositionEditor(selectedItem)}
+            </div>
+          ) : (
+            <UnifiedCatalogSelectionState />
+          )
+        ) : editing ? (
+          selectedItem ? (
+            renderPositionEditor(selectedItem)
           ) : editorNavExperiment ? (
             <EditorPositionEmptyState
               sectionName={section?.name ?? "Раздел"}
@@ -4889,7 +5686,7 @@ function PopulatedWorkspace({
             Архивные позиции не отображаются в меню
           </div>
         )}
-        {editing && feedback && (
+        {(editorNavMode === "entity" || editorNavMode === "unified" || editing) && feedback && (
           <div className="fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
             {feedback}
           </div>
@@ -5592,13 +6389,15 @@ function OverviewStatusBar({
 function OverviewWorkspace({
   filterId,
   onFilterChange,
+  initialSectionScopeId,
 }: {
   filterId: OverviewFilterId;
   onFilterChange: (id: OverviewFilterId) => void;
+  initialSectionScopeId: string | null;
 }) {
   const [items, setItems] = useState<CatalogItem[]>(catalogItems);
   const [query, setQuery] = useState("");
-  const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
+  const [sectionScopeId, setSectionScopeId] = useState<string | null>(initialSectionScopeId);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
@@ -5978,6 +6777,7 @@ export function CatalogWorkspace({
   catalogTab,
   overviewFilterId,
   onOverviewFilterChange,
+  onCatalogTabChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
@@ -5988,6 +6788,19 @@ export function CatalogWorkspace({
       : catalogPhase === "has-sections"
         ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
         : buildSectionTree(catalogSections);
+  const overviewSectionScopeParam = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("overviewSectionId");
+  const overviewSectionScopeId = overviewSectionScopeParam && catalogSections.some((section) => section.id === overviewSectionScopeParam)
+    ? overviewSectionScopeParam
+    : null;
+  const openOverviewForSection = (sectionId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("positionId");
+    url.searchParams.set("sectionId", sectionId);
+    url.searchParams.set("overviewSectionId", sectionId);
+    window.history.replaceState(null, "", url);
+    onOverviewFilterChange("quick:all");
+    onCatalogTabChange("overview");
+  };
 
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
@@ -5997,11 +6810,12 @@ export function CatalogWorkspace({
       <OverviewWorkspace
         filterId={overviewFilterId}
         onFilterChange={onOverviewFilterChange}
+        initialSectionScopeId={overviewSectionScopeId}
       />
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
     ) : catalogPhase === "has-items" ? (
-      <PopulatedWorkspace sections={sections} />
+      <PopulatedWorkspace sections={sections} onOpenOverviewForSection={openOverviewForSection} />
     ) : (
       <EmptyCatalog
         sections={sections}
