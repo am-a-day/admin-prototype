@@ -40,11 +40,15 @@ import { CatalogWorkspace, CatalogTabs, StopListShortcut, type CatalogPhase, typ
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
+import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
+import { TrainingTabs } from "@/features/training/training-tabs";
+import type { TrainingTab } from "@/features/training/training-data";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 type SidebarPreference = "expanded" | "collapsed" | null;
 
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
+const TRAINING_PATH = "/training";
 
 const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
@@ -63,6 +67,9 @@ const PAGE_META: Record<string, PageMeta> = {
   "analytics:orders":      { title: "Заказы",             description: "Выручка, средний чек и динамика по времени." },
   "analytics:likes":       { title: "Лайки",              description: "Лайки гостей по блюдам и разделам меню." },
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
+  "training:trainer":      { title: "Обучение",           description: "Тренажёры для официантов на данных текущего каталога." },
+  "training:menu":         { title: "Обучение",           description: "Материалы меню для обучения официантов." },
+  "training:progress":     { title: "Обучение",           description: "Прогресс обучения официантов." },
 };
 
 const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> = {
@@ -371,11 +378,15 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
 
 function AppShell() {
   const { markVisited, stage } = useVitrineLaunch();
-  const [section, setSection] = useState<SectionId>("storefront");
+  const isInitialTrainingRoute = window.location.pathname.replace(/\/+$/, "") === TRAINING_PATH;
+  const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
+  const [section, setSection] = useState<SectionId>(isInitialTrainingRoute ? "training" : "storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>("catalog");
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>("info");
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
+  const [trainingTab, setTrainingTab] = useState<TrainingTab>("trainer");
+  const [trainingQuizActive, setTrainingQuizActive] = useState(false);
   const [selectedDishId, setSelectedDishId] = useState("pepperoni");
   const [bannerList, setBannerList] = useState<Banner[]>(seedBanners);
   const [selectedBannerId, setSelectedBannerId] = useState("hero-1");
@@ -513,6 +524,7 @@ function AppShell() {
     section === "storefront" ? storeTab :
     section === "management" ? manageTab :
     section === "analytics" ? analyticsTab :
+    section === "training" ? trainingTab :
     null;
 
   const updateBanner = (id: string, patch: Partial<Banner>) =>
@@ -549,6 +561,15 @@ function AppShell() {
   const navigate = (next: SectionId, tab: string) => {
     setSection(next);
     setPreviewScenario(null);
+    if (next === "training") {
+      setTrainingTab((tab as TrainingTab) || "trainer");
+      if (window.location.pathname !== TRAINING_PATH || window.location.search) {
+        window.history.pushState(null, "", TRAINING_PATH);
+      }
+    } else if (window.location.pathname.replace(/\/+$/, "") === TRAINING_PATH) {
+      setTrainingQuizActive(false);
+      window.history.pushState(null, "", "/");
+    }
     if (next === "storefront") {
       setStoreTab(tab as StoreTabId);
       if (tab === "about") {
@@ -566,6 +587,7 @@ function AppShell() {
       if (tab === "order-settings") markVisited("ordering");
     }
     if (next === "analytics") setAnalyticsTab(tab as AnalyticsTabId);
+    if (next === "training") setTrainingTab(tab as TrainingTab);
   };
 
   const openOrderAcceptance = () => {
@@ -649,6 +671,8 @@ function AppShell() {
     }
   } else if (section === "analytics") {
     content = <AnalyticsPage tab={analyticsTab} />;
+  } else if (section === "training") {
+    content = <OwnerTrainingLayout activeTab={trainingTab} onQuizActiveChange={setTrainingQuizActive} />;
   } else {
     content = <QRPage />;
   }
@@ -679,6 +703,10 @@ function AppShell() {
     return <AMApp onExit={() => setSection("storefront")} />;
   }
 
+  if (section === "training" && isWaiterTrainingRoute) {
+    return <WaiterTrainingLayout />;
+  }
+
   // Какая из 6 редактируемых страниц витрины сейчас открыта (для трекинга черновика)
   const pageKey: PageKey | null =
     section === "storefront"
@@ -692,6 +720,7 @@ function AppShell() {
   const isHomePage = section === "storefront" && storeTab === "home";
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
   const isAboutPage = section === "storefront" && storeTab === "about";
+  const isTrainingPage = section === "training";
   const isPublicDisplayPage = section === "storefront" && storeTab === "about" && storeAboutTab === "public-display";
 
   // When catalog is empty, override preview to show the empty-catalog phone screen
@@ -701,7 +730,10 @@ function AppShell() {
       : previewScenario;
 
   // When on catalog's Рекомендации tab, preview should show upsell screen
-  const effectiveActiveTab = isCatalogPage && catalogTab === "upsell" ? "upsell" : activeTab;
+  const effectiveActiveTab: StoreTabId | ManageTabId | AnalyticsTabId | null =
+    isCatalogPage && catalogTab === "upsell" ? "upsell" :
+    isTrainingPage ? null :
+    (activeTab as StoreTabId | ManageTabId | AnalyticsTabId | null);
   const previewVisible =
     section === "storefront" ||
     (section === "management" && manageTab === "order-settings");
@@ -710,6 +742,7 @@ function AppShell() {
     section === "storefront" ? `storefront:${storeTab}` :
     section === "management" ? `management:${manageTab}` :
     section === "analytics"  ? `analytics:${analyticsTab}` :
+    section === "training" ? `training:${trainingTab}` :
     "qr";
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
@@ -793,7 +826,7 @@ function AppShell() {
           {/* Work area */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1">
             {/* Toolbar: tabs left + language right */}
-            {(isHomePage || isCatalogPage || isAboutPage || pageMeta.showLanguage || previewVisible) && (
+            {(isHomePage || isCatalogPage || isAboutPage || (isTrainingPage && !trainingQuizActive) || pageMeta.showLanguage || previewVisible) && (
               <div className={cn(
                 "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
               )}>
@@ -825,6 +858,9 @@ function AppShell() {
                         setPreviewScenario(t === "info" ? "about" : null);
                       }}
                     />
+                  )}
+                  {isTrainingPage && !trainingQuizActive && (
+                    <TrainingTabs value={trainingTab} onChange={setTrainingTab} />
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

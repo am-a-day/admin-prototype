@@ -16,6 +16,7 @@ import {
   ClipboardText,
   ClockCounterClockwise,
   Coins,
+  BookOpen,
   ForkKnife,
   House,
   MagnifyingGlass,
@@ -65,6 +66,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Настройка заказов", section: "management", tab: "order-settings", icon: Package },
       { label: "История заказов", section: "management", tab: "order-history", icon: ClockCounterClockwise },
+    ],
+  },
+  {
+    title: "Обучение",
+    items: [
+      { label: "Обучение", section: "training", tab: "trainer", icon: BookOpen },
     ],
   },
   {
@@ -636,6 +643,7 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
 export function getPageTitle(section: SectionId, activeTab: string | null): string {
   if (section === "qr") return "QR-меню";
   if (section === "am") return "";
+  if (section === "training") return "Обучение";
 
   const allItems = NAV_GROUPS.flatMap((g) => g.items);
   const match = allItems.find((i) => i.section === section && i.tab === activeTab);

@@ -16,7 +16,7 @@ import {
   User,
 } from "lucide-react";
 
-export type SectionId = "analytics" | "storefront" | "qr" | "management" | "am";
+export type SectionId = "analytics" | "storefront" | "qr" | "management" | "training" | "am";
 
 export const MOCK_USER = {
   name: "Амадей Щербаков",
