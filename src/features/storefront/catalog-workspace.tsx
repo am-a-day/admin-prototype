@@ -151,6 +151,7 @@ type TreeSection = {
   emoji?: string;
   sortOrder?: number;
   status?: SectionStatus;
+  availabilityMode?: AvailabilityMode;
   children?: TreeSection[];
 };
 type SectionStatus = "active" | "archive";
@@ -1111,6 +1112,9 @@ const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.outsideSchedule";
 const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.weeklySchedule";
 const CATALOG_SECTION_STATUS_STORAGE_KEY = "tasko.catalog.sectionStatusOverrides";
 const CATALOG_SECTION_DRAFT_STORAGE_KEY = "tasko.catalog.sectionDraftOverrides";
+const CATALOG_SECTION_AVAILABILITY_STORAGE_KEY = "tasko.catalog.sectionAvailabilityMode";
+const CATALOG_SECTION_OUTSIDE_SCHEDULE_STORAGE_KEY = "tasko.catalog.sectionOutsideSchedule";
+const CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY = "tasko.catalog.sectionWeeklySchedule";
 const CATALOG_UPSELL_STORAGE_KEY = "tasko.catalog.upsellByItem";
 const CATALOG_POSITION_ORDER_STORAGE_KEY = "tasko.catalog.positionOrderBySection";
 const CATALOG_SECTION_ORDER_STORAGE_KEY = "tasko.catalog.sectionOrderByParent";
@@ -2846,45 +2850,48 @@ export function getEffectiveAvailability(
       };
 }
 
-function AvailabilityTab({
-  item,
-  stopBusy,
-  onSetAvailabilityMode,
+type AvailabilityOption = {
+  id: AvailabilityMode;
+  title: string;
+  description: string;
+  disabled?: boolean;
+};
+
+type AvailabilityNestedDisplayCopy = {
+  label: string;
+  hiddenText: string;
+  comingSoonText: string;
+};
+
+function AvailabilityEditor({
+  mode,
+  options,
+  ariaLabel,
+  scheduleId,
   unavailableDisplayMode,
   outsideScheduleMode,
   weeklySchedule,
+  onModeChange,
   onUnavailableDisplayModeChange,
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
+  unavailableNested,
+  scheduleNested,
 }: {
-  item: CatalogItem;
-  stopBusy: boolean;
-  onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
-  unavailableDisplayMode: UnavailableDisplayMode;
+  mode: AvailabilityMode;
+  options: AvailabilityOption[];
+  ariaLabel: string;
+  scheduleId: string;
+  unavailableDisplayMode?: UnavailableDisplayMode;
   outsideScheduleMode: OutsideScheduleMode;
   weeklySchedule: WeeklySchedule;
-  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
+  onModeChange: (mode: AvailabilityMode) => void;
+  onUnavailableDisplayModeChange?: (mode: UnavailableDisplayMode) => void;
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+  unavailableNested?: AvailabilityNestedDisplayCopy;
+  scheduleNested: AvailabilityNestedDisplayCopy;
 }) {
-  const mode = getAvailabilityMode(item);
-  const options: { id: AvailabilityMode; title: string; description: string }[] = [
-    {
-      id: "always",
-      title: "Можно заказать",
-      description: "Доступно для заказа в любое время",
-    },
-    {
-      id: "unavailable",
-      title: "Нельзя заказать",
-      description: "Гости не смогут добавить позицию в заказ",
-    },
-    {
-      id: "schedule",
-      title: "По расписанию",
-      description: "Доступно только в указанные дни и часы",
-    },
-  ];
   const updateDay = (dayKey: ScheduleDayKey, day: DaySchedule) => {
     onWeeklyScheduleChange({ ...weeklySchedule, [dayKey]: day });
   };
@@ -2958,7 +2965,7 @@ function AvailabilityTab({
             {day.mode === "custom" && (
               <div className="space-y-1.5">
                 {intervals.map((interval, index) => {
-                  const errorId = `${item.id}-${dayKey}-${index}-time-error`;
+                  const errorId = `${scheduleId}-${dayKey}-${index}-time-error`;
                   const intervalErrors = validateDaySchedule({ mode: "custom", intervals: [interval] });
                   return (
                     <div key={index} className="flex flex-wrap items-center gap-2">
@@ -3043,7 +3050,7 @@ function AvailabilityTab({
     <div>
       <div
         role="radiogroup"
-        aria-label="Доступность позиции"
+        aria-label={ariaLabel}
         className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(12,12,13,0.05)]"
       >
         {options.map((option) => {
@@ -3054,8 +3061,8 @@ function AvailabilityTab({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                onClick={() => onSetAvailabilityMode(item, option.id)}
-                disabled={option.id === "unavailable" && stopBusy}
+                onClick={() => onModeChange(option.id)}
+                disabled={option.disabled}
                 className="flex w-full items-start gap-4 p-4 text-left transition hover:bg-[#fbfbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-60"
               >
                 <span className={cn(
@@ -3069,25 +3076,25 @@ function AvailabilityTab({
                   <span className="mt-0.5 block text-[13px] leading-5 text-[#79716b]">{option.description}</span>
                 </span>
               </button>
-              {option.id === "unavailable" && selected && (
+              {option.id === "unavailable" && selected && unavailableNested && unavailableDisplayMode && onUnavailableDisplayModeChange && (
                 <div className="px-4 pb-4">
                   {renderNestedDisplay(
-                    "В меню:",
+                    unavailableNested.label,
                     unavailableDisplayMode,
                     onUnavailableDisplayModeChange,
-                    "Позиция не будет отображаться в меню, пока недоступна",
-                    "Позиция останется в меню с отметкой «Скоро будет»",
+                    unavailableNested.hiddenText,
+                    unavailableNested.comingSoonText,
                   )}
                 </div>
               )}
               {option.id === "schedule" && selected && (
                 <div className="px-4 pb-4">
                   {renderNestedDisplay(
-                    "Вне расписания:",
+                    scheduleNested.label,
                     outsideScheduleMode,
                     onOutsideScheduleModeChange,
-                    "Позиция не будет отображаться в меню вне расписания",
-                    "Позиция останется в меню с отметкой «Скоро будет» вне расписания",
+                    scheduleNested.hiddenText,
+                    scheduleNested.comingSoonText,
                   )}
                   <div className="mt-4 overflow-hidden rounded-[10px] border border-[#e7e5e4] bg-white">
                     {DAY_LABELS.map((day) => renderDayRow(day.key, day.label))}
@@ -3099,6 +3106,124 @@ function AvailabilityTab({
         })}
       </div>
     </div>
+  );
+}
+
+function AvailabilityTab({
+  item,
+  stopBusy,
+  onSetAvailabilityMode,
+  unavailableDisplayMode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onUnavailableDisplayModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
+}: {
+  item: CatalogItem;
+  stopBusy: boolean;
+  onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
+  unavailableDisplayMode: UnavailableDisplayMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  return (
+    <AvailabilityEditor
+      mode={getAvailabilityMode(item)}
+      options={[
+        {
+          id: "always",
+          title: "Можно заказать",
+          description: "Доступно для заказа в любое время",
+        },
+        {
+          id: "unavailable",
+          title: "Нельзя заказать",
+          description: "Гости не смогут добавить позицию в заказ",
+          disabled: stopBusy,
+        },
+        {
+          id: "schedule",
+          title: "По расписанию",
+          description: "Доступно только в указанные дни и часы",
+        },
+      ]}
+      ariaLabel="Доступность позиции"
+      scheduleId={item.id}
+      unavailableDisplayMode={unavailableDisplayMode}
+      outsideScheduleMode={outsideScheduleMode}
+      weeklySchedule={weeklySchedule}
+      onModeChange={(mode) => onSetAvailabilityMode(item, mode)}
+      onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
+      onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+      onWeeklyScheduleChange={onWeeklyScheduleChange}
+      unavailableNested={{
+        label: "В меню:",
+        hiddenText: "Позиция не будет отображаться в меню, пока недоступна",
+        comingSoonText: "Позиция останется в меню с отметкой «Скоро будет»",
+      }}
+      scheduleNested={{
+        label: "Вне расписания:",
+        hiddenText: "Позиция не будет отображаться в меню вне расписания",
+        comingSoonText: "Позиция останется в меню с отметкой «Скоро будет» вне расписания",
+      }}
+    />
+  );
+}
+
+function SectionAvailabilityTab({
+  sectionId,
+  mode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
+}: {
+  sectionId: string;
+  mode: AvailabilityMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onModeChange: (mode: AvailabilityMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  return (
+    <AvailabilityEditor
+      mode={mode}
+      options={[
+        {
+          id: "always",
+          title: "Показывать всегда",
+          description: "Раздел отображается в меню в любое время",
+        },
+        {
+          id: "unavailable",
+          title: "Скрыть раздел",
+          description: "Раздел временно не показывается гостям",
+        },
+        {
+          id: "schedule",
+          title: "По расписанию",
+          description: "Раздел отображается только в указанные дни и часы",
+        },
+      ]}
+      ariaLabel="Доступность раздела"
+      scheduleId={`section-${sectionId}`}
+      outsideScheduleMode={outsideScheduleMode}
+      weeklySchedule={weeklySchedule}
+      onModeChange={onModeChange}
+      onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+      onWeeklyScheduleChange={onWeeklyScheduleChange}
+      scheduleNested={{
+        label: "Вне расписания:",
+        hiddenText: "Раздел не будет отображаться в меню вне расписания",
+        comingSoonText: "Гости увидят раздел, но не смогут открыть доступные для заказа позиции до начала расписания",
+      }}
+    />
   );
 }
 
@@ -3955,6 +4080,10 @@ function UnifiedCatalogTreePanel({
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
   };
 
+  const expandSection = (id: string) => {
+    setExpanded((current) => current[id] ? current : { ...current, [id]: true });
+  };
+
   const handlePanelDragOver = (event: DragEvent<HTMLDivElement>) => {
     if ((!draggedItem && !draggedSection) || !panelScrollRef.current) return;
     const bounds = panelScrollRef.current.getBoundingClientRect();
@@ -4099,7 +4228,7 @@ function UnifiedCatalogTreePanel({
             ref={active ? selectedRowRef : undefined}
             type="button"
             onClick={() => {
-              toggleSection(section.id);
+              expandSection(section.id);
               onSelectSection(section.id);
             }}
             title={section.name}
@@ -4114,6 +4243,16 @@ function UnifiedCatalogTreePanel({
             {sectionEditingEnabled && section.status === "archive" && (
               <Tooltip label="В архиве" side="top" delayDuration={200}>
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+              </Tooltip>
+            )}
+            {sectionEditingEnabled && section.status !== "archive" && section.availabilityMode === "unavailable" && (
+              <Tooltip label="Раздел скрыт" side="top" delayDuration={200}>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
+              </Tooltip>
+            )}
+            {sectionEditingEnabled && section.status !== "archive" && section.availabilityMode === "schedule" && (
+              <Tooltip label="По расписанию" side="top" delayDuration={200}>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Clock size={12} /></span>
               </Tooltip>
             )}
           </button>
@@ -4268,38 +4407,59 @@ function SectionEditorContext({
 
 function SectionEditor({
   section,
+  childSections,
+  compositionItems,
+  activeTab,
+  availabilityMode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onTabChange,
   onNameChange,
   onImageChange,
-  positionCount,
-  stoppedPositionCount,
-  archivedPositionCount,
+  onAvailabilityModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
   onAddPosition,
-  onFocusSorting,
-  onOpenInOverview,
+  onOpenItem,
+  onOpenSection,
+  onReorderItem,
+  onReorderSection,
+  getSectionDirectChildCount,
   onArchive,
   onRestore,
   onAction,
 }: {
   section: TreeSection;
+  childSections: TreeSection[];
+  compositionItems: CatalogItem[];
+  activeTab: "composition" | "basic" | "availability";
+  availabilityMode: AvailabilityMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onTabChange: (tab: "composition" | "basic" | "availability") => void;
   onNameChange: (name: string) => void;
   onImageChange: (imageUrl: string | null) => void;
-  positionCount: number;
-  stoppedPositionCount: number;
-  archivedPositionCount: number;
+  onAvailabilityModeChange: (mode: AvailabilityMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onAddPosition: () => void;
-  onFocusSorting: () => void;
-  onOpenInOverview: () => void;
+  onOpenItem: (id: string) => void;
+  onOpenSection: (id: string) => void;
+  onReorderItem: (draggedId: string, targetId: string) => void;
+  onReorderSection: (draggedId: string, targetId: string) => void;
+  getSectionDirectChildCount: (sectionId: string) => number;
   onArchive: () => void;
   onRestore: () => void;
   onAction: (action: string) => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [draggedCompositionRow, setDraggedCompositionRow] = useState<{ type: "item" | "section"; id: string } | null>(null);
+  const [dragOverCompositionRow, setDragOverCompositionRow] = useState<{ type: "item" | "section"; id: string } | null>(null);
   const archived = section.status === "archive";
-  const positionSummary = [
-    `${positionCount} ${plural(positionCount, "позиция", "позиции", "позиций")}`,
-    stoppedPositionCount > 0 ? `${stoppedPositionCount} на стопе` : null,
-    archivedPositionCount > 0 ? `${archivedPositionCount} в архиве` : null,
-  ].filter(Boolean).join(" · ");
+  const compositionRows = [
+    ...compositionItems.map((item) => ({ type: "item" as const, id: item.id, item })),
+    ...childSections.map((child) => ({ type: "section" as const, id: child.id, section: child })),
+  ];
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -4310,6 +4470,25 @@ function SectionEditor({
       if (typeof reader.result === "string") onImageChange(reader.result);
     };
     reader.readAsDataURL(file);
+  };
+
+  useEffect(() => {
+    setDraggedCompositionRow(null);
+    setDragOverCompositionRow(null);
+  }, [section.id]);
+
+  const renderCompositionStatus = (item: CatalogItem) => {
+    if (item.status === "stopped") return <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Стоп</span>;
+    if (item.status === "coming-soon") return <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Скоро</span>;
+    if (item.status === "archive") return <Archive size={13} className="text-[#a8a29e]" />;
+    if (item.scheduled) return <Clock size={13} className="text-[#a8a29e]" />;
+    return null;
+  };
+
+  const handleCompositionDrop = (target: { type: "item" | "section"; id: string }) => {
+    if (!draggedCompositionRow || draggedCompositionRow.id === target.id || draggedCompositionRow.type !== target.type) return;
+    if (target.type === "item") onReorderItem(draggedCompositionRow.id, target.id);
+    else onReorderSection(draggedCompositionRow.id, target.id);
   };
 
   return (
@@ -4332,77 +4511,230 @@ function SectionEditor({
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
-
           <div className="space-y-2">
-            <section className="rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
-              <div className="border-b border-[#eceae7] px-4 py-3 text-[13px] font-medium text-[#292524]">Основное</div>
-              <div className="space-y-4 p-4">
-                <div>
-                  <div className="mb-2 text-[13px] font-medium text-[#44403b]">Иконка раздела</div>
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#f1f1ea] text-[#a8a29e]">
-                      {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={20} />}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => imageInputRef.current?.click()} className="h-8 rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">
-                        {section.imageUrl ? "Заменить" : "Загрузить"}
+            <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+              <div className="flex items-center gap-2 px-3">
+                {([
+                  { id: "composition", label: "Состав" },
+                  { id: "basic", label: "Основное" },
+                  { id: "availability", label: "Доступность" },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => onTabChange(tab.id)}
+                    className={cn(
+                      "flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
+                      activeTab === tab.id
+                        ? "border-[#1c1917] font-medium text-[#1c1917]"
+                        : "border-transparent text-[#79716b] hover:text-[#44403b]",
+                    )}
+                  >
+                    {tab.label}
+                    {tab.id === "composition" && (
+                      <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
+                        {compositionRows.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-[#e7e5e4]">
+            {activeTab === "composition" ? (
+            <section>
+              <div className="flex items-center justify-between gap-3 border-b border-[#eceae7] px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-[#292524]">Состав раздела</div>
+                  <div className="mt-0.5 truncate text-[12px] text-[#a8a29e]">
+                    {compositionRows.length} {plural(compositionRows.length, "элемент", "элемента", "элементов")} в порядке витрины
+                  </div>
+                </div>
+                {!archived && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={onAddPosition} className="h-8 whitespace-nowrap rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">Добавить позицию</button>
+                  </div>
+                )}
+              </div>
+              {compositionRows.length === 0 ? (
+                <div className="p-4">
+                  <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
+                    <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
+                        <Plus size={13} />
+                        Добавить позицию
                       </button>
-                      {section.imageUrl && (
-                        <Tooltip label="Удалить иконку" side="top">
-                          <button type="button" onClick={() => onImageChange(null)} aria-label="Удалить иконку" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]">
-                            <Trash size={14} />
-                          </button>
-                        </Tooltip>
-                      )}
+                      <button type="button" onClick={() => onAction("Добавить подраздел")} className="h-8 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[12px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]">Добавить подраздел</button>
                     </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#f0efe9]">
+                  {compositionRows.map((row) => {
+                    const isDropTarget = dragOverCompositionRow?.type === row.type && dragOverCompositionRow.id === row.id && draggedCompositionRow?.id !== row.id;
+                    if (row.type === "section") {
+                      const child = row.section;
+                      const childCount = getSectionDirectChildCount(child.id);
+                      return (
+                        <div
+                          key={`section-${child.id}`}
+                          onDragOver={(event) => {
+                            if (!draggedCompositionRow || draggedCompositionRow.type !== "section" || draggedCompositionRow.id === child.id) return;
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                            setDragOverCompositionRow({ type: "section", id: child.id });
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            handleCompositionDrop({ type: "section", id: child.id });
+                            setDraggedCompositionRow(null);
+                            setDragOverCompositionRow(null);
+                          }}
+                          className={cn("group flex h-10 items-center gap-2 px-3 transition hover:bg-[#fafaf9]", isDropTarget && "bg-[#f5f3ff]")}
+                        >
+                          <span
+                            draggable
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Изменить порядок подраздела ${child.name}`}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", child.id);
+                              setDraggedCompositionRow({ type: "section", id: child.id });
+                            }}
+                            onDragEnd={() => {
+                              setDraggedCompositionRow(null);
+                              setDragOverCompositionRow(null);
+                            }}
+                            className="flex h-full w-5 shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-60 transition hover:text-[#57534d] active:cursor-grabbing"
+                          >
+                            <DotsSixVertical size={13} />
+                          </span>
+                          <button type="button" onClick={() => onOpenSection(child.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f1f1ea] text-[#79716b]">
+                              {child.imageUrl ? <img src={child.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ForkKnife size={13} weight="fill" />}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{child.name}</span>
+                            <span className="shrink-0 whitespace-nowrap text-[12px] text-[#a8a29e]">{childCount} {plural(childCount, "элемент", "элемента", "элементов")}</span>
+                          </button>
+                        </div>
+                      );
+                    }
+                    const item = row.item;
+                    const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
+                    return (
+                      <div
+                        key={`item-${item.id}`}
+                        onDragOver={(event) => {
+                          if (!draggedCompositionRow || draggedCompositionRow.type !== "item" || draggedCompositionRow.id === item.id) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                          setDragOverCompositionRow({ type: "item", id: item.id });
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          handleCompositionDrop({ type: "item", id: item.id });
+                          setDraggedCompositionRow(null);
+                          setDragOverCompositionRow(null);
+                        }}
+                        className={cn("group flex h-10 items-center gap-2 px-3 transition hover:bg-[#fafaf9]", isDropTarget && "bg-[#f5f3ff]")}
+                      >
+                        <span
+                          draggable
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Изменить порядок позиции ${item.title}`}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", item.id);
+                            setDraggedCompositionRow({ type: "item", id: item.id });
+                          }}
+                          onDragEnd={() => {
+                            setDraggedCompositionRow(null);
+                            setDragOverCompositionRow(null);
+                          }}
+                          className="flex h-full w-5 shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-60 transition hover:text-[#57534d] active:cursor-grabbing"
+                        >
+                          <DotsSixVertical size={13} />
+                        </span>
+                        <button type="button" onClick={() => onOpenItem(item.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f5f5f4]">
+                            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageBroken size={13} className="text-[#a8a29e]" />}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#292524]">{item.title}</span>
+                          <span className="shrink-0 whitespace-nowrap text-[13px] text-[#44403b]">{item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}</span>
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center whitespace-nowrap">{renderCompositionStatus(item)}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+            ) : activeTab === "basic" ? (
+            <section>
+              <div className="px-4 py-3 text-[13px] font-medium text-[#292524]">Основное</div>
+              <div className="divide-y divide-[#f0efe9]">
+                <div className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                  <div className="text-[13px] font-medium text-[#44403b]">Иконка раздела</div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#f1f1ea] text-[#a8a29e]">
+                      {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={18} />}
+                    </span>
+                    <button type="button" onClick={() => imageInputRef.current?.click()} className="h-8 rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">
+                      {section.imageUrl ? "Заменить" : "Загрузить"}
+                    </button>
+                    {section.imageUrl && (
+                      <Tooltip label="Удалить иконку" side="top">
+                        <button type="button" onClick={() => onImageChange(null)} aria-label="Удалить иконку" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]">
+                          <Trash size={14} />
+                        </button>
+                      </Tooltip>
+                    )}
                     <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
                   </div>
                 </div>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-[13px] font-medium text-[#44403b]">Название</span>
+                <label className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                  <span className="text-[13px] font-medium text-[#44403b]">Название</span>
                   <input
                     value={section.name}
                     onChange={(event) => onNameChange(event.target.value)}
                     className="h-9 w-full rounded-[9px] border border-[#e7e5e4] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(12,12,13,0.04)] outline-none transition focus:border-[#a8a29e] focus:ring-2 focus:ring-[#292524]/5"
                   />
                 </label>
-              </div>
-            </section>
 
-            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
-              <div className="text-[13px] font-medium text-[#292524]">Доступность и отображение</div>
-              <div className="mt-3 flex min-h-9 items-center gap-3">
-                <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px]", archived ? "bg-[#f1f1ea] text-[#79716b]" : "bg-[#eef5ec] text-[#55704d]")}>{archived ? <Archive size={14} /> : <CheckCircle size={14} weight="fill" />}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium text-[#44403b]">Статус</div>
-                  <div className="text-[12px] text-[#a8a29e]">{archived ? "Раздел находится в архиве" : "Раздел активен"}</div>
+                <div className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                  <div>
+                    <div className="text-[13px] font-medium text-[#9f3a31]">Опасная зона</div>
+                    <div className="mt-0.5 text-[12px] leading-4 text-[#a8a29e]">Архивирование раздела</div>
+                  </div>
+                  <div>
+                    <div className="text-[12px] leading-5 text-[#79716b]">
+                      {archived ? "Раздел находится в архиве и не показывается гостям." : "Архивный раздел не показывается гостям и остается доступен для восстановления."}
+                    </div>
+                    <button type="button" onClick={archived ? onRestore : onArchive} className={cn("mt-2 h-8 rounded-[8px] border px-3 text-[12px] font-medium transition", archived ? "border-[#d8d5d0] text-[#57534d] hover:bg-[#f5f5f4]" : "border-[#e7c6c2] text-[#9f3a31] hover:bg-[#fff7f6]")}>
+                      {archived ? "Восстановить раздел" : "Архивировать раздел"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
-
-            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
-              <div className="text-[13px] font-medium text-[#292524]">Позиции · {positionCount}</div>
-              <div className="mt-1 text-[12px] text-[#79716b]">{positionSummary}</div>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
-                  <Plus size={13} />
-                  Добавить позицию
-                </button>
-                <button type="button" onClick={onFocusSorting} disabled={positionCount === 0} className="h-8 rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:cursor-default disabled:opacity-40">
-                  Изменить порядок
-                </button>
-                <button type="button" onClick={onOpenInOverview} className="h-8 rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">
-                  Открыть в таблице
-                </button>
+            ) : (
+            <section className="p-0">
+              <SectionAvailabilityTab
+                sectionId={section.id}
+                mode={availabilityMode}
+                outsideScheduleMode={outsideScheduleMode}
+                weeklySchedule={weeklySchedule}
+                onModeChange={onAvailabilityModeChange}
+                onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+                onWeeklyScheduleChange={onWeeklyScheduleChange}
+              />
+            </section>
+            )}
               </div>
-            </section>
-
-            <section className="rounded-[12px] border border-[#e7e5e4] bg-white p-4 shadow-[0_1px_3px_rgba(12,12,13,0.04)]">
-              <div className="text-[13px] font-medium text-[#292524]">Архивирование</div>
-              <div className="mt-1 text-[12px] leading-5 text-[#79716b]">{archived ? "Раздел находится в архиве и не показывается гостям." : "Архивный раздел не показывается гостям и остаётся доступен для восстановления."}</div>
-              <button type="button" onClick={archived ? onRestore : onArchive} className={cn("mt-3 h-8 rounded-[8px] border px-3 text-[12px] font-medium transition", archived ? "border-[#d8d5d0] text-[#57534d] hover:bg-[#f5f5f4]" : "border-[#e7c6c2] text-[#9f3a31] hover:bg-[#fff7f6]")}>{archived ? "Восстановить раздел" : "Архивировать раздел"}</button>
-            </section>
+            </div>
           </div>
         </div>
       </div>
@@ -4983,10 +5315,8 @@ function writeJsonRecord(key: string, value: unknown) {
 
 function PopulatedWorkspace({
   sections,
-  onOpenOverviewForSection,
 }: {
   sections: TreeSection[];
-  onOpenOverviewForSection: (sectionId: string) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -5056,6 +5386,15 @@ function PopulatedWorkspace({
   const [sectionDraftOverrides, setSectionDraftOverrides] = useState<Record<string, SectionDraftOverride>>(() =>
     readJsonRecord<Record<string, SectionDraftOverride>>(CATALOG_SECTION_DRAFT_STORAGE_KEY, {}),
   );
+  const [sectionAvailabilityBySection, setSectionAvailabilityBySection] = useState<Record<string, AvailabilityMode>>(() =>
+    readJsonRecord<Record<string, AvailabilityMode>>(CATALOG_SECTION_AVAILABILITY_STORAGE_KEY, {}),
+  );
+  const [sectionOutsideScheduleBySection, setSectionOutsideScheduleBySection] = useState<Record<string, OutsideScheduleMode>>(() =>
+    readJsonRecord<Record<string, OutsideScheduleMode>>(CATALOG_SECTION_OUTSIDE_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const [sectionWeeklyScheduleBySection, setSectionWeeklyScheduleBySection] = useState<Record<string, WeeklySchedule>>(() =>
+    readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
+  );
   const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
     readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
   );
@@ -5065,6 +5404,7 @@ function PopulatedWorkspace({
   const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
+  const [sectionEditorTab, setSectionEditorTab] = useState<"composition" | "basic" | "availability">("composition");
   const [stopBusyIds, setStopBusyIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
@@ -5075,6 +5415,7 @@ function PopulatedWorkspace({
       ...section,
       ...sectionDraftOverrides[section.id],
       status: sectionStatusOverrides[section.id] ?? "active",
+      availabilityMode: sectionAvailabilityBySection[section.id] ?? "always",
       sortOrder: (() => {
         const storedOrder = sectionOrderByParent[section.parentId ?? "__root__"];
         const storedIndex = storedOrder?.indexOf(section.id) ?? -1;
@@ -5121,10 +5462,18 @@ function PopulatedWorkspace({
     allItems.filter((item) => item.sectionId === selectedSectionId),
     selectedSectionId ? positionOrderBySection[selectedSectionId] : undefined,
   );
+  const childSections = selectedSectionId
+    ? allSections
+      .filter((candidate) => (candidate.parentId ?? null) === selectedSectionId)
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+    : [];
   const activeSectionItems = sectionItems.filter((item) => item.status !== "archive");
   const selectedItem = selectedItemId
     ? allItems.find((item) => item.id === selectedItemId) ?? null
     : null;
+  const getSectionDirectChildCount = (sectionId: string) =>
+    allItems.filter((item) => item.sectionId === sectionId && item.status !== "archive").length +
+    allSections.filter((candidate) => (candidate.parentId ?? null) === sectionId && candidate.status !== "archive").length;
 
   const rememberItem = (id: string) => {
     const it = allItems.find((i) => i.id === id);
@@ -5150,11 +5499,6 @@ function PopulatedWorkspace({
     }
   };
 
-  const focusSectionSorting = (sectionId: string) => {
-    window.dispatchEvent(new CustomEvent("tasko-focus-section-sorting", { detail: sectionId }));
-    setFeedback("Перетащите позиции за handle в дереве");
-  };
-
   // Открыть позицию (из обзора или sibling-навигации) → войти в editor mode.
   const openItem = (id: string) => {
     const item = allItems.find((candidate) => candidate.id === id);
@@ -5169,7 +5513,6 @@ function PopulatedWorkspace({
       window.history.replaceState(null, "", url);
     }
   };
-
   // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
@@ -5283,6 +5626,21 @@ function PopulatedWorkspace({
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_DRAFT_STORAGE_KEY, sectionDraftOverrides);
   }, [sectionDraftOverrides]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_AVAILABILITY_STORAGE_KEY, sectionAvailabilityBySection);
+  }, [sectionAvailabilityBySection]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_OUTSIDE_SCHEDULE_STORAGE_KEY, sectionOutsideScheduleBySection);
+  }, [sectionOutsideScheduleBySection]);
+
+  useEffect(() => {
+    const validSchedules = Object.fromEntries(
+      Object.entries(sectionWeeklyScheduleBySection).filter(([, schedule]) => isWeeklyScheduleValid(schedule)),
+    );
+    writeJsonRecord(CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY, validSchedules);
+  }, [sectionWeeklyScheduleBySection]);
 
   useEffect(() => {
     writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
@@ -5551,7 +5909,6 @@ function PopulatedWorkspace({
       onRequestPermanentDelete={requestPermanentDelete}
     />
   );
-
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
@@ -5617,14 +5974,33 @@ function PopulatedWorkspace({
           ) : section ? (
             <SectionEditor
               section={section}
+              childSections={childSections}
+              compositionItems={sectionItems}
+              activeTab={sectionEditorTab}
+              availabilityMode={sectionAvailabilityBySection[section.id] ?? "always"}
+              outsideScheduleMode={sectionOutsideScheduleBySection[section.id] ?? "hidden"}
+              weeklySchedule={sectionWeeklyScheduleBySection[section.id] ?? createDefaultWeeklySchedule()}
+              onTabChange={setSectionEditorTab}
               onNameChange={(name) => updateSectionDraft(section.id, { name })}
               onImageChange={(imageUrl) => updateSectionDraft(section.id, { imageUrl })}
-              positionCount={sectionItems.length}
-              stoppedPositionCount={sectionItems.filter((item) => item.status === "stopped").length}
-              archivedPositionCount={sectionItems.filter((item) => item.status === "archive").length}
+              onAvailabilityModeChange={(mode) => {
+                setSectionAvailabilityBySection((current) => ({ ...current, [section.id]: mode }));
+                registerChange("catalog");
+              }}
+              onOutsideScheduleModeChange={(mode) => {
+                setSectionOutsideScheduleBySection((current) => ({ ...current, [section.id]: mode }));
+                registerChange("catalog");
+              }}
+              onWeeklyScheduleChange={(schedule) => {
+                setSectionWeeklyScheduleBySection((current) => ({ ...current, [section.id]: schedule }));
+                registerChange("catalog");
+              }}
               onAddPosition={() => addPositionToSection(section.id)}
-              onFocusSorting={() => focusSectionSorting(section.id)}
-              onOpenInOverview={() => onOpenOverviewForSection(section.id)}
+              onOpenItem={openItem}
+              onOpenSection={openSectionEditor}
+              onReorderItem={(draggedId, targetId) => reorderItemsInSection(section.id, draggedId, targetId)}
+              onReorderSection={(draggedId, targetId) => reorderSections(section.id, draggedId, targetId)}
+              getSectionDirectChildCount={getSectionDirectChildCount}
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
               onAction={(action) => handleUnifiedSectionAction(section, action)}
@@ -6777,7 +7153,6 @@ export function CatalogWorkspace({
   catalogTab,
   overviewFilterId,
   onOverviewFilterChange,
-  onCatalogTabChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
@@ -6792,16 +7167,6 @@ export function CatalogWorkspace({
   const overviewSectionScopeId = overviewSectionScopeParam && catalogSections.some((section) => section.id === overviewSectionScopeParam)
     ? overviewSectionScopeParam
     : null;
-  const openOverviewForSection = (sectionId: string) => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("positionId");
-    url.searchParams.set("sectionId", sectionId);
-    url.searchParams.set("overviewSectionId", sectionId);
-    window.history.replaceState(null, "", url);
-    onOverviewFilterChange("quick:all");
-    onCatalogTabChange("overview");
-  };
-
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : catalogPhase === "empty" ? (
@@ -6815,7 +7180,7 @@ export function CatalogWorkspace({
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
     ) : catalogPhase === "has-items" ? (
-      <PopulatedWorkspace sections={sections} onOpenOverviewForSection={openOverviewForSection} />
+      <PopulatedWorkspace sections={sections} />
     ) : (
       <EmptyCatalog
         sections={sections}
