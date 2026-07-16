@@ -42,7 +42,7 @@ import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
 import { TrainingTabs } from "@/features/training/training-tabs";
-import type { TrainingTab } from "@/features/training/training-data";
+import type { TrainingActiveSession, TrainingTab } from "@/features/training/training-data";
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 type SidebarPreference = "expanded" | "collapsed" | null;
@@ -57,6 +57,8 @@ function isTrainingPath(pathname: string) {
 
 function normalizeTrainingTab(tab: string | null | undefined): TrainingTab {
   if (tab === "cards" || tab === "menu") return "cards";
+  if (tab === "check") return "check";
+  if (tab === "practice" || tab === "trainer") return "trainer";
   if (tab === "progress") return "progress";
   return "trainer";
 }
@@ -69,8 +71,14 @@ function getInitialTrainingTab() {
 }
 
 function getTrainingPath(tab: TrainingTab) {
-  if (tab === "trainer") return TRAINING_PATH;
+  if (tab === "trainer") return `${TRAINING_PATH}/practice`;
   return `${TRAINING_PATH}/${tab}`;
+}
+
+function getTrainingSessionExitMessage(kind?: TrainingActiveSession) {
+  if (kind === "cards") return "Завершить изучение?\n\nПрогресс текущей сессии будет потерян";
+  if (kind === "check") return "Завершить проверку?\n\nНезавершённая попытка не попадёт в результаты";
+  return "Завершить упражнение?\n\nТекущий раунд не будет сохранён";
 }
 
 const PAGE_META: Record<string, PageMeta> = {
@@ -92,6 +100,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
   "training:trainer":      { title: "Обучение",           description: "Тренажёры для официантов на данных текущего каталога." },
   "training:cards":        { title: "Обучение",           description: "Карточки для самостоятельного изучения меню." },
+  "training:check":        { title: "Обучение",           description: "Проверка знаний по меню." },
   "training:progress":     { title: "Обучение",           description: "Прогресс обучения официантов." },
 };
 
@@ -410,6 +419,7 @@ function AppShell() {
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
+  const [trainingActiveSessionKind, setTrainingActiveSessionKind] = useState<TrainingActiveSession | undefined>();
   const [selectedDishId, setSelectedDishId] = useState("pepperoni");
   const [bannerList, setBannerList] = useState<Banner[]>(seedBanners);
   const [selectedBannerId, setSelectedBannerId] = useState("hero-1");
@@ -623,6 +633,12 @@ function AppShell() {
   const guardedNavigate = (next: SectionId, tab: string) => navigate(next, tab);
 
   const changeTrainingTab = (tab: TrainingTab) => {
+    if (trainingQuizActive && tab !== trainingTab) {
+      const confirmed = window.confirm(getTrainingSessionExitMessage(trainingActiveSessionKind));
+      if (!confirmed) return;
+      setTrainingQuizActive(false);
+      setTrainingActiveSessionKind(undefined);
+    }
     setTrainingTab(tab);
     const nextPath = getTrainingPath(tab);
     if (window.location.pathname !== nextPath || window.location.search) {
@@ -704,7 +720,15 @@ function AppShell() {
   } else if (section === "analytics") {
     content = <AnalyticsPage tab={analyticsTab} />;
   } else if (section === "training") {
-    content = <OwnerTrainingLayout activeTab={trainingTab} onQuizActiveChange={setTrainingQuizActive} />;
+    content = (
+      <OwnerTrainingLayout
+        activeTab={trainingTab}
+        onQuizActiveChange={(active, kind) => {
+          setTrainingQuizActive(active);
+          setTrainingActiveSessionKind(kind);
+        }}
+      />
+    );
   } else {
     content = <QRPage />;
   }
@@ -858,7 +882,7 @@ function AppShell() {
           {/* Work area */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1">
             {/* Toolbar: tabs left + language right */}
-            {(isHomePage || isCatalogPage || isAboutPage || (isTrainingPage && !trainingQuizActive) || pageMeta.showLanguage || previewVisible) && (
+            {(isHomePage || isCatalogPage || isAboutPage || isTrainingPage || pageMeta.showLanguage || previewVisible) && (
               <div className={cn(
                 "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
               )}>
@@ -891,7 +915,7 @@ function AppShell() {
                       }}
                     />
                   )}
-                  {isTrainingPage && !trainingQuizActive && (
+                  {isTrainingPage && (
                     <TrainingTabs value={trainingTab} onChange={changeTrainingTab} />
                   )}
                 </div>

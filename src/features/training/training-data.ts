@@ -1,8 +1,13 @@
 import { catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 
-export type TrainingTab = "trainer" | "cards" | "progress";
+export type TrainingTab = "cards" | "trainer" | "check" | "progress";
 export type TrainingRouteTab = TrainingTab | "menu";
+export type TrainingActiveSession = "cards" | "practice" | "check";
 export type FlashcardDeckType = "photo-name" | "position-section";
+export type TrainingQuestionTopic = "photo-name" | "position-section";
+export type TrainingQuestionFormat = "multiple-choice" | "typed-answer";
+export type KnowledgeCheckTopic = TrainingQuestionTopic | "mixed";
+export type KnowledgeCheckFormat = TrainingQuestionFormat | "mixed";
 
 export type TrainingDish = {
   id: string;
@@ -23,6 +28,9 @@ export type QuizQuestion = {
   id: string;
   exerciseId: "recognize-dish" | "section-location";
   exerciseTitle: string;
+  topic: TrainingQuestionTopic;
+  format: TrainingQuestionFormat;
+  entityId: string;
   prompt: string;
   primaryText?: string;
   primaryLabel?: string;
@@ -30,6 +38,8 @@ export type QuizQuestion = {
   mediaAlt?: string;
   answers: QuizAnswer[];
   correctAnswerId: string;
+  correctAnswer: string;
+  acceptedAnswers: string[];
   feedback: {
     correctAnswer: string;
     details?: { label: string; value: string }[];
@@ -212,6 +222,19 @@ function matchesSection(item: TrainingDish, sectionId: string) {
   return sectionId === "all" || item.sectionId === sectionId;
 }
 
+function takeUniqueQuestions(questions: QuizQuestion[], total: number) {
+  const seen = new Set<string>();
+  const result: QuizQuestion[] = [];
+  for (const question of questions) {
+    const key = `${question.topic}:${question.entityId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(question);
+    if (result.length >= total) break;
+  }
+  return result;
+}
+
 export function getFlashcardDeckCount(deckType: FlashcardDeckType, sectionId = "all") {
   const source = deckType === "photo-name" ? photoNameCardItems : sectionLocationItems;
   return source.filter((item) => matchesSection(item, sectionId)).length;
@@ -265,8 +288,12 @@ export function createFlashcards(deckType: FlashcardDeckType, sectionId = "all",
   });
 }
 
-export function createRecognizeDishQuestions(total = 10): QuizQuestion[] {
-  const selectedItems = uniqueByTitle(shuffle(trainingCatalogItems)).slice(0, total);
+export function createRecognizeDishQuestions(
+  total = 10,
+  sectionId = "all",
+  format: TrainingQuestionFormat = "multiple-choice",
+): QuizQuestion[] {
+  const selectedItems = uniqueByTitle(shuffle(trainingCatalogItems.filter((item) => matchesSection(item, sectionId)))).slice(0, total);
 
   return selectedItems.map((item, index) => {
     const sectionItems = uniqueByTitle(
@@ -283,11 +310,16 @@ export function createRecognizeDishQuestions(total = 10): QuizQuestion[] {
       id: `recognize-dish-${item.id}-${index}`,
       exerciseId: "recognize-dish",
       exerciseTitle: "Узнай блюдо",
-      prompt: "Выберите название блюда по фотографии",
+      topic: "photo-name",
+      format,
+      entityId: item.id,
+      prompt: format === "typed-answer" ? "Введите название блюда по фотографии" : "Выберите название блюда по фотографии",
       mediaUrl: item.photoUrl,
       mediaAlt: item.title,
       answers,
       correctAnswerId: item.id,
+      correctAnswer: item.title,
+      acceptedAnswers: [item.title],
       feedback: {
         correctAnswer: item.title,
         details: [{ label: "Раздел", value: item.sectionName }],
@@ -297,23 +329,37 @@ export function createRecognizeDishQuestions(total = 10): QuizQuestion[] {
   });
 }
 
-export function createSectionLocationQuestions(total = 10): QuizQuestion[] {
-  const selectedItems = uniqueByTitle(shuffle(sectionLocationItems)).slice(0, total);
+export function createSectionLocationQuestions(
+  total = 10,
+  sectionId = "all",
+  format: TrainingQuestionFormat = "multiple-choice",
+): QuizQuestion[] {
+  const selectedItems = uniqueByTitle(shuffle(sectionLocationItems.filter((item) => matchesSection(item, sectionId)))).slice(0, total);
 
   return selectedItems
     .map<QuizQuestion | null>((item, index) => {
       const answers = createSectionAnswers(item, index);
       if (answers.length < 4) return null;
+      const section = trainingSectionOptions.find((option) => option.id === item.sectionId);
 
       return {
         id: `section-location-${item.id}-${index}`,
         exerciseId: "section-location",
         exerciseTitle: "Где находится?",
-        prompt: "В каком разделе находится эта позиция?",
+        topic: "position-section",
+        format,
+        entityId: item.id,
+        prompt: format === "typed-answer" ? "Введите раздел, в котором находится позиция" : "В каком разделе находится эта позиция?",
         primaryLabel: "Позиция",
         primaryText: item.title,
         answers,
         correctAnswerId: item.sectionId,
+        correctAnswer: item.sectionName,
+        acceptedAnswers: uniqueByName([
+          { name: item.sectionName },
+          { name: section?.name ?? item.sectionName },
+          { name: section?.path ?? item.sectionName },
+        ]).map((answer) => answer.name),
         feedback: {
           correctAnswer: item.sectionName,
           details: [{ label: "Позиция", value: item.title }],
@@ -322,4 +368,33 @@ export function createSectionLocationQuestions(total = 10): QuizQuestion[] {
       } satisfies QuizQuestion;
     })
     .filter((question): question is QuizQuestion => Boolean(question));
+}
+
+export function createKnowledgeCheckQuestions({
+  sectionId = "all",
+  topic = "mixed",
+  format = "mixed",
+  total = 20,
+}: {
+  sectionId?: string;
+  topic?: KnowledgeCheckTopic;
+  format?: KnowledgeCheckFormat;
+  total?: number;
+}) {
+  const topics: TrainingQuestionTopic[] = topic === "mixed" ? ["photo-name", "position-section"] : [topic];
+  const formats: TrainingQuestionFormat[] = format === "mixed" ? ["multiple-choice", "typed-answer"] : [format];
+  const candidates: QuizQuestion[] = [];
+
+  for (let index = 0; candidates.length < total && index < total * 4; index += 1) {
+    const currentTopic = topics[index % topics.length];
+    const currentFormat = formats[Math.floor(index / topics.length) % formats.length];
+    const batchSize = Math.max(1, total);
+    const batch =
+      currentTopic === "photo-name"
+        ? createRecognizeDishQuestions(batchSize, sectionId, currentFormat)
+        : createSectionLocationQuestions(batchSize, sectionId, currentFormat);
+    candidates.push(...batch);
+  }
+
+  return takeUniqueQuestions(shuffle(candidates), total);
 }

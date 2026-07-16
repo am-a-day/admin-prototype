@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { Flashcard as FlashcardModel } from "./training-data";
 
@@ -19,18 +20,17 @@ export function FlashcardEngine({
   cards,
   deckTitle,
   sectionLabel,
-  trackProgress,
   onExit,
   onCheckSelf,
 }: {
   cards: FlashcardModel[];
   deckTitle: string;
   sectionLabel: string;
-  trackProgress: boolean;
   onExit: () => void;
   onCheckSelf: () => void;
 }) {
   const [sessionCards, setSessionCards] = useState(() => cards);
+  const [trackProgress, setTrackProgress] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [hasRevealedCurrentCard, setHasRevealedCurrentCard] = useState(false);
@@ -38,6 +38,7 @@ export function FlashcardEngine({
   const [learningCardIds, setLearningCardIds] = useState<Set<string>>(() => new Set());
   const [completedAt, setCompletedAt] = useState<number | null>(null);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [confirmProgressReset, setConfirmProgressReset] = useState(false);
 
   const current = sessionCards[currentIndex];
   const completed = completedAt !== null;
@@ -80,7 +81,7 @@ export function FlashcardEngine({
   };
 
   const markCard = (status: CardStatus) => {
-    if (!current || !trackProgress || !hasRevealedCurrentCard) return;
+    if (!current || !trackProgress) return;
 
     setKnownCardIds((ids) => {
       const next = new Set(ids);
@@ -95,6 +96,27 @@ export function FlashcardEngine({
       return next;
     });
     goToNextCard();
+  };
+
+  const disableProgressTracking = () => {
+    setKnownCardIds(new Set());
+    setLearningCardIds(new Set());
+    setTrackProgress(false);
+    setConfirmProgressReset(false);
+  };
+
+  const handleTrackProgressChange = (enabled: boolean) => {
+    if (enabled) {
+      setTrackProgress(true);
+      return;
+    }
+
+    if (knownCardIds.size > 0 || learningCardIds.size > 0) {
+      setConfirmProgressReset(true);
+      return;
+    }
+
+    setTrackProgress(false);
   };
 
   const repeatDifficult = () => {
@@ -207,23 +229,28 @@ export function FlashcardEngine({
 
         <Flashcard card={current} flipped={flipped} onFlip={toggleCardSide} />
 
-        {trackProgress && hasRevealedCurrentCard && (
-          <FlashcardActions onLearning={() => markCard("learning")} onKnown={() => markCard("known")} />
-        )}
-
-        {!trackProgress && (
-          <FreeReviewNavigation
-            currentIndex={currentIndex}
-            total={sessionCards.length}
-            onPrevious={goToPreviousCard}
-            onNext={goToNextCard}
-          />
-        )}
+        <FlashcardControlPanel
+          trackProgress={trackProgress}
+          currentIndex={currentIndex}
+          total={sessionCards.length}
+          onTrackProgressChange={handleTrackProgressChange}
+          onLearning={() => markCard("learning")}
+          onKnown={() => markCard("known")}
+          onPrevious={goToPreviousCard}
+          onNext={goToNextCard}
+        />
 
         {confirmExit && (
           <ConfirmExitDialog
             onContinue={() => setConfirmExit(false)}
             onFinish={onExit}
+          />
+        )}
+
+        {confirmProgressReset && (
+          <ConfirmProgressResetDialog
+            onCancel={() => setConfirmProgressReset(false)}
+            onConfirm={disableProgressTracking}
           />
         )}
       </div>
@@ -296,17 +323,17 @@ function Flashcard({
       className="group block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
       aria-label={flipped ? "Вернуться к вопросу" : "Посмотреть ответ"}
     >
-      <div className="[perspective:1000px] motion-reduce:[perspective:none]">
+      <div className="[perspective:1600px] motion-reduce:[perspective:none]">
         <div
           className={cn(
-            "relative min-h-[390px] rounded-[22px] transition-transform duration-300 [transform-style:preserve-3d] motion-reduce:transition-opacity motion-reduce:duration-150 sm:min-h-[450px]",
-            flipped && "[transform:rotateY(180deg)] motion-reduce:[transform:none]",
+            "relative h-[clamp(340px,calc(100dvh-24rem),560px)] rounded-[22px] transition-transform duration-200 ease-out [transform-style:preserve-3d] motion-reduce:transition-opacity motion-reduce:duration-150 sm:h-[clamp(420px,calc(100vh-23rem),640px)]",
+            flipped && "[transform:rotateX(180deg)] motion-reduce:[transform:none]",
           )}
         >
           <div className={cn("absolute inset-0 [backface-visibility:hidden]", flipped && "motion-reduce:opacity-0")}>
             <FlashcardFront card={card} />
           </div>
-          <div className={cn("absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] motion-reduce:[transform:none]", !flipped && "motion-reduce:opacity-0")}>
+          <div className={cn("absolute inset-0 [backface-visibility:hidden] [transform:rotateX(180deg)] motion-reduce:[transform:none]", !flipped && "motion-reduce:opacity-0")}>
             <FlashcardBack card={card} />
           </div>
         </div>
@@ -316,8 +343,19 @@ function Flashcard({
 }
 
 function FlashcardFront({ card }: { card: FlashcardModel }) {
+  if (card.deckType === "photo-name" && card.front.imageUrl) {
+    return (
+      <div className="relative flex h-full overflow-hidden rounded-[22px] border border-[#e7e5e4] bg-[#f5f5f4] p-2 shadow-sm transition group-hover:border-[#d6d3d1] sm:p-3">
+        <img src={card.front.imageUrl} alt="" className="h-full w-full object-contain" />
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-[12px] border border-white/70 bg-white/85 px-3 py-2 text-center text-xs font-semibold text-[#57534d] shadow-sm backdrop-blur sm:inset-x-4 sm:bottom-4">
+          Нажмите, чтобы посмотреть ответ
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full min-h-[390px] flex-col rounded-[22px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 shadow-sm transition group-hover:border-[#d6d3d1] sm:min-h-[450px] sm:p-5">
+    <div className="flex h-full flex-col rounded-[22px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 shadow-sm transition group-hover:border-[#d6d3d1] sm:p-5">
       {card.front.imageUrl ? (
         <div className="overflow-hidden rounded-[18px] border border-[#e7e5e4] bg-zinc-100">
           <img src={card.front.imageUrl} alt="" className="h-[220px] w-full object-cover sm:h-[300px]" />
@@ -337,10 +375,22 @@ function FlashcardFront({ card }: { card: FlashcardModel }) {
 }
 
 function FlashcardBack({ card }: { card: FlashcardModel }) {
+  if (card.deckType === "photo-name") {
+    return (
+      <div className="flex h-full flex-col items-center justify-center rounded-[22px] border border-[#e7e5e4] bg-white p-6 text-center shadow-sm sm:p-8">
+        <div className="max-w-xl">
+          <div className="text-3xl font-black leading-tight text-[#292524] sm:text-4xl">{card.back.title}</div>
+          {card.back.subtitle && <div className="mt-4 text-sm font-semibold text-[#79716b] sm:text-base">{card.back.subtitle}</div>}
+          <div className="mt-8 text-sm font-medium text-[#79716b]">Нажмите, чтобы вернуться к фотографии</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        "flex h-full min-h-[390px] flex-col rounded-[22px] border border-[#e7e5e4] bg-white p-5 shadow-sm sm:min-h-[450px] sm:p-6",
+        "flex h-full flex-col rounded-[22px] border border-[#e7e5e4] bg-white p-5 shadow-sm sm:p-6",
         !card.back.imageUrl && "justify-center",
       )}
     >
@@ -359,48 +409,79 @@ function FlashcardBack({ card }: { card: FlashcardModel }) {
   );
 }
 
-function FlashcardActions({
-  onLearning,
-  onKnown,
-}: {
-  onLearning: () => void;
-  onKnown: () => void;
-}) {
-  return (
-    <div className="sticky bottom-0 -mx-4 mt-4 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-auto sm:grid sm:w-full sm:max-w-[520px] sm:grid-cols-2 sm:gap-2 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
-      <div className="grid grid-cols-2 gap-2 sm:contents">
-        <Button type="button" variant="outline" onClick={onLearning} className="h-11 justify-center" aria-label="Ещё изучаю">
-          Ещё изучаю
-        </Button>
-        <Button type="button" onClick={onKnown} className="h-11 justify-center" aria-label="Знаю">
-          Знаю
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function FreeReviewNavigation({
+function FlashcardControlPanel({
+  trackProgress,
   currentIndex,
   total,
+  onTrackProgressChange,
+  onLearning,
+  onKnown,
   onPrevious,
   onNext,
 }: {
+  trackProgress: boolean;
   currentIndex: number;
   total: number;
+  onTrackProgressChange: (trackProgress: boolean) => void;
+  onLearning: () => void;
+  onKnown: () => void;
   onPrevious: () => void;
   onNext: () => void;
 }) {
   return (
-    <div className="sticky bottom-0 -mx-4 mt-4 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-auto sm:flex sm:w-full sm:max-w-[360px] sm:items-center sm:justify-center sm:gap-3 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
-      <div className="grid grid-cols-[48px_1fr_48px] items-center gap-2">
-        <Button type="button" variant="outline" size="icon" onClick={onPrevious} disabled={currentIndex === 0} aria-label="Предыдущая карточка">
-          ←
-        </Button>
-        <div className="text-center text-sm font-semibold text-[#57534d]">{currentIndex + 1} из {total}</div>
-        <Button type="button" variant="outline" size="icon" onClick={onNext} aria-label={currentIndex >= total - 1 ? "Завершить просмотр" : "Следующая карточка"}>
-          →
-        </Button>
+    <div className="sticky bottom-0 -mx-4 mt-4 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+      <div className="mx-auto grid w-full max-w-[760px] gap-3 rounded-[18px] border border-[#e7e5e4] bg-[#fbfbf9] p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+        <div className="flex min-h-11 items-center justify-between gap-3 rounded-[12px] border border-[#e7e5e4] bg-white px-3 py-2 sm:justify-start">
+          <label htmlFor="flashcard-progress-switch" className="text-sm font-semibold text-[#292524]">
+            Отмечать прогресс
+          </label>
+          <Switch
+            id="flashcard-progress-switch"
+            checked={trackProgress}
+            onCheckedChange={onTrackProgressChange}
+            aria-label="Отмечать прогресс"
+          />
+        </div>
+
+        <div className="flex justify-center">
+          {trackProgress ? (
+            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[320px]">
+              <Button type="button" variant="outline" onClick={onLearning} className="h-11 justify-center" aria-label="Ещё изучаю">
+                Ещё изучаю
+              </Button>
+              <Button type="button" onClick={onKnown} className="h-11 justify-center" aria-label="Знаю">
+                Знаю
+              </Button>
+            </div>
+          ) : (
+            <div className="grid w-full grid-cols-[48px_1fr_48px] items-center gap-2 sm:w-[320px]">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onPrevious}
+                disabled={currentIndex === 0}
+                aria-label="Предыдущая карточка"
+                title="Предыдущая карточка"
+              >
+                ←
+              </Button>
+              <div className="text-center text-sm font-semibold text-[#57534d]">{currentIndex + 1} из {total}</div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onNext}
+                aria-label={currentIndex >= total - 1 ? "Завершить просмотр" : "Следующая карточка"}
+                title={currentIndex >= total - 1 ? "Завершить просмотр" : "Следующая карточка"}
+              >
+                →
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div aria-hidden="true" className="hidden sm:block" />
       </div>
     </div>
   );
@@ -527,6 +608,33 @@ function ConfirmExitDialog({
           </Button>
           <Button type="button" onClick={onContinue}>
             Продолжить изучение
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmProgressResetDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 px-4">
+      <div className="w-full max-w-sm rounded-[18px] border border-[#e7e5e4] bg-white p-5 shadow-xl">
+        <h2 className="text-lg font-black text-[#292524]">Выключить отметки прогресса?</h2>
+        <p className="mt-2 text-sm leading-5 text-[#79716b]">
+          Отметки “Знаю” и “Ещё изучаю” в текущей сессии будут сброшены
+        </p>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Оставить включённым
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            Выключить и сбросить
           </Button>
         </div>
       </div>

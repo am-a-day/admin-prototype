@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils";
 import type { TrainingTab } from "./training-data";
 
 const TRAINING_TABS: { id: TrainingTab; label: string }[] = [
-  { id: "trainer", label: "Тренажёр" },
   { id: "cards", label: "Карточки" },
+  { id: "trainer", label: "Практика" },
+  { id: "check", label: "Проверка" },
   { id: "progress", label: "Прогресс" },
 ];
 

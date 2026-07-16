@@ -2,21 +2,27 @@ import { useEffect, useMemo, useState } from "react";
 import { BookOpen, Clock, ExternalLink, FileText, Image, Layers3, MapPinned, Scale, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { PageScroll } from "@/components/workspace/page-layout";
+import { cn } from "@/lib/utils";
 import {
   createFlashcards,
+  createKnowledgeCheckQuestions,
   createRecognizeDishQuestions,
   createSectionLocationQuestions,
   getFlashcardDeckCount,
   trainingSectionOptions,
+  type KnowledgeCheckFormat,
+  type KnowledgeCheckTopic,
   type FlashcardDeckType,
   sectionLocationItems,
   trainingCatalogItems,
+  type TrainingQuestionFormat,
+  type TrainingActiveSession,
   type TrainingTab,
 } from "./training-data";
 import { QuizEngine } from "./quiz-engine";
 import { FlashcardEngine } from "./flashcard-engine";
+import { KnowledgeCheckEngine } from "./knowledge-check-engine";
 
 type QuizMode = "home" | "recognize-dish" | "section-location";
 
@@ -67,18 +73,29 @@ export function TrainingPage({
 }: {
   activeTab: TrainingTab;
   menuUrl: string;
-  onQuizActiveChange?: (active: boolean) => void;
+  onQuizActiveChange?: (active: boolean, kind?: TrainingActiveSession) => void;
 }) {
   const [quizMode, setQuizMode] = useState<QuizMode>("home");
+  const [practiceFormat, setPracticeFormat] = useState<TrainingQuestionFormat>("multiple-choice");
+  const [checkTopic, setCheckTopic] = useState<KnowledgeCheckTopic>("mixed");
+  const [checkFormat, setCheckFormat] = useState<KnowledgeCheckFormat>("mixed");
+  const [checkActive, setCheckActive] = useState(false);
+  const [checkSessionKey, setCheckSessionKey] = useState(0);
   const [activeDeck, setActiveDeck] = useState<FlashcardDeckType | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState("all");
-  const [trackProgress, setTrackProgress] = useState(true);
   const [roundKey, setRoundKey] = useState(0);
   const [cardSessionKey, setCardSessionKey] = useState(0);
   const [cardsNotice, setCardsNotice] = useState<string | null>(null);
   const questions = useMemo(
-    () => (quizMode === "section-location" ? createSectionLocationQuestions(10) : createRecognizeDishQuestions(10)),
-    [quizMode, roundKey],
+    () =>
+      quizMode === "section-location"
+        ? createSectionLocationQuestions(10, selectedSectionId, practiceFormat)
+        : createRecognizeDishQuestions(10, selectedSectionId, practiceFormat),
+    [quizMode, practiceFormat, roundKey, selectedSectionId],
+  );
+  const checkQuestions = useMemo(
+    () => createKnowledgeCheckQuestions({ sectionId: selectedSectionId, topic: checkTopic, format: checkFormat, total: 20 }),
+    [checkFormat, checkSessionKey, checkTopic, selectedSectionId],
   );
   const exerciseTitle = quizMode === "section-location" ? "Где находится?" : "Узнай блюдо";
   const sessionCards = useMemo(
@@ -91,9 +108,17 @@ export function TrainingPage({
       : trainingSectionOptions.find((section) => section.id === selectedSectionId)?.path ?? "Выбранный раздел";
 
   useEffect(() => {
-    onQuizActiveChange?.(quizMode !== "home" || activeDeck !== null);
+    const kind: TrainingActiveSession | undefined =
+      activeDeck !== null ? "cards" : checkActive ? "check" : quizMode !== "home" ? "practice" : undefined;
+    onQuizActiveChange?.(Boolean(kind), kind);
     return () => onQuizActiveChange?.(false);
-  }, [activeDeck, onQuizActiveChange, quizMode]);
+  }, [activeDeck, checkActive, onQuizActiveChange, quizMode]);
+
+  useEffect(() => {
+    setQuizMode("home");
+    setActiveDeck(null);
+    setCheckActive(false);
+  }, [activeTab]);
 
   if (quizMode === "recognize-dish" || quizMode === "section-location") {
     return (
@@ -118,7 +143,6 @@ export function TrainingPage({
         cards={sessionCards}
         deckTitle={deckTitle}
         sectionLabel={selectedSectionLabel}
-        trackProgress={trackProgress}
         onExit={() => setActiveDeck(null)}
         onCheckSelf={() => {
           setActiveDeck(null);
@@ -129,16 +153,30 @@ export function TrainingPage({
     );
   }
 
+  if (checkActive) {
+    return (
+      <KnowledgeCheckEngine
+        key={`${selectedSectionId}-${checkTopic}-${checkFormat}-${checkSessionKey}`}
+        questions={checkQuestions}
+        title="Проверка знаний"
+        onExit={() => setCheckActive(false)}
+        onRestart={() => setCheckSessionKey((value) => value + 1)}
+        onPracticeMistakes={() => {
+          setCheckActive(false);
+          setQuizMode(checkTopic === "position-section" ? "section-location" : "recognize-dish");
+        }}
+      />
+    );
+  }
+
   if (activeTab === "cards") {
     return (
       <CardsHome
         selectedSectionId={selectedSectionId}
-        trackProgress={trackProgress}
         onSectionChange={(sectionId) => {
           setSelectedSectionId(sectionId);
           setCardsNotice(null);
         }}
-        onTrackProgressChange={setTrackProgress}
         notice={cardsNotice}
         menuUrl={menuUrl}
         onStartDeck={(deckType) => {
@@ -164,19 +202,44 @@ export function TrainingPage({
     );
   }
 
+  if (activeTab === "check") {
+    return (
+      <KnowledgeCheckHome
+        selectedSectionId={selectedSectionId}
+        topic={checkTopic}
+        format={checkFormat}
+        availableCount={checkQuestions.length}
+        onSectionChange={setSelectedSectionId}
+        onTopicChange={setCheckTopic}
+        onFormatChange={setCheckFormat}
+        onStart={() => {
+          setCheckSessionKey((value) => value + 1);
+          setCheckActive(true);
+        }}
+      />
+    );
+  }
+
   return (
     <PageScroll className="bg-white">
       <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:px-8">
         <div className="mb-5">
           <div>
-            <h2 className="text-2xl font-black tracking-tight text-[#292524]">Тренажёр</h2>
+            <h2 className="text-2xl font-black tracking-tight text-[#292524]">Практика</h2>
             <p className="mt-1 max-w-2xl text-sm leading-5 text-[#79716b]">
               Короткие упражнения помогут быстрее запомнить меню заведения.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <PracticeSetup
+          selectedSectionId={selectedSectionId}
+          format={practiceFormat}
+          onSectionChange={setSelectedSectionId}
+          onFormatChange={setPracticeFormat}
+        />
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {EXERCISES.map((exercise) => (
             <ExerciseCard
               key={exercise.id}
@@ -242,19 +305,183 @@ const CARD_DECKS: {
   },
 ];
 
+function PracticeSetup({
+  selectedSectionId,
+  format,
+  onSectionChange,
+  onFormatChange,
+}: {
+  selectedSectionId: string;
+  format: TrainingQuestionFormat;
+  onSectionChange: (sectionId: string) => void;
+  onFormatChange: (format: TrainingQuestionFormat) => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-[16px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 md:grid-cols-2">
+      <SectionSelect selectedSectionId={selectedSectionId} onSectionChange={onSectionChange} />
+      <SegmentedField
+        label="Формат вопросов"
+        value={format}
+        options={[
+          { id: "multiple-choice", label: "С вариантами" },
+          { id: "typed-answer", label: "Ввести ответ" },
+        ]}
+        onChange={(value) => onFormatChange(value as TrainingQuestionFormat)}
+      />
+    </div>
+  );
+}
+
+function KnowledgeCheckHome({
+  selectedSectionId,
+  topic,
+  format,
+  availableCount,
+  onSectionChange,
+  onTopicChange,
+  onFormatChange,
+  onStart,
+}: {
+  selectedSectionId: string;
+  topic: KnowledgeCheckTopic;
+  format: KnowledgeCheckFormat;
+  availableCount: number;
+  onSectionChange: (sectionId: string) => void;
+  onTopicChange: (topic: KnowledgeCheckTopic) => void;
+  onFormatChange: (format: KnowledgeCheckFormat) => void;
+  onStart: () => void;
+}) {
+  const sectionLabel =
+    selectedSectionId === "all"
+      ? "Все разделы"
+      : trainingSectionOptions.find((section) => section.id === selectedSectionId)?.path ?? "Выбранный раздел";
+  const topicLabel = topic === "mixed" ? "Смешанная проверка" : topic === "photo-name" ? "Фото и название" : "Позиция и раздел";
+  const formatLabel = format === "mixed" ? "Смешанный формат" : format === "multiple-choice" ? "С вариантами" : "Ввести ответ";
+
+  return (
+    <PageScroll className="bg-white">
+      <div className="mx-auto w-full max-w-5xl px-4 pb-8 pt-4 sm:px-6 lg:px-8">
+        <div className="mb-5">
+          <h2 className="text-2xl font-black tracking-tight text-[#292524]">Проверка знаний</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-[#79716b]">
+            Ответьте на вопросы по меню и получите итоговый результат.
+          </p>
+        </div>
+
+        <div className="grid gap-4 rounded-[18px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 lg:grid-cols-2">
+          <SectionSelect selectedSectionId={selectedSectionId} onSectionChange={onSectionChange} />
+          <SegmentedField
+            label="Темы"
+            value={topic}
+            options={[
+              { id: "mixed", label: "Смешанная проверка" },
+              { id: "photo-name", label: "Фото и название" },
+              { id: "position-section", label: "Позиция и раздел" },
+            ]}
+            onChange={(value) => onTopicChange(value as KnowledgeCheckTopic)}
+          />
+          <SegmentedField
+            label="Формат вопросов"
+            value={format}
+            options={[
+              { id: "mixed", label: "Смешанный формат" },
+              { id: "multiple-choice", label: "С вариантами" },
+              { id: "typed-answer", label: "Ввести ответ" },
+            ]}
+            onChange={(value) => onFormatChange(value as KnowledgeCheckFormat)}
+          />
+          <div className="rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3">
+            <div className="text-sm font-semibold text-[#292524]">Резюме</div>
+            <p className="mt-2 text-sm text-[#57534d]">
+              {availableCount} вопросов · {topicLabel} · {formatLabel} · {sectionLabel}
+            </p>
+            {availableCount < 20 && (
+              <p className="mt-1 text-xs text-[#79716b]">Подходящих вопросов меньше 20, используем доступное количество.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Button type="button" onClick={onStart} disabled={availableCount < 1} className="w-full justify-center sm:w-auto">
+            Начать проверку
+          </Button>
+        </div>
+      </div>
+    </PageScroll>
+  );
+}
+
+function SectionSelect({
+  selectedSectionId,
+  onSectionChange,
+}: {
+  selectedSectionId: string;
+  onSectionChange: (sectionId: string) => void;
+}) {
+  return (
+    <div>
+      <label className="text-sm font-semibold text-[#292524]" htmlFor="training-shared-section">
+        Раздел
+      </label>
+      <select
+        id="training-shared-section"
+        value={selectedSectionId}
+        onChange={(event) => onSectionChange(event.target.value)}
+        className="mt-2 h-10 w-full rounded-[10px] border border-[#e7e5e4] bg-white px-3 text-sm font-medium text-[#292524] outline-none transition focus:border-[#a8a29e]"
+      >
+        <option value="all">Все разделы</option>
+        {trainingSectionOptions.map((section) => (
+          <option key={section.id} value={section.id}>
+            {section.path}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function SegmentedField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-sm font-semibold text-[#292524]">{label}</div>
+      <div className="mt-2 grid gap-1 rounded-[12px] bg-white p-1 sm:grid-cols-3">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={cn(
+              "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
+              value === option.id ? "bg-[#292524] text-white" : "text-[#57534d] hover:bg-[#f5f5f4]",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CardsHome({
   selectedSectionId,
-  trackProgress,
   onSectionChange,
-  onTrackProgressChange,
   onStartDeck,
   menuUrl,
   notice,
 }: {
   selectedSectionId: string;
-  trackProgress: boolean;
   onSectionChange: (sectionId: string) => void;
-  onTrackProgressChange: (trackProgress: boolean) => void;
   onStartDeck: (deckType: FlashcardDeckType) => void;
   menuUrl: string;
   notice: string | null;
@@ -279,9 +506,7 @@ function CardsHome({
 
         <CardDeckSetup
           selectedSectionId={selectedSectionId}
-          trackProgress={trackProgress}
           onSectionChange={onSectionChange}
-          onTrackProgressChange={onTrackProgressChange}
         />
 
         {notice && (
@@ -312,17 +537,13 @@ function CardsHome({
 
 function CardDeckSetup({
   selectedSectionId,
-  trackProgress,
   onSectionChange,
-  onTrackProgressChange,
 }: {
   selectedSectionId: string;
-  trackProgress: boolean;
   onSectionChange: (sectionId: string) => void;
-  onTrackProgressChange: (trackProgress: boolean) => void;
 }) {
   return (
-    <div className="grid gap-4 rounded-[16px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="rounded-[16px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 sm:max-w-xl">
       <div>
         <label className="text-sm font-semibold text-[#292524]" htmlFor="training-card-section">
           Раздел
@@ -340,13 +561,6 @@ function CardDeckSetup({
             </option>
           ))}
         </select>
-      </div>
-      <div className="flex items-start justify-between gap-4 rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3">
-        <div>
-          <div className="text-sm font-semibold text-[#292524]">Отмечать прогресс</div>
-          <p className="mt-1 text-xs leading-5 text-[#79716b]">Разделять карточки на “Знаю” и “Ещё изучаю”</p>
-        </div>
-        <Switch checked={trackProgress} onCheckedChange={onTrackProgressChange} aria-label="Отмечать прогресс" />
       </div>
     </div>
   );

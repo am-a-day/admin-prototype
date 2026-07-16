@@ -7,14 +7,22 @@ import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
 import { TrainingPage } from "./training-page";
 import { TrainingTabs } from "./training-tabs";
-import type { TrainingTab } from "./training-data";
+import type { TrainingActiveSession, TrainingTab } from "./training-data";
 
 function getInitialTrainingTab(): TrainingTab {
   const path = window.location.pathname.replace(/\/+$/, "");
   const tab = path.split("/")[2];
   if (tab === "cards" || tab === "menu") return "cards";
+  if (tab === "check") return "check";
+  if (tab === "practice" || tab === "trainer") return "trainer";
   if (tab === "progress") return "progress";
   return "trainer";
+}
+
+function getTrainingSessionExitMessage(kind?: TrainingActiveSession) {
+  if (kind === "cards") return "Завершить изучение?\n\nПрогресс текущей сессии будет потерян";
+  if (kind === "check") return "Завершить проверку?\n\nНезавершённая попытка не попадёт в результаты";
+  return "Завершить упражнение?\n\nТекущий раунд не будет сохранён";
 }
 
 export function OwnerTrainingLayout({
@@ -22,7 +30,7 @@ export function OwnerTrainingLayout({
   onQuizActiveChange,
 }: {
   activeTab: TrainingTab;
-  onQuizActiveChange?: (active: boolean) => void;
+  onQuizActiveChange?: (active: boolean, kind?: TrainingActiveSession) => void;
 }) {
   const { webAddress } = useVitrineStatus();
   return <TrainingPage activeTab={activeTab} menuUrl={`https://${webAddress}`} onQuizActiveChange={onQuizActiveChange} />;
@@ -32,6 +40,7 @@ export function WaiterTrainingLayout() {
   const [activeTab, setActiveTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
+  const [activeSessionKind, setActiveSessionKind] = useState<TrainingActiveSession | undefined>();
   const { webAddress } = useVitrineStatus();
   const menuUrl = `https://${webAddress}`;
 
@@ -45,6 +54,12 @@ export function WaiterTrainingLayout() {
   }, [drawerOpen]);
 
   const navigate = (tab: TrainingTab) => {
+    if (quizActive && tab !== activeTab) {
+      const confirmed = window.confirm(getTrainingSessionExitMessage(activeSessionKind));
+      if (!confirmed) return;
+      setQuizActive(false);
+      setActiveSessionKind(undefined);
+    }
     setActiveTab(tab);
     setDrawerOpen(false);
   };
@@ -69,8 +84,8 @@ export function WaiterTrainingLayout() {
           <div className="hidden text-sm font-semibold text-[#79716b] sm:block">Обучение</div>
         </div>
 
-        <nav className={cn("hidden md:block", quizActive && "md:hidden")}>
-          <TrainingTabs value={activeTab} onChange={setActiveTab} />
+        <nav className="hidden md:block">
+          <TrainingTabs value={activeTab} onChange={navigate} />
         </nav>
 
         {!quizActive && (
@@ -87,7 +102,14 @@ export function WaiterTrainingLayout() {
       </header>
 
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <TrainingPage activeTab={activeTab} menuUrl={menuUrl} onQuizActiveChange={setQuizActive} />
+        <TrainingPage
+          activeTab={activeTab}
+          menuUrl={menuUrl}
+          onQuizActiveChange={(active, kind) => {
+            setQuizActive(active);
+            setActiveSessionKind(kind);
+          }}
+        />
       </main>
 
       <div
@@ -119,8 +141,9 @@ export function WaiterTrainingLayout() {
         </div>
 
         <div className="space-y-1 p-3">
-          <DrawerItem label="Тренажёр" active={activeTab === "trainer"} onClick={() => navigate("trainer")} />
           <DrawerItem label="Карточки" active={activeTab === "cards"} onClick={() => navigate("cards")} />
+          <DrawerItem label="Практика" active={activeTab === "trainer"} onClick={() => navigate("trainer")} />
+          <DrawerItem label="Проверка" active={activeTab === "check"} onClick={() => navigate("check")} />
           <DrawerItem label="Прогресс" active={activeTab === "progress"} onClick={() => navigate("progress")} />
         </div>
         <div className="mt-auto border-t border-[#e7e5e4] p-3">

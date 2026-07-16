@@ -3,11 +3,13 @@ import { ArrowLeft, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { QuizQuestion } from "./training-data";
+import { isAcceptedTrainingAnswer } from "./answer-normalization";
 
 type AnswerStatus = "correct" | "wrong" | "timeout";
 
 type AnswerState = {
   selectedAnswerId: string | null;
+  typedAnswer?: string;
   status: AnswerStatus;
 };
 
@@ -15,6 +17,7 @@ type HistoryEntry = {
   questionId: string;
   title: string;
   selectedAnswer: string | null;
+  typedAnswer?: string;
   correctAnswer: string;
   details?: { label: string; value: string }[];
   status: AnswerStatus;
@@ -58,16 +61,17 @@ export function QuizEngine({
     setTimeLeft(30);
   };
 
-  const recordAnswer = (selectedAnswerId: string | null, status: AnswerStatus) => {
+  const recordAnswer = (selectedAnswerId: string | null, status: AnswerStatus, typedAnswer?: string) => {
     if (answerState || finished) return;
     const selectedAnswer = current.answers.find((answer) => answer.id === selectedAnswerId)?.label ?? null;
-    setAnswerState({ selectedAnswerId, status });
+    setAnswerState({ selectedAnswerId, typedAnswer, status });
     setHistory((entries) => [
       ...entries,
       {
         questionId: current.id,
         title: current.primaryText ?? current.feedback.correctAnswer,
         selectedAnswer,
+        typedAnswer,
         correctAnswer: current.feedback.correctAnswer,
         details: current.feedback.details,
         status,
@@ -159,6 +163,13 @@ export function QuizEngine({
           onAnswer={(answerId) =>
             recordAnswer(answerId, answerId === current.correctAnswerId ? "correct" : "wrong")
           }
+          onTypedAnswer={(answer) =>
+            recordAnswer(
+              null,
+              isAcceptedTrainingAnswer(answer, current.acceptedAnswers) ? "correct" : "wrong",
+              answer,
+            )
+          }
         />
         <QuizFeedback question={current} answerState={answerState} />
         {answerState && (
@@ -214,10 +225,12 @@ function QuizQuestion({
   question,
   answerState,
   onAnswer,
+  onTypedAnswer,
 }: {
   question: QuizQuestion;
   answerState: AnswerState | null;
   onAnswer: (answerId: string) => void;
+  onTypedAnswer: (answer: string) => void;
 }) {
   return (
     <div className="rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9] p-3 shadow-sm sm:p-4">
@@ -240,19 +253,56 @@ function QuizQuestion({
       )}
       <div className="mt-4">
         <p className="text-sm font-medium text-[#79716b]">{question.prompt}</p>
-        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          {question.answers.map((answer) => (
-            <AnswerOption
-              key={answer.id}
-              label={answer.label}
-              state={getOptionState(answer.id, question.correctAnswerId, answerState)}
-              onClick={() => onAnswer(answer.id)}
-              locked={Boolean(answerState)}
-            />
-          ))}
-        </div>
+        {question.format === "typed-answer" ? (
+          <TypedAnswerQuestion answerState={answerState} onSubmit={onTypedAnswer} />
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {question.answers.map((answer) => (
+              <AnswerOption
+                key={answer.id}
+                label={answer.label}
+                state={getOptionState(answer.id, question.correctAnswerId, answerState)}
+                onClick={() => onAnswer(answer.id)}
+                locked={Boolean(answerState)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function TypedAnswerQuestion({
+  answerState,
+  onSubmit,
+}: {
+  answerState: AnswerState | null;
+  onSubmit: (answer: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const locked = Boolean(answerState);
+  const canSubmit = value.trim().length > 0 && !locked;
+
+  return (
+    <form
+      className="mt-3 flex flex-col gap-2 sm:flex-row"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSubmit) onSubmit(value);
+      }}
+    >
+      <input
+        value={answerState?.typedAnswer ?? value}
+        onChange={(event) => setValue(event.target.value)}
+        disabled={locked}
+        placeholder="Введите ответ"
+        className="h-11 min-w-0 flex-1 rounded-[12px] border border-[#e7e5e4] bg-white px-3 text-sm font-medium text-[#292524] outline-none transition placeholder:text-[#a8a29e] focus:border-[#a8a29e] disabled:text-[#57534d]"
+      />
+      <Button type="submit" disabled={!canSubmit} className="h-11 justify-center">
+        Ответить
+      </Button>
+    </form>
   );
 }
 
@@ -321,6 +371,9 @@ function QuizFeedback({
     >
       <div className="font-semibold">{title}</div>
       <div className={cn("mt-1 space-y-0.5", answerState.status === "correct" ? "text-emerald-900" : "text-[#57534d]")}>
+        {question.format === "typed-answer" && answerState.typedAnswer && (
+          <div>Ваш ответ: {answerState.typedAnswer}</div>
+        )}
         <div>Правильный ответ: {question.feedback.correctAnswer}</div>
         {question.feedback.details?.map((detail) => (
           <div key={detail.label}>
