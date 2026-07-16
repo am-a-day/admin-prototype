@@ -5,8 +5,10 @@ import {
   Archive,
   ArrowCounterClockwise,
   ArrowLeft,
+  CaretLeft,
   CaretDown,
   CaretRight,
+  CaretUp,
   CheckCircle,
   Clock,
   Dot,
@@ -364,6 +366,133 @@ const FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogItem) => boolean
 
 function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = catalogItems) {
   return items.filter(FILTER_PREDICATES[filterId]);
+}
+
+type AuditQueueFilterId = OverviewFilterId;
+type PriceSortDirection = "none" | "asc" | "desc";
+type DescriptionAuditQueueSnapshot = {
+  itemIds: string[];
+  filterId: AuditQueueFilterId;
+  query: string;
+  sectionScopeId: string | null;
+  scrollTop: number;
+  entryItemId: string;
+  sort: PriceSortDirection;
+};
+type DescriptionAuditQueueState = {
+  snapshot: DescriptionAuditQueueSnapshot;
+  currentId: string | null;
+  currentBucket: "remaining" | "fixed";
+  fixedOpen: boolean;
+};
+type DescriptionSaveStatus = "idle" | "saving" | "saved";
+
+const AUDIT_QUEUE_FILTER_IDS: AuditQueueFilterId[] = ["quick:no-description", "quick:no-photo", "status:stop"];
+const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
+  "quick:no-description",
+  "quick:no-photo",
+  "quick:no-weight",
+  "quick:no-kbju",
+  "quick:no-translation",
+  "quick:no-recommendations",
+  "status:stop",
+];
+const AUDIT_QUEUE_EMPTY_TITLE: Partial<Record<AuditQueueFilterId, string>> = {
+  "quick:no-description": "У всех позиций есть описание",
+  "quick:no-photo": "У всех позиций есть фото",
+  "quick:no-weight": "У всех позиций указан вес",
+  "quick:no-kbju": "У всех позиций заполнены КБЖУ",
+  "quick:no-translation": "У всех позиций заполнены переводы",
+  "quick:no-recommendations": "У всех позиций есть рекомендации",
+  "status:stop": "В стоп-листе нет позиций",
+};
+const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<AuditQueueFilterId, { tab: EditorTab; anchor?: "description" | "media" }>> = {
+  "quick:no-description": { tab: "basic", anchor: "description" },
+  "quick:no-photo": { tab: "basic", anchor: "media" },
+  "status:stop": { tab: "availability" },
+};
+
+function isRepairQueueFilter(id: AuditQueueFilterId) {
+  return REPAIR_QUEUE_FILTER_IDS.includes(id);
+}
+
+function getQueueEditorContext(id: AuditQueueFilterId): { tab: EditorTab; anchor?: "description" | "media" } {
+  return AUDIT_QUEUE_EDITOR_CONTEXT[id] ?? { tab: "basic" };
+}
+
+function descriptionHasContent(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .trim().length > 0;
+}
+
+function getDisplayedPrice(item: CatalogItem) {
+  if (item.price === 0 && item.priceWithSale == null) return null;
+  return item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : item.price;
+}
+
+function sortItemsByPrice<T extends CatalogItem>(items: T[], direction: PriceSortDirection): T[] {
+  if (direction === "none") return items;
+  return items
+    .map((item, index) => ({ item, index, price: getDisplayedPrice(item) }))
+    .sort((left, right) => {
+      if (left.price == null && right.price == null) return left.index - right.index;
+      if (left.price == null) return 1;
+      if (right.price == null) return -1;
+      const diff = direction === "asc" ? left.price - right.price : right.price - left.price;
+      return diff || left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
+function getNextPriceSort(direction: PriceSortDirection): PriceSortDirection {
+  if (direction === "none") return "asc";
+  if (direction === "asc") return "desc";
+  return "none";
+}
+
+function getPriceSortTooltip(direction: PriceSortDirection) {
+  if (direction === "none") return "Сортировать по возрастанию";
+  if (direction === "asc") return "Сортировать по убыванию";
+  return "Сбросить сортировку";
+}
+
+function getAdjacentUnfixedId(
+  itemIds: string[],
+  items: CatalogItem[],
+  filterId: AuditQueueFilterId,
+  currentId: string | null,
+  direction: 1 | -1,
+) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const repairMode = isRepairQueueFilter(filterId);
+  const currentIndex = currentId ? itemIds.indexOf(currentId) : -1;
+  let index = currentIndex + direction;
+  while (index >= 0 && index < itemIds.length) {
+    const item = byId.get(itemIds[index]);
+    if (item && (!repairMode || FILTER_PREDICATES[filterId](item))) return item.id;
+    index += direction;
+  }
+  return null;
+}
+
+function getQueueItemIds(
+  filterId: AuditQueueFilterId,
+  items: CatalogItem[],
+  query: string,
+  sectionScopeId: string | null,
+  priceSort: PriceSortDirection = "none",
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = getOverviewItems(filterId, items)
+    .filter((item) => !sectionScopeId || item.sectionId === sectionScopeId)
+    .filter((item) =>
+      !normalizedQuery || [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
+    );
+  return sortItemsByPrice(filtered, priceSort).map((item) => item.id);
 }
 
 function CatalogSidePanel({
@@ -1577,6 +1706,7 @@ function BasicTab({
   onAddVideoFile,
   onReorderMedia,
   onRemoveMedia,
+  onDescriptionChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -1594,6 +1724,7 @@ function BasicTab({
   onAddVideoFile: (file: File) => void;
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
   onRemoveMedia: (id: string) => void;
+  onDescriptionChange?: (value: string) => void;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -1609,14 +1740,16 @@ function BasicTab({
 
   return (
     <div className="space-y-3">
-      <BasicMediaStrip
-        item={item}
-        media={media}
-        onAddPhotoFile={onAddPhotoFile}
-        onAddVideoFile={onAddVideoFile}
-        onReorder={onReorderMedia}
-        onRemove={onRemoveMedia}
-      />
+      <div data-media-editor-anchor>
+        <BasicMediaStrip
+          item={item}
+          media={media}
+          onAddPhotoFile={onAddPhotoFile}
+          onAddVideoFile={onAddVideoFile}
+          onReorder={onReorderMedia}
+          onRemove={onRemoveMedia}
+        />
+      </div>
 
       <TranslatableField
         key={`name-${item.id}`}
@@ -1682,12 +1815,15 @@ function BasicTab({
         />
       )}
 
-      <DescriptionRichTextEditor
+      <div data-description-editor-anchor>
+        <DescriptionRichTextEditor
         key={`desc-${item.id}`}
         initialValue={item.description}
         placeholder="Кратко опишите состав, вкус или способ подачи"
-        limit={DESCRIPTION_LIMIT}
-      />
+          onChange={onDescriptionChange}
+          limit={DESCRIPTION_LIMIT}
+        />
+      </div>
     </div>
   );
 }
@@ -3351,6 +3487,13 @@ function PositionEditor({
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
   onRequestPermanentDelete,
+  headerMeta,
+  onDescriptionChange,
+  onMediaAdded,
+  forcedEditorTab,
+  focusAnchor,
+  forceBasicTabOnItemChange = false,
+  showStopQuickAction = true,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
@@ -3369,8 +3512,16 @@ function PositionEditor({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onRequestPermanentDelete: (item: CatalogItem) => void;
+  headerMeta?: ReactNode;
+  onDescriptionChange?: (item: CatalogItem, value: string) => void;
+  onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
+  forcedEditorTab?: EditorTab;
+  focusAnchor?: "description" | "media";
+  forceBasicTabOnItemChange?: boolean;
+  showStopQuickAction?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>(() => editorTabByItem.get(item.id) ?? "basic");
+  const editorScrollRef = useRef<HTMLDivElement | null>(null);
   const [media, setMedia] = useState<MediaEntry[]>(() => getInitialMedia(item));
   const [basePriceText, setBasePriceText] = useState(item.price ? formatMoneyInput(item.price) : "");
   const initialEditorWeightUnit = item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г";
@@ -3379,15 +3530,27 @@ function PositionEditor({
   const [discountAutofocusKey, setDiscountAutofocusKey] = useState(0);
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
 
+  const nextForcedTab = forcedEditorTab ?? (forceBasicTabOnItemChange ? "basic" : undefined);
+
   useEffect(() => {
-    setActiveTab(editorTabByItem.get(item.id) ?? "basic");
+    setActiveTab(nextForcedTab ?? editorTabByItem.get(item.id) ?? "basic");
     setMedia(getInitialMedia(item));
     setBasePriceText(item.price ? formatMoneyInput(item.price) : "");
     setWeightUnit(item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г");
     setDiscountOpen(item.hasDiscount);
     setDiscountAutofocusKey(0);
     setKbjuOpen(item.nutritionFilledCount > 0);
-  }, [item]);
+  }, [item, nextForcedTab]);
+
+  useEffect(() => {
+    if (!focusAnchor) return;
+    const timeout = window.setTimeout(() => {
+      editorScrollRef.current
+        ?.querySelector(`[data-${focusAnchor}-editor-anchor]`)
+        ?.scrollIntoView({ block: "nearest" });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [focusAnchor, item.id]);
 
   const selectEditorTab = (tab: EditorTab) => {
     editorTabByItem.set(item.id, tab);
@@ -3397,6 +3560,7 @@ function PositionEditor({
   const addPhotoFile = (file: File) => {
     const previewUrl = URL.createObjectURL(file);
     setMedia((m) => [...m, { id: `photo-${Date.now()}`, kind: "photo", fileName: file.name, previewUrl }]);
+    onMediaAdded?.(item, previewUrl);
   };
   const addVideoFile = (file: File) => {
     const previewUrl = URL.createObjectURL(file);
@@ -3410,6 +3574,7 @@ function PositionEditor({
       },
       ...m.filter((entry) => entry.kind !== "video"),
     ]);
+    onMediaAdded?.(item, previewUrl);
   };
   const reorderMedia = (fromIndex: number, toIndex: number) => {
     setMedia((current) => {
@@ -3446,7 +3611,7 @@ function PositionEditor({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
+      <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
         <div className="mx-auto max-w-[600px]">
           {/* Название позиции + действия с позицией */}
           <div className="flex items-center gap-2 pb-2 pt-6">
@@ -3463,14 +3628,16 @@ function PositionEditor({
                 </span>
               )}
             </h2>
-            <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {headerMeta}
+              {showStopQuickAction && <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
                   aria-label="Действия с позицией"
                   title="Действия с позицией"
-                  className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
                   <DotsThreeVertical size={18} weight="bold" />
                 </button>
@@ -3499,6 +3666,7 @@ function PositionEditor({
                 )}
               </DropdownContent>
             </DropdownMenu.Root>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -3552,6 +3720,7 @@ function PositionEditor({
                     onAddVideoFile={addVideoFile}
                     onReorderMedia={reorderMedia}
                     onRemoveMedia={removeMedia}
+                    onDescriptionChange={(value) => onDescriptionChange?.(item, value)}
                   />
                 </div>
               )}
@@ -6101,12 +6270,12 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 // ── Audit table (Figma 979:10759) ─────────────────────────────────────────────
 
 const TABLE_COL = {
-  description: "w-[87px]",
-  weight: "w-[58px]",
-  kbju: "w-[62px]",
-  translation: "w-[80px]",
-  price: "w-[82px]",
-  kebab: "w-[40px]",
+  description: "w-[72px]",
+  weight: "w-[52px]",
+  kbju: "w-[54px]",
+  translation: "w-[66px]",
+  price: "w-[76px]",
+  kebab: "w-[36px]",
 };
 
 function TableCheckbox({
@@ -6114,11 +6283,15 @@ function TableCheckbox({
   checked = false,
   indeterminate = false,
   onChange,
+  quiet = false,
+  forceVisible = false,
 }: {
   ariaLabel: string;
   checked?: boolean;
   indeterminate?: boolean;
   onChange?: (checked: boolean) => void;
+  quiet?: boolean;
+  forceVisible?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -6132,7 +6305,11 @@ function TableCheckbox({
       checked={checked}
       onChange={(event) => onChange?.(event.target.checked)}
       aria-label={ariaLabel}
-      className="h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#d6d3d1] bg-white accent-[#292524] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      className={cn(
+        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#d6d3d1] bg-white accent-[#57534d] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        quiet && !checked && !indeterminate && !forceVisible && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+        (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
+      )}
     />
   );
 }
@@ -6153,24 +6330,29 @@ function TableHeaderRow({
   checked,
   indeterminate,
   onSelectAll,
+  priceSort,
+  onPriceSortChange,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
   checked: boolean;
   indeterminate: boolean;
   onSelectAll: (checked: boolean) => void;
+  priceSort: PriceSortDirection;
+  onPriceSortChange: () => void;
 }) {
   const labels: [string, string][] = [
     ["Описание", TABLE_COL.description],
     ["Вес", TABLE_COL.weight],
     ["КБЖУ", TABLE_COL.kbju],
     ["Перевод", TABLE_COL.translation],
-    ["Цена", TABLE_COL.price],
   ];
+  const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
-    <div className="sticky top-0 z-10 flex h-10 items-center border-b border-[#e7e5e4] bg-white">
-      <div className="flex min-w-0 flex-1 items-center gap-2 pr-3">
+    <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
+      <div className="flex min-h-9 items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
         <TableCheckbox
           ariaLabel="Выбрать все видимые позиции"
           checked={checked}
@@ -6190,12 +6372,39 @@ function TableHeaderRow({
       {labels.map(([label, width]) => (
         <span
           key={label}
-          className={cn("flex h-full shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#79716b]", width)}
+          className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", width)}
         >
           {label}
         </span>
       ))}
-      <span className={cn("h-10 shrink-0", TABLE_COL.kebab)} />
+      <Tooltip label={priceSortTooltip} side="top">
+        <button
+          type="button"
+          onClick={onPriceSortChange}
+          aria-label={priceSortTooltip}
+          className={cn(
+            "flex h-8 shrink-0 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            TABLE_COL.price,
+            priceSort === "none" ? "text-[#79716b]" : "font-medium text-[#292524]",
+          )}
+        >
+          <span>Цена</span>
+          <span className="flex h-4 w-3 shrink-0 items-center justify-center">
+            {priceSort === "asc" ? (
+              <CaretUp size={11} weight="bold" />
+            ) : priceSort === "desc" ? (
+              <CaretDown size={11} weight="bold" />
+            ) : (
+              <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
+                <CaretUp size={8} weight="bold" />
+                <CaretDown size={8} weight="bold" className="-mt-1" />
+              </span>
+            )}
+          </span>
+        </button>
+      </Tooltip>
+      <span className={cn("h-8 shrink-0", TABLE_COL.kebab)} />
+      </div>
     </div>
   );
 }
@@ -6394,12 +6603,14 @@ function AuditDishRow({
   showSectionMeta,
   onAction,
   selected,
+  selectionMode,
   onSelectedChange,
 }: {
   item: CatalogItem;
   showSectionMeta?: boolean;
   onAction: (item: CatalogItem, action: string) => void;
   selected: boolean;
+  selectionMode: boolean;
   onSelectedChange: (id: string, selected: boolean) => void;
 }) {
   const kbjuState =
@@ -6408,17 +6619,34 @@ function AuditDishRow({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onAction(item, "Открыть позицию")}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onAction(item, "Открыть позицию");
+        }
+      }}
       className={cn(
-        "group flex h-[62px] items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9]",
+        "group flex h-[62px] cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <TableCheckbox
-          ariaLabel={`Выбрать ${item.title}`}
-          checked={selected}
-          onChange={(checked) => onSelectedChange(item.id, checked)}
-        />
+        <span
+          className="flex h-full w-[18px] shrink-0 items-center"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <TableCheckbox
+            ariaLabel={`Выбрать ${item.title}`}
+            checked={selected}
+            quiet
+            forceVisible={selectionMode}
+            onChange={(checked) => onSelectedChange(item.id, checked)}
+          />
+        </span>
         <div className="flex min-w-0 items-center gap-[9px]">
           <span
             className={cn(
@@ -6434,13 +6662,9 @@ function AuditDishRow({
             )}
           </span>
           <div className="flex min-w-0 flex-col justify-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onAction(item, "Открыть позицию")}
-              className="block max-w-full truncate text-left text-[13px] leading-none text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
+            <span className="block max-w-full truncate text-left text-[13px] leading-none text-[#292524]">
               {item.title}
-            </button>
+            </span>
             <RowMeta item={item} showSectionMeta={showSectionMeta} />
           </div>
         </div>
@@ -6494,14 +6718,17 @@ function AuditDishRow({
           <span className="text-[11px] leading-3 text-[#a6a09b] line-through">{formatPrice(item.price)}</span>
         )}
       </span>
-      <span className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)}>
+      <span
+        className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
         <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} />
       </span>
     </div>
   );
 }
 
-type ProblemLink = { id: OverviewFilterId; label: string };
 type BulkDialog =
   | { type: "schedule" }
   | { type: "discount" }
@@ -6726,37 +6953,329 @@ function OverviewStatusBar({
   count,
   query,
   scopeName,
-  problems,
-  onProblemClick,
+  onStartSequential,
 }: {
   filterId: OverviewFilterId;
   count: number;
   query: string;
   scopeName?: string;
-  problems: ProblemLink[];
-  onProblemClick: (id: OverviewFilterId) => void;
+  onStartSequential?: () => void;
 }) {
   const meta = OVERVIEW_FILTER_META[filterId];
+  const subtitle = (() => {
+    if (filterId === "quick:no-description" || filterId === "quick:no-photo") return `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} внимания`;
+    if (filterId === "status:stop") return `${count} ${plural(count, "позиция сейчас на стопе", "позиции сейчас на стопе", "позиций сейчас на стопе")}`;
+    if (filterId === "status:active") return `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} гостям`;
+    if (filterId === "status:archived") return `${count} ${plural(count, "позиция находится", "позиции находятся", "позиций находятся")} в архиве`;
+    return meta.countText(count);
+  })();
 
   return (
-    <div className="flex h-[41px] min-w-0 flex-col justify-center gap-1">
-      <div className="text-[14px] font-medium leading-[1.4] text-[#292524]">{meta.label}</div>
-      <div className="text-[13px] leading-4 text-[#292524]">
-        {meta.countText(count)}
+    <div className="flex min-h-[42px] min-w-0 items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium leading-[1.4] text-[#292524]">{meta.label}</div>
+        <div className="text-[13px] leading-4 text-[#292524]">
+        {subtitle}
         {scopeName && <span> · раздел «{scopeName}»</span>}
         {query.trim() && <span> · с учётом поиска</span>}
-        {problems.map((problem) => (
-          <span key={problem.id}>
-            {" · "}
-            <button
-              type="button"
-              onClick={() => onProblemClick(problem.id)}
-              className="transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              {problem.label}
-            </button>
+        </div>
+      </div>
+      {onStartSequential && count > 0 && (
+        <button
+          type="button"
+          onClick={onStartSequential}
+          className="inline-flex h-8 shrink-0 items-center justify-center rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          Исправлять по очереди
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DescriptionQueueRow({
+  item,
+  selected,
+  fixed,
+  onClick,
+}: {
+  item: CatalogItem;
+  selected: boolean;
+  fixed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${item.title} · ${item.sectionName}`}
+      className={cn(
+        "group flex h-[34px] w-full items-center gap-2 rounded-[7px] border px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        selected ? "border-[#e7e5e4] bg-white shadow-[0_2px_6px_rgba(41,37,36,0.13)]" : "border-transparent hover:bg-[#f7f6f2]",
+        fixed && !selected && "text-[#8a8179]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]",
+          selected && "border border-[#6d5dfc] bg-white p-[2px]",
+        )}
+      >
+        {item.thumbnailUrl ? (
+          <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full rounded-[4px] object-cover" />
+        ) : (
+          <ImageBroken size={12} className="text-[#a8a29e]" />
+        )}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-[13px] leading-5",
+          selected ? "font-semibold text-[#292524]" : fixed ? "font-medium text-[#8a8179]" : "font-medium text-[#79716b]",
+        )}
+      >
+        {item.title}
+      </span>
+      {fixed && (
+        <span title="Исправлено" className="flex h-6 w-6 shrink-0 items-center justify-center text-[#79716b]">
+          <CheckCircle size={14} weight="fill" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function AuditQueueFilterSelect({
+  value,
+  counts,
+  disabled,
+  onChange,
+}: {
+  value: AuditQueueFilterId;
+  counts: Partial<Record<AuditQueueFilterId, number>>;
+  disabled?: boolean;
+  onChange: (id: AuditQueueFilterId) => void;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="flex w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] p-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-wait disabled:opacity-70"
+        >
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#292524]">
+            {OVERVIEW_FILTER_META[value].label}
           </span>
+          <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb]">
+            <CaretDown size={12} className="text-[#79716b]" />
+          </span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownContent align="start">
+        {AUDIT_QUEUE_FILTER_IDS.map((id) => (
+          <DropdownActionItem key={id} onSelect={() => onChange(id)}>
+            <span className="flex w-full items-center gap-3">
+              <span className="min-w-0 flex-1 truncate">{OVERVIEW_FILTER_META[id].label}</span>
+              <span className="text-[12px] text-[#a8a29e]">{counts[id] ?? 0}</span>
+            </span>
+          </DropdownActionItem>
         ))}
+      </DropdownContent>
+    </DropdownMenu.Root>
+  );
+}
+
+function DescriptionAuditQueuePanel({
+  queue,
+  items,
+  counts,
+  switching,
+  repairMode,
+  onBack,
+  onFilterChange,
+  onSelectItem,
+  onFixedOpenChange,
+}: {
+  queue: DescriptionAuditQueueState;
+  items: CatalogItem[];
+  counts: Partial<Record<AuditQueueFilterId, number>>;
+  switching?: boolean;
+  repairMode: boolean;
+  onBack: () => void;
+  onFilterChange: (id: AuditQueueFilterId) => void;
+  onSelectItem: (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => void;
+  onFixedOpenChange: (open: boolean) => void;
+}) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const total = queue.snapshot.itemIds.length;
+  const remaining = queue.snapshot.itemIds.filter((id) => {
+    const item = byId.get(id);
+    return item ? FILTER_PREDICATES[queue.snapshot.filterId](item) : false;
+  }).length;
+  const remainingIds = queue.snapshot.itemIds.filter((id) => {
+    const item = byId.get(id);
+    if (!item) return false;
+    if (!repairMode) return true;
+    if (id === queue.currentId) return queue.currentBucket === "remaining";
+    return FILTER_PREDICATES[queue.snapshot.filterId](item);
+  });
+  const fixedIds = queue.snapshot.itemIds.filter((id) => {
+    const item = byId.get(id);
+    if (!item || !repairMode) return false;
+    if (id === queue.currentId) return queue.currentBucket === "fixed";
+    return !FILTER_PREDICATES[queue.snapshot.filterId](item);
+  });
+
+  return (
+    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="shrink-0 px-2 pb-3 pt-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex h-7 items-center gap-1 rounded-[8px] px-1.5 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <ArrowLeft size={14} />
+          Все позиции
+        </button>
+        <div className="px-1.5">
+          {AUDIT_QUEUE_FILTER_IDS.includes(queue.snapshot.filterId) ? (
+            <AuditQueueFilterSelect
+              value={queue.snapshot.filterId}
+              counts={counts}
+              disabled={switching}
+              onChange={onFilterChange}
+            />
+          ) : (
+            <h2 className="truncate text-[14px] font-medium leading-5 text-[#292524]">
+              {OVERVIEW_FILTER_META[queue.snapshot.filterId].label}
+            </h2>
+          )}
+          {repairMode ? (
+            <p className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Осталось {remaining} из {total}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        <div className="space-y-1">
+          {remainingIds.map((id) => {
+            const item = byId.get(id);
+            if (!item) return null;
+            return (
+              <DescriptionQueueRow
+                key={id}
+                item={item}
+                selected={id === queue.currentId}
+                fixed={repairMode && !FILTER_PREDICATES[queue.snapshot.filterId](item)}
+                onClick={() => onSelectItem(id, "remaining")}
+              />
+            );
+          })}
+          {remainingIds.length === 0 && (
+            <div className="px-2 py-3 text-[12px] leading-4 text-[#a8a29e]">В основной очереди больше нет позиций.</div>
+          )}
+        </div>
+
+        {repairMode && (
+        <div className="mt-4 border-t border-[#eceae7] pt-2">
+          <button
+            type="button"
+            onClick={() => onFixedOpenChange(!queue.fixedOpen)}
+            className="flex h-8 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[12px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            aria-expanded={queue.fixedOpen}
+          >
+            <CaretRight size={13} weight="bold" className={cn("transition-transform", queue.fixedOpen && "rotate-90")} />
+            <span className="min-w-0 flex-1 truncate">Исправлено · {fixedIds.length}</span>
+          </button>
+          {queue.fixedOpen && (
+            <div className="mt-1 space-y-1">
+              {fixedIds.map((id) => {
+                const item = byId.get(id);
+                if (!item) return null;
+                return (
+                  <DescriptionQueueRow
+                    key={id}
+                    item={item}
+                    selected={id === queue.currentId}
+                    fixed={!FILTER_PREDICATES[queue.snapshot.filterId](item)}
+                    onClick={() => onSelectItem(id, "fixed")}
+                  />
+                );
+              })}
+              {fixedIds.length === 0 && (
+                <div className="px-2 py-2 text-[12px] leading-4 text-[#a8a29e]">Пока пусто.</div>
+              )}
+            </div>
+          )}
+        </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function DescriptionQueueEditorControls({
+  filterId,
+  prevDisabled,
+  nextDisabled,
+  onPrev,
+  onNext,
+}: {
+  filterId: AuditQueueFilterId;
+  prevDisabled: boolean;
+  nextDisabled: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const label = OVERVIEW_FILTER_META[filterId].label.toLowerCase();
+  const previousLabel = `Предыдущая позиция ${label}`;
+  const nextLabel = `Следующая позиция ${label}`;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Tooltip label={previousLabel} side="top">
+        <button
+          type="button"
+          aria-label={previousLabel}
+          disabled={prevDisabled}
+          onClick={onPrev}
+          className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <CaretLeft size={16} weight="bold" />
+        </button>
+      </Tooltip>
+      <Tooltip label={nextLabel} side="top">
+        <button
+          type="button"
+          aria-label={nextLabel}
+          disabled={nextDisabled}
+          onClick={onNext}
+          className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <CaretRight size={16} weight="bold" />
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
+
+function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFilterId; onBack: () => void }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-center p-8">
+      <div className="w-full max-w-[360px] rounded-[12px] border border-[#e7e5e4] bg-white px-5 py-4 shadow-[0_2px_8px_rgba(41,37,36,0.05)]">
+        <h2 className="text-[16px] font-medium leading-6 text-[#292524]">
+          {AUDIT_QUEUE_EMPTY_TITLE[filterId] ?? "В текущей выборке нет позиций"}
+        </h2>
+        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+          В текущей выборке больше нет позиций для этой очереди.
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-4 inline-flex h-8 items-center justify-center rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          Вернуться ко всем позициям
+        </button>
       </div>
     </div>
   );
@@ -6771,41 +7290,41 @@ function OverviewWorkspace({
   onFilterChange: (id: OverviewFilterId) => void;
   initialSectionScopeId: string | null;
 }) {
+  const { registerChange } = usePublish();
   const [items, setItems] = useState<CatalogItem[]>(catalogItems);
+  const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(null);
+  const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
+  const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
+  const [queueSwitching, setQueueSwitching] = useState(false);
+  const [pendingQueueFilterId, setPendingQueueFilterId] = useState<AuditQueueFilterId | null>(null);
   const [query, setQuery] = useState("");
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(initialSectionScopeId);
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const restoreScrollTopRef = useRef<number | null>(null);
+  const descriptionSaveTimersRef = useRef<Record<string, number>>({});
   const scopeSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
   const inScope = (item: CatalogItem) => !scopeSection || item.sectionId === scopeSection.id;
   const filtered = getOverviewItems(filterId, items).filter(inScope);
   const normalizedQuery = query.trim().toLowerCase();
-  // Fixture already carries the real menu order — keep it, no re-sorting.
-  const visible = normalizedQuery
+  const searched = normalizedQuery
     ? filtered.filter((item) =>
         [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
       )
     : filtered;
-  const grouped = catalogSections
-    .map((section) => ({
-      ...section,
-      items: visible.filter((item) => item.sectionId === section.id),
-    }))
-    .filter((group) => group.items.length > 0);
+  const visible = sortItemsByPrice(searched, priceSort);
   const statusMeta = OVERVIEW_FILTER_META[filterId];
-  const flat = normalizedQuery.length > 0;
   const visibleIds = visible.map((item) => item.id);
   const visibleIdKey = visibleIds.join("|");
+  const queueCounts = AUDIT_QUEUE_FILTER_IDS.reduce((counts, id) => ({
+    ...counts,
+    [id]: getQueueItemIds(id, items, queue?.snapshot.query ?? query, queue?.snapshot.sectionScopeId ?? sectionScopeId).length,
+  }), {} as Partial<Record<AuditQueueFilterId, number>>);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
-
-  const stopCount = getOverviewItems("status:stop", items).filter(inScope).length;
-  const problems: ProblemLink[] =
-    filterId !== "status:stop" && stopCount > 0
-      ? [{ id: "status:stop", label: `${stopCount} на стопе` }]
-      : [];
 
   const resetFilter = () => {
     setQuery("");
@@ -6816,12 +7335,11 @@ function OverviewWorkspace({
   const clearSearch = () => {
     setQuery("");
   };
+  const handlePriceSortChange = () => {
+    setPriceSort((current) => getNextPriceSort(current));
+  };
   const emptyTitle = statusMeta.emptyTitle;
   const emptyText = statusMeta.emptyText;
-
-  const toggleSection = (id: string) => {
-    setCollapsedSections((current) => ({ ...current, [id]: !current[id] }));
-  };
 
   const clearSelection = () => setSelectedIds(new Set());
   const showFeedback = (message: string) => {
@@ -6851,16 +7369,6 @@ function OverviewWorkspace({
     setSelectedIds((current) => {
       const next = new Set(current);
       visibleIds.forEach((id) => {
-        if (selected) next.add(id);
-        else next.delete(id);
-      });
-      return next;
-    });
-  };
-  const setGroupSelected = (ids: string[], selected: boolean) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      ids.forEach((id) => {
         if (selected) next.add(id);
         else next.delete(id);
       });
@@ -6900,7 +7408,66 @@ function OverviewWorkspace({
     clearSelection();
     showFeedback("Позиции удалены из прототипа");
   };
+  const buildQueueSnapshot = (
+    nextFilterId: AuditQueueFilterId,
+    entryItemId: string,
+    snapshotQuery = query,
+    snapshotSectionScopeId = sectionScopeId,
+    scrollTop = scrollContainerRef.current?.scrollTop ?? 0,
+    snapshotPriceSort = priceSort,
+  ): DescriptionAuditQueueSnapshot => ({
+    itemIds: getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort),
+    filterId: nextFilterId,
+    query: snapshotQuery,
+    sectionScopeId: snapshotSectionScopeId,
+    scrollTop,
+    entryItemId,
+    sort: snapshotPriceSort,
+  });
+  const startDescriptionQueue = (item: CatalogItem, nextFilterId: AuditQueueFilterId) => {
+    const nextSnapshot = buildQueueSnapshot(nextFilterId, item.id);
+    const currentId = nextSnapshot.itemIds.includes(item.id) ? item.id : nextSnapshot.itemIds[0] ?? null;
+    setSelectedIds(new Set());
+    setQueue({
+      snapshot: { ...nextSnapshot, entryItemId: currentId ?? item.id },
+      currentId,
+      currentBucket: "remaining",
+      fixedOpen: false,
+    });
+  };
+  const switchQueueFilter = (nextFilterId: AuditQueueFilterId) => {
+    if (!queue || nextFilterId === queue.snapshot.filterId) return;
+    const currentId = queue.currentId;
+    if (currentId && descriptionSaveStateById[currentId] === "saving") {
+      setQueueSwitching(true);
+      setPendingQueueFilterId(nextFilterId);
+      return;
+    }
+    const nextSnapshot = buildQueueSnapshot(
+      nextFilterId,
+      currentId ?? "",
+      queue.snapshot.query,
+      queue.snapshot.sectionScopeId,
+      0,
+      queue.snapshot.sort,
+    );
+    const nextCurrentId = currentId && nextSnapshot.itemIds.includes(currentId)
+      ? currentId
+      : nextSnapshot.itemIds[0] ?? null;
+    setQueue({
+      snapshot: { ...nextSnapshot, entryItemId: nextCurrentId ?? currentId ?? "" },
+      currentId: nextCurrentId,
+      currentBucket: "remaining",
+      fixedOpen: false,
+    });
+    setQueueSwitching(false);
+    setPendingQueueFilterId(null);
+  };
   const prepareRowAction = (item: CatalogItem, action: string) => {
+    if (action === "Открыть позицию") {
+      startDescriptionQueue(item, filterId);
+      return;
+    }
     const ids = new Set([item.id]);
     if (action === "На стоп") updateItems(ids, (current) => ({ ...current, status: "stopped" }));
     if (action === "Убрать со стопа" || action === "Восстановить") updateItems(ids, (current) => ({ ...current, status: "active" }));
@@ -6908,6 +7475,77 @@ function OverviewWorkspace({
     if (action === "Задать скидку") {
       updateItems(ids, (current) => ({ ...current, hasDiscount: true, priceWithSale: Math.round(current.price * 0.9) }));
     }
+  };
+  const returnToOverview = () => {
+    if (queue) {
+      onFilterChange(queue.snapshot.filterId);
+      setQuery(queue.snapshot.query);
+      setSectionScopeId(queue.snapshot.sectionScopeId);
+      setPriceSort(queue.snapshot.sort);
+      restoreScrollTopRef.current = queue.snapshot.scrollTop;
+    }
+    setQueue(null);
+    setBulkDialog(null);
+    clearSelection();
+  };
+  const selectQueueItem = (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => {
+    setQueue((current) => current ? { ...current, currentId: id, currentBucket: bucket } : current);
+  };
+  const setQueueFixedOpen = (open: boolean) => {
+    setQueue((current) => current ? { ...current, fixedOpen: open } : current);
+  };
+  const finishQueue = () => {
+    setQueue((current) => current ? { ...current, currentId: null, currentBucket: "fixed", fixedOpen: true } : current);
+  };
+  const saveDescription = (item: CatalogItem, value: string) => {
+    window.clearTimeout(descriptionSaveTimersRef.current[item.id]);
+    setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saving" }));
+    setItems((current) => current.map((candidate) =>
+      candidate.id === item.id ? { ...candidate, description: value } : candidate
+    ));
+    descriptionSaveTimersRef.current[item.id] = window.setTimeout(() => {
+      setItems((current) => current.map((candidate) =>
+        candidate.id === item.id
+          ? { ...candidate, description: value, hasDescription: descriptionHasContent(value) }
+          : candidate
+      ));
+      setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saved" }));
+      registerChange("catalog");
+    }, 450);
+  };
+  const saveQueueMedia = (item: CatalogItem, previewUrl: string) => {
+    setItems((current) => current.map((candidate) =>
+      candidate.id === item.id ? { ...candidate, thumbnailUrl: candidate.thumbnailUrl ?? previewUrl } : candidate
+    ));
+    registerChange("catalog");
+  };
+  const setQueueAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
+    setItems((current) => current.map((candidate) => {
+      if (candidate.id !== item.id || candidate.status === "archive") return candidate;
+      if (mode === "unavailable") return { ...candidate, status: "stopped", scheduled: false };
+      return { ...candidate, status: "active", scheduled: mode === "schedule" };
+    }));
+    registerChange("catalog");
+  };
+  const toggleQueueStop = (item: CatalogItem) => {
+    setItems((current) => current.map((candidate) =>
+      candidate.id === item.id
+        ? { ...candidate, status: candidate.status === "stopped" ? "active" : "stopped" }
+        : candidate
+    ));
+    registerChange("catalog");
+  };
+  const archiveQueueItem = (item: CatalogItem) => {
+    setItems((current) => current.map((candidate) =>
+      candidate.id === item.id ? { ...candidate, status: "archive" } : candidate
+    ));
+    showFeedback("Позиция перенесена в архив");
+  };
+  const restoreQueueItem = (item: CatalogItem) => {
+    setItems((current) => current.map((candidate) =>
+      candidate.id === item.id ? { ...candidate, status: "active" } : candidate
+    ));
+    showFeedback("Позиция восстановлена");
   };
 
   useEffect(() => {
@@ -6939,6 +7577,108 @@ function OverviewWorkspace({
     return () => window.clearTimeout(timeout);
   }, [feedback]);
 
+  useEffect(() => {
+    if (!pendingQueueFilterId || !queue?.currentId) return;
+    if (descriptionSaveStateById[queue.currentId] === "saving") return;
+    switchQueueFilter(pendingQueueFilterId);
+  }, [pendingQueueFilterId, descriptionSaveStateById, queue?.currentId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(descriptionSaveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+
+  useEffect(() => {
+    if (queue || restoreScrollTopRef.current == null) return;
+    const scrollTop = restoreScrollTopRef.current;
+    restoreScrollTopRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = scrollTop;
+    });
+  }, [queue, filterId, query, sectionScopeId]);
+
+  if (queue) {
+    const repairMode = isRepairQueueFilter(queue.snapshot.filterId);
+    const currentItem = queue.currentId ? items.find((item) => item.id === queue.currentId) ?? null : null;
+    const remaining = queue.snapshot.itemIds.filter((id) => {
+      const item = items.find((candidate) => candidate.id === id);
+      return item && repairMode ? FILTER_PREDICATES[queue.snapshot.filterId](item) : false;
+    }).length;
+    const prevId = getAdjacentUnfixedId(queue.snapshot.itemIds, items, queue.snapshot.filterId, queue.currentId, -1);
+    const nextId = getAdjacentUnfixedId(queue.snapshot.itemIds, items, queue.snapshot.filterId, queue.currentId, 1);
+    const currentFixed = Boolean(repairMode && currentItem && !FILTER_PREDICATES[queue.snapshot.filterId](currentItem));
+    const canFinish = repairMode && currentFixed && remaining === 0;
+    const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
+    const editorContext = getQueueEditorContext(queue.snapshot.filterId);
+
+    return (
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+        <div className="flex min-h-0 flex-1">
+          <DescriptionAuditQueuePanel
+            queue={queue}
+            items={items}
+            counts={queueCounts}
+            switching={queueSwitching}
+            repairMode={repairMode}
+            onBack={returnToOverview}
+            onFilterChange={switchQueueFilter}
+            onSelectItem={selectQueueItem}
+            onFixedOpenChange={setQueueFixedOpen}
+          />
+          {currentItem ? (
+            <PositionEditor
+              item={currentItem}
+              allItems={items}
+              upsell={queueUpsellByItem[currentItem.id] ?? {}}
+              onUpsellChange={(next) => setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }))}
+              stopBusy={false}
+              onArchiveItem={archiveQueueItem}
+              onRestoreItem={restoreQueueItem}
+              onMoveItem={(targetItem) => showFeedback(`Переместить «${targetItem.title}»: placeholder`)}
+              onToggleStop={toggleQueueStop}
+              onSetAvailabilityMode={setQueueAvailabilityMode}
+              unavailableDisplayMode="hidden"
+              outsideScheduleMode="hidden"
+              weeklySchedule={createDefaultWeeklySchedule()}
+              onUnavailableDisplayModeChange={() => {}}
+              onOutsideScheduleModeChange={() => {}}
+              onWeeklyScheduleChange={() => {}}
+              onRequestPermanentDelete={() => {}}
+              forcedEditorTab={editorContext.tab}
+              focusAnchor={editorContext.anchor}
+              showStopQuickAction={!repairMode}
+              onDescriptionChange={saveDescription}
+              onMediaAdded={saveQueueMedia}
+              headerMeta={
+                <DescriptionQueueEditorControls
+                  filterId={queue.snapshot.filterId}
+                  prevDisabled={!prevId}
+                  nextDisabled={!nextId && !canFinish}
+                  onPrev={() => {
+                    if (prevId) selectQueueItem(prevId, "remaining");
+                  }}
+                  onNext={() => {
+                    if (nextId) selectQueueItem(nextId, "remaining");
+                    else if (canFinish) finishQueue();
+                  }}
+                />
+              }
+            />
+          ) : (
+            <DescriptionQueueComplete filterId={queue.snapshot.filterId} onBack={returnToOverview} />
+          )}
+          {saveStatus === "saving" && (
+            <div className="pointer-events-none fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
+              Сохраняется
+            </div>
+          )}
+          {feedback && <SelectionFeedback message={feedback} />}
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
@@ -6949,16 +7689,15 @@ function OverviewWorkspace({
           onSectionScopeChange={handleSectionScopeChange}
           items={items}
         />
-        <div className="min-w-0 flex-1 overflow-y-auto px-6 pb-10">
-          <div className="min-w-0">
+        <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto px-6 pb-10">
+          <div className="mx-auto w-full max-w-[800px] min-w-0">
             <div className="pt-[14px]">
               <OverviewStatusBar
                 filterId={filterId}
                 count={visible.length}
                 query={query}
                 scopeName={scopeSection?.name}
-                problems={problems}
-                onProblemClick={handleFilterChange}
+                onStartSequential={isRepairQueueFilter(filterId) && visible[0] ? () => startDescriptionQueue(visible[0], filterId) : undefined}
               />
             </div>
             <div className="mt-[14px]">
@@ -7008,109 +7747,40 @@ function OverviewWorkspace({
                     checked={allVisibleSelected}
                     indeterminate={!allVisibleSelected && someVisibleSelected}
                     onSelectAll={setVisibleSelected}
+                    priceSort={priceSort}
+                    onPriceSortChange={handlePriceSortChange}
                   />
-                  {flat ? (
-                    <div>
-                      {selectedIds.size > 0 && (
-                        <div className="sticky top-10 z-[9] flex items-center bg-white py-1">
-                          <SelectionToolbar
-                            count={selectedIds.size}
-                            checked={allVisibleSelected}
-                            indeterminate={!allVisibleSelected && someVisibleSelected}
-                            onSelectAll={setVisibleSelected}
-                            onClear={clearSelection}
-                            onSetStatus={setSelectedStatus}
-                            onSetAvailable={setSelectedAvailable}
-                            onClearDiscount={clearSelectedDiscount}
-                            onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
-                            onOpenDiscount={() => setBulkDialog({ type: "discount" })}
-                            onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
-                            onOpenDelete={() => setBulkDialog({ type: "delete" })}
-                          />
-                        </div>
-                      )}
-                      {visible.map((item) => (
-                        <AuditDishRow
-                          key={item.id}
-                          item={item}
-                          showSectionMeta
-                          selected={selectedIds.has(item.id)}
-                          onSelectedChange={setItemSelected}
-                          onAction={prepareRowAction}
+                  <div className="pt-2">
+                    {selectedIds.size > 0 && (
+                      <div className="sticky top-[58px] z-[9] flex items-center bg-white py-1">
+                        <SelectionToolbar
+                          count={selectedIds.size}
+                          checked={allVisibleSelected}
+                          indeterminate={!allVisibleSelected && someVisibleSelected}
+                          onSelectAll={setVisibleSelected}
+                          onClear={clearSelection}
+                          onSetStatus={setSelectedStatus}
+                          onSetAvailable={setSelectedAvailable}
+                          onClearDiscount={clearSelectedDiscount}
+                          onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
+                          onOpenDiscount={() => setBulkDialog({ type: "discount" })}
+                          onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
+                          onOpenDelete={() => setBulkDialog({ type: "delete" })}
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-[38px] pt-1">
-                      {grouped.map((group) => {
-                        const isCollapsed = Boolean(collapsedSections[group.id]);
-                        const groupIds = group.items.map((item) => item.id);
-                        const selectedInGroup = groupIds.filter((id) => selectedIds.has(id)).length;
-                        return (
-                          <section key={group.id} className="flex flex-col gap-[10px]">
-                            <div className="sticky top-10 z-[9] flex items-center gap-2 bg-white">
-                              {selectedIds.size > 0 && selectedInGroup > 0 ? (
-                                <SelectionToolbar
-                                  count={selectedIds.size}
-                                  checked={allVisibleSelected}
-                                  indeterminate={!allVisibleSelected && someVisibleSelected}
-                                  onSelectAll={setVisibleSelected}
-                                  onClear={clearSelection}
-                                  onSetStatus={setSelectedStatus}
-                                  onSetAvailable={setSelectedAvailable}
-                                  onClearDiscount={clearSelectedDiscount}
-                                  onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
-                                  onOpenDiscount={() => setBulkDialog({ type: "discount" })}
-                                  onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
-                                  onOpenDelete={() => setBulkDialog({ type: "delete" })}
-                                />
-                              ) : (
-                                <>
-                                  <TableCheckbox
-                                    ariaLabel={`Выбрать раздел ${group.name}`}
-                                    checked={groupIds.length > 0 && selectedInGroup === groupIds.length}
-                                    indeterminate={selectedInGroup > 0 && selectedInGroup < groupIds.length}
-                                    onChange={(checked) => setGroupSelected(groupIds, checked)}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleSection(group.id)}
-                                    aria-expanded={!isCollapsed}
-                                    className="flex min-w-0 items-center gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                                  >
-                                    <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[10px] font-medium leading-4 text-[#79716b]">
-                                      {group.items.length}
-                                    </span>
-                                    <span className="truncate text-[13px] font-medium leading-[18px] text-[#292524]">
-                                      {group.name}
-                                    </span>
-                                    <CaretDown
-                                      size={13}
-                                      weight="bold"
-                                      className={cn("shrink-0 text-[#57534d] transition-transform", isCollapsed && "-rotate-90")}
-                                    />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            {!isCollapsed && (
-                              <div>
-                                {group.items.map((item) => (
-                                  <AuditDishRow
-                                    key={item.id}
-                                    item={item}
-                                    selected={selectedIds.has(item.id)}
-                                    onSelectedChange={setItemSelected}
-                                    onAction={prepareRowAction}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </section>
-                        );
-                      })}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                    {visible.map((item) => (
+                      <AuditDishRow
+                        key={item.id}
+                        item={item}
+                        showSectionMeta
+                        selected={selectedIds.has(item.id)}
+                        selectionMode={selectedIds.size > 0}
+                        onSelectedChange={setItemSelected}
+                        onAction={prepareRowAction}
+                      />
+                    ))}
+                  </div>
                   {bulkDialog && (
                     <BulkDialogModal
                       dialog={bulkDialog}
