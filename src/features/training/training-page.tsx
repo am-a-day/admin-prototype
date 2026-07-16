@@ -1,27 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Clock, Image, ListChecks, MapPinned, Scale, Tag, UserCircle } from "lucide-react";
+import { BookOpen, Clock, ExternalLink, FileText, Image, Layers3, MapPinned, Scale, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { PageScroll } from "@/components/workspace/page-layout";
-import { createRecognizeDishQuestions, trainingCatalogItems, type TrainingTab } from "./training-data";
+import {
+  createFlashcards,
+  createRecognizeDishQuestions,
+  createSectionLocationQuestions,
+  getFlashcardDeckCount,
+  trainingSectionOptions,
+  type FlashcardDeckType,
+  sectionLocationItems,
+  trainingCatalogItems,
+  type TrainingTab,
+} from "./training-data";
 import { QuizEngine } from "./quiz-engine";
+import { FlashcardEngine } from "./flashcard-engine";
 
-type QuizMode = "home" | "recognize-dish";
+type QuizMode = "home" | "recognize-dish" | "section-location";
 
-const EXERCISES = [
+const EXERCISES: {
+  id: Exclude<QuizMode, "home"> | "weight" | "price";
+  title: string;
+  description: string;
+  icon: typeof Image;
+  available: boolean;
+  meta?: string;
+}[] = [
   {
     id: "recognize-dish",
     title: "Узнай блюдо",
     description: "Выберите название блюда по фотографии",
     icon: Image,
     available: true,
+    meta: `${trainingCatalogItems.length} блюд доступно`,
   },
   {
-    id: "section",
+    id: "section-location",
     title: "Где находится?",
     description: "Определите раздел, в котором находится позиция",
     icon: MapPinned,
-    available: false,
+    available: true,
+    meta: `${sectionLocationItems.length} позиций доступно`,
   },
   {
     id: "weight",
@@ -37,45 +58,98 @@ const EXERCISES = [
     icon: Tag,
     available: false,
   },
-] as const;
+];
 
 export function TrainingPage({
   activeTab,
+  menuUrl,
   onQuizActiveChange,
 }: {
   activeTab: TrainingTab;
+  menuUrl: string;
   onQuizActiveChange?: (active: boolean) => void;
 }) {
   const [quizMode, setQuizMode] = useState<QuizMode>("home");
+  const [activeDeck, setActiveDeck] = useState<FlashcardDeckType | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState("all");
+  const [trackProgress, setTrackProgress] = useState(true);
   const [roundKey, setRoundKey] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
-  const questions = useMemo(() => createRecognizeDishQuestions(10), [roundKey]);
+  const [cardSessionKey, setCardSessionKey] = useState(0);
+  const [cardsNotice, setCardsNotice] = useState<string | null>(null);
+  const questions = useMemo(
+    () => (quizMode === "section-location" ? createSectionLocationQuestions(10) : createRecognizeDishQuestions(10)),
+    [quizMode, roundKey],
+  );
+  const exerciseTitle = quizMode === "section-location" ? "Где находится?" : "Узнай блюдо";
+  const sessionCards = useMemo(
+    () => (activeDeck ? createFlashcards(activeDeck, selectedSectionId, 20) : []),
+    [activeDeck, selectedSectionId, cardSessionKey],
+  );
+  const selectedSectionLabel =
+    selectedSectionId === "all"
+      ? "Все разделы"
+      : trainingSectionOptions.find((section) => section.id === selectedSectionId)?.path ?? "Выбранный раздел";
 
   useEffect(() => {
-    onQuizActiveChange?.(quizMode !== "home");
+    onQuizActiveChange?.(quizMode !== "home" || activeDeck !== null);
     return () => onQuizActiveChange?.(false);
-  }, [onQuizActiveChange, quizMode]);
+  }, [activeDeck, onQuizActiveChange, quizMode]);
 
-  if (quizMode === "recognize-dish") {
+  if (quizMode === "recognize-dish" || quizMode === "section-location") {
     return (
       <QuizEngine
         key={roundKey}
         questions={questions}
+        exerciseTitle={exerciseTitle}
         onExit={() => setQuizMode("home")}
         onRestart={() => {
           setRoundKey((value) => value + 1);
-          setQuizMode("recognize-dish");
+          setQuizMode(quizMode);
         }}
       />
     );
   }
 
-  if (activeTab === "menu") {
+  if (activeDeck) {
+    const deckTitle = activeDeck === "photo-name" ? "Фото и название" : "Позиция и раздел";
     return (
-      <TrainingEmptyState
-        icon={ListChecks}
-        title="Меню для обучения появится следующим этапом"
-        description="Раздел будет добавлен следующим этапом."
+      <FlashcardEngine
+        key={`${activeDeck}-${selectedSectionId}-${cardSessionKey}`}
+        cards={sessionCards}
+        deckTitle={deckTitle}
+        sectionLabel={selectedSectionLabel}
+        trackProgress={trackProgress}
+        onExit={() => setActiveDeck(null)}
+        onCheckSelf={() => {
+          setActiveDeck(null);
+          setRoundKey((value) => value + 1);
+          setQuizMode(activeDeck === "photo-name" ? "recognize-dish" : "section-location");
+        }}
+      />
+    );
+  }
+
+  if (activeTab === "cards") {
+    return (
+      <CardsHome
+        selectedSectionId={selectedSectionId}
+        trackProgress={trackProgress}
+        onSectionChange={(sectionId) => {
+          setSelectedSectionId(sectionId);
+          setCardsNotice(null);
+        }}
+        onTrackProgressChange={setTrackProgress}
+        notice={cardsNotice}
+        menuUrl={menuUrl}
+        onStartDeck={(deckType) => {
+          const count = getFlashcardDeckCount(deckType, selectedSectionId);
+          if (count < 1) {
+            setCardsNotice("В выбранном разделе нет подходящих карточек. Выберите другой раздел или весь каталог.");
+            return;
+          }
+          setCardSessionKey((value) => value + 1);
+          setActiveDeck(deckType);
+        }}
       />
     );
   }
@@ -93,29 +167,12 @@ export function TrainingPage({
   return (
     <PageScroll className="bg-white">
       <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:px-8">
-        {notice && (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-[14px] border border-[#e7e5e4] bg-[#fbfbf9] px-4 py-3 text-sm text-[#57534d]">
-            <span>{notice}</span>
-            <button
-              type="button"
-              onClick={() => setNotice(null)}
-              className="rounded-lg px-2 py-1 text-xs font-semibold text-[#79716b] hover:bg-white"
-            >
-              Закрыть
-            </button>
-          </div>
-        )}
-
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-5">
           <div>
-            <h2 className="text-xl font-black tracking-tight text-[#292524]">Тренажёр</h2>
+            <h2 className="text-2xl font-black tracking-tight text-[#292524]">Тренажёр</h2>
             <p className="mt-1 max-w-2xl text-sm leading-5 text-[#79716b]">
-              Короткие упражнения по текущему каталогу. В первом прототипе доступен полный раунд распознавания блюд.
+              Короткие упражнения помогут быстрее запомнить меню заведения.
             </p>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#e7e5e4] bg-[#fbfbf9] px-3 py-2 text-xs font-medium text-[#79716b]">
-            <UserCircle size={15} />
-            {trainingCatalogItems.length} позиций с фото
           </div>
         </div>
 
@@ -125,14 +182,13 @@ export function TrainingPage({
               key={exercise.id}
               title={exercise.title}
               description={exercise.description}
+              meta={exercise.meta}
+              available={exercise.available}
               icon={exercise.icon}
               onClick={() => {
-                if (exercise.available) {
-                  setRoundKey((value) => value + 1);
-                  setQuizMode("recognize-dish");
-                  return;
-                }
-                setNotice("Упражнение будет добавлено следующим этапом");
+                if (!exercise.available || exercise.id === "weight" || exercise.id === "price") return;
+                setRoundKey((value) => value + 1);
+                setQuizMode(exercise.id);
               }}
             />
           ))}
@@ -142,29 +198,244 @@ export function TrainingPage({
   );
 }
 
-function ExerciseCard({
+const CARD_DECKS: {
+  id: FlashcardDeckType | "description" | "weight" | "price";
+  title: string;
+  description: string;
+  icon: typeof Image;
+  available: boolean;
+}[] = [
+  {
+    id: "photo-name",
+    title: "Фото и название",
+    description: "Посмотрите на фотографию и вспомните название блюда",
+    icon: Image,
+    available: true,
+  },
+  {
+    id: "position-section",
+    title: "Позиция и раздел",
+    description: "Вспомните, в каком разделе находится позиция",
+    icon: Layers3,
+    available: true,
+  },
+  {
+    id: "description",
+    title: "Описание и состав",
+    description: "Повторите описание и основные ингредиенты позиции",
+    icon: FileText,
+    available: false,
+  },
+  {
+    id: "weight",
+    title: "Вес и объём",
+    description: "Запомните вес или объём порции",
+    icon: Scale,
+    available: false,
+  },
+  {
+    id: "price",
+    title: "Цена",
+    description: "Повторите актуальные цены позиций",
+    icon: Tag,
+    available: false,
+  },
+];
+
+function CardsHome({
+  selectedSectionId,
+  trackProgress,
+  onSectionChange,
+  onTrackProgressChange,
+  onStartDeck,
+  menuUrl,
+  notice,
+}: {
+  selectedSectionId: string;
+  trackProgress: boolean;
+  onSectionChange: (sectionId: string) => void;
+  onTrackProgressChange: (trackProgress: boolean) => void;
+  onStartDeck: (deckType: FlashcardDeckType) => void;
+  menuUrl: string;
+  notice: string | null;
+}) {
+  return (
+    <PageScroll className="bg-white">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:px-8">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-[#292524]">Карточки</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-[#79716b]">
+              Изучайте меню в удобном темпе и отмечайте позиции, которые нужно повторить.
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" asChild className="w-full justify-center sm:w-auto">
+            <a href={menuUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={16} />
+              Открыть меню заведения
+            </a>
+          </Button>
+        </div>
+
+        <CardDeckSetup
+          selectedSectionId={selectedSectionId}
+          trackProgress={trackProgress}
+          onSectionChange={onSectionChange}
+          onTrackProgressChange={onTrackProgressChange}
+        />
+
+        {notice && (
+          <div className="mt-3 rounded-[14px] border border-[#e7e5e4] bg-[#fbfbf9] px-4 py-3 text-sm text-[#57534d]">
+            {notice}
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {CARD_DECKS.map((deck) => (
+            <CardDeckTile
+              key={deck.id}
+              title={deck.title}
+              description={deck.description}
+              icon={deck.icon}
+              available={deck.available}
+              count={deck.available ? getFlashcardDeckCount(deck.id as FlashcardDeckType, selectedSectionId) : null}
+              onStart={() => {
+                if (deck.available) onStartDeck(deck.id as FlashcardDeckType);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </PageScroll>
+  );
+}
+
+function CardDeckSetup({
+  selectedSectionId,
+  trackProgress,
+  onSectionChange,
+  onTrackProgressChange,
+}: {
+  selectedSectionId: string;
+  trackProgress: boolean;
+  onSectionChange: (sectionId: string) => void;
+  onTrackProgressChange: (trackProgress: boolean) => void;
+}) {
+  return (
+    <div className="grid gap-4 rounded-[16px] border border-[#e7e5e4] bg-[#fbfbf9] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div>
+        <label className="text-sm font-semibold text-[#292524]" htmlFor="training-card-section">
+          Раздел
+        </label>
+        <select
+          id="training-card-section"
+          value={selectedSectionId}
+          onChange={(event) => onSectionChange(event.target.value)}
+          className="mt-2 h-10 w-full rounded-[10px] border border-[#e7e5e4] bg-white px-3 text-sm font-medium text-[#292524] outline-none transition focus:border-[#a8a29e]"
+        >
+          <option value="all">Все разделы</option>
+          {trainingSectionOptions.map((section) => (
+            <option key={section.id} value={section.id}>
+              {section.path}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-start justify-between gap-4 rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold text-[#292524]">Отмечать прогресс</div>
+          <p className="mt-1 text-xs leading-5 text-[#79716b]">Разделять карточки на “Знаю” и “Ещё изучаю”</p>
+        </div>
+        <Switch checked={trackProgress} onCheckedChange={onTrackProgressChange} aria-label="Отмечать прогресс" />
+      </div>
+    </div>
+  );
+}
+
+function CardDeckTile({
   title,
   description,
   icon: Icon,
-  onClick,
+  available,
+  count,
+  onStart,
 }: {
   title: string;
   description: string;
   icon: typeof Image;
-  onClick: () => void;
+  available: boolean;
+  count: number | null;
+  onStart: () => void;
 }) {
   return (
-    <Card className="flex min-h-[176px] flex-col rounded-[18px] p-4">
-      <div className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#e7e5e4] bg-[#fbfbf9] text-[#57534d]">
-        <Icon size={18} />
+    <Card className="flex min-h-[188px] flex-col rounded-[18px] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#e7e5e4] bg-[#fbfbf9] text-[#57534d]">
+          <Icon size={18} />
+        </div>
+        {available ? (
+          <div className="whitespace-nowrap rounded-[9px] border border-[#e7e5e4] bg-[#fbfbf9] px-2 py-1 text-xs font-semibold text-[#79716b]">
+            {count} карточек
+          </div>
+        ) : null}
       </div>
       <div className="mt-4 flex-1">
         <h3 className="text-base font-black text-[#292524]">{title}</h3>
         <p className="mt-1 text-sm leading-5 text-[#79716b]">{description}</p>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onClick} className="mt-4 w-full justify-center">
-        Начать
-      </Button>
+      {available ? (
+        <Button type="button" variant="outline" size="sm" onClick={onStart} className="mt-4 w-full justify-center">
+          Начать
+        </Button>
+      ) : (
+        <div className="mt-4 flex h-9 items-center justify-center rounded-[10px] border border-dashed border-[#d6d3d1] bg-[#fbfbf9] text-sm font-semibold text-[#79716b]">
+          Скоро
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ExerciseCard({
+  title,
+  description,
+  meta,
+  available,
+  icon: Icon,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  meta?: string;
+  available: boolean;
+  icon: typeof Image;
+  onClick: () => void;
+}) {
+  return (
+    <Card className="flex min-h-[188px] flex-col rounded-[18px] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#e7e5e4] bg-[#fbfbf9] text-[#57534d]">
+          <Icon size={18} />
+        </div>
+        {meta && (
+          <div className="whitespace-nowrap rounded-[9px] border border-[#e7e5e4] bg-[#fbfbf9] px-2 py-1 text-xs font-semibold text-[#79716b]">
+            {meta}
+          </div>
+        )}
+      </div>
+      <div className="mt-4 flex-1">
+        <h3 className="text-base font-black text-[#292524]">{title}</h3>
+        <p className="mt-1 text-sm leading-5 text-[#79716b]">{description}</p>
+      </div>
+      {available ? (
+        <Button type="button" variant="outline" size="sm" onClick={onClick} className="mt-4 w-full justify-center">
+          Начать
+        </Button>
+      ) : (
+        <div className="mt-4 flex h-9 items-center justify-center rounded-[10px] border border-dashed border-[#d6d3d1] bg-[#fbfbf9] text-sm font-semibold text-[#79716b]">
+          Скоро
+        </div>
+      )}
     </Card>
   );
 }

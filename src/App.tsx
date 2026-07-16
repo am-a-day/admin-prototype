@@ -50,6 +50,29 @@ type SidebarPreference = "expanded" | "collapsed" | null;
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
 const TRAINING_PATH = "/training";
 
+function isTrainingPath(pathname: string) {
+  const path = pathname.replace(/\/+$/, "");
+  return path === TRAINING_PATH || path.startsWith(`${TRAINING_PATH}/`);
+}
+
+function normalizeTrainingTab(tab: string | null | undefined): TrainingTab {
+  if (tab === "cards" || tab === "menu") return "cards";
+  if (tab === "progress") return "progress";
+  return "trainer";
+}
+
+function getInitialTrainingTab() {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const [, trainingSegment, tabSegment] = path.split("/");
+  if (trainingSegment !== "training") return "trainer";
+  return normalizeTrainingTab(tabSegment);
+}
+
+function getTrainingPath(tab: TrainingTab) {
+  if (tab === "trainer") return TRAINING_PATH;
+  return `${TRAINING_PATH}/${tab}`;
+}
+
 const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
   "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
@@ -68,7 +91,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "analytics:likes":       { title: "Лайки",              description: "Лайки гостей по блюдам и разделам меню." },
   "qr":                    { title: "QR-коды",            description: "Генерация и управление QR-кодами." },
   "training:trainer":      { title: "Обучение",           description: "Тренажёры для официантов на данных текущего каталога." },
-  "training:menu":         { title: "Обучение",           description: "Материалы меню для обучения официантов." },
+  "training:cards":        { title: "Обучение",           description: "Карточки для самостоятельного изучения меню." },
   "training:progress":     { title: "Обучение",           description: "Прогресс обучения официантов." },
 };
 
@@ -378,14 +401,14 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
 
 function AppShell() {
   const { markVisited, stage } = useVitrineLaunch();
-  const isInitialTrainingRoute = window.location.pathname.replace(/\/+$/, "") === TRAINING_PATH;
+  const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
   const [section, setSection] = useState<SectionId>(isInitialTrainingRoute ? "training" : "storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>("catalog");
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>("info");
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
-  const [trainingTab, setTrainingTab] = useState<TrainingTab>("trainer");
+  const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
   const [selectedDishId, setSelectedDishId] = useState("pepperoni");
   const [bannerList, setBannerList] = useState<Banner[]>(seedBanners);
@@ -562,11 +585,13 @@ function AppShell() {
     setSection(next);
     setPreviewScenario(null);
     if (next === "training") {
-      setTrainingTab((tab as TrainingTab) || "trainer");
-      if (window.location.pathname !== TRAINING_PATH || window.location.search) {
-        window.history.pushState(null, "", TRAINING_PATH);
+      const nextTrainingTab = normalizeTrainingTab(tab);
+      setTrainingTab(nextTrainingTab);
+      const nextPath = getTrainingPath(nextTrainingTab);
+      if (window.location.pathname !== nextPath || window.location.search) {
+        window.history.pushState(null, "", nextPath);
       }
-    } else if (window.location.pathname.replace(/\/+$/, "") === TRAINING_PATH) {
+    } else if (isTrainingPath(window.location.pathname)) {
       setTrainingQuizActive(false);
       window.history.pushState(null, "", "/");
     }
@@ -587,7 +612,6 @@ function AppShell() {
       if (tab === "order-settings") markVisited("ordering");
     }
     if (next === "analytics") setAnalyticsTab(tab as AnalyticsTabId);
-    if (next === "training") setTrainingTab(tab as TrainingTab);
   };
 
   const openOrderAcceptance = () => {
@@ -597,6 +621,14 @@ function AppShell() {
   };
 
   const guardedNavigate = (next: SectionId, tab: string) => navigate(next, tab);
+
+  const changeTrainingTab = (tab: TrainingTab) => {
+    setTrainingTab(tab);
+    const nextPath = getTrainingPath(tab);
+    if (window.location.pathname !== nextPath || window.location.search) {
+      window.history.pushState(null, "", nextPath);
+    }
+  };
 
   let content: ReactNode = null;
 
@@ -860,7 +892,7 @@ function AppShell() {
                     />
                   )}
                   {isTrainingPage && !trainingQuizActive && (
-                    <TrainingTabs value={trainingTab} onChange={setTrainingTab} />
+                    <TrainingTabs value={trainingTab} onChange={changeTrainingTab} />
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -883,8 +915,8 @@ function AppShell() {
             {/* Editor card */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
               <ContentHeader
-                title={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage || isAboutPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
               <div className="flex min-h-0 min-w-0 flex-1">

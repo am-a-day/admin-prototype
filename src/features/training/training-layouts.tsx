@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, LogOut, Menu, UserCircle, X } from "lucide-react";
+import { ChevronDown, ExternalLink, LogOut, Menu, UserCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
+import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
 import { TrainingPage } from "./training-page";
 import { TrainingTabs } from "./training-tabs";
 import type { TrainingTab } from "./training-data";
+
+function getInitialTrainingTab(): TrainingTab {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const tab = path.split("/")[2];
+  if (tab === "cards" || tab === "menu") return "cards";
+  if (tab === "progress") return "progress";
+  return "trainer";
+}
 
 export function OwnerTrainingLayout({
   activeTab,
@@ -15,13 +24,16 @@ export function OwnerTrainingLayout({
   activeTab: TrainingTab;
   onQuizActiveChange?: (active: boolean) => void;
 }) {
-  return <TrainingPage activeTab={activeTab} onQuizActiveChange={onQuizActiveChange} />;
+  const { webAddress } = useVitrineStatus();
+  return <TrainingPage activeTab={activeTab} menuUrl={`https://${webAddress}`} onQuizActiveChange={onQuizActiveChange} />;
 }
 
 export function WaiterTrainingLayout() {
-  const [activeTab, setActiveTab] = useState<TrainingTab>("trainer");
+  const [activeTab, setActiveTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
+  const { webAddress } = useVitrineStatus();
+  const menuUrl = `https://${webAddress}`;
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -61,11 +73,21 @@ export function WaiterTrainingLayout() {
           <TrainingTabs value={activeTab} onChange={setActiveTab} />
         </nav>
 
-        {!quizActive && <ProfileMenu />}
+        {!quizActive && (
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" asChild className="hidden shrink-0 lg:inline-flex">
+              <a href={menuUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={16} />
+                Открыть меню
+              </a>
+            </Button>
+            <ProfileMenu />
+          </div>
+        )}
       </header>
 
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <TrainingPage activeTab={activeTab} onQuizActiveChange={setQuizActive} />
+        <TrainingPage activeTab={activeTab} menuUrl={menuUrl} onQuizActiveChange={setQuizActive} />
       </main>
 
       <div
@@ -98,10 +120,19 @@ export function WaiterTrainingLayout() {
 
         <div className="space-y-1 p-3">
           <DrawerItem label="Тренажёр" active={activeTab === "trainer"} onClick={() => navigate("trainer")} />
-          <DrawerItem label="Меню" active={activeTab === "menu"} onClick={() => navigate("menu")} />
+          <DrawerItem label="Карточки" active={activeTab === "cards"} onClick={() => navigate("cards")} />
           <DrawerItem label="Прогресс" active={activeTab === "progress"} onClick={() => navigate("progress")} />
         </div>
         <div className="mt-auto border-t border-[#e7e5e4] p-3">
+          <a
+            href={menuUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mb-1 flex h-10 w-full items-center gap-2 rounded-[10px] px-3 text-left text-sm font-semibold text-[#57534d] transition hover:bg-[#fbfbf9] hover:text-[#292524]"
+          >
+            <ExternalLink size={16} />
+            Открыть меню заведения
+          </a>
           <DrawerItem label="Выйти" icon={LogOut} onClick={() => setDrawerOpen(false)} />
         </div>
       </aside>

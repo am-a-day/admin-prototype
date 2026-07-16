@@ -3,7 +3,7 @@ import type { TrainingTab } from "./training-data";
 
 const TRAINING_TABS: { id: TrainingTab; label: string }[] = [
   { id: "trainer", label: "Тренажёр" },
-  { id: "menu", label: "Меню" },
+  { id: "cards", label: "Карточки" },
   { id: "progress", label: "Прогресс" },
 ];
 

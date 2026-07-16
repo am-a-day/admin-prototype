@@ -14,7 +14,9 @@ type AnswerState = {
 type HistoryEntry = {
   questionId: string;
   title: string;
-  sectionName: string;
+  selectedAnswer: string | null;
+  correctAnswer: string;
+  details?: { label: string; value: string }[];
   status: AnswerStatus;
 };
 
@@ -26,10 +28,12 @@ function formatDuration(totalSeconds: number) {
 
 export function QuizEngine({
   questions,
+  exerciseTitle,
   onExit,
   onRestart,
 }: {
   questions: QuizQuestion[];
+  exerciseTitle: string;
   onExit: () => void;
   onRestart: () => void;
 }) {
@@ -56,13 +60,16 @@ export function QuizEngine({
 
   const recordAnswer = (selectedAnswerId: string | null, status: AnswerStatus) => {
     if (answerState || finished) return;
+    const selectedAnswer = current.answers.find((answer) => answer.id === selectedAnswerId)?.label ?? null;
     setAnswerState({ selectedAnswerId, status });
     setHistory((entries) => [
       ...entries,
       {
         questionId: current.id,
-        title: current.feedback.correctAnswer,
-        sectionName: current.feedback.sectionName,
+        title: current.primaryText ?? current.feedback.correctAnswer,
+        selectedAnswer,
+        correctAnswer: current.feedback.correctAnswer,
+        details: current.feedback.details,
         status,
       },
     ]);
@@ -84,8 +91,16 @@ export function QuizEngine({
 
   useEffect(() => {
     if (!answerState || finished) return;
-    const timeout = window.setTimeout(finishOrAdvance, 1300);
-    return () => window.clearTimeout(timeout);
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const nativeControl = target?.closest("button,a,input,textarea,select");
+      if (nativeControl || event.repeat) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      finishOrAdvance();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [answerState, finished, currentIndex]);
 
   const result = useMemo(() => {
@@ -99,6 +114,7 @@ export function QuizEngine({
   if (!current) {
     return (
       <QuizResult
+        exerciseTitle={exerciseTitle}
         correct={0}
         wrong={0}
         skipped={0}
@@ -113,6 +129,7 @@ export function QuizEngine({
   if (finished) {
     return (
       <QuizResult
+        exerciseTitle={exerciseTitle}
         correct={result.correct}
         wrong={result.wrong}
         skipped={result.skipped}
@@ -145,9 +162,9 @@ export function QuizEngine({
         />
         <QuizFeedback question={current} answerState={answerState} />
         {answerState && (
-          <div className="mt-4 flex justify-end">
-            <Button type="button" variant="outline" size="sm" onClick={finishOrAdvance}>
-              Дальше
+          <div className="sticky bottom-0 -mx-4 mt-4 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:flex sm:justify-end sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+            <Button type="button" size="sm" onClick={finishOrAdvance} className="w-full justify-center sm:w-auto" autoFocus>
+              Продолжить
             </Button>
           </div>
         )}
@@ -204,13 +221,23 @@ function QuizQuestion({
 }) {
   return (
     <div className="rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9] p-3 shadow-sm sm:p-4">
-      <div className="overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-zinc-100">
-        <img
-          src={question.mediaUrl}
-          alt={question.mediaAlt}
-          className="h-[210px] w-full object-cover sm:h-[300px]"
-        />
-      </div>
+      {question.mediaUrl && (
+        <div className="overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-zinc-100">
+          <img
+            src={question.mediaUrl}
+            alt={question.mediaAlt ?? ""}
+            className="h-[190px] w-full object-cover sm:h-[300px]"
+          />
+        </div>
+      )}
+      {question.primaryText && (
+        <div className="rounded-[16px] border border-[#e7e5e4] bg-white p-4 sm:p-5">
+          {question.primaryLabel && (
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#a8a29e]">{question.primaryLabel}</div>
+          )}
+          <div className="mt-1 text-xl font-black leading-tight text-[#292524] sm:text-2xl">{question.primaryText}</div>
+        </div>
+      )}
       <div className="mt-4">
         <p className="text-sm font-medium text-[#79716b]">{question.prompt}</p>
         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -293,17 +320,20 @@ function QuizFeedback({
       )}
     >
       <div className="font-semibold">{title}</div>
-      {answerState.status !== "correct" && (
-        <div className="mt-1 space-y-0.5 text-[#57534d]">
-          <div>Правильный ответ: {question.feedback.correctAnswer}</div>
-          <div>Раздел: {question.feedback.sectionName}</div>
-        </div>
-      )}
+      <div className={cn("mt-1 space-y-0.5", answerState.status === "correct" ? "text-emerald-900" : "text-[#57534d]")}>
+        <div>Правильный ответ: {question.feedback.correctAnswer}</div>
+        {question.feedback.details?.map((detail) => (
+          <div key={detail.label}>
+            {detail.label}: {detail.value}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 function QuizResult({
+  exerciseTitle,
   correct,
   wrong,
   skipped,
@@ -312,6 +342,7 @@ function QuizResult({
   onRestart,
   onExit,
 }: {
+  exerciseTitle: string;
   correct: number;
   wrong: number;
   skipped: number;
@@ -336,6 +367,7 @@ function QuizResult({
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl font-black tracking-tight text-[#292524]">Раунд завершён</h2>
+              <div className="mt-1 text-sm font-semibold text-[#292524]">{exerciseTitle}</div>
               <p className="mt-1 text-sm text-[#79716b]">{message}</p>
             </div>
             <div className="rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3 text-right">
@@ -344,9 +376,10 @@ function QuizResult({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <div className="mt-5 grid gap-2 sm:grid-cols-4">
             <ResultMetric label="Правильные" value={correct} />
-            <ResultMetric label="Ошибки и пропуски" value={wrong + skipped} />
+            <ResultMetric label="Ошибки" value={wrong} />
+            <ResultMetric label="Пропущенные" value={skipped} />
             <ResultMetric label="Длительность" value={formatDuration(duration)} />
           </div>
 
@@ -375,8 +408,16 @@ function QuizResult({
               <div className="text-sm font-semibold text-[#292524]">Позиции для повторения</div>
               <ul className="mt-2 space-y-1 text-sm text-[#57534d]">
                 {mistakes.map((entry) => (
-                  <li key={entry.questionId}>
-                    {entry.title} · {entry.sectionName}
+                  <li key={entry.questionId} className="rounded-[10px] bg-[#fbfbf9] px-3 py-2">
+                    <div className="font-semibold text-[#292524]">{entry.title}</div>
+                    {entry.selectedAnswer && entry.status === "wrong" && <div>Выбрано: {entry.selectedAnswer}</div>}
+                    {entry.status === "timeout" && <div>Ответ пропущен</div>}
+                    <div>Правильный ответ: {entry.correctAnswer}</div>
+                    {entry.details?.map((detail) => (
+                      <div key={detail.label}>
+                        {detail.label}: {detail.value}
+                      </div>
+                    ))}
                   </li>
                 ))}
               </ul>
