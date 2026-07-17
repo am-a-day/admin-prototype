@@ -400,10 +400,10 @@ function CatalogViewModeSelect({
           <button
             type="button"
             aria-label="Режим представления каталога"
-            className="inline-flex h-8 min-w-0 max-w-[190px] cursor-pointer items-center gap-1 rounded-[7px] px-1.5 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-9 min-w-0 max-w-[190px] cursor-pointer items-center gap-1.5 rounded-[7px] px-1.5 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <span className="min-w-0 truncate text-[14px] font-medium leading-none text-[#292524]">{getCatalogViewModeLabel(value)}</span>
-            <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
+            <span className="min-w-0 truncate text-[22px] font-normal leading-none text-[#292524]">{getCatalogViewModeLabel(value)}</span>
+            <CaretDown size={18} weight="bold" className="shrink-0 text-[#1c1917]" />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -4935,22 +4935,53 @@ function UnifiedCatalogTreePanel({
       onPointerUp={finishTouchDrag}
       onPointerCancel={finishTouchDrag}
     >
-      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
-        <CatalogViewModeSelect value="sections" onChange={onViewModeChange} />
-        <div className="mt-2 flex h-8 items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            {focusedSection ? (
-              <Tooltip label="Показать все разделы" side="bottom" delayDuration={300}>
-                <button
-                  type="button"
-                  aria-label="Показать все разделы"
-                  onClick={() => selectTreeScope(null)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <ArrowLeft size={14} weight="bold" />
-                </button>
-              </Tooltip>
-            ) : null}
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-4 pt-5">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <CatalogViewModeSelect value="sections" onChange={onViewModeChange} />
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Добавить"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <PlusCircle size={30} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              {focusedSection ? (
+                <>
+                  <DropdownActionItem onSelect={() => onAddPosition(focusedSection.id)}>Добавить позицию</DropdownActionItem>
+                  <DropdownActionItem onSelect={() => onSectionAction(focusedSection, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел верхнего уровня</DropdownActionItem>
+                </>
+              ) : (
+                <>
+                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел</DropdownActionItem>
+                  <DropdownActionItem onSelect={onAddPositionRequest}>Добавить позицию</DropdownActionItem>
+                </>
+              )}
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </div>
+        <div className="mt-4 flex h-11 min-w-0 items-center gap-2 rounded-[12px] bg-[#f0f0ea] px-2.5">
+          {focusedSection ? (
+            <Tooltip label="Показать все разделы" side="bottom" delayDuration={300}>
+              <button
+                type="button"
+                aria-label="Показать все разделы"
+                onClick={() => selectTreeScope(null)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <ArrowLeft size={15} weight="bold" />
+              </button>
+            </Tooltip>
+          ) : (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-white/55 text-[#57534d]">
+              <List size={16} weight="bold" />
+            </span>
+          )}
             <DropdownMenu.Root
               open={scopeMenuOpen}
               onOpenChange={(open) => {
@@ -4962,13 +4993,12 @@ function UnifiedCatalogTreePanel({
               <button
                 type="button"
                 aria-label="Выбрать раздел"
-                className={cn(
-                  "flex h-7 min-w-0 cursor-pointer items-center gap-1 rounded-[7px] px-1.5 text-left text-[14px] font-semibold text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                  focusedSection ? "max-w-[159px]" : "max-w-[188px]",
-                )}
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[9px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <span className="min-w-0 truncate">{focusedSection?.name ?? "Все разделы"}</span>
-                <CaretDown size={13} weight="bold" className={cn("shrink-0 text-[#79716b] transition-transform", scopeMenuOpen && "rotate-180")} />
+                <span className="min-w-0 flex-1 truncate text-[18px] font-normal leading-none text-[#292524]">{focusedSection?.name ?? "Все разделы"}</span>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#1c1917] transition hover:bg-white/55">
+                  <CaretDown size={18} weight="bold" className={cn("transition-transform", scopeMenuOpen && "rotate-180")} />
+                </span>
               </button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
@@ -5015,35 +5045,10 @@ function UnifiedCatalogTreePanel({
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
             </DropdownMenu.Root>
-          </div>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Добавить"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <Plus size={15} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              {focusedSection ? (
-                <>
-                  <DropdownActionItem onSelect={() => onAddPosition(focusedSection.id)}>Добавить позицию</DropdownActionItem>
-                  <DropdownActionItem onSelect={() => onSectionAction(focusedSection, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел верхнего уровня</DropdownActionItem>
-                </>
-              ) : (
-                <>
-                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел</DropdownActionItem>
-                  <DropdownActionItem onSelect={onAddPositionRequest}>Добавить позицию</DropdownActionItem>
-                </>
-              )}
-            </DropdownContent>
-          </DropdownMenu.Root>
         </div>
-        <label className="mt-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+      </div>
+      <div ref={panelScrollRef} onDragOver={handlePanelDragOver} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+        <label className="mb-3 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
           <MagnifyingGlass size={14} />
           <input
             value={query}
@@ -5057,8 +5062,6 @@ function UnifiedCatalogTreePanel({
             </button>
           )}
         </label>
-      </div>
-      <div ref={panelScrollRef} onDragOver={handlePanelDragOver} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
         <div className="space-y-px">{treeSections.map((section) => renderSection(section))}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
