@@ -385,6 +385,10 @@ function getCatalogViewModeLabel(mode: CatalogViewMode) {
   return mode === "sections" ? "По разделам" : OVERVIEW_FILTER_META[mode].label;
 }
 
+function getCatalogViewModeCount(mode: CatalogViewMode) {
+  return mode === "sections" ? null : getOverviewItems(mode).length;
+}
+
 function CatalogViewModeSelect({
   value,
   onChange,
@@ -410,23 +414,30 @@ function CatalogViewModeSelect({
         <DropdownMenu.Portal>
           <DropdownMenu.Content
             align="start"
+            collisionPadding={12}
             sideOffset={6}
-            className="z-[100002] w-[250px] rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+            className="z-[100002] max-h-[min(520px,calc(100vh-24px),var(--radix-dropdown-menu-content-available-height))] w-[250px] overflow-y-auto overscroll-contain rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
           >
             {CATALOG_VIEW_MODE_GROUPS.map((group, groupIndex) => (
               <div key={group.label}>
                 {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
                 <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                {group.ids.map((mode) => (
-                  <DropdownMenu.Item
-                    key={mode}
-                    onSelect={() => onChange(mode)}
-                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{getCatalogViewModeLabel(mode)}</span>
-                    {value === mode && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                  </DropdownMenu.Item>
-                ))}
+                {group.ids.map((mode) => {
+                  const count = getCatalogViewModeCount(mode);
+                  return (
+                    <DropdownMenu.Item
+                      key={mode}
+                      onSelect={() => onChange(mode)}
+                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{getCatalogViewModeLabel(mode)}</span>
+                      {typeof count === "number" && (
+                        <span className="shrink-0 text-[12px] font-medium tabular-nums text-[#a6a09b]">{count}</span>
+                      )}
+                      {value === mode && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                    </DropdownMenu.Item>
+                  );
+                })}
               </div>
             ))}
           </DropdownMenu.Content>
