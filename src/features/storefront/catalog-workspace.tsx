@@ -27,6 +27,7 @@ import {
   PlusCircle,
   Prohibit,
   Tag,
+  Table,
   Trash,
   XCircle,
 } from "@phosphor-icons/react";
@@ -48,7 +49,6 @@ export type CatalogTab = "sections" | "overview" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "sections", label: "Разделы" },
   { id: "upsell", label: "Рекомендации" },
-  { id: "overview", label: "Все позиции", count: catalogItems.length },
 ];
 
 const CREATED_SECTION: Category = {
@@ -144,6 +144,8 @@ type CatalogWorkspaceProps = {
   onCatalogTabChange: (tab: CatalogTab) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
+
+type CatalogViewMode = "sections" | OverviewFilterId;
 
 /** Section node for the left panels: real sections carry imageUrl, mock/created ones an emoji. */
 type TreeSection = {
@@ -320,7 +322,7 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     emptyText: "Все позиции сейчас доступны для гостей.",
   },
   "status:soon": {
-    label: "Скоро будут",
+    label: "Скоро будет",
     countText: (count) => `${count} ${plural(count, "позиция скоро будет доступна", "позиции скоро будут доступны", "позиций скоро будут доступны")}`,
     emptyTitle: "Нет позиций со статусом «Скоро будут»",
     emptyText: "Позиции с будущей доступностью появятся здесь.",
@@ -369,6 +371,97 @@ function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = cat
   return items.filter(FILTER_PREDICATES[filterId]);
 }
 
+const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
+  { label: "Структура", ids: ["sections"] },
+  { label: "Позиции", ids: ["quick:all", "status:active", "status:archived"] },
+  { label: "Доступность", ids: ["status:stop", "status:soon", "status:schedule"] },
+  { label: "Заполненность", ids: ["quick:no-description", "quick:no-photo", "quick:no-weight", "quick:no-kbju", "quick:no-translation"] },
+  { label: "Возможности", ids: ["quick:no-recommendations", "quick:with-recommendations", "quick:discount", "quick:with-labels", "quick:with-tags"] },
+];
+
+function getCatalogViewModeLabel(mode: CatalogViewMode) {
+  return mode === "sections" ? "По разделам" : OVERVIEW_FILTER_META[mode].label;
+}
+
+function CatalogViewModeSelect({
+  value,
+  onChange,
+  onReset,
+}: {
+  value: CatalogViewMode;
+  onChange: (mode: CatalogViewMode) => void;
+  onReset?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Режим представления каталога"
+            className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-left transition hover:bg-[#f7f6f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#292524]">{getCatalogViewModeLabel(value)}</span>
+            <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="start"
+            sideOffset={6}
+            className="z-[100002] w-[250px] rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+          >
+            {CATALOG_VIEW_MODE_GROUPS.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                {group.ids.map((mode) => (
+                  <DropdownMenu.Item
+                    key={mode}
+                    onSelect={() => onChange(mode)}
+                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{getCatalogViewModeLabel(mode)}</span>
+                    {value === mode && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                  </DropdownMenu.Item>
+                ))}
+              </div>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      {value !== "sections" && onReset && (
+        <Tooltip label="Вернуться к разделам" side="bottom">
+          <button
+            type="button"
+            aria-label="Вернуться к разделам"
+            onClick={onReset}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <XCircle size={16} />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+function getSectionScopeIds(sectionId: string | null) {
+  if (!sectionId) return null;
+  const result = new Set<string>([sectionId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    catalogSections.forEach((section) => {
+      if (section.parentId && result.has(section.parentId) && !result.has(section.id)) {
+        result.add(section.id);
+        changed = true;
+      }
+    });
+  }
+  return result;
+}
+
 type AuditQueueFilterId = OverviewFilterId;
 type PriceSortDirection = "none" | "asc" | "desc";
 type DescriptionAuditQueueSnapshot = {
@@ -387,7 +480,6 @@ type DescriptionAuditQueueState = {
 };
 type DescriptionSaveStatus = "idle" | "saving" | "saved";
 
-const AUDIT_QUEUE_FILTER_IDS: AuditQueueFilterId[] = ["quick:no-description", "quick:no-photo", "status:stop"];
 const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
   "quick:no-description",
   "quick:no-photo",
@@ -409,6 +501,7 @@ const AUDIT_QUEUE_EMPTY_TITLE: Partial<Record<AuditQueueFilterId, string>> = {
 const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<AuditQueueFilterId, { tab: EditorTab; anchor?: "description" | "media" }>> = {
   "quick:no-description": { tab: "basic", anchor: "description" },
   "quick:no-photo": { tab: "basic", anchor: "media" },
+  "quick:no-recommendations": { tab: "promo" },
   "status:stop": { tab: "availability" },
 };
 
@@ -487,8 +580,9 @@ function getQueueItemIds(
   priceSort: PriceSortDirection = "none",
 ) {
   const normalizedQuery = query.trim().toLowerCase();
+  const scopeIds = getSectionScopeIds(sectionScopeId);
   const filtered = getOverviewItems(filterId, items)
-    .filter((item) => !sectionScopeId || item.sectionId === sectionScopeId)
+    .filter((item) => !scopeIds || scopeIds.has(item.sectionId))
     .filter((item) =>
       !normalizedQuery || [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
     );
@@ -956,7 +1050,7 @@ function SectionEmptyState({ sectionName, onAddItem }: { sectionName: string; on
   );
 }
 
-function CatalogFiltersPanel({
+export function CatalogFiltersPanel({
   selectedId,
   onSelect,
   sectionScopeId,
@@ -4143,6 +4237,7 @@ type CatalogTreeDropIntent = {
 function UnifiedCatalogTreePanel({
   sections,
   items,
+  scopeSectionId,
   selectedSectionId,
   selectedItemId,
   sectionEditingEnabled,
@@ -4150,6 +4245,8 @@ function UnifiedCatalogTreePanel({
   positionOrderBySection,
   onSelectSection,
   onSelectItem,
+  onScopeChange,
+  onViewModeChange,
   onAddSection,
   onAddPositionRequest,
   onAddPosition,
@@ -4159,6 +4256,7 @@ function UnifiedCatalogTreePanel({
 }: {
   sections: TreeSection[];
   items: CatalogItem[];
+  scopeSectionId: string | null;
   selectedSectionId: string | null;
   selectedItemId: string | null;
   sectionEditingEnabled: boolean;
@@ -4166,6 +4264,8 @@ function UnifiedCatalogTreePanel({
   positionOrderBySection: Record<string, string[]>;
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
+  onScopeChange: (id: string | null) => void;
+  onViewModeChange: (mode: CatalogViewMode) => void;
   onAddSection: () => void;
   onAddPositionRequest: () => void;
   onAddPosition: (sectionId: string) => void;
@@ -4182,7 +4282,6 @@ function UnifiedCatalogTreePanel({
   const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
   const [expanded, setExpanded] = useState<Record<string, boolean>>(initialExpanded);
   const [query, setQuery] = useState("");
-  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
   const [scopeQuery, setScopeQuery] = useState("");
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
@@ -4205,8 +4304,8 @@ function UnifiedCatalogTreePanel({
   } | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const allFlatSections = flattenSections(sections);
-  const focusedSection = focusedSectionId
-    ? allFlatSections.find((section) => section.id === focusedSectionId) ?? null
+  const focusedSection = scopeSectionId
+    ? allFlatSections.find((section) => section.id === scopeSectionId) ?? null
     : null;
   const treeSections = focusedSection ? [focusedSection] : sections;
   const flatSections = flattenSections(treeSections);
@@ -4297,16 +4396,16 @@ function UnifiedCatalogTreePanel({
   }, [sections]);
 
   useEffect(() => {
-    if (!focusedSectionId || focusedSection) return;
-    setFocusedSectionId(null);
+    if (!scopeSectionId || focusedSection) return;
+    onScopeChange(null);
     if (fullTreeExpandedRef.current) setExpanded(fullTreeExpandedRef.current);
-  }, [focusedSection, focusedSectionId]);
+  }, [focusedSection, scopeSectionId, onScopeChange]);
 
   const selectTreeScope = (sectionId: string | null) => {
     setScopeQuery("");
     setQuery("");
     if (!sectionId) {
-      setFocusedSectionId(null);
+      onScopeChange(null);
       if (fullTreeExpandedRef.current) {
         setExpanded(fullTreeExpandedRef.current);
         fullTreeExpandedRef.current = null;
@@ -4317,13 +4416,12 @@ function UnifiedCatalogTreePanel({
       return;
     }
 
-    if (!focusedSectionId) {
+    if (!scopeSectionId) {
       fullTreeExpandedRef.current = expanded;
       fullTreeScrollTopRef.current = panelScrollRef.current?.scrollTop ?? 0;
     }
-    setFocusedSectionId(sectionId);
+    onScopeChange(sectionId);
     setExpanded((current) => ({ ...current, [sectionId]: true }));
-    onSelectSection(sectionId);
     window.requestAnimationFrame(() => {
       if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
     });
@@ -4375,7 +4473,7 @@ function UnifiedCatalogTreePanel({
     mode: CatalogTreeDropIntent["mode"],
   ) => {
     if (source.id === targetId) return false;
-    if (focusedSectionId === targetId && mode !== "inside") return false;
+    if (scopeSectionId === targetId && mode !== "inside") return false;
     if (source.kind === "item") return targetKind === "item" ? mode !== "inside" : mode === "inside";
     if (targetKind !== "section") return false;
     const nextParentId = mode === "inside" ? targetId : targetParentId;
@@ -4657,7 +4755,7 @@ function UnifiedCatalogTreePanel({
     const activeCount = getAggregateItemCount(section);
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
     const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
-    const dragEnabled = !normalizedQuery && focusedSectionId !== section.id;
+    const dragEnabled = !normalizedQuery && scopeSectionId !== section.id;
     const sectionIcon = section.imageUrl ? (
       <img src={section.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
     ) : (
@@ -4837,7 +4935,8 @@ function UnifiedCatalogTreePanel({
       onPointerCancel={finishTouchDrag}
     >
       <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
-        <div className="flex h-8 items-center justify-between gap-2">
+        <CatalogViewModeSelect value="sections" onChange={onViewModeChange} />
+        <div className="mt-2 flex h-8 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1">
             {focusedSection ? (
               <Tooltip label="Показать все разделы" side="bottom" delayDuration={300}>
@@ -4905,7 +5004,7 @@ function UnifiedCatalogTreePanel({
                       className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
                     >
                       <span className="min-w-0 flex-1 truncate">{option.path}</span>
-                      {focusedSectionId === option.section.id && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                      {scopeSectionId === option.section.id && <Check size={13} className="shrink-0 text-[#79716b]" />}
                     </DropdownMenu.Item>
                   ))}
                   {visibleSectionOptions.length === 0 && (
@@ -5946,8 +6045,16 @@ function writeJsonRecord(key: string, value: unknown) {
 
 function PopulatedWorkspace({
   sections,
+  scopeSectionId,
+  initialSelectedItemId,
+  onScopeChange,
+  onViewModeChange,
 }: {
   sections: TreeSection[];
+  scopeSectionId: string | null;
+  initialSelectedItemId: string | null;
+  onScopeChange: (id: string | null) => void;
+  onViewModeChange: (mode: CatalogViewMode) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -5974,8 +6081,9 @@ function PopulatedWorkspace({
   const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
   const directItem = directPositionId ? catalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
-  const firstSectionId = directItem?.sectionId ?? directSection?.id ?? preferredSectionId;
-  const firstItemId = editorNavMode === "entity" || editorNavMode === "unified" ? directItem?.id ?? null : preferredItemId;
+  const retainedItem = initialSelectedItemId ? catalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
+  const firstSectionId = retainedItem?.sectionId ?? directItem?.sectionId ?? directSection?.id ?? preferredSectionId;
+  const firstItemId = editorNavMode === "entity" || editorNavMode === "unified" ? retainedItem?.id ?? directItem?.id ?? null : preferredItemId;
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
@@ -6631,6 +6739,7 @@ function PopulatedWorkspace({
           <UnifiedCatalogTreePanel
             sections={editorNavMode === "entity" ? allSectionTree : activeSectionTree}
             items={allItems}
+            scopeSectionId={scopeSectionId}
             selectedSectionId={selectedSectionId}
             selectedItemId={selectedItemId}
             sectionEditingEnabled={editorNavMode === "entity"}
@@ -6638,6 +6747,8 @@ function PopulatedWorkspace({
             positionOrderBySection={positionOrderBySection}
             onSelectSection={openSectionEditor}
             onSelectItem={openItem}
+            onScopeChange={onScopeChange}
+            onViewModeChange={onViewModeChange}
             onAddSection={() => showPlaceholderFeedback("Добавить раздел: placeholder")}
             onAddPositionRequest={() => showPlaceholderFeedback("Добавить позицию: выберите родительский раздел")}
             onAddPosition={addPositionToSection}
@@ -7591,136 +7702,140 @@ function DescriptionQueueRow({
   );
 }
 
-function AuditQueueFilterSelect({
-  value,
-  counts,
-  disabled,
-  onChange,
-}: {
-  value: AuditQueueFilterId;
-  counts: Partial<Record<AuditQueueFilterId, number>>;
-  disabled?: boolean;
-  onChange: (id: AuditQueueFilterId) => void;
-}) {
+function getSectionFullPath(sectionId: string) {
+  const names: string[] = [];
+  let current = catalogSections.find((section) => section.id === sectionId) ?? null;
+  while (current) {
+    names.unshift(current.name);
+    current = current.parentId ? catalogSections.find((section) => section.id === current?.parentId) ?? null : null;
+  }
+  return names.join(" / ");
+}
+
+function CatalogScopeSelect({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = catalogSections.find((section) => section.id === value) ?? null;
+  const normalizedQuery = query.trim().toLowerCase();
+  const options = catalogSections
+    .map((section) => ({ section, path: getSectionFullPath(section.id) }))
+    .filter((option) => !normalizedQuery || option.path.toLowerCase().includes(normalizedQuery));
+
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          disabled={disabled}
-          className="flex w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] p-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-wait disabled:opacity-70"
+          aria-label="Область каталога"
+          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-2 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#292524]">
-            {OVERVIEW_FILTER_META[value].label}
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-white text-[#79716b]">
+            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={12} />}
           </span>
-          <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb]">
-            <CaretDown size={12} className="text-[#79716b]" />
-          </span>
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#292524]">{selected?.name ?? "Все разделы"}</span>
+          <CaretDown size={13} className="shrink-0 text-[#79716b]" />
         </button>
       </DropdownMenu.Trigger>
-      <DropdownContent align="start">
-        {AUDIT_QUEUE_FILTER_IDS.map((id) => (
-          <DropdownActionItem key={id} onSelect={() => onChange(id)}>
-            <span className="flex w-full items-center gap-3">
-              <span className="min-w-0 flex-1 truncate">{OVERVIEW_FILTER_META[id].label}</span>
-              <span className="text-[12px] text-[#a8a29e]">{counts[id] ?? 0}</span>
-            </span>
-          </DropdownActionItem>
-        ))}
-      </DropdownContent>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content align="start" sideOffset={6} className="z-[100002] w-[310px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+          <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+            <MagnifyingGlass size={14} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Найти раздел" autoFocus className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
+          </label>
+          <div className="max-h-[360px] overflow-y-auto">
+            <DropdownMenu.Item onSelect={() => onChange(null)} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
+              <span className="min-w-0 flex-1">Все разделы</span>{value === null && <Check size={13} />}
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            {options.map(({ section, path }) => (
+              <DropdownMenu.Item key={section.id} onSelect={() => onChange(section.id)} title={path} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
+                <span className="min-w-0 flex-1 truncate">{path}</span>{value === section.id && <Check size={13} />}
+              </DropdownMenu.Item>
+            ))}
+            {options.length === 0 && <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>}
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );
 }
 
-function DescriptionAuditQueuePanel({
-  queue,
+function UnifiedFlatCatalogPanel({
+  filterId,
+  scopeSectionId,
+  query,
+  count,
   items,
-  counts,
-  switching,
-  repairMode,
-  onBack,
+  selectedItemId,
+  fixedIds,
+  repairProgress,
+  tableActive,
   onFilterChange,
+  onScopeChange,
+  onQueryChange,
+  onReset,
+  onOpenTable,
   onSelectItem,
 }: {
-  queue: DescriptionAuditQueueState;
+  filterId: OverviewFilterId;
+  scopeSectionId: string | null;
+  query: string;
+  count: number;
   items: CatalogItem[];
-  counts: Partial<Record<AuditQueueFilterId, number>>;
-  switching?: boolean;
-  repairMode: boolean;
-  onBack: () => void;
-  onFilterChange: (id: AuditQueueFilterId) => void;
-  onSelectItem: (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => void;
+  selectedItemId: string | null;
+  fixedIds?: Set<string>;
+  repairProgress?: { remaining: number; total: number };
+  tableActive: boolean;
+  onFilterChange: (id: OverviewFilterId) => void;
+  onScopeChange: (id: string | null) => void;
+  onQueryChange: (value: string) => void;
+  onReset: () => void;
+  onOpenTable: () => void;
+  onSelectItem: (item: CatalogItem, fixed: boolean) => void;
 }) {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const total = queue.snapshot.itemIds.length;
-  const remaining = queue.snapshot.itemIds.filter((id) => {
-    const item = byId.get(id);
-    return item ? FILTER_PREDICATES[queue.snapshot.filterId](item) : false;
-  }).length;
-  const remainingIds = queue.snapshot.itemIds.filter((id) => {
-    const item = byId.get(id);
-    if (!item) return false;
-    if (!repairMode) return true;
-    if (id === queue.currentId) return queue.currentBucket === "remaining";
-    return FILTER_PREDICATES[queue.snapshot.filterId](item);
-  });
-  const fixedIds = queue.snapshot.itemIds.filter((id) => {
-    const item = byId.get(id);
-    if (!item || !repairMode) return false;
-    if (id === queue.currentId) return queue.currentBucket === "fixed";
-    return !FILTER_PREDICATES[queue.snapshot.filterId](item);
-  });
-  const displayedIds = repairMode ? [...fixedIds, ...remainingIds] : remainingIds;
-  const fixedIdSet = new Set(fixedIds);
+  const scope = catalogSections.find((section) => section.id === scopeSectionId) ?? null;
+  const emptyText = scope
+    ? filterId === "quick:all" ? "В разделе пока нет позиций" : `В разделе «${scope.name}» нет позиций: ${OVERVIEW_FILTER_META[filterId].label.toLowerCase()}`
+    : OVERVIEW_FILTER_META[filterId].emptyTitle;
 
   return (
     <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div className="shrink-0 px-2 pb-3 pt-4">
+      <div className="shrink-0 space-y-2 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
+        <CatalogViewModeSelect value={filterId} onChange={(mode) => mode === "sections" ? onReset() : onFilterChange(mode)} onReset={onReset} />
+        <CatalogScopeSelect value={scopeSectionId} onChange={onScopeChange} />
         <button
           type="button"
-          onClick={onBack}
-          className="mb-3 inline-flex h-7 items-center gap-1 rounded-[8px] px-1.5 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <ArrowLeft size={14} />
-          Все позиции
-        </button>
-        <div className="px-1.5">
-          {AUDIT_QUEUE_FILTER_IDS.includes(queue.snapshot.filterId) ? (
-            <AuditQueueFilterSelect
-              value={queue.snapshot.filterId}
-              counts={counts}
-              disabled={switching}
-              onChange={onFilterChange}
-            />
-          ) : (
-            <h2 className="truncate text-[14px] font-medium leading-5 text-[#292524]">
-              {OVERVIEW_FILTER_META[queue.snapshot.filterId].label}
-            </h2>
+          onClick={onOpenTable}
+          className={cn(
+            "flex h-9 w-full items-center gap-2 rounded-[8px] border px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            tableActive ? "border-[#d6d3d1] bg-white shadow-[0_1px_3px_rgba(41,37,36,0.08)]" : "border-transparent hover:bg-[#f1f1ea]",
           )}
-          {repairMode ? (
-            <p className="mt-0.5 text-[12px] leading-4 text-[#79716b]">Осталось {remaining} из {total}</p>
-          ) : null}
-        </div>
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[#e9e9df] text-[#57534d]"><Table size={14} /></span>
+          <span className="min-w-0 flex-1 text-[13px] font-semibold text-[#292524]">Таблица</span>
+          <span className="text-[11px] tabular-nums text-[#79716b]">{count}</span>
+        </button>
+        <label className="flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
+          <MagnifyingGlass size={14} />
+          <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск в результатах" className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
+          {query && <button type="button" onClick={() => onQueryChange("")} aria-label="Очистить поиск" className="flex h-5 w-5 items-center justify-center rounded-[6px] hover:bg-[#f5f5f4]"><XCircle size={13} /></button>}
+        </label>
+        {repairProgress && <p className="px-1 text-[12px] leading-4 text-[#79716b]">Осталось {repairProgress.remaining} из {repairProgress.total}</p>}
       </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         <div className="space-y-1">
-          {displayedIds.map((id) => {
-            const item = byId.get(id);
-            if (!item) return null;
-            const fixed = repairMode && !FILTER_PREDICATES[queue.snapshot.filterId](item);
-            return (
-              <DescriptionQueueRow
-                key={id}
-                item={item}
-                selected={id === queue.currentId}
-                fixed={fixed}
-                onClick={() => onSelectItem(id, fixedIdSet.has(id) ? "fixed" : "remaining")}
-              />
-            );
+          {items.map((item) => {
+            const fixed = fixedIds?.has(item.id) ?? false;
+            return <DescriptionQueueRow key={item.id} item={item} selected={item.id === selectedItemId} fixed={fixed} onClick={() => onSelectItem(item, fixed)} />;
           })}
-          {displayedIds.length === 0 && (
-            <div className="px-2 py-3 text-[12px] leading-4 text-[#a8a29e]">В основной очереди больше нет позиций.</div>
+          {items.length === 0 && (
+            <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4">
+              <p className="text-[12px] leading-5 text-[#79716b]">{query.trim() ? "По вашему запросу ничего не найдено" : emptyText}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {query.trim() && <button type="button" onClick={() => onQueryChange("")} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Очистить поиск</button>}
+                <button type="button" onClick={onReset} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Вернуться к разделам</button>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -7798,21 +7913,25 @@ function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFi
 function OverviewWorkspace({
   filterId,
   onFilterChange,
-  initialSectionScopeId,
+  sectionScopeId,
+  onSectionScopeChange,
+  query,
+  onQueryChange,
+  onReturnToSections,
 }: {
   filterId: OverviewFilterId;
   onFilterChange: (id: OverviewFilterId) => void;
-  initialSectionScopeId: string | null;
+  sectionScopeId: string | null;
+  onSectionScopeChange: (id: string | null) => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onReturnToSections: (openItemId: string | null) => void;
 }) {
   const { registerChange } = usePublish();
   const [items, setItems] = useState<CatalogItem[]>(catalogItems);
   const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(null);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
-  const [queueSwitching, setQueueSwitching] = useState(false);
-  const [pendingQueueFilterId, setPendingQueueFilterId] = useState<AuditQueueFilterId | null>(null);
-  const [query, setQuery] = useState("");
-  const [sectionScopeId, setSectionScopeId] = useState<string | null>(initialSectionScopeId);
   const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
@@ -7821,7 +7940,8 @@ function OverviewWorkspace({
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
   const scopeSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
-  const inScope = (item: CatalogItem) => !scopeSection || item.sectionId === scopeSection.id;
+  const scopeIds = getSectionScopeIds(sectionScopeId);
+  const inScope = (item: CatalogItem) => !scopeIds || scopeIds.has(item.sectionId);
   const filtered = getOverviewItems(filterId, items).filter(inScope);
   const normalizedQuery = query.trim().toLowerCase();
   const searched = normalizedQuery
@@ -7833,21 +7953,17 @@ function OverviewWorkspace({
   const statusMeta = OVERVIEW_FILTER_META[filterId];
   const visibleIds = visible.map((item) => item.id);
   const visibleIdKey = visibleIds.join("|");
-  const queueCounts = AUDIT_QUEUE_FILTER_IDS.reduce((counts, id) => ({
-    ...counts,
-    [id]: getQueueItemIds(id, items, queue?.snapshot.query ?? query, queue?.snapshot.sectionScopeId ?? sectionScopeId).length,
-  }), {} as Partial<Record<AuditQueueFilterId, number>>);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
 
   const resetFilter = () => {
-    setQuery("");
-    setSectionScopeId(null);
+    onQueryChange("");
+    onSectionScopeChange(null);
     setSelectedIds(new Set());
     onFilterChange("quick:all");
   };
   const clearSearch = () => {
-    setQuery("");
+    onQueryChange("");
   };
   const handlePriceSortChange = () => {
     setPriceSort((current) => getNextPriceSort(current));
@@ -7865,11 +7981,13 @@ function OverviewWorkspace({
   };
   const handleSectionScopeChange = (id: string | null) => {
     clearSelection();
-    setSectionScopeId(id);
+    onSectionScopeChange(id);
+    if (queue) setQueue(null);
   };
   const handleQueryChange = (value: string) => {
     clearSelection();
-    setQuery(value);
+    onQueryChange(value);
+    if (queue) setQueue(null);
   };
   const setItemSelected = (id: string, selected: boolean) => {
     setSelectedIds((current) => {
@@ -7951,11 +8069,6 @@ function OverviewWorkspace({
   const switchQueueFilter = (nextFilterId: AuditQueueFilterId) => {
     if (!queue || nextFilterId === queue.snapshot.filterId) return;
     const currentId = queue.currentId;
-    if (currentId && descriptionSaveStateById[currentId] === "saving") {
-      setQueueSwitching(true);
-      setPendingQueueFilterId(nextFilterId);
-      return;
-    }
     const nextSnapshot = buildQueueSnapshot(
       nextFilterId,
       currentId ?? "",
@@ -7972,8 +8085,7 @@ function OverviewWorkspace({
       currentId: nextCurrentId,
       currentBucket: "remaining",
     });
-    setQueueSwitching(false);
-    setPendingQueueFilterId(null);
+    onFilterChange(nextFilterId);
   };
   const prepareRowAction = (item: CatalogItem, action: string) => {
     if (action === "Открыть позицию") {
@@ -7991,8 +8103,8 @@ function OverviewWorkspace({
   const returnToOverview = () => {
     if (queue) {
       onFilterChange(queue.snapshot.filterId);
-      setQuery(queue.snapshot.query);
-      setSectionScopeId(queue.snapshot.sectionScopeId);
+      onQueryChange(queue.snapshot.query);
+      onSectionScopeChange(queue.snapshot.sectionScopeId);
       setPriceSort(queue.snapshot.sort);
       restoreScrollTopRef.current = queue.snapshot.scrollTop;
     }
@@ -8087,12 +8199,6 @@ function OverviewWorkspace({
   }, [feedback]);
 
   useEffect(() => {
-    if (!pendingQueueFilterId || !queue?.currentId) return;
-    if (descriptionSaveStateById[queue.currentId] === "saving") return;
-    switchQueueFilter(pendingQueueFilterId);
-  }, [pendingQueueFilterId, descriptionSaveStateById, queue?.currentId]);
-
-  useEffect(() => {
     return () => {
       Object.values(descriptionSaveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
     };
@@ -8120,19 +8226,43 @@ function OverviewWorkspace({
     const canFinish = repairMode && currentFixed && remaining === 0;
     const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
     const editorContext = getQueueEditorContext(queue.snapshot.filterId);
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const remainingIds = queue.snapshot.itemIds.filter((id) => {
+      const item = byId.get(id);
+      if (!item) return false;
+      if (!repairMode) return true;
+      if (id === queue.currentId && queue.currentBucket === "remaining") return true;
+      return FILTER_PREDICATES[queue.snapshot.filterId](item);
+    });
+    const fixedIds = new Set(queue.snapshot.itemIds.filter((id) => {
+      const item = byId.get(id);
+      if (!item || !repairMode) return false;
+      if (id === queue.currentId && queue.currentBucket === "remaining") return false;
+      return !FILTER_PREDICATES[queue.snapshot.filterId](item);
+    }));
+    const panelItems = [...remainingIds, ...fixedIds].map((id) => byId.get(id)).filter((item): item is CatalogItem => Boolean(item));
+    const queueScopeIds = getSectionScopeIds(queue.snapshot.sectionScopeId);
+    const unsearchedCount = getOverviewItems(queue.snapshot.filterId, items).filter((item) => !queueScopeIds || queueScopeIds.has(item.sectionId)).length;
 
     return (
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
         <div className="flex min-h-0 flex-1">
-          <DescriptionAuditQueuePanel
-            queue={queue}
-            items={items}
-            counts={queueCounts}
-            switching={queueSwitching}
-            repairMode={repairMode}
-            onBack={returnToOverview}
+          <UnifiedFlatCatalogPanel
+            filterId={queue.snapshot.filterId}
+            scopeSectionId={queue.snapshot.sectionScopeId}
+            query={queue.snapshot.query}
+            count={unsearchedCount}
+            items={panelItems}
+            selectedItemId={queue.currentId}
+            fixedIds={fixedIds}
+            repairProgress={repairMode ? { remaining, total: queue.snapshot.itemIds.length } : undefined}
+            tableActive={false}
             onFilterChange={switchQueueFilter}
-            onSelectItem={selectQueueItem}
+            onScopeChange={handleSectionScopeChange}
+            onQueryChange={handleQueryChange}
+            onReset={() => onReturnToSections(queue.currentId)}
+            onOpenTable={returnToOverview}
+            onSelectItem={(item, fixed) => selectQueueItem(item.id, fixed ? "fixed" : "remaining")}
           />
           {currentItem ? (
             <PositionEditor
@@ -8190,12 +8320,20 @@ function OverviewWorkspace({
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
-        <CatalogFiltersPanel
-          selectedId={filterId}
-          onSelect={handleFilterChange}
-          sectionScopeId={sectionScopeId}
-          onSectionScopeChange={handleSectionScopeChange}
-          items={items}
+        <UnifiedFlatCatalogPanel
+          filterId={filterId}
+          scopeSectionId={sectionScopeId}
+          query={query}
+          count={filtered.length}
+          items={visible}
+          selectedItemId={null}
+          tableActive
+          onFilterChange={handleFilterChange}
+          onScopeChange={handleSectionScopeChange}
+          onQueryChange={handleQueryChange}
+          onReset={() => onReturnToSections(null)}
+          onOpenTable={() => {}}
+          onSelectItem={(item) => startDescriptionQueue(item, filterId)}
         />
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto px-6 pb-10">
           <div className="mx-auto w-full max-w-[800px] min-w-0">
@@ -8345,20 +8483,46 @@ export function CatalogWorkspace({
   const overviewSectionScopeId = overviewSectionScopeParam && catalogSections.some((section) => section.id === overviewSectionScopeParam)
     ? overviewSectionScopeParam
     : null;
+  const [viewMode, setViewMode] = useState<CatalogViewMode>(catalogTab === "overview" ? overviewFilterId : "sections");
+  const [sectionScopeId, setSectionScopeId] = useState<string | null>(overviewSectionScopeId);
+  const [flatQuery, setFlatQuery] = useState("");
+  const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
+  const changeViewMode = (mode: CatalogViewMode) => {
+    setViewMode(mode);
+    if (mode !== "sections") onOverviewFilterChange(mode);
+  };
+  const returnToSections = (openItemId: string | null) => {
+    setFlatQuery("");
+    setRetainedItemId(openItemId);
+    setViewMode("sections");
+  };
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : catalogPhase === "empty" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
-    ) : catalogTab === "overview" ? (
-      <OverviewWorkspace
-        filterId={overviewFilterId}
-        onFilterChange={onOverviewFilterChange}
-        initialSectionScopeId={overviewSectionScopeId}
-      />
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
+    ) : viewMode !== "sections" ? (
+      <OverviewWorkspace
+        filterId={viewMode}
+        onFilterChange={(id) => {
+          setViewMode(id);
+          onOverviewFilterChange(id);
+        }}
+        sectionScopeId={sectionScopeId}
+        onSectionScopeChange={setSectionScopeId}
+        query={flatQuery}
+        onQueryChange={setFlatQuery}
+        onReturnToSections={returnToSections}
+      />
     ) : catalogPhase === "has-items" ? (
-      <PopulatedWorkspace sections={sections} />
+      <PopulatedWorkspace
+        sections={sections}
+        scopeSectionId={sectionScopeId}
+        initialSelectedItemId={retainedItemId}
+        onScopeChange={setSectionScopeId}
+        onViewModeChange={changeViewMode}
+      />
     ) : (
       <EmptyCatalog
         sections={sections}
