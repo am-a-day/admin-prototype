@@ -17,6 +17,7 @@ import {
   DotsSixVertical,
   Fire,
   ForkKnife,
+  FunnelSimple,
   ImageBroken,
   List,
   Lock,
@@ -400,10 +401,10 @@ function CatalogViewModeSelect({
           <button
             type="button"
             aria-label="Режим представления каталога"
-            className="inline-flex h-9 min-w-0 max-w-[190px] cursor-pointer items-center gap-1.5 rounded-[7px] px-1.5 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-5 min-w-0 max-w-[190px] cursor-pointer items-center gap-1.5 rounded-[6px] px-1 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <span className="min-w-0 truncate text-[22px] font-normal leading-none text-[#292524]">{getCatalogViewModeLabel(value)}</span>
-            <CaretDown size={18} weight="bold" className="shrink-0 text-[#1c1917]" />
+            <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#292524]">{getCatalogViewModeLabel(value)}</span>
+            <CaretDown size={14} weight="bold" className="shrink-0 text-[#1c1917]" />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -4943,9 +4944,9 @@ function UnifiedCatalogTreePanel({
               <button
                 type="button"
                 aria-label="Добавить"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <PlusCircle size={30} />
+                <PlusCircle size={18} />
               </button>
             </DropdownMenu.Trigger>
             <DropdownContent align="end">
@@ -4965,21 +4966,21 @@ function UnifiedCatalogTreePanel({
             </DropdownContent>
           </DropdownMenu.Root>
         </div>
-        <div className="mt-4 flex h-11 min-w-0 items-center gap-2 rounded-[12px] bg-[#f0f0ea] px-2.5">
+        <div className="mt-4 flex h-8 min-w-0 items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-1.5">
           {focusedSection ? (
             <Tooltip label="Показать все разделы" side="bottom" delayDuration={300}>
               <button
                 type="button"
                 aria-label="Показать все разделы"
                 onClick={() => selectTreeScope(null)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <ArrowLeft size={15} weight="bold" />
+                <ArrowLeft size={14} weight="bold" />
               </button>
             </Tooltip>
           ) : (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-white/55 text-[#57534d]">
-              <List size={16} weight="bold" />
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
+              <FunnelSimple size={14} />
             </span>
           )}
             <DropdownMenu.Root
@@ -4995,9 +4996,9 @@ function UnifiedCatalogTreePanel({
                 aria-label="Выбрать раздел"
                 className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[9px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <span className="min-w-0 flex-1 truncate text-[18px] font-normal leading-none text-[#292524]">{focusedSection?.name ?? "Все разделы"}</span>
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#1c1917] transition hover:bg-white/55">
-                  <CaretDown size={18} weight="bold" className={cn("transition-transform", scopeMenuOpen && "rotate-180")} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{focusedSection?.name ?? "Все разделы"}</span>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
+                  <CaretDown size={14} weight="bold" className={cn("transition-transform", scopeMenuOpen && "rotate-180")} />
                 </span>
               </button>
             </DropdownMenu.Trigger>
@@ -7731,13 +7732,13 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
         <button
           type="button"
           aria-label="Область каталога"
-          className="flex h-9 w-full items-center gap-2 rounded-[10px] bg-[#f0f0ea] px-2.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-white/75 text-[#79716b]">
-            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={12} />}
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
+            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <FunnelSimple size={14} />}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#292524]">{selected?.name ?? "Все разделы"}</span>
-          <CaretDown size={13} className="shrink-0 text-[#79716b]" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{selected?.name ?? "Все разделы"}</span>
+          <CaretDown size={14} weight="bold" className="shrink-0 text-[#1c1917]" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
