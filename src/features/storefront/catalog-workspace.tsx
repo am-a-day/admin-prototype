@@ -142,6 +142,7 @@ type CatalogWorkspaceProps = {
   overviewFilterId: OverviewFilterId;
   onOverviewFilterChange: (id: OverviewFilterId) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
+  onFlatModeChange: (flat: boolean) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
@@ -393,15 +394,15 @@ function CatalogViewModeSelect({
   onReset?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center justify-between gap-2">
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label="Режим представления каталога"
-            className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-left transition hover:bg-[#f7f6f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-8 min-w-0 max-w-[190px] cursor-pointer items-center gap-1 rounded-[7px] px-1.5 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#292524]">{getCatalogViewModeLabel(value)}</span>
+            <span className="min-w-0 truncate text-[14px] font-medium leading-none text-[#292524]">{getCatalogViewModeLabel(value)}</span>
             <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
           </button>
         </DropdownMenu.Trigger>
@@ -436,7 +437,7 @@ function CatalogViewModeSelect({
             type="button"
             aria-label="Вернуться к разделам"
             onClick={onReset}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <XCircle size={16} />
           </button>
@@ -7010,7 +7011,7 @@ function TableHeaderRow({
   return (
     <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
       <div className="flex min-h-9 items-center">
-      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
+      <div className="flex min-w-[220px] flex-1 items-center gap-2 pr-2">
         <TableCheckbox
           ariaLabel="Выбрать все видимые позиции"
           checked={checked}
@@ -7727,12 +7728,12 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
         <button
           type="button"
           aria-label="Область каталога"
-          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-2 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-9 w-full items-center gap-2 rounded-[10px] bg-[#f0f0ea] px-2.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-white text-[#79716b]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-white/75 text-[#79716b]">
             {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={12} />}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#292524]">{selected?.name ?? "Все разделы"}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#292524]">{selected?.name ?? "Все разделы"}</span>
           <CaretDown size={13} className="shrink-0 text-[#79716b]" />
         </button>
       </DropdownMenu.Trigger>
@@ -7800,29 +7801,28 @@ function UnifiedFlatCatalogPanel({
 
   return (
     <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div className="shrink-0 space-y-2 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-4 pt-5">
         <CatalogViewModeSelect value={filterId} onChange={(mode) => mode === "sections" ? onReset() : onFilterChange(mode)} onReset={onReset} />
-        <CatalogScopeSelect value={scopeSectionId} onChange={onScopeChange} />
+        <div className="mt-3">
+          <CatalogScopeSelect value={scopeSectionId} onChange={onScopeChange} />
+        </div>
+      </div>
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 py-3">
         <button
           type="button"
           onClick={onOpenTable}
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-[8px] border px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            tableActive ? "border-[#d6d3d1] bg-white shadow-[0_1px_3px_rgba(41,37,36,0.08)]" : "border-transparent hover:bg-[#f1f1ea]",
+            "flex h-10 w-full items-center gap-2 rounded-[10px] border px-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            tableActive ? "border-[#e7e5e4] bg-white shadow-[0_2px_8px_rgba(41,37,36,0.08)]" : "border-transparent hover:bg-[#f1f1ea]",
           )}
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[#e9e9df] text-[#57534d]"><Table size={14} /></span>
-          <span className="min-w-0 flex-1 text-[13px] font-semibold text-[#292524]">Таблица</span>
-          <span className="text-[11px] tabular-nums text-[#79716b]">{count}</span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[#efefe8] text-[#57534d]"><Table size={16} /></span>
+          <span className="min-w-0 flex-1 text-[14px] font-medium text-[#292524]">Таблица</span>
+          <span className="rounded-[7px] bg-[#f4f3ef] px-1.5 py-0.5 text-[12px] font-medium tabular-nums text-[#79716b]">{count}</span>
         </button>
-        <label className="flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
-          <MagnifyingGlass size={14} />
-          <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск в результатах" className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
-          {query && <button type="button" onClick={() => onQueryChange("")} aria-label="Очистить поиск" className="flex h-5 w-5 items-center justify-center rounded-[6px] hover:bg-[#f5f5f4]"><XCircle size={13} /></button>}
-        </label>
-        {repairProgress && <p className="px-1 text-[12px] leading-4 text-[#79716b]">Осталось {repairProgress.remaining} из {repairProgress.total}</p>}
+        {repairProgress && <p className="mt-2 px-1 text-[12px] leading-4 text-[#79716b]">Осталось {repairProgress.remaining} из {repairProgress.total}</p>}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <div className="space-y-1">
           {items.map((item) => {
             const fixed = fixedIds?.has(item.id) ?? false;
@@ -8335,8 +8335,8 @@ function OverviewWorkspace({
           onOpenTable={() => {}}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
         />
-        <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto px-6 pb-10">
-          <div className="mx-auto w-full max-w-[800px] min-w-0">
+        <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10">
+          <div className="mx-auto w-full max-w-[800px] min-w-[620px]">
             <div className="pt-[14px]">
               <OverviewStatusBar
                 filterId={filterId}
@@ -8469,6 +8469,7 @@ export function CatalogWorkspace({
   catalogTab,
   overviewFilterId,
   onOverviewFilterChange,
+  onFlatModeChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
@@ -8487,14 +8488,28 @@ export function CatalogWorkspace({
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(overviewSectionScopeId);
   const [flatQuery, setFlatQuery] = useState("");
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
+  const flatModeActiveRef = useRef(viewMode !== "sections");
+  const setFlatModeActive = (flat: boolean) => {
+    flatModeActiveRef.current = flat;
+    onFlatModeChange(flat);
+  };
+  useEffect(() => {
+    if (flatModeActiveRef.current) onFlatModeChange(true);
+    return () => {
+      if (flatModeActiveRef.current) onFlatModeChange(false);
+    };
+  }, []);
   const changeViewMode = (mode: CatalogViewMode) => {
     setViewMode(mode);
-    if (mode !== "sections") onOverviewFilterChange(mode);
+    const flat = mode !== "sections";
+    setFlatModeActive(flat);
+    if (flat) onOverviewFilterChange(mode);
   };
   const returnToSections = (openItemId: string | null) => {
     setFlatQuery("");
     setRetainedItemId(openItemId);
     setViewMode("sections");
+    setFlatModeActive(false);
   };
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
@@ -8507,6 +8522,7 @@ export function CatalogWorkspace({
         filterId={viewMode}
         onFilterChange={(id) => {
           setViewMode(id);
+          setFlatModeActive(true);
           onOverviewFilterChange(id);
         }}
         sectionScopeId={sectionScopeId}

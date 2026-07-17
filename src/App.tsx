@@ -443,6 +443,23 @@ function AppShell() {
 
   // Панель превью можно скрыть
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const catalogFlatModeRef = useRef(false);
+  const previewBeforeCatalogFlatRef = useRef(false);
+  const handleCatalogFlatModeChange = (flat: boolean) => {
+    if (flat) {
+      if (!catalogFlatModeRef.current) {
+        previewBeforeCatalogFlatRef.current = previewCollapsed;
+        catalogFlatModeRef.current = true;
+        setPreviewCollapsed(true);
+      }
+      return;
+    }
+
+    if (catalogFlatModeRef.current) {
+      catalogFlatModeRef.current = false;
+      setPreviewCollapsed(previewBeforeCatalogFlatRef.current);
+    }
+  };
 
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -686,6 +703,7 @@ function AppShell() {
           overviewFilterId={catalogOverviewFilterId}
           onOverviewFilterChange={setCatalogOverviewFilterId}
           onCatalogTabChange={setCatalogTab}
+          onFlatModeChange={handleCatalogFlatModeChange}
           onAdvancePhase={(next) => {
             setCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");
@@ -739,12 +757,6 @@ function AppShell() {
       setStoreTab("catalog");
     }
   }, [stage, section, storeTab]);
-
-  useEffect(() => {
-    if (section === "storefront" && storeTab === "catalog") {
-      setPreviewCollapsed(catalogTab !== "sections" && catalogTab !== "upsell");
-    }
-  }, [section, storeTab, catalogTab]);
 
   // Публичное отображение использует локальные превью каналов — глобальную
   // превью-панель плавно сворачиваем (как «На стопе» в каталоге), а не размонтируем.
@@ -892,6 +904,7 @@ function AppShell() {
                     <CatalogTabs
                       value={catalogTab}
                       onChange={(t) => {
+                        if (t === "upsell") handleCatalogFlatModeChange(false);
                         setCatalogTab(t);
                         if (t === "upsell") markVisited("upsell");
                       }}
