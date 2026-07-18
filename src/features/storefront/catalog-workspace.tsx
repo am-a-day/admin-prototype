@@ -4571,6 +4571,13 @@ function UnifiedCatalogTreePanel({
     onScopeChange(null);
   }, [focusedSection, scopeSectionId, onScopeChange]);
 
+  useEffect(() => {
+    if (!scopeSectionId) return;
+    const path = findSectionPath(sections, scopeSectionId);
+    if (path.length === 0) return;
+    setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
+  }, [sections, scopeSectionId]);
+
   const toggleSection = (id: string) => {
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
   };
