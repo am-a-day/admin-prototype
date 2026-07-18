@@ -36,7 +36,7 @@ import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
 import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
-import { CatalogWorkspace, CatalogTabs, type CatalogPhase, type CatalogTab, type OverviewFilterId } from "@/features/storefront/catalog-workspace";
+import { CatalogWorkspace, type CatalogPhase, type CatalogTab, type OverviewFilterId } from "@/features/storefront/catalog-workspace";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
@@ -360,7 +360,7 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
         },
         {
           title: "Стоп-лист",
-          text: "Стоп-лист не является отдельной вкладкой. Это быстрый срез во вкладке “Все позиции”, потому что стоп — состояние позиции, а не отдельная сущность каталога.",
+          text: "Стоп-лист не является отдельной вкладкой. Это фильтр “На стопе”, потому что стоп — состояние позиции, а не отдельная сущность каталога.",
         },
       ]
     : [];
@@ -430,7 +430,7 @@ function AppShell() {
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("has-items");
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
-  const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>("quick:all");
+  const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -900,16 +900,6 @@ function AppShell() {
               )}>
                 <div className="shrink-0">
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
-                  {isCatalogPage && (
-                    <CatalogTabs
-                      value={catalogTab}
-                      onChange={(t) => {
-                        if (t === "upsell") handleCatalogFlatModeChange(false);
-                        setCatalogTab(t);
-                        if (t === "upsell") markVisited("upsell");
-                      }}
-                    />
-                  )}
                   {isAboutPage && (
                     <AboutTabs
                       value={storeAboutTab}

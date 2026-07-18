@@ -15,19 +15,16 @@ import {
   Dot,
   DotsThreeVertical,
   DotsSixVertical,
-  Fire,
   ForkKnife,
   FunnelSimple,
   ImageBroken,
   List,
   Lock,
   MagnifyingGlass,
-  MegaphoneSimple,
   Play,
   Plus,
   PlusCircle,
   Prohibit,
-  Tag,
   Table,
   Trash,
   XCircle,
@@ -181,10 +178,6 @@ const SECTIONS_WITH_ITEMS = catalogSections.filter((section) =>
 type AuditChip = {
   label: string;
   tone: "stop" | "status" | "archived" | "problem";
-};
-type GuestProperty = {
-  label: string;
-  icon?: "label" | "tag" | "spicy";
 };
 type OverviewFilterMeta = {
   label: string;
@@ -375,14 +368,41 @@ function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = cat
 
 const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
   { label: "Структура", ids: ["sections"] },
-  { label: "Позиции", ids: ["quick:all", "status:active", "status:archived"] },
+  { label: "Позиции", ids: ["status:active", "status:archived"] },
   { label: "Доступность", ids: ["status:stop", "status:soon", "status:schedule"] },
   { label: "Заполненность", ids: ["quick:no-description", "quick:no-photo", "quick:no-weight", "quick:no-kbju", "quick:no-translation"] },
   { label: "Возможности", ids: ["quick:no-recommendations", "quick:with-recommendations", "quick:discount", "quick:with-labels", "quick:with-tags"] },
 ];
 
+const FILTER_PANEL_TITLES: Record<OverviewFilterId, string> = {
+  "quick:all": "Все позиции",
+  "quick:no-description": "Позиции без описания",
+  "quick:no-photo": "Позиции без фото",
+  "quick:no-weight": "Позиции без граммовки",
+  "quick:no-kbju": "Позиции без КБЖУ",
+  "quick:no-translation": "Позиции без перевода",
+  "quick:discount": "Позиции со скидкой",
+  "quick:with-options": "Позиции с опциями",
+  "quick:with-labels": "Позиции со стикерами",
+  "quick:with-tags": "Позиции с тегами",
+  "quick:with-recommendations": "Позиции с рекомендациями",
+  "quick:no-recommendations": "Позиции без рекомендаций",
+  "display:full": "Позиции в полном виде",
+  "display:no-button": "Позиции без кнопки",
+  "display:no-price": "Позиции без кнопки и цены",
+  "status:active": "Активные позиции",
+  "status:archived": "Позиции в архиве",
+  "status:stop": "Позиции на стопе",
+  "status:soon": "Позиции скоро будут",
+  "status:schedule": "Позиции по расписанию",
+};
+
 function getCatalogViewModeLabel(mode: CatalogViewMode) {
   return mode === "sections" ? "По разделам" : OVERVIEW_FILTER_META[mode].label;
+}
+
+function getFilterPanelTitle(filterId: OverviewFilterId) {
+  return FILTER_PANEL_TITLES[filterId];
 }
 
 function getCatalogViewModeCount(mode: CatalogViewMode) {
@@ -392,70 +412,59 @@ function getCatalogViewModeCount(mode: CatalogViewMode) {
 function CatalogViewModeSelect({
   value,
   onChange,
-  onReset,
 }: {
   value: CatalogViewMode;
   onChange: (mode: CatalogViewMode) => void;
-  onReset?: () => void;
 }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-2">
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Режим представления каталога"
-            className="inline-flex h-5 min-w-0 max-w-[190px] cursor-pointer items-center gap-1.5 rounded-[6px] px-1 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#292524]">{getCatalogViewModeLabel(value)}</span>
-            <CaretDown size={14} weight="bold" className="shrink-0 text-[#1c1917]" />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            align="start"
-            collisionPadding={12}
-            sideOffset={6}
-            className="z-[100002] max-h-[min(520px,calc(100vh-24px),var(--radix-dropdown-menu-content-available-height))] w-[250px] overflow-y-auto overscroll-contain rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-          >
-            {CATALOG_VIEW_MODE_GROUPS.map((group, groupIndex) => (
-              <div key={group.label}>
-                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                {group.ids.map((mode) => {
-                  const count = getCatalogViewModeCount(mode);
-                  return (
-                    <DropdownMenu.Item
-                      key={mode}
-                      onSelect={() => onChange(mode)}
-                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{getCatalogViewModeLabel(mode)}</span>
-                      {typeof count === "number" && (
-                        <span className="shrink-0 text-[12px] font-medium tabular-nums text-[#a6a09b]">{count}</span>
-                      )}
-                      {value === mode && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                    </DropdownMenu.Item>
-                  );
-                })}
-              </div>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-      {value !== "sections" && onReset && (
-        <Tooltip label="Вернуться к разделам" side="bottom">
-          <button
-            type="button"
-            aria-label="Вернуться к разделам"
-            onClick={onReset}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <XCircle size={16} />
-          </button>
-        </Tooltip>
-      )}
-    </div>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Режим каталога"
+          className="flex h-8 w-[218px] min-w-0 items-center gap-2 rounded-[8px] bg-[#f3f3ed] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
+            <FunnelSimple size={14} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{getCatalogViewModeLabel(value)}</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
+            <CaretDown size={14} weight="bold" />
+          </span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          collisionPadding={12}
+          sideOffset={6}
+          className="z-[100002] max-h-[min(520px,calc(100vh-24px),var(--radix-dropdown-menu-content-available-height))] w-[250px] overflow-y-auto overscroll-contain rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+        >
+          {CATALOG_VIEW_MODE_GROUPS.map((group, groupIndex) => (
+            <div key={group.label}>
+              {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+              {group.ids.map((mode) => {
+                const count = getCatalogViewModeCount(mode);
+                return (
+                  <DropdownMenu.Item
+                    key={mode}
+                    onSelect={() => onChange(mode)}
+                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{getCatalogViewModeLabel(mode)}</span>
+                    {typeof count === "number" && (
+                      <span className="shrink-0 text-[12px] font-medium tabular-nums text-[#a6a09b]">{count}</span>
+                    )}
+                    {value === mode && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                  </DropdownMenu.Item>
+                );
+              })}
+            </div>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -511,9 +520,14 @@ const AUDIT_QUEUE_EMPTY_TITLE: Partial<Record<AuditQueueFilterId, string>> = {
   "quick:no-recommendations": "У всех позиций есть рекомендации",
   "status:stop": "В стоп-листе нет позиций",
 };
-const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<AuditQueueFilterId, { tab: EditorTab; anchor?: "description" | "media" }>> = {
+type EditorFocusAnchor = "description" | "media" | "weight" | "kbju";
+
+const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<AuditQueueFilterId, { tab: EditorTab; anchor?: EditorFocusAnchor }>> = {
   "quick:no-description": { tab: "basic", anchor: "description" },
   "quick:no-photo": { tab: "basic", anchor: "media" },
+  "quick:no-weight": { tab: "basic", anchor: "weight" },
+  "quick:no-kbju": { tab: "basic", anchor: "kbju" },
+  "quick:no-translation": { tab: "basic" },
   "quick:no-recommendations": { tab: "promo" },
   "status:stop": { tab: "availability" },
 };
@@ -522,7 +536,7 @@ function isRepairQueueFilter(id: AuditQueueFilterId) {
   return REPAIR_QUEUE_FILTER_IDS.includes(id);
 }
 
-function getQueueEditorContext(id: AuditQueueFilterId): { tab: EditorTab; anchor?: "description" | "media" } {
+function getQueueEditorContext(id: AuditQueueFilterId): { tab: EditorTab; anchor?: EditorFocusAnchor } {
   return AUDIT_QUEUE_EDITOR_CONTEXT[id] ?? { tab: "basic" };
 }
 
@@ -1886,33 +1900,35 @@ function BasicTab({
           )}
         </div>
 
-        <EditorField label="Объем">
-          <input
-            value={weightText}
-            onChange={(event) => {
-              if (isFormattedNumericDraft(event.target.value)) setWeightText(event.target.value);
-            }}
-            onBlur={() => {
-              const value = parseMoneyInput(weightText);
-              if (value != null) setWeightText(formatPlainNumber(value));
-            }}
-            placeholder="—"
-            className={inlineInputClass}
-          />
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-[6px] text-[13px] text-[#666] transition hover:text-[#292524]">
-                {weightUnit}
-                <CaretDown size={13} className="text-[#a8a29e]" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              {WEIGHT_UNITS.map((u) => (
-                <DropdownActionItem key={u} onSelect={() => onWeightUnitChange(u)}>{u}</DropdownActionItem>
-              ))}
-            </DropdownContent>
-          </DropdownMenu.Root>
-        </EditorField>
+        <div data-weight-editor-anchor>
+          <EditorField label="Объем">
+            <input
+              value={weightText}
+              onChange={(event) => {
+                if (isFormattedNumericDraft(event.target.value)) setWeightText(event.target.value);
+              }}
+              onBlur={() => {
+                const value = parseMoneyInput(weightText);
+                if (value != null) setWeightText(formatPlainNumber(value));
+              }}
+              placeholder="—"
+              className={inlineInputClass}
+            />
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-[6px] text-[13px] text-[#666] transition hover:text-[#292524]">
+                  {weightUnit}
+                  <CaretDown size={13} className="text-[#a8a29e]" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="end">
+                {WEIGHT_UNITS.map((u) => (
+                  <DropdownActionItem key={u} onSelect={() => onWeightUnitChange(u)}>{u}</DropdownActionItem>
+                ))}
+              </DropdownContent>
+            </DropdownMenu.Root>
+          </EditorField>
+        </div>
       </div>
 
       {discountOpen && (
@@ -3625,7 +3641,7 @@ function PositionEditor({
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
   forcedEditorTab?: EditorTab;
-  focusAnchor?: "description" | "media";
+  focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
   showStopQuickAction?: boolean;
 }) {
@@ -3871,17 +3887,19 @@ function PositionEditor({
           {/* Опциональные блоки и «Ещё» — вне карточки, только для «Основного» */}
           {activeTab === "basic" && (
             <div className="mt-4 space-y-4">
-              {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => setKbjuOpen(false)} />}
-              {!kbjuOpen && (
-                <div className="px-1.5 pt-1">
-                  <div className="flex flex-col items-start">
-                    <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
-                      <PlusCircle size={16} className="text-[#a8a29e]" />
-                      Добавить КБЖУ
-                    </button>
+              <div data-kbju-editor-anchor>
+                {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => setKbjuOpen(false)} />}
+                {!kbjuOpen && (
+                  <div className="px-1.5 pt-1">
+                    <div className="flex flex-col items-start">
+                      <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
+                        <PlusCircle size={16} className="text-[#a8a29e]" />
+                        Добавить КБЖУ
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -4259,7 +4277,6 @@ function UnifiedCatalogTreePanel({
   onSelectSection,
   onSelectItem,
   onScopeChange,
-  onViewModeChange,
   onAddSection,
   onAddPositionRequest,
   onAddPosition,
@@ -4278,7 +4295,6 @@ function UnifiedCatalogTreePanel({
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
-  onViewModeChange: (mode: CatalogViewMode) => void;
   onAddSection: () => void;
   onAddPositionRequest: () => void;
   onAddPosition: (sectionId: string) => void;
@@ -4295,15 +4311,11 @@ function UnifiedCatalogTreePanel({
   const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
   const [expanded, setExpanded] = useState<Record<string, boolean>>(initialExpanded);
   const [query, setQuery] = useState("");
-  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
-  const [scopeQuery, setScopeQuery] = useState("");
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
   const [dropIntent, setDropIntent] = useState<CatalogTreeDropIntent | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
-  const fullTreeExpandedRef = useRef<Record<string, boolean> | null>(null);
-  const fullTreeScrollTopRef = useRef(0);
   const suppressRowClickRef = useRef(false);
   const autoExpandTimerRef = useRef<number | null>(null);
   const autoExpandTargetRef = useRef<string | null>(null);
@@ -4323,18 +4335,6 @@ function UnifiedCatalogTreePanel({
   const treeSections = focusedSection ? [focusedSection] : sections;
   const flatSections = flattenSections(treeSections);
   const sectionById = new Map(flatSections.map((section) => [section.id, section]));
-  const sectionOptions = (() => {
-    const collect = (nodes: TreeSection[], parents: string[] = []): { section: TreeSection; path: string }[] =>
-      nodes.flatMap((section) => {
-        const names = [...parents, section.name];
-        return [{ section, path: names.join(" / ") }, ...collect(section.children ?? [], names)];
-      });
-    return collect(sections);
-  })();
-  const normalizedScopeQuery = scopeQuery.trim().toLowerCase();
-  const visibleSectionOptions = normalizedScopeQuery
-    ? sectionOptions.filter((option) => option.path.toLowerCase().includes(normalizedScopeQuery))
-    : sectionOptions;
   const itemsBySection = new Map<string, CatalogItem[]>();
 
   items.forEach((item) => {
@@ -4411,34 +4411,7 @@ function UnifiedCatalogTreePanel({
   useEffect(() => {
     if (!scopeSectionId || focusedSection) return;
     onScopeChange(null);
-    if (fullTreeExpandedRef.current) setExpanded(fullTreeExpandedRef.current);
   }, [focusedSection, scopeSectionId, onScopeChange]);
-
-  const selectTreeScope = (sectionId: string | null) => {
-    setScopeQuery("");
-    setQuery("");
-    if (!sectionId) {
-      onScopeChange(null);
-      if (fullTreeExpandedRef.current) {
-        setExpanded(fullTreeExpandedRef.current);
-        fullTreeExpandedRef.current = null;
-      }
-      window.requestAnimationFrame(() => {
-        if (panelScrollRef.current) panelScrollRef.current.scrollTop = fullTreeScrollTopRef.current;
-      });
-      return;
-    }
-
-    if (!scopeSectionId) {
-      fullTreeExpandedRef.current = expanded;
-      fullTreeScrollTopRef.current = panelScrollRef.current?.scrollTop ?? 0;
-    }
-    onScopeChange(sectionId);
-    setExpanded((current) => ({ ...current, [sectionId]: true }));
-    window.requestAnimationFrame(() => {
-      if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
-    });
-  };
 
   const toggleSection = (id: string) => {
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
@@ -4947,15 +4920,17 @@ function UnifiedCatalogTreePanel({
       onPointerUp={finishTouchDrag}
       onPointerCancel={finishTouchDrag}
     >
-      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-4 pt-5">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <CatalogViewModeSelect value="sections" onChange={onViewModeChange} />
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-5">
+        <div className="flex h-8 min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">
+            {focusedSection ? focusedSection.name : "Разделы"}
+          </div>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
                 aria-label="Добавить"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
                 <PlusCircle size={18} />
               </button>
@@ -4976,87 +4951,6 @@ function UnifiedCatalogTreePanel({
               )}
             </DropdownContent>
           </DropdownMenu.Root>
-        </div>
-        <div className="mt-4 flex h-8 min-w-0 items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-1.5">
-          {focusedSection ? (
-            <Tooltip label="Показать все разделы" side="bottom" delayDuration={300}>
-              <button
-                type="button"
-                aria-label="Показать все разделы"
-                onClick={() => selectTreeScope(null)}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <ArrowLeft size={14} weight="bold" />
-              </button>
-            </Tooltip>
-          ) : (
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
-              <FunnelSimple size={14} />
-            </span>
-          )}
-            <DropdownMenu.Root
-              open={scopeMenuOpen}
-              onOpenChange={(open) => {
-                setScopeMenuOpen(open);
-                if (!open) setScopeQuery("");
-              }}
-            >
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Выбрать раздел"
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[9px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{focusedSection?.name ?? "Все разделы"}</span>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
-                  <CaretDown size={14} weight="bold" className={cn("transition-transform", scopeMenuOpen && "rotate-180")} />
-                </span>
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="start"
-                sideOffset={6}
-                className="z-[100002] w-[310px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-              >
-                <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
-                  <MagnifyingGlass size={14} />
-                  <input
-                    value={scopeQuery}
-                    onChange={(event) => setScopeQuery(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    placeholder="Найти раздел"
-                    autoFocus
-                    className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                  />
-                </label>
-                <div className="max-h-[360px] overflow-y-auto overscroll-contain">
-                  <DropdownMenu.Item
-                    onSelect={() => selectTreeScope(null)}
-                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                  >
-                    <span className="min-w-0 flex-1 truncate">Все разделы</span>
-                    {!focusedSection && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                  {visibleSectionOptions.map((option) => (
-                    <DropdownMenu.Item
-                      key={option.section.id}
-                      onSelect={() => selectTreeScope(option.section.id)}
-                      title={option.path}
-                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{option.path}</span>
-                      {scopeSectionId === option.section.id && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                    </DropdownMenu.Item>
-                  ))}
-                  {visibleSectionOptions.length === 0 && (
-                    <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
-                  )}
-                </div>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-            </DropdownMenu.Root>
         </div>
       </div>
       <div ref={panelScrollRef} onDragOver={handlePanelDragOver} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
@@ -6064,13 +5958,11 @@ function PopulatedWorkspace({
   scopeSectionId,
   initialSelectedItemId,
   onScopeChange,
-  onViewModeChange,
 }: {
   sections: TreeSection[];
   scopeSectionId: string | null;
   initialSelectedItemId: string | null;
   onScopeChange: (id: string | null) => void;
-  onViewModeChange: (mode: CatalogViewMode) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -6764,7 +6656,6 @@ function PopulatedWorkspace({
             onSelectSection={openSectionEditor}
             onSelectItem={openItem}
             onScopeChange={onScopeChange}
-            onViewModeChange={onViewModeChange}
             onAddSection={() => showPlaceholderFeedback("Добавить раздел: placeholder")}
             onAddPositionRequest={() => showPlaceholderFeedback("Добавить позицию: выберите родительский раздел")}
             onAddPosition={addPositionToSection}
@@ -6944,11 +6835,11 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 // ── Audit table (Figma 979:10759) ─────────────────────────────────────────────
 
 const TABLE_COL = {
-  description: "w-[72px]",
-  weight: "w-[52px]",
-  kbju: "w-[54px]",
-  translation: "w-[66px]",
-  price: "w-[76px]",
+  description: "w-[87px]",
+  weight: "w-[58px]",
+  kbju: "w-[62px]",
+  translation: "w-[80px]",
+  price: "w-[82px]",
   kebab: "w-[36px]",
 };
 
@@ -7026,7 +6917,7 @@ function TableHeaderRow({
   return (
     <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
       <div className="flex min-h-9 items-center">
-      <div className="flex min-w-[220px] flex-1 items-center gap-2 pr-2">
+      <div className="flex min-w-[320px] flex-1 items-center gap-2 pr-2">
         <TableCheckbox
           ariaLabel="Выбрать все видимые позиции"
           checked={checked}
@@ -7038,7 +6929,7 @@ function TableHeaderRow({
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Поиск по всем позициям"
+            placeholder="Найти позицию..."
             className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
           />
         </div>
@@ -7108,92 +6999,6 @@ function StatusBadge({ label }: { label: string }) {
       >
         {label}
       </span>
-    </span>
-  );
-}
-
-function GuestPropertyIcon({ icon }: { icon: GuestProperty["icon"] }) {
-  if (icon === "label") return <MegaphoneSimple size={12} className="shrink-0 text-[#57534d]" />;
-  if (icon === "tag") return <Tag size={12} className="shrink-0 text-[#57534d]" />;
-  if (icon === "spicy") return <Fire size={12} weight="fill" className="shrink-0 text-[#57534d]" />;
-  return null;
-}
-
-function AttributeBadge({ property }: { property: GuestProperty }) {
-  return (
-    <span className="flex h-4 items-center justify-center gap-0.5 rounded-[4px] bg-[#f5f5f4] pl-[3px] pr-1.5">
-      <GuestPropertyIcon icon={property.icon} />
-      <span className="whitespace-nowrap text-[11px] font-medium leading-5 text-[#292524]">{property.label}</span>
-    </span>
-  );
-}
-
-function MetaDot() {
-  return <span className="text-[10px] font-extralight leading-none text-[#a6a6a6]">•</span>;
-}
-
-function RowMeta({ item, showSectionMeta }: { item: CatalogItem; showSectionMeta?: boolean }) {
-  const statusChips = getStatusChips(item);
-  const guestProperties: GuestProperty[] = [
-    ...item.guestLabels.map((label): GuestProperty => ({ label, icon: "label" })),
-    ...item.tags.map((label): GuestProperty => ({ label, icon: "tag" })),
-  ];
-  const counts: string[] = [];
-  if (showSectionMeta) counts.push(item.sectionName);
-  if (item.optionsCount > 0) {
-    counts.push(`${item.optionsCount} ${plural(item.optionsCount, "опция", "опции", "опций")}`);
-  }
-  if (item.recommendationsCount > 0) {
-    counts.push(
-      `${item.recommendationsCount} ${plural(item.recommendationsCount, "рекомендация", "рекомендации", "рекомендаций")}`,
-    );
-  }
-
-  const segments: ReactNode[] = [];
-  if (statusChips.length > 0) {
-    segments.push(
-      <span key="status" className="flex items-center gap-1">
-        {statusChips.map((chip) => (
-          <StatusBadge key={chip.label} label={chip.label} />
-        ))}
-      </span>,
-    );
-  }
-  if (guestProperties.length > 0) {
-    segments.push(
-      <span key="attributes" className="flex items-center gap-[3px]">
-        {guestProperties.map((property, index) => (
-          <span key={property.label} className="flex items-center gap-[3px]">
-            {index > 0 && <MetaDot />}
-            <AttributeBadge property={property} />
-          </span>
-        ))}
-      </span>,
-    );
-  }
-  if (counts.length > 0) {
-    segments.push(
-      <span key="counts" className="flex items-center gap-[3px]">
-        {counts.map((count, index) => (
-          <span key={count} className="flex items-center gap-[3px]">
-            {index > 0 && <MetaDot />}
-            <span className="whitespace-nowrap text-[12px] leading-none text-[#595959]">{count}</span>
-          </span>
-        ))}
-      </span>,
-    );
-  }
-
-  if (segments.length === 0) return null;
-
-  return (
-    <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-      {segments.map((segment, index) => (
-        <span key={index} className="flex shrink-0 items-center gap-2">
-          {index > 0 && <span className="h-[11px] w-px shrink-0 bg-[#e7e5e4]" />}
-          {segment}
-        </span>
-      ))}
     </span>
   );
 }
@@ -7272,16 +7077,22 @@ function AuditRowActionsMenu({ item, onAction }: { item: CatalogItem; onAction: 
   );
 }
 
+function getPrimaryRowStatusLabel(item: CatalogItem) {
+  if (item.status === "archive") return "В архиве";
+  if (item.status === "stopped") return "На стопе";
+  if (item.status === "coming-soon") return "Скоро будет";
+  if (item.scheduled) return "С расписанием";
+  return null;
+}
+
 function AuditDishRow({
   item,
-  showSectionMeta,
   onAction,
   selected,
   selectionMode,
   onSelectedChange,
 }: {
   item: CatalogItem;
-  showSectionMeta?: boolean;
   onAction: (item: CatalogItem, action: string) => void;
   selected: boolean;
   selectionMode: boolean;
@@ -7290,6 +7101,7 @@ function AuditDishRow({
   const kbjuState =
     item.nutritionFilledCount === 4 ? "filled" : item.nutritionFilledCount > 0 ? "partial" : "missing";
   const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
+  const primaryStatusLabel = getPrimaryRowStatusLabel(item);
 
   return (
     <div
@@ -7303,7 +7115,7 @@ function AuditDishRow({
         }
       }}
       className={cn(
-        "group flex h-[62px] cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "group flex h-12 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
       )}
     >
@@ -7324,7 +7136,7 @@ function AuditDishRow({
         <div className="flex min-w-0 items-center gap-[9px]">
           <span
             className={cn(
-              "relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[6px]",
+              "relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px]",
               item.thumbnailUrl ? "bg-[#f5f5f4]" : "bg-[#faf0e6]",
             )}
             title={item.thumbnailUrl ? undefined : "Нет фото"}
@@ -7335,11 +7147,11 @@ function AuditDishRow({
               <ImageBroken size={14} className="text-[#bc4a08]" />
             )}
           </span>
-          <div className="flex min-w-0 flex-col justify-center gap-1.5">
-            <span className="block max-w-full truncate text-left text-[13px] leading-none text-[#292524]">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="block max-w-full truncate text-left text-[13px] leading-4 text-[#292524]">
               {item.title}
             </span>
-            <RowMeta item={item} showSectionMeta={showSectionMeta} />
+            {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
           </div>
         </div>
       </div>
@@ -7627,42 +7439,32 @@ function OverviewStatusBar({
   count,
   query,
   scopeName,
-  onStartSequential,
 }: {
   filterId: OverviewFilterId;
   count: number;
   query: string;
   scopeName?: string;
-  onStartSequential?: () => void;
 }) {
-  const meta = OVERVIEW_FILTER_META[filterId];
   const subtitle = (() => {
     if (filterId === "quick:no-description" || filterId === "quick:no-photo") return `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} внимания`;
     if (filterId === "status:stop") return `${count} ${plural(count, "позиция сейчас на стопе", "позиции сейчас на стопе", "позиций сейчас на стопе")}`;
     if (filterId === "status:active") return `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} гостям`;
     if (filterId === "status:archived") return `${count} ${plural(count, "позиция находится", "позиции находятся", "позиций находятся")} в архиве`;
-    return meta.countText(count);
+    return OVERVIEW_FILTER_META[filterId].countText(count);
   })();
 
   return (
     <div className="flex min-h-[42px] min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-medium leading-[1.4] text-[#292524]">{meta.label}</div>
-        <div className="text-[13px] leading-4 text-[#292524]">
+        <div className="text-[14px] font-medium leading-[17px] text-[#292524]">
+          {getFilterPanelTitle(filterId)} <span className="font-normal tabular-nums text-[#79716b]">{count}</span>
+        </div>
+        <div className="mt-1 text-[12px] leading-4 text-[#79716b]">
         {subtitle}
         {scopeName && <span> · раздел «{scopeName}»</span>}
         {query.trim() && <span> · с учётом поиска</span>}
         </div>
       </div>
-      {onStartSequential && count > 0 && (
-        <button
-          type="button"
-          onClick={onStartSequential}
-          className="inline-flex h-8 shrink-0 items-center justify-center rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          Исправлять по очереди
-        </button>
-      )}
     </div>
   );
 }
@@ -7743,13 +7545,15 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
         <button
           type="button"
           aria-label="Область каталога"
-          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-8 w-[210px] min-w-0 items-center gap-2 rounded-[8px] bg-[#f3f3ed] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
-            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <FunnelSimple size={14} />}
+            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{selected?.name ?? "Все разделы"}</span>
-          <CaretDown size={14} weight="bold" className="shrink-0 text-[#1c1917]" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{selected?.name ?? "Всё меню"}</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
+            <CaretDown size={14} weight="bold" />
+          </span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -7760,7 +7564,7 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
           </label>
           <div className="max-h-[360px] overflow-y-auto">
             <DropdownMenu.Item onSelect={() => onChange(null)} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
-              <span className="min-w-0 flex-1">Все разделы</span>{value === null && <Check size={13} />}
+              <span className="min-w-0 flex-1">Всё меню</span>{value === null && <Check size={13} />}
             </DropdownMenu.Item>
             <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
             {options.map(({ section, path }) => (
@@ -7776,6 +7580,27 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
   );
 }
 
+function CatalogWorkspaceControls({
+  viewMode,
+  sectionScopeId,
+  onViewModeChange,
+  onScopeChange,
+}: {
+  viewMode: CatalogViewMode;
+  sectionScopeId: string | null;
+  onViewModeChange: (mode: CatalogViewMode) => void;
+  onScopeChange: (id: string | null) => void;
+}) {
+  return (
+    <div className="shrink-0 px-3 pb-2">
+      <div className="flex min-h-8 min-w-0 items-center gap-1.5">
+        <CatalogViewModeSelect value={viewMode} onChange={onViewModeChange} />
+        <CatalogScopeSelect value={sectionScopeId} onChange={onScopeChange} />
+      </div>
+    </div>
+  );
+}
+
 function UnifiedFlatCatalogPanel({
   filterId,
   scopeSectionId,
@@ -7784,10 +7609,7 @@ function UnifiedFlatCatalogPanel({
   items,
   selectedItemId,
   fixedIds,
-  repairProgress,
   tableActive,
-  onFilterChange,
-  onScopeChange,
   onQueryChange,
   onReset,
   onOpenTable,
@@ -7800,10 +7622,7 @@ function UnifiedFlatCatalogPanel({
   items: CatalogItem[];
   selectedItemId: string | null;
   fixedIds?: Set<string>;
-  repairProgress?: { remaining: number; total: number };
   tableActive: boolean;
-  onFilterChange: (id: OverviewFilterId) => void;
-  onScopeChange: (id: string | null) => void;
   onQueryChange: (value: string) => void;
   onReset: () => void;
   onOpenTable: () => void;
@@ -7811,31 +7630,37 @@ function UnifiedFlatCatalogPanel({
 }) {
   const scope = catalogSections.find((section) => section.id === scopeSectionId) ?? null;
   const emptyText = scope
-    ? filterId === "quick:all" ? "В разделе пока нет позиций" : `В разделе «${scope.name}» нет позиций: ${OVERVIEW_FILTER_META[filterId].label.toLowerCase()}`
+    ? `В разделе «${scope.name}» нет позиций: ${OVERVIEW_FILTER_META[filterId].label.toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
 
   return (
-    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-4 pt-5">
-        <CatalogViewModeSelect value={filterId} onChange={(mode) => mode === "sections" ? onReset() : onFilterChange(mode)} onReset={onReset} />
-        <div className="mt-3">
-          <CatalogScopeSelect value={scopeSectionId} onChange={onScopeChange} />
+    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-6">
+        <div className="flex h-5 min-w-0 items-center gap-2">
+          <Tooltip label="Вернуться к разделам" side="bottom">
+            <button
+              type="button"
+              aria-label="Вернуться к разделам"
+              onClick={onReset}
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          </Tooltip>
+          <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#292524]">{getFilterPanelTitle(filterId)}</span>
         </div>
-      </div>
-      <div className="shrink-0 border-b border-[#e7e5e4] px-3 py-3">
         <button
           type="button"
           onClick={onOpenTable}
           className={cn(
-            "flex h-10 w-full items-center gap-2 rounded-[10px] border px-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            "mt-4 flex h-8 w-full items-center gap-2 rounded-[10px] border px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
             tableActive ? "border-[#e7e5e4] bg-white shadow-[0_2px_8px_rgba(41,37,36,0.08)]" : "border-transparent hover:bg-[#f1f1ea]",
           )}
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[#efefe8] text-[#57534d]"><Table size={16} /></span>
-          <span className="min-w-0 flex-1 text-[14px] font-medium text-[#292524]">Таблица</span>
-          <span className="rounded-[7px] bg-[#f4f3ef] px-1.5 py-0.5 text-[12px] font-medium tabular-nums text-[#79716b]">{count}</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#efefe8] text-[#57534d]"><Table size={14} /></span>
+          <span className="min-w-0 flex-1 text-[13px] font-normal leading-[18px] text-[#292524]">Таблица</span>
+          <span className="shrink-0 rounded-[6px] bg-[#f4f3ef] px-1.5 text-[12px] font-medium leading-5 tabular-nums text-[#79716b]">{count}</span>
         </button>
-        {repairProgress && <p className="mt-2 px-1 text-[12px] leading-4 text-[#79716b]">Осталось {repairProgress.remaining} из {repairProgress.total}</p>}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <div className="space-y-1">
@@ -7918,7 +7743,7 @@ function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFi
           onClick={onBack}
           className="mt-4 inline-flex h-8 items-center justify-center rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          Вернуться ко всем позициям
+          Вернуться к таблице
         </button>
       </div>
     </div>
@@ -7973,9 +7798,8 @@ function OverviewWorkspace({
 
   const resetFilter = () => {
     onQueryChange("");
-    onSectionScopeChange(null);
     setSelectedIds(new Set());
-    onFilterChange("quick:all");
+    onReturnToSections(null);
   };
   const clearSearch = () => {
     onQueryChange("");
@@ -7983,21 +7807,14 @@ function OverviewWorkspace({
   const handlePriceSortChange = () => {
     setPriceSort((current) => getNextPriceSort(current));
   };
-  const emptyTitle = statusMeta.emptyTitle;
-  const emptyText = statusMeta.emptyText;
+  const emptyTitle = getFilterPanelTitle(filterId);
+  const emptyText = scopeSection
+    ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[filterId].label.toLowerCase()}`
+    : statusMeta.emptyText;
 
   const clearSelection = () => setSelectedIds(new Set());
   const showFeedback = (message: string) => {
     setFeedback(message);
-  };
-  const handleFilterChange = (id: OverviewFilterId) => {
-    clearSelection();
-    onFilterChange(id);
-  };
-  const handleSectionScopeChange = (id: string | null) => {
-    clearSelection();
-    onSectionScopeChange(id);
-    if (queue) setQueue(null);
   };
   const handleQueryChange = (value: string) => {
     clearSelection();
@@ -8080,27 +7897,6 @@ function OverviewWorkspace({
       currentId,
       currentBucket: "remaining",
     });
-  };
-  const switchQueueFilter = (nextFilterId: AuditQueueFilterId) => {
-    if (!queue || nextFilterId === queue.snapshot.filterId) return;
-    const currentId = queue.currentId;
-    const nextSnapshot = buildQueueSnapshot(
-      nextFilterId,
-      currentId ?? "",
-      queue.snapshot.query,
-      queue.snapshot.sectionScopeId,
-      0,
-      queue.snapshot.sort,
-    );
-    const nextCurrentId = currentId && nextSnapshot.itemIds.includes(currentId)
-      ? currentId
-      : nextSnapshot.itemIds[0] ?? null;
-    setQueue({
-      snapshot: { ...nextSnapshot, entryItemId: nextCurrentId ?? currentId ?? "" },
-      currentId: nextCurrentId,
-      currentBucket: "remaining",
-    });
-    onFilterChange(nextFilterId);
   };
   const prepareRowAction = (item: CatalogItem, action: string) => {
     if (action === "Открыть позицию") {
@@ -8189,6 +7985,14 @@ function OverviewWorkspace({
   }, [filterId]);
 
   useEffect(() => {
+    setQueue((current) => {
+      if (!current) return current;
+      if (current.snapshot.filterId === filterId && current.snapshot.sectionScopeId === sectionScopeId) return current;
+      return null;
+    });
+  }, [filterId, sectionScopeId]);
+
+  useEffect(() => {
     const visibleIdSet = new Set(visibleIds);
     setSelectedIds((current) => {
       const next = new Set([...current].filter((id) => visibleIdSet.has(id)));
@@ -8270,10 +8074,7 @@ function OverviewWorkspace({
             items={panelItems}
             selectedItemId={queue.currentId}
             fixedIds={fixedIds}
-            repairProgress={repairMode ? { remaining, total: queue.snapshot.itemIds.length } : undefined}
             tableActive={false}
-            onFilterChange={switchQueueFilter}
-            onScopeChange={handleSectionScopeChange}
             onQueryChange={handleQueryChange}
             onReset={() => onReturnToSections(queue.currentId)}
             onOpenTable={returnToOverview}
@@ -8333,7 +8134,7 @@ function OverviewWorkspace({
   }
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
         <UnifiedFlatCatalogPanel
           filterId={filterId}
@@ -8343,22 +8144,19 @@ function OverviewWorkspace({
           items={visible}
           selectedItemId={null}
           tableActive
-          onFilterChange={handleFilterChange}
-          onScopeChange={handleSectionScopeChange}
           onQueryChange={handleQueryChange}
           onReset={() => onReturnToSections(null)}
           onOpenTable={() => {}}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
         />
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10">
-          <div className="mx-auto w-full max-w-[800px] min-w-[620px]">
-            <div className="pt-[14px]">
+          <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
+            <div className="pt-5">
               <OverviewStatusBar
                 filterId={filterId}
                 count={visible.length}
                 query={query}
                 scopeName={scopeSection?.name}
-                onStartSequential={isRepairQueueFilter(filterId) && visible[0] ? () => startDescriptionQueue(visible[0], filterId) : undefined}
               />
             </div>
             <div className="mt-[14px]">
@@ -8373,15 +8171,7 @@ function OverviewWorkspace({
                         {emptyText}
                       </p>
                     </div>
-                    {filterId === "quick:all" && !query.trim() && !scopeSection ? (
-                      <button
-                        type="button"
-                        className="inline-flex h-[32px] items-center justify-center gap-1.5 self-start rounded-[10px] bg-[#292524] px-[10px] text-[13px] font-medium text-white transition hover:bg-[#44403b]"
-                      >
-                        <Plus size={14} />
-                        Добавить позицию
-                      </button>
-                    ) : query.trim() ? (
+                    {query.trim() ? (
                       <button
                         type="button"
                         onClick={clearSearch}
@@ -8395,7 +8185,7 @@ function OverviewWorkspace({
                         onClick={resetFilter}
                         className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
                       >
-                        Показать все позиции
+                        Вернуться к разделам
                       </button>
                     )}
                   </div>
@@ -8434,7 +8224,6 @@ function OverviewWorkspace({
                       <AuditDishRow
                         key={item.id}
                         item={item}
-                        showSectionMeta
                         selected={selectedIds.has(item.id)}
                         selectionMode={selectedIds.size > 0}
                         onSelectedChange={setItemSelected}
@@ -8552,7 +8341,6 @@ export function CatalogWorkspace({
         scopeSectionId={sectionScopeId}
         initialSelectedItemId={retainedItemId}
         onScopeChange={setSectionScopeId}
-        onViewModeChange={changeViewMode}
       />
     ) : (
       <EmptyCatalog
@@ -8562,7 +8350,17 @@ export function CatalogWorkspace({
 
   return (
     <TooltipProvider delayDuration={200}>
-      {workspace}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+        {catalogTab !== "upsell" && catalogPhase !== "empty" && (
+          <CatalogWorkspaceControls
+            viewMode={viewMode}
+            sectionScopeId={sectionScopeId}
+            onViewModeChange={changeViewMode}
+            onScopeChange={setSectionScopeId}
+          />
+        )}
+        <div className="min-h-0 flex-1 overflow-hidden">{workspace}</div>
+      </div>
       {sectionDialogOpen && (
         <AddSectionDialog
           onCreate={(name) => {
