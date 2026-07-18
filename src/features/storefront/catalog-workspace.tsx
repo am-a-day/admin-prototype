@@ -5089,10 +5089,11 @@ function UnifiedCatalogTreePanel({
               }}
               aria-expanded={isExpanded}
               aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-              className="grid h-[11px] w-[11px] shrink-0 place-items-center text-[#a6a09b] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              className="-m-[4.5px] grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-[#a6a09b] transition hover:bg-[#e6e6db] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
               <CaretRight
                 size={11}
+                weight="fill"
                 className={cn(
                   "col-start-1 row-start-1 opacity-100 transition-transform",
                   isExpanded && "rotate-90",
