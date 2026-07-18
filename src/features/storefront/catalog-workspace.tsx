@@ -4509,6 +4509,8 @@ function UnifiedCatalogTreePanel({
   }));
   const [query, setQuery] = useState(() => readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""));
   const [sectionSelectQuery, setSectionSelectQuery] = useState("");
+  const [navigationTargetSectionId, setNavigationTargetSectionId] = useState<string | null>(null);
+  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
   const [dropIntent, setDropIntent] = useState<CatalogTreeDropIntent | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
@@ -4533,9 +4535,6 @@ function UnifiedCatalogTreePanel({
   const restrictedScopeSectionId = sectionEditingEnabled ? null : scopeSectionId;
   const focusedSection = restrictedScopeSectionId
     ? allFlatSections.find((section) => section.id === restrictedScopeSectionId) ?? null
-    : null;
-  const selectedSection = selectedSectionId
-    ? allFlatSections.find((section) => section.id === selectedSectionId) ?? null
     : null;
   const treeSections = focusedSection ? [focusedSection] : sections;
   const flatSections = flattenSections(treeSections);
@@ -4613,6 +4612,34 @@ function UnifiedCatalogTreePanel({
   const visibleSectionIds = new Set<string>();
   const visibleItemIds = new Set<string>();
 
+  const expandSectionPath = (sectionId: string) => {
+    const path = findSectionPath(sections, sectionId);
+    if (path.length === 0) return;
+    setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
+  };
+
+  const scrollSelectedRowNearTop = () => {
+    const panel = panelScrollRef.current;
+    const row = selectedRowRef.current;
+    if (!panel || !row) return;
+    const panelRect = panel.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const preferredTopOffset = 16;
+    const maxScrollTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+    const nextScrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, panel.scrollTop + rowRect.top - panelRect.top - preferredTopOffset),
+    );
+    panel.scrollTo({ top: nextScrollTop, behavior: "smooth" });
+  };
+
+  const navigateToSectionAnchor = (sectionId: string) => {
+    expandSectionPath(sectionId);
+    setNavigationTargetSectionId(sectionId);
+    setSectionSelectQuery("");
+    onSelectSection(sectionId);
+  };
+
   const markSectionAndParents = (section: TreeSection) => {
     let current: TreeSection | undefined = section;
     while (current) {
@@ -4645,12 +4672,23 @@ function UnifiedCatalogTreePanel({
     if (path.length > 0) {
       setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
     }
-    const shouldScrollToSelection = selectionScrollReadyRef.current || initialPanelScrollTopRef.current <= 0;
+    const shouldScrollToSelection = !selectionScrollReadyRef.current && initialPanelScrollTopRef.current <= 0;
     selectionScrollReadyRef.current = true;
     if (!shouldScrollToSelection) return;
-    const timeout = window.setTimeout(() => selectedRowRef.current?.scrollIntoView({ block: "nearest" }), 0);
+    const timeout = window.setTimeout(scrollSelectedRowNearTop, 0);
     return () => window.clearTimeout(timeout);
   }, [selectedItem?.id, selectedItem?.sectionId, selectedSectionId]);
+
+  useEffect(() => {
+    if (!navigationTargetSectionId || selectedSectionId !== navigationTargetSectionId) return;
+    const scrollTimeout = window.setTimeout(() => {
+      scrollSelectedRowNearTop();
+      setHighlightedSectionId(navigationTargetSectionId);
+      window.setTimeout(() => setHighlightedSectionId(null), 1000);
+      setNavigationTargetSectionId(null);
+    }, 0);
+    return () => window.clearTimeout(scrollTimeout);
+  }, [expanded, navigationTargetSectionId, selectedSectionId]);
 
   useEffect(() => {
     const focusSectionSorting = (event: Event) => {
@@ -5112,6 +5150,7 @@ function UnifiedCatalogTreePanel({
     const isSource = dragSource?.kind === "section" && dragSource.id === section.id;
     const activeDrop = dropIntent?.targetKind === "section" && dropIntent.targetId === section.id ? dropIntent : null;
     const active = sectionEditingEnabled && selectedSectionId === section.id;
+    const highlighted = highlightedSectionId === section.id;
     const activeCount = getAggregateItemCount(section);
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
     const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
@@ -5174,6 +5213,7 @@ function UnifiedCatalogTreePanel({
           className={cn(
             "group relative flex min-h-8 cursor-grab items-center rounded-[12px] py-1.5 pl-1.5 pr-2 transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
             active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
+            highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18),0_0_0_3px_rgba(250,204,21,0.16)]",
             isSource && "cursor-grabbing opacity-35",
             activeDrop?.valid && activeDrop.mode === "inside" && "bg-[#f3f1ff] ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
             activeDrop && !activeDrop.valid && "cursor-not-allowed",
@@ -5304,7 +5344,7 @@ function UnifiedCatalogTreePanel({
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-1 rounded-[6px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <span className="block min-w-0 flex-1 truncate">{selectedSection ? `В разделе: ${selectedSection.name}` : "Выберите раздел"}</span>
+                <span className="block min-w-0 flex-1 truncate">Перейти к разделу</span>
                 <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
               </button>
             </DropdownMenu.Trigger>
@@ -5324,8 +5364,11 @@ function UnifiedCatalogTreePanel({
                   {sectionSelectOptions.map((section) => (
                     <DropdownMenu.Item
                       key={section.id}
-                      onSelect={() => onSelectSection(section.id)}
-                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-2 text-[13px] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      onSelect={() => navigateToSectionAnchor(section.id)}
+                      className={cn(
+                        "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-2 text-[13px] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+                        selectedSectionId === section.id && "bg-[#f3f3ed]",
+                      )}
                     >
                       <span
                         className="block h-px shrink-0"
@@ -5337,6 +5380,9 @@ function UnifiedCatalogTreePanel({
                         {section.name}
                       </span>
                       <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{getAggregateItemCount(section)}</span>
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
+                        {selectedSectionId === section.id ? <Check size={12} weight="bold" /> : null}
+                      </span>
                     </DropdownMenu.Item>
                   ))}
                   {sectionSelectOptions.length === 0 && (
