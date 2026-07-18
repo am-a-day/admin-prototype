@@ -440,6 +440,7 @@ function AppShell() {
   const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
   const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(null);
+  const [catalogResetSignal, setCatalogResetSignal] = useState(0);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -474,6 +475,11 @@ function AppShell() {
     const flat = mode !== "sections";
     handleCatalogFlatModeChange(flat);
     if (flat) setCatalogOverviewFilterId(mode);
+  };
+  const resetCatalogContext = () => {
+    setCatalogSectionScopeId(null);
+    changeCatalogViewMode("sections");
+    setCatalogResetSignal((current) => current + 1);
   };
 
   // Sidebar зависит только от ширины viewport
@@ -717,6 +723,7 @@ function AppShell() {
           catalogTab={catalogTab}
           viewMode={catalogViewMode}
           sectionScopeId={catalogSectionScopeId}
+          resetSignal={catalogResetSignal}
           onOverviewFilterChange={setCatalogOverviewFilterId}
           onViewModeChange={setCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
@@ -924,6 +931,7 @@ function AppShell() {
                       sectionScopeId={catalogSectionScopeId}
                       onViewModeChange={changeCatalogViewMode}
                       onScopeChange={setCatalogSectionScopeId}
+                      onResetAll={resetCatalogContext}
                     />
                   )}
                   {isAboutPage && (

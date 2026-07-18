@@ -139,6 +139,7 @@ type CatalogWorkspaceProps = {
   catalogTab: CatalogTab;
   viewMode: CatalogViewMode;
   sectionScopeId: string | null;
+  resetSignal: number;
   onOverviewFilterChange: (id: OverviewFilterId) => void;
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
@@ -370,11 +371,12 @@ function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = cat
 }
 
 const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
-  { label: "Структура", ids: ["sections"] },
-  { label: "Позиции", ids: ["status:active", "status:archived"] },
+  { label: "Вид", ids: ["sections"] },
+  { label: "Статус", ids: ["status:active", "status:archived"] },
   { label: "Доступность", ids: ["status:stop", "status:soon", "status:schedule"] },
   { label: "Заполненность", ids: ["quick:no-description", "quick:no-photo", "quick:no-weight", "quick:no-kbju", "quick:no-translation"] },
   { label: "Возможности", ids: ["quick:no-recommendations", "quick:with-recommendations", "quick:discount", "quick:with-labels", "quick:with-tags"] },
+  { label: "Отображение", ids: ["quick:with-options", "display:full", "display:no-button", "display:no-price"] },
 ];
 
 const FILTER_PANEL_TITLES: Record<OverviewFilterId, string> = {
@@ -415,27 +417,65 @@ function getCatalogViewModeCount(mode: CatalogViewMode) {
 function CatalogViewModeSelect({
   value,
   onChange,
+  onReset,
 }: {
   value: CatalogViewMode;
   onChange: (mode: CatalogViewMode) => void;
+  onReset: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const canReset = value !== "sections";
+  const label = getCatalogViewModeLabel(value);
+
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <div className="flex h-8 w-[252px] min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f3f3ed] transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Показать: ${label}`}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 px-1.5 text-left focus-visible:outline-none"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
+              <FunnelSimple size={14} />
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-1 text-[13px] leading-[18px]">
+              <span className="shrink-0 font-normal text-[#79716b]">Показать:</span>
+              <span className="min-w-0 truncate font-medium text-[#292524]">{label}</span>
+            </span>
+          </button>
+        </DropdownMenu.Trigger>
+        <Tooltip label="Вернуться к разделам" side="bottom">
+          <button
+            type="button"
+            aria-label="Сбросить фильтр и вернуться к разделам"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (canReset) onReset();
+            }}
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[16px] leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              canReset ? "text-[#79716b] hover:bg-white/70 hover:text-[#292524]" : "pointer-events-none invisible text-transparent",
+            )}
+          >
+            ×
+          </button>
+        </Tooltip>
         <button
           type="button"
-          aria-label="Режим каталога"
-          className="flex h-8 w-[218px] min-w-0 items-center gap-2 rounded-[8px] bg-[#f3f3ed] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          aria-label="Открыть список значений «Показать»"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen((current) => !current);
+          }}
+          className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#1c1917] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
-            <FunnelSimple size={14} />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{getCatalogViewModeLabel(value)}</span>
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
-            <CaretDown size={14} weight="bold" />
-          </span>
+          <CaretDown size={14} weight="bold" />
         </button>
-      </DropdownMenu.Trigger>
+      </div>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="start"
@@ -443,6 +483,12 @@ function CatalogViewModeSelect({
           sideOffset={6}
           className="z-[100002] max-h-[min(520px,calc(100vh-24px),var(--radix-dropdown-menu-content-available-height))] w-[250px] overflow-y-auto overscroll-contain rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
         >
+          {canReset && (
+            <>
+              <DropdownActionItem onSelect={onReset}>Вернуться к разделам</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            </>
+          )}
           {CATALOG_VIEW_MODE_GROUPS.map((group, groupIndex) => (
             <div key={group.label}>
               {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
@@ -1163,7 +1209,7 @@ export function CatalogFiltersPanel({
               )}
             </span>
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#292524]">
-              {scopeSection ? scopeSection.name : "Все разделы"}
+              {scopeSection ? scopeSection.name : "Всё меню"}
             </span>
             <span className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb]">
               <CaretDown size={12} className="text-[#79716b]" />
@@ -1171,7 +1217,7 @@ export function CatalogFiltersPanel({
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="start">
-          <DropdownActionItem onSelect={() => onSectionScopeChange(null)}>Все разделы</DropdownActionItem>
+          <DropdownActionItem onSelect={() => onSectionScopeChange(null)}>Всё меню</DropdownActionItem>
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
           <div className="max-h-[320px] overflow-y-auto">
             {SECTIONS_WITH_ITEMS.map((section) => {
@@ -2449,7 +2495,7 @@ function ItemSelectorDialog({
                     aria-label="Фильтр по разделу"
                     className="flex h-9 max-w-[150px] shrink-0 items-center gap-1.5 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    <span className="min-w-0 truncate">{selectedSection?.name ?? "Все разделы"}</span>
+                    <span className="min-w-0 truncate">{selectedSection?.name ?? "Всё меню"}</span>
                     <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
                   </button>
                 </DropdownMenu.Trigger>
@@ -2459,7 +2505,7 @@ function ItemSelectorDialog({
                     sideOffset={6}
                     className="z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
                   >
-                    <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Все разделы</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Всё меню</DropdownActionItem>
                     {sectionOptions.map((section) => (
                       <DropdownActionItem key={section.id} onSelect={() => setSectionFilterId(section.id)}>
                         <span className="min-w-0 truncate">{section.name}</span>
@@ -4154,6 +4200,7 @@ function SectionBulkToolbar({
   count,
   checked,
   indeterminate,
+  flush = false,
   onSelectAll,
   onClear,
   onAction,
@@ -4161,12 +4208,13 @@ function SectionBulkToolbar({
   count: number;
   checked: boolean;
   indeterminate: boolean;
+  flush?: boolean;
   onSelectAll: (selected: boolean) => void;
   onClear: () => void;
   onAction: (action: string) => void;
 }) {
   return (
-    <div className="mt-4 flex h-8 w-fit items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2] shadow-[0_4px_14px_rgba(41,37,36,0.08)]">
+    <div className={cn("flex h-8 w-fit items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2] shadow-[0_4px_14px_rgba(41,37,36,0.08)]", !flush && "mt-4")}>
       <TableCheckbox
         ariaLabel="Выбрать все позиции раздела"
         checked={checked}
@@ -5045,8 +5093,11 @@ function SectionEditorContext({
 
 function SectionEditor({
   section,
-  childSections,
+  compositionTitle,
   compositionItems,
+  compositionQuery,
+  compositionPriceSort,
+  scrollTop,
   activeTab,
   availabilityMode,
   outsideScheduleMode,
@@ -5058,9 +5109,9 @@ function SectionEditor({
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
   onAddPosition,
-  onOpenItem,
-  onOpenSection,
-  getSectionDirectChildCount,
+  onCompositionQueryChange,
+  onCompositionPriceSortChange,
+  onScrollTopChange,
   onArchive,
   onRestore,
   onAction,
@@ -5072,8 +5123,11 @@ function SectionEditor({
   onItemAction,
 }: {
   section: TreeSection;
-  childSections: TreeSection[];
+  compositionTitle: string;
   compositionItems: CatalogItem[];
+  compositionQuery: string;
+  compositionPriceSort: PriceSortDirection;
+  scrollTop: number;
   activeTab: "composition" | "basic" | "availability";
   availabilityMode: AvailabilityMode;
   outsideScheduleMode: OutsideScheduleMode;
@@ -5085,9 +5139,9 @@ function SectionEditor({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onAddPosition: () => void;
-  onOpenItem: (id: string) => void;
-  onOpenSection: (id: string) => void;
-  getSectionDirectChildCount: (sectionId: string) => number;
+  onCompositionQueryChange: (value: string) => void;
+  onCompositionPriceSortChange: () => void;
+  onScrollTopChange: (value: number) => void;
   onArchive: () => void;
   onRestore: () => void;
   onAction: (action: string) => void;
@@ -5099,11 +5153,8 @@ function SectionEditor({
   onItemAction: (item: CatalogItem, action: string) => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const archived = section.status === "archive";
-  const compositionRows = [
-    ...childSections.map((child) => ({ type: "section" as const, id: child.id, section: child })),
-    ...compositionItems.map((item) => ({ type: "item" as const, id: item.id, item })),
-  ];
   const selectedCompositionIds = new Set(compositionItems.map((item) => item.id).filter((id) => selectedIds.has(id)));
   const selectedCount = selectedCompositionIds.size;
   const allSelected = compositionItems.length > 0 && compositionItems.every((item) => selectedIds.has(item.id));
@@ -5120,20 +5171,25 @@ function SectionEditor({
     reader.readAsDataURL(file);
   };
 
-  const renderCompositionStatus = (item: CatalogItem) => {
-    if (item.status === "stopped") return <StatusBadge label="На стопе" />;
-    if (item.status === "coming-soon") return <StatusBadge label="Скоро будет" />;
-    if (item.status === "archive") return <StatusBadge label="В архиве" />;
-    if (item.scheduled) return <StatusBadge label="С расписанием" />;
-    return null;
-  };
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = scrollTop;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
-        <div className="mx-auto w-full max-w-[800px]">
+      <div
+        ref={scrollContainerRef}
+        onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
+        className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-6 pt-0"
+      >
+        <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
           <div className="flex items-center gap-2 pb-2 pt-6">
-            <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
+            <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium leading-7 text-[#292524]">
+              {activeTab === "composition" ? compositionTitle : section.name}
+            </h2>
             {archived && <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium text-[#79716b]">В архиве</span>}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
@@ -5170,7 +5226,7 @@ function SectionEditor({
                     {tab.label}
                     {tab.id === "composition" && (
                       <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                        {compositionRows.length}
+                        {compositionItems.length}
                       </span>
                     )}
                   </button>
@@ -5178,148 +5234,62 @@ function SectionEditor({
               </div>
               <div className="border-t border-[#e7e5e4]">
             {activeTab === "composition" ? (
-            <section>
-              <div className="flex items-center justify-between gap-3 border-b border-[#eceae7] px-4 py-3">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-[#292524]">Состав раздела</div>
-                  <div className="mt-0.5 truncate text-[12px] text-[#a8a29e]">
-                    {compositionRows.length} {plural(compositionRows.length, "элемент", "элемента", "элементов")} прямого состава
-                  </div>
-                </div>
-                {!archived && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button type="button" onClick={onAddPosition} className="h-8 whitespace-nowrap rounded-[8px] px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]">Добавить позицию</button>
-                  </div>
-                )}
-              </div>
-              {compositionRows.length === 0 ? (
-                <div className="p-4">
+            <section className="px-3 pb-3">
+              {compositionItems.length === 0 && !compositionQuery.trim() ? (
+                <div className="py-3">
                   <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
-                    <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
+                    <p className="text-[13px] font-medium text-[#44403b]">В выбранной области пока нет позиций</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
                         <Plus size={13} />
                         Добавить позицию
                       </button>
-                      <button type="button" onClick={() => onAction("Добавить подраздел")} className="h-8 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[12px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]">Добавить подраздел</button>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div>
-                  {selectedCount > 0 && (
-                    <div className="border-b border-[#eceae7] px-3 py-2">
-                      <SectionBulkToolbar
-                        count={selectedCount}
-                        checked={allSelected}
-                        indeterminate={!allSelected && someSelected}
-                        onSelectAll={onSelectAll}
-                        onClear={onClearSelection}
-                        onAction={onBulkAction}
-                      />
-                    </div>
-                  )}
-                  <div className="grid h-9 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#eceae7] px-3 text-[12px] leading-4 text-[#79716b]">
-                    <div className="pl-[26px]">Элемент</div>
-                    <div className="text-right">Цена / состав</div>
-                    <div />
-                  </div>
-                  {compositionRows.map((row) => {
-                    if (row.type === "section") {
-                      const child = row.section;
-                      const childCount = getSectionDirectChildCount(child.id);
-                      return (
-                        <div
-                          key={`section-${child.id}`}
-                          className="group grid h-12 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#f0efe9] px-3 transition last:border-b-0 hover:bg-[#fafaf9]"
-                        >
-                          <button type="button" onClick={() => onOpenSection(child.id)} className="flex h-full min-w-0 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-[#a8a29e]">
-                              <CaretRight size={14} weight="bold" />
-                            </span>
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f1f1ea] text-[#79716b]">
-                              {child.imageUrl ? <img src={child.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ForkKnife size={14} weight="fill" />}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{child.name}</span>
-                          </button>
-                          <div className="text-right text-[12px] text-[#a8a29e]">{childCount} {plural(childCount, "элемент", "элемента", "элементов")}</div>
-                          <div className="flex justify-end">
-                            <DropdownMenu.Root>
-                              <DropdownMenu.Trigger asChild>
-                                <button type="button" aria-label={`Действия с подразделом ${child.name}`} className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                                  <DotsThreeVertical size={17} weight="bold" />
-                                </button>
-                              </DropdownMenu.Trigger>
-                              <DropdownContent align="end">
-                                <DropdownActionItem onSelect={() => onOpenSection(child.id)}>Открыть подраздел</DropdownActionItem>
-                                <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                                <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
-                                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                                <DropdownActionItem tone="danger" onSelect={() => onAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
-                              </DropdownContent>
-                            </DropdownMenu.Root>
-                          </div>
-                        </div>
-                      );
-                    }
-                    const item = row.item;
-                    const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
-                    const selected = selectedIds.has(item.id);
-                    return (
-                      <div
-                        key={`item-${item.id}`}
-                        className={cn(
-                          "group grid h-12 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#f0efe9] px-3 transition last:border-b-0 hover:bg-[#fafaf9]",
-                          selected && "bg-[#f7f6f2]",
-                        )}
-                      >
-                        <div className="flex h-full min-w-0 items-center gap-2">
-                          <span
-                            className="flex h-full w-[18px] shrink-0 items-center"
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
-                          >
-                            <TableCheckbox
-                              ariaLabel={`Выбрать ${item.title}`}
-                              checked={selected}
-                              quiet
-                              hideQuietUntilInteractive
-                              forceVisible={selectedCount > 0}
-                              onChange={(checked) => onSelectedChange(item.id, checked)}
-                            />
-                          </span>
-                          <button type="button" onClick={() => onOpenItem(item.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f5f5f4]">
-                            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageBroken size={13} className="text-[#a8a29e]" />}
-                          </span>
-                            <span className="min-w-0 truncate text-[13px] font-medium text-[#292524]">{item.title}</span>
-                            <span className="flex h-5 shrink-0 items-center whitespace-nowrap">{renderCompositionStatus(item)}</span>
-                          </button>
-                        </div>
-                        <div className="text-right text-[13px] text-[#44403b]">{item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}</div>
-                        <div className="flex justify-end">
-                          <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
-                              <button type="button" aria-label={`Действия для ${item.title}`} className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                                <DotsThreeVertical size={17} weight="bold" />
-                              </button>
-                            </DropdownMenu.Trigger>
-                            <DropdownContent align="end">
-                              <DropdownActionItem onSelect={() => onOpenItem(item.id)}>Открыть позицию</DropdownActionItem>
-                              <DropdownActionItem onSelect={() => onItemAction(item, item.status === "stopped" ? "Убрать со стопа" : "На стоп")}>
-                                {item.status === "stopped" ? "Убрать со стопа" : "На стоп"}
-                              </DropdownActionItem>
-                              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                              <DropdownActionItem tone={item.status === "archive" ? "default" : "danger"} onSelect={() => onItemAction(item, item.status === "archive" ? "Восстановить" : "В архив")}>
-                                {item.status === "archive" ? "Восстановить" : "В архив"}
-                              </DropdownActionItem>
-                            </DropdownContent>
-                          </DropdownMenu.Root>
-                        </div>
+                <>
+                  <TableHeaderRow
+                    query={compositionQuery}
+                    onQueryChange={onCompositionQueryChange}
+                    checked={allSelected}
+                    indeterminate={!allSelected && someSelected}
+                    onSelectAll={onSelectAll}
+                    priceSort={compositionPriceSort}
+                    onPriceSortChange={onCompositionPriceSortChange}
+                  />
+                  <div className="pt-2">
+                    {selectedCount > 0 && (
+                      <div className="sticky top-[58px] z-[9] flex items-center bg-white py-1">
+                        <SectionBulkToolbar
+                          count={selectedCount}
+                          checked={allSelected}
+                          indeterminate={!allSelected && someSelected}
+                          flush
+                          onSelectAll={onSelectAll}
+                          onClear={onClearSelection}
+                          onAction={onBulkAction}
+                        />
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                    {compositionItems.length > 0 ? (
+                      compositionItems.map((item) => (
+                        <AuditDishRow
+                          key={item.id}
+                          item={item}
+                          selected={selectedIds.has(item.id)}
+                          selectionMode={selectedCount > 0}
+                          onSelectedChange={onSelectedChange}
+                          onAction={onItemAction}
+                        />
+                      ))
+                    ) : (
+                      <div className="py-8 text-center text-[13px] leading-5 text-[#79716b]">
+                        По поиску ничего не найдено
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </section>
             ) : activeTab === "basic" ? (
@@ -5642,7 +5612,7 @@ function SectionPositionNav({
           className="mb-3 flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] font-normal leading-5 text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]"
         >
           <ArrowLeft size={14} />
-          Все разделы
+          Всё меню
         </button>
         <div className="flex items-center gap-1">
           <DropdownMenu.Root onOpenChange={(open) => !open && setSectionQuery("")}>
@@ -5967,11 +5937,13 @@ function writeJsonRecord(key: string, value: unknown) {
 function PopulatedWorkspace({
   sections,
   scopeSectionId,
+  resetSignal,
   initialSelectedItemId,
   onScopeChange,
 }: {
   sections: TreeSection[];
   scopeSectionId: string | null;
+  resetSignal: number;
   initialSelectedItemId: string | null;
   onScopeChange: (id: string | null) => void;
 }) {
@@ -6069,9 +6041,13 @@ function PopulatedWorkspace({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
   const [sectionEditorTab, setSectionEditorTab] = useState<"composition" | "basic" | "availability">("composition");
+  const [sectionTableQuery, setSectionTableQuery] = useState("");
+  const [sectionTablePriceSort, setSectionTablePriceSort] = useState<PriceSortDirection>("none");
+  const [sectionEditorScrollTop, setSectionEditorScrollTop] = useState(0);
   const [stopBusyIds, setStopBusyIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
+  const resetSignalReadyRef = useRef(false);
 
   const allSections = catalogSections
     .filter((section) => !deletedSectionIds.has(section.id))
@@ -6132,28 +6108,81 @@ function PopulatedWorkspace({
     allItems.filter((item) => item.sectionId === selectedSectionId),
     selectedSectionId ? positionOrderBySection[selectedSectionId] : undefined,
   );
-  const childSections = selectedSectionId
-    ? allSections
-      .filter((candidate) => (candidate.parentId ?? null) === selectedSectionId)
-      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
-    : [];
   const activeSectionItems = sectionItems.filter((item) => item.status !== "archive");
   const selectedItem = selectedItemId
     ? allItems.find((item) => item.id === selectedItemId) ?? null
     : null;
-  const getSectionDirectChildCount = (sectionId: string) =>
-    allItems.filter((item) => item.sectionId === sectionId && item.status !== "archive").length +
-    allSections.filter((candidate) => (candidate.parentId ?? null) === sectionId && candidate.status !== "archive").length;
+  const getLocalSectionScopeIds = (sectionId: string | null) => {
+    if (!sectionId) return null;
+    const result = new Set<string>([sectionId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      allSections.forEach((candidate) => {
+        if (candidate.parentId && result.has(candidate.parentId) && !result.has(candidate.id)) {
+          result.add(candidate.id);
+          changed = true;
+        }
+      });
+    }
+    return result;
+  };
+  const sectionScope = allSections.find((candidate) => candidate.id === scopeSectionId) ?? null;
+  const sectionTableScopeIds = getLocalSectionScopeIds(scopeSectionId);
+  const sectionTableBaseItems = allItems.filter((item) => !sectionTableScopeIds || sectionTableScopeIds.has(item.sectionId));
+  const normalizedSectionTableQuery = sectionTableQuery.trim().toLowerCase();
+  const sectionTableSearchedItems = normalizedSectionTableQuery
+    ? sectionTableBaseItems.filter((item) =>
+        [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedSectionTableQuery)),
+      )
+    : sectionTableBaseItems;
+  const sectionTableItems = sortItemsByPrice(sectionTableSearchedItems, sectionTablePriceSort);
+  const sectionTableTitle = sectionScope
+    ? `Позиции раздела “${sectionScope.name}” · ${sectionTableBaseItems.length}`
+    : `Позиции меню · ${sectionTableBaseItems.length}`;
 
   const rememberItem = (id: string) => {
     const it = allItems.find((i) => i.id === id);
     if (it) setLastItemBySection((prev) => ({ ...prev, [it.sectionId]: id }));
   };
 
+  useEffect(() => {
+    if (!scopeSectionId || scopeSectionId === selectedSectionId) return;
+    if (!allSections.some((candidate) => candidate.id === scopeSectionId)) return;
+    setSelectedSectionId(scopeSectionId);
+    setSelectedItemId(null);
+    setSelectedIds(new Set());
+    setEditing(false);
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
+  }, [scopeSectionId, selectedSectionId, allSections]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSectionEditorScrollTop(0);
+  }, [scopeSectionId]);
+
+  useEffect(() => {
+    if (!resetSignalReadyRef.current) {
+      resetSignalReadyRef.current = true;
+      return;
+    }
+    setSectionTableQuery("");
+    setSectionTablePriceSort("none");
+    setSelectedIds(new Set());
+    setSelectedItemId(null);
+    setEditing(false);
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
+  }, [resetSignal]);
+
   // Правило 1: клик по разделу в дереве — только обзор, редактор не открываем.
   const selectSectionOverview = (id: string) => {
     setSelectedSectionId(id);
     setSelectedIds(new Set());
+    onScopeChange(id);
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
   };
 
   const openSectionEditor = (id: string) => {
@@ -6161,6 +6190,9 @@ function PopulatedWorkspace({
     setSelectedItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
+    onScopeChange(id);
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
     if (editorNavMode === "entity") {
       const url = new URL(window.location.href);
       url.searchParams.delete("positionId");
@@ -6187,6 +6219,9 @@ function PopulatedWorkspace({
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
     setSelectedIds(new Set());
+    onScopeChange(id);
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
     const items = allItems.filter((item) => item.sectionId === id);
     const remembered = lastItemBySection[id];
     const nextId = remembered && items.some((item) => item.id === remembered) ? remembered : null;
@@ -6749,8 +6784,11 @@ function PopulatedWorkspace({
           ) : section ? (
             <SectionEditor
               section={section}
-              childSections={childSections}
-              compositionItems={sectionItems}
+              compositionTitle={sectionTableTitle}
+              compositionItems={sectionTableItems}
+              compositionQuery={sectionTableQuery}
+              compositionPriceSort={sectionTablePriceSort}
+              scrollTop={sectionEditorScrollTop}
               activeTab={sectionEditorTab}
               availabilityMode={sectionAvailabilityBySection[section.id] ?? "always"}
               outsideScheduleMode={sectionOutsideScheduleBySection[section.id] ?? "hidden"}
@@ -6771,21 +6809,26 @@ function PopulatedWorkspace({
                 registerChange("catalog");
               }}
               onAddPosition={() => addPositionToSection(section.id)}
-              onOpenItem={openItem}
-              onOpenSection={openSectionEditor}
-              getSectionDirectChildCount={getSectionDirectChildCount}
+              onCompositionQueryChange={(value) => {
+                setSelectedIds(new Set());
+                setSectionTableQuery(value);
+              }}
+              onCompositionPriceSortChange={() => setSectionTablePriceSort((current) => getNextPriceSort(current))}
+              onScrollTopChange={setSectionEditorScrollTop}
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
               onAction={(action) => handleUnifiedSectionAction(section, action)}
               selectedIds={selectedIds}
               onSelectedChange={setItemSelected}
-              onSelectAll={(selected) => setSelectedIds(selected ? new Set(sectionItems.map((item) => item.id)) : new Set())}
+              onSelectAll={(selected) => setSelectedIds(selected ? new Set(sectionTableItems.map((item) => item.id)) : new Set())}
               onClearSelection={() => setSelectedIds(new Set())}
               onBulkAction={handleBulkAction}
               onItemAction={(item, action) => {
+                if (action === "Открыть позицию" || action === "Редактировать") openItem(item.id);
                 if (action === "На стоп" || action === "Убрать со стопа") toggleStopItem(item);
                 if (action === "В архив") archiveItem(item);
                 if (action === "Восстановить") restoreItem(item);
+                if (action === "Задать скидку" || action === "Управлять рекомендациями") showPlaceholderFeedback(`${action}: ${item.title}`);
               }}
             />
           ) : (
@@ -7563,10 +7606,20 @@ function getSectionFullPath(sectionId: string) {
   return names.join(" / ");
 }
 
-function CatalogScopeSelect({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+function CatalogScopeSelect({
+  value,
+  onChange,
+  onReset,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  onReset: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = catalogSections.find((section) => section.id === value) ?? null;
+  const canReset = value !== null;
+  const selectedLabel = selected?.name ?? "Всё меню";
   const normalizedQuery = query.trim().toLowerCase();
   const options = catalogSections
     .map((section) => ({ section, path: getSectionFullPath(section.id) }))
@@ -7574,21 +7627,53 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <DropdownMenu.Trigger asChild>
+      <div className="flex h-8 w-[252px] min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f3f3ed] transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`В разделе: ${selectedLabel}`}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 px-1.5 text-left focus-visible:outline-none"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
+              {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-1 text-[13px] leading-[18px]">
+              <span className="shrink-0 font-normal text-[#79716b]">В разделе:</span>
+              <span className="min-w-0 truncate font-medium text-[#292524]">{selectedLabel}</span>
+            </span>
+          </button>
+        </DropdownMenu.Trigger>
+        <Tooltip label="Показать всё меню" side="bottom">
+          <button
+            type="button"
+            aria-label="Сбросить раздел и показать всё меню"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (canReset) onReset();
+            }}
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[16px] leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              canReset ? "text-[#79716b] hover:bg-white/70 hover:text-[#292524]" : "pointer-events-none invisible text-transparent",
+            )}
+          >
+            ×
+          </button>
+        </Tooltip>
         <button
           type="button"
-          aria-label="Область каталога"
-          className="flex h-8 w-[210px] min-w-0 items-center gap-2 rounded-[8px] bg-[#f3f3ed] px-1.5 text-left transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          aria-label="Открыть список разделов"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen((current) => !current);
+          }}
+          className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#1c1917] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#1c1917]">
-            {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{selected?.name ?? "Всё меню"}</span>
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#1c1917] transition hover:bg-white/55">
-            <CaretDown size={14} weight="bold" />
-          </span>
+          <CaretDown size={14} weight="bold" />
         </button>
-      </DropdownMenu.Trigger>
+      </div>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="start" sideOffset={6} className="z-[100002] w-[310px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
           <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
@@ -7596,6 +7681,12 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
             <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Найти раздел" autoFocus className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
           </label>
           <div className="max-h-[360px] overflow-y-auto">
+            {canReset && (
+              <>
+                <DropdownActionItem onSelect={onReset}>Показать всё меню</DropdownActionItem>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              </>
+            )}
             <DropdownMenu.Item onSelect={() => onChange(null)} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
               <span className="min-w-0 flex-1">Всё меню</span>{value === null && <Check size={13} />}
             </DropdownMenu.Item>
@@ -7618,19 +7709,34 @@ export function CatalogWorkspaceControls({
   sectionScopeId,
   onViewModeChange,
   onScopeChange,
+  onResetAll,
 }: {
   viewMode: CatalogViewMode;
   sectionScopeId: string | null;
   onViewModeChange: (mode: CatalogViewMode) => void;
   onScopeChange: (id: string | null) => void;
+  onResetAll: () => void;
 }) {
+  const dirty = viewMode !== "sections" || sectionScopeId !== null;
+
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="shrink-0">
       <div className="flex min-h-8 min-w-0 items-center gap-1.5">
-        <CatalogViewModeSelect value={viewMode} onChange={onViewModeChange} />
-        <CatalogScopeSelect value={sectionScopeId} onChange={onScopeChange} />
+        <CatalogViewModeSelect value={viewMode} onChange={onViewModeChange} onReset={() => onViewModeChange("sections")} />
+        <CatalogScopeSelect value={sectionScopeId} onChange={onScopeChange} onReset={() => onScopeChange(null)} />
+        {dirty && (
+          <button
+            type="button"
+            onClick={onResetAll}
+            className="h-8 shrink-0 rounded-[8px] px-2 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Сбросить всё
+          </button>
+        )}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -8018,6 +8124,11 @@ function OverviewWorkspace({
   }, [filterId]);
 
   useEffect(() => {
+    clearSelection();
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+  }, [sectionScopeId]);
+
+  useEffect(() => {
     setQueue((current) => {
       if (!current) return current;
       if (current.snapshot.filterId === filterId && current.snapshot.sectionScopeId === sectionScopeId) return current;
@@ -8303,6 +8414,7 @@ export function CatalogWorkspace({
   catalogTab,
   viewMode,
   sectionScopeId,
+  resetSignal,
   onOverviewFilterChange,
   onViewModeChange,
   onSectionScopeChange,
@@ -8319,6 +8431,7 @@ export function CatalogWorkspace({
         : buildSectionTree(catalogSections);
   const [flatQuery, setFlatQuery] = useState("");
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
+  const resetSignalReadyRef = useRef(false);
   const flatModeActiveRef = useRef(viewMode !== "sections");
   const setFlatModeActive = (flat: boolean) => {
     flatModeActiveRef.current = flat;
@@ -8333,6 +8446,18 @@ export function CatalogWorkspace({
   useEffect(() => {
     flatModeActiveRef.current = viewMode !== "sections";
   }, [viewMode]);
+  useEffect(() => {
+    if (viewMode !== "sections") return;
+    setFlatQuery("");
+  }, [viewMode]);
+  useEffect(() => {
+    if (!resetSignalReadyRef.current) {
+      resetSignalReadyRef.current = true;
+      return;
+    }
+    setFlatQuery("");
+    setRetainedItemId(null);
+  }, [resetSignal]);
   const returnToSections = (openItemId: string | null) => {
     setFlatQuery("");
     setRetainedItemId(openItemId);
@@ -8363,6 +8488,7 @@ export function CatalogWorkspace({
       <PopulatedWorkspace
         sections={sections}
         scopeSectionId={sectionScopeId}
+        resetSignal={resetSignal}
         initialSelectedItemId={retainedItemId}
         onScopeChange={onSectionScopeChange}
       />
