@@ -176,6 +176,72 @@ type PanelRow = {
   accent?: boolean;
 };
 
+const CATALOG_THUMBNAIL_CLASS = "h-7 w-7 rounded-[7px]";
+
+function CatalogThumbnail({
+  src,
+  kind,
+  className,
+}: {
+  src?: string | null;
+  kind: "section" | "item";
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "relative flex shrink-0 items-center justify-center overflow-hidden bg-[#e9e9df] text-[#a8a29e]",
+        CATALOG_THUMBNAIL_CLASS,
+        className,
+      )}
+    >
+      {src ? (
+        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : kind === "section" ? (
+        <ForkKnife size={13} weight="fill" />
+      ) : (
+        <ImageBroken size={13} />
+      )}
+    </span>
+  );
+}
+
+function TruncatedText({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useEffect(() => {
+    const node = textRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setIsTruncated(node.scrollWidth > node.clientWidth + 1);
+    };
+
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [children]);
+
+  return (
+    <span ref={textRef} title={isTruncated ? children : undefined} className={cn("block min-w-0 truncate", className)}>
+      {children}
+    </span>
+  );
+}
+
 const SECTIONS_WITH_ITEMS = catalogSections.filter((section) =>
   catalogItems.some((item) => item.sectionId === section.id),
 );
@@ -4761,39 +4827,40 @@ function UnifiedCatalogTreePanel({
             onSelectItem(item.id);
           }
         }}
-        title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : item.title}
+        title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
         className={cn(
-          "group relative flex h-[34px] cursor-grab items-center gap-2 rounded-[7px] border border-transparent pr-2 text-left transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
+          "group relative grid h-[34px] cursor-grab grid-cols-[28px_28px_minmax(0,1fr)_auto] items-center gap-2 rounded-[7px] border border-transparent pr-2 text-left transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
           active ? "bg-[#efefea] shadow-[0_1px_2px_rgba(41,37,36,0.06)]" : "hover:bg-[#f5f5f1]",
           isSource && "cursor-grabbing opacity-35",
           activeDrop && !activeDrop.valid && "cursor-not-allowed",
           !dragEnabled && "cursor-default",
         )}
-        style={{ marginLeft: (sectionEditingEnabled ? 42 : 30) + depth * 12 }}
+        style={{ paddingLeft: (sectionEditingEnabled ? 16 : 4) + depth * 12 }}
       >
         {activeDrop?.valid && activeDrop.mode !== "inside" && (
           <span className={cn("pointer-events-none absolute left-0 right-1 z-10 h-px bg-[#6d5dfc]", activeDrop.mode === "before" ? "top-0" : "bottom-0")}>
             <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
           </span>
         )}
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e9e9df]">
-          {item.thumbnailUrl ? (
-            <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-          ) : (
-            <ImageBroken size={12} className="text-[#a8a29e]" />
+        <span className="h-7 w-7 shrink-0" aria-hidden="true" />
+        <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
+        <TruncatedText
+          className={cn("text-[13px] leading-5", active ? "font-medium text-[#292524]" : "font-normal text-[#79716b]")}
+        >
+          {item.title}
+        </TruncatedText>
+        <span className="flex min-w-0 shrink-0 items-center justify-end">
+          {sectionEditingEnabled && item.status === "stopped" && (
+            <Tooltip label="На стопе" side="top" delayDuration={200}>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
+            </Tooltip>
+          )}
+          {sectionEditingEnabled && item.status === "archive" && (
+            <Tooltip label="В архиве" side="top" delayDuration={200}>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+            </Tooltip>
           )}
         </span>
-        <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", active ? "font-medium text-[#292524]" : "font-normal text-[#79716b]")}>{item.title}</span>
-        {sectionEditingEnabled && item.status === "stopped" && (
-          <Tooltip label="На стопе" side="top" delayDuration={200}>
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
-          </Tooltip>
-        )}
-        {sectionEditingEnabled && item.status === "archive" && (
-          <Tooltip label="В архиве" side="top" delayDuration={200}>
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
-          </Tooltip>
-        )}
       </div>
     );
   };
@@ -4821,7 +4888,7 @@ function UnifiedCatalogTreePanel({
 
   const renderSectionQuickAdd = (section: TreeSection, addKind: ReturnType<typeof getSectionAddKind>) => {
     const baseClassName = cn(
-      "flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[18px] font-medium leading-none text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+      "flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[18px] font-medium leading-none text-[#79716b] transition hover:bg-[#e8e6df] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
       addKind === "mixed" && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#79716b]",
     );
     const commonProps = {
@@ -4919,10 +4986,20 @@ function UnifiedCatalogTreePanel({
     const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
     const addKind = getSectionAddKind(section);
     const dragEnabled = !normalizedQuery && scopeSectionId !== section.id;
-    const sectionIcon = section.imageUrl ? (
-      <img src={section.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+    const sectionTrailingMeta = sectionEditingEnabled && section.status === "archive" ? (
+      <Tooltip label="В архиве" side="top" delayDuration={200}>
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+      </Tooltip>
+    ) : sectionEditingEnabled && section.availabilityMode === "unavailable" ? (
+      <Tooltip label="Раздел скрыт" side="top" delayDuration={200}>
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
+      </Tooltip>
+    ) : sectionEditingEnabled && section.availabilityMode === "schedule" ? (
+      <Tooltip label="По расписанию" side="top" delayDuration={200}>
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Clock size={12} /></span>
+      </Tooltip>
     ) : (
-      <ForkKnife size={11} weight="fill" />
+      <span className="text-[11px] tabular-nums text-[#a8a29e]">{activeCount}</span>
     );
 
     return (
@@ -4962,9 +5039,9 @@ function UnifiedCatalogTreePanel({
               onSelectSection(section.id);
             }
           }}
-          title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : section.name}
+          title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
           className={cn(
-            "group relative flex h-8 cursor-grab items-center rounded-[7px] border border-transparent transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
+            "group relative grid h-8 cursor-grab grid-cols-[28px_28px_minmax(0,1fr)_auto] items-center gap-2 rounded-[7px] border border-transparent pr-2 transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
             active ? "bg-[#efefea] shadow-[0_1px_2px_rgba(41,37,36,0.06)]" : "hover:bg-[#f1f1ea]",
             isSource && "cursor-grabbing opacity-35",
             activeDrop?.valid && activeDrop.mode === "inside" && "border-[#9d93ff] bg-[#f3f1ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
@@ -4992,7 +5069,7 @@ function UnifiedCatalogTreePanel({
               }}
               aria-expanded={isExpanded}
               aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-[6px] text-[#79716b] transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-[6px] text-[#79716b] transition hover:bg-[#e8e6df] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
               <CaretRight
                 size={13}
@@ -5005,71 +5082,52 @@ function UnifiedCatalogTreePanel({
           ) : (
             <span className="flex h-7 w-7 shrink-0 items-center justify-center" aria-hidden="true" />
           )}
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
-            {sectionIcon}
-          </span>
-          <div className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{section.name}</span>
-            {sectionEditingEnabled && section.status === "archive" && (
-              <Tooltip label="В архиве" side="top" delayDuration={200}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
-              </Tooltip>
-            )}
-            {sectionEditingEnabled && section.status !== "archive" && section.availabilityMode === "unavailable" && (
-              <Tooltip label="Раздел скрыт" side="top" delayDuration={200}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
-              </Tooltip>
-            )}
-            {sectionEditingEnabled && section.status !== "archive" && section.availabilityMode === "schedule" && (
-              <Tooltip label="По расписанию" side="top" delayDuration={200}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Clock size={12} /></span>
-              </Tooltip>
-            )}
+          <CatalogThumbnail src={section.imageUrl} kind="section" />
+          <TruncatedText className="text-left text-[13px] font-medium leading-5 text-[#44403b] transition-[padding] group-hover:pr-[62px] group-has-[:focus-visible]:pr-[62px]">
+            {section.name}
+          </TruncatedText>
+          <div className="flex min-w-0 shrink-0 items-center justify-end pr-1 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0">
+            {sectionTrailingMeta}
           </div>
-          <div className="flex h-full w-[88px] shrink-0 items-center justify-end gap-0.5 pr-1">
-            <div
-              className={cn(
-                "pointer-events-none flex h-full w-[58px] shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
-                active && "pointer-events-auto opacity-100",
-              )}
-            >
-              {renderSectionQuickAdd(section, addKind)}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <button
-                    type="button"
-                    data-no-tree-drag
-                    draggable={false}
-                    aria-label={`Действия с разделом ${section.name}`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => event.stopPropagation()}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <DotsThreeVertical size={14} weight="bold" />
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownContent align="end">
-                  {(addKind === "section" || addKind === "empty") && (
-                    <DropdownActionItem onSelect={() => onSectionAction(section, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                  )}
-                  {(addKind === "item" || addKind === "empty") && (
-                    <DropdownActionItem onSelect={() => onAddPosition(section.id)}>Добавить позицию</DropdownActionItem>
-                  )}
-                  {addKind !== "mixed" && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                  <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
-                  <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
-                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                  {section.status === "archive" ? (
-                    <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
-                  ) : (
-                    <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
-                  )}
-                </DropdownContent>
-              </DropdownMenu.Root>
-            </div>
-            <span className="w-6 shrink-0 text-right text-[11px] tabular-nums text-[#a8a29e]">
-              {activeCount}
-            </span>
+          <div
+            className={cn(
+              "pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100",
+              active ? "bg-[#efefea]" : "bg-[#f1f1ea]",
+            )}
+          >
+            {renderSectionQuickAdd(section, addKind)}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  data-no-tree-drag
+                  draggable={false}
+                  aria-label={`Действия с разделом ${section.name}`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] hover:bg-[#e8e6df] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <DotsThreeVertical size={14} weight="bold" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="end">
+                {(addKind === "section" || addKind === "empty") && (
+                  <DropdownActionItem onSelect={() => onSectionAction(section, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                )}
+                {(addKind === "item" || addKind === "empty") && (
+                  <DropdownActionItem onSelect={() => onAddPosition(section.id)}>Добавить позицию</DropdownActionItem>
+                )}
+                {addKind !== "mixed" && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
+                <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                {section.status === "archive" ? (
+                  <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
+                ) : (
+                  <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
+                )}
+              </DropdownContent>
+            </DropdownMenu.Root>
           </div>
         </div>
         {isExpanded && (
@@ -5163,15 +5221,7 @@ function UnifiedCatalogTreePanel({
         style={{ left: dragPoint.x + 12, top: dragPoint.y + 12 }}
       >
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df] text-[#79716b]">
-            {dragSource.imageUrl ? (
-              <img src={dragSource.imageUrl} alt="" className="h-full w-full object-cover" />
-            ) : dragSource.kind === "section" ? (
-              <ForkKnife size={12} weight="fill" />
-            ) : (
-              <ImageBroken size={12} />
-            )}
-          </span>
+          <CatalogThumbnail src={dragSource.imageUrl} kind={dragSource.kind === "section" ? "section" : "item"} />
           <span className="min-w-0 truncate text-[13px] font-medium text-[#44403b]">{dragSource.title}</span>
         </div>
         {nestingTarget && (
@@ -7369,19 +7419,7 @@ function AuditDishRow({
           />
         </span>
         <div className="flex min-w-0 items-center gap-[9px]">
-          <span
-            className={cn(
-              "relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px]",
-              item.thumbnailUrl ? "bg-[#f5f5f4]" : "bg-[#faf0e6]",
-            )}
-            title={item.thumbnailUrl ? undefined : "Нет фото"}
-          >
-            {item.thumbnailUrl ? (
-              <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-            ) : (
-              <ImageBroken size={14} className="text-[#bc4a08]" />
-            )}
-          </span>
+          <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
           <div className="flex min-w-0 items-center gap-1.5">
             <span className="block max-w-full truncate text-left text-[13px] leading-4 text-[#292524]">
               {item.title}
@@ -7707,18 +7745,7 @@ function DescriptionQueueRow({
         fixed && !selected && "text-[#8a8179]",
       )}
     >
-      <span
-        className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]",
-          selected && "border border-[#6d5dfc] bg-white p-[2px]",
-        )}
-      >
-        {item.thumbnailUrl ? (
-          <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full rounded-[4px] object-cover" />
-        ) : (
-          <ImageBroken size={12} className="text-[#a8a29e]" />
-        )}
-      </span>
+      <CatalogThumbnail src={item.thumbnailUrl} kind="item" className={selected ? "border border-[#6d5dfc] bg-white p-[2px]" : undefined} />
       <span
         className={cn(
           "min-w-0 flex-1 truncate text-[13px] leading-5",
