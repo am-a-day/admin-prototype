@@ -137,14 +137,17 @@ type CatalogWorkspaceProps = {
   selectedDishId: string;
   catalogPhase: CatalogPhase;
   catalogTab: CatalogTab;
-  overviewFilterId: OverviewFilterId;
+  viewMode: CatalogViewMode;
+  sectionScopeId: string | null;
   onOverviewFilterChange: (id: OverviewFilterId) => void;
+  onViewModeChange: (mode: CatalogViewMode) => void;
+  onSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
   onFlatModeChange: (flat: boolean) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
-type CatalogViewMode = "sections" | OverviewFilterId;
+export type CatalogViewMode = "sections" | OverviewFilterId;
 
 /** Section node for the left panels: real sections carry imageUrl, mock/created ones an emoji. */
 type TreeSection = {
@@ -3737,7 +3740,7 @@ function PositionEditor({
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
-        <div className="mx-auto max-w-[600px]">
+        <div className="mx-auto w-full max-w-[800px]">
           {/* Название позиции + действия с позицией */}
           <div className="flex items-center gap-2 pb-2 pt-6">
             <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
@@ -5134,7 +5137,7 @@ function SectionEditor({
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
-        <div className="mx-auto max-w-[600px]">
+        <div className="mx-auto w-full max-w-[800px]">
           <div className="flex items-center gap-2 pb-2 pt-6">
             <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
             {archived && <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium text-[#79716b]">В архиве</span>}
@@ -7580,7 +7583,7 @@ function CatalogScopeSelect({ value, onChange }: { value: string | null; onChang
   );
 }
 
-function CatalogWorkspaceControls({
+export function CatalogWorkspaceControls({
   viewMode,
   sectionScopeId,
   onViewModeChange,
@@ -7592,7 +7595,7 @@ function CatalogWorkspaceControls({
   onScopeChange: (id: string | null) => void;
 }) {
   return (
-    <div className="shrink-0 px-3 pb-2">
+    <div className="shrink-0">
       <div className="flex min-h-8 min-w-0 items-center gap-1.5">
         <CatalogViewModeSelect value={viewMode} onChange={onViewModeChange} />
         <CatalogScopeSelect value={sectionScopeId} onChange={onScopeChange} />
@@ -8159,9 +8162,9 @@ function OverviewWorkspace({
                 scopeName={scopeSection?.name}
               />
             </div>
-            <div className="mt-[14px]">
+            <div className="mt-[14px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
               {visible.length === 0 ? (
-                <div className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
+                <div className="p-6">
                   <div className="flex flex-col gap-4">
                     <div>
                       <p className="text-[16px] font-medium leading-[1.4] text-[#44403b]">
@@ -8191,7 +8194,7 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <div>
+                <>
                   <TableHeaderRow
                     query={query}
                     onQueryChange={handleQueryChange}
@@ -8241,7 +8244,7 @@ function OverviewWorkspace({
                     />
                   )}
                   {feedback && <SelectionFeedback message={feedback} />}
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -8271,8 +8274,11 @@ function RecommendationsContextWorkspace() {
 export function CatalogWorkspace({
   catalogPhase,
   catalogTab,
-  overviewFilterId,
+  viewMode,
+  sectionScopeId,
   onOverviewFilterChange,
+  onViewModeChange,
+  onSectionScopeChange,
   onFlatModeChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
@@ -8284,12 +8290,6 @@ export function CatalogWorkspace({
       : catalogPhase === "has-sections"
         ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
         : buildSectionTree(catalogSections);
-  const overviewSectionScopeParam = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("overviewSectionId");
-  const overviewSectionScopeId = overviewSectionScopeParam && catalogSections.some((section) => section.id === overviewSectionScopeParam)
-    ? overviewSectionScopeParam
-    : null;
-  const [viewMode, setViewMode] = useState<CatalogViewMode>(catalogTab === "overview" ? overviewFilterId : "sections");
-  const [sectionScopeId, setSectionScopeId] = useState<string | null>(overviewSectionScopeId);
   const [flatQuery, setFlatQuery] = useState("");
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
   const flatModeActiveRef = useRef(viewMode !== "sections");
@@ -8303,16 +8303,13 @@ export function CatalogWorkspace({
       if (flatModeActiveRef.current) onFlatModeChange(false);
     };
   }, []);
-  const changeViewMode = (mode: CatalogViewMode) => {
-    setViewMode(mode);
-    const flat = mode !== "sections";
-    setFlatModeActive(flat);
-    if (flat) onOverviewFilterChange(mode);
-  };
+  useEffect(() => {
+    flatModeActiveRef.current = viewMode !== "sections";
+  }, [viewMode]);
   const returnToSections = (openItemId: string | null) => {
     setFlatQuery("");
     setRetainedItemId(openItemId);
-    setViewMode("sections");
+    onViewModeChange("sections");
     setFlatModeActive(false);
   };
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
@@ -8325,12 +8322,12 @@ export function CatalogWorkspace({
       <OverviewWorkspace
         filterId={viewMode}
         onFilterChange={(id) => {
-          setViewMode(id);
+          onViewModeChange(id);
           setFlatModeActive(true);
           onOverviewFilterChange(id);
         }}
         sectionScopeId={sectionScopeId}
-        onSectionScopeChange={setSectionScopeId}
+        onSectionScopeChange={onSectionScopeChange}
         query={flatQuery}
         onQueryChange={setFlatQuery}
         onReturnToSections={returnToSections}
@@ -8340,7 +8337,7 @@ export function CatalogWorkspace({
         sections={sections}
         scopeSectionId={sectionScopeId}
         initialSelectedItemId={retainedItemId}
-        onScopeChange={setSectionScopeId}
+        onScopeChange={onSectionScopeChange}
       />
     ) : (
       <EmptyCatalog
@@ -8350,16 +8347,8 @@ export function CatalogWorkspace({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
-        {catalogTab !== "upsell" && catalogPhase !== "empty" && (
-          <CatalogWorkspaceControls
-            viewMode={viewMode}
-            sectionScopeId={sectionScopeId}
-            onViewModeChange={changeViewMode}
-            onScopeChange={setSectionScopeId}
-          />
-        )}
-        <div className="min-h-0 flex-1 overflow-hidden">{workspace}</div>
+      <div className="flex min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
+        {workspace}
       </div>
       {sectionDialogOpen && (
         <AddSectionDialog
