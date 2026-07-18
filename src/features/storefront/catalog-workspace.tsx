@@ -6571,8 +6571,8 @@ function PopulatedWorkspace({
     : sectionTableBaseItems;
   const sectionTableItems = sortItemsByPrice(sectionTableSearchedItems, sectionTablePriceSort);
   const sectionTableTitle = section
-    ? `Позиции раздела “${section.name}” · ${sectionTableBaseItems.length}`
-    : `Позиции раздела · ${sectionTableBaseItems.length}`;
+    ? `Позиции раздела “${section.name}”`
+    : "Позиции раздела";
 
   const rememberItem = (id: string) => {
     const it = allItems.find((i) => i.id === id);
