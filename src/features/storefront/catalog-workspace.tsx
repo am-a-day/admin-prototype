@@ -6874,8 +6874,8 @@ function TableCheckbox({
       onChange={(event) => onChange?.(event.target.checked)}
       aria-label={ariaLabel}
       className={cn(
-        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#d6d3d1] bg-white accent-[#57534d] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        quiet && !checked && !indeterminate && !forceVisible && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#a8a29e] bg-white accent-[#a8a29e] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        quiet && !checked && !indeterminate && !forceVisible && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
         (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
       )}
     />
@@ -7439,33 +7439,14 @@ function SelectionFeedback({ message }: { message: string }) {
 
 function OverviewStatusBar({
   filterId,
-  count,
-  query,
-  scopeName,
 }: {
   filterId: OverviewFilterId;
-  count: number;
-  query: string;
-  scopeName?: string;
 }) {
-  const subtitle = (() => {
-    if (filterId === "quick:no-description" || filterId === "quick:no-photo") return `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} внимания`;
-    if (filterId === "status:stop") return `${count} ${plural(count, "позиция сейчас на стопе", "позиции сейчас на стопе", "позиций сейчас на стопе")}`;
-    if (filterId === "status:active") return `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} гостям`;
-    if (filterId === "status:archived") return `${count} ${plural(count, "позиция находится", "позиции находятся", "позиций находятся")} в архиве`;
-    return OVERVIEW_FILTER_META[filterId].countText(count);
-  })();
-
   return (
-    <div className="flex min-h-[42px] min-w-0 items-center gap-3">
+    <div className="flex min-h-[24px] min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium leading-[17px] text-[#292524]">
-          {getFilterPanelTitle(filterId)} <span className="font-normal tabular-nums text-[#79716b]">{count}</span>
-        </div>
-        <div className="mt-1 text-[12px] leading-4 text-[#79716b]">
-        {subtitle}
-        {scopeName && <span> · раздел «{scopeName}»</span>}
-        {query.trim() && <span> · с учётом поиска</span>}
+          {getFilterPanelTitle(filterId)}
         </div>
       </div>
     </div>
@@ -8157,9 +8138,6 @@ function OverviewWorkspace({
             <div className="pt-5">
               <OverviewStatusBar
                 filterId={filterId}
-                count={visible.length}
-                query={query}
-                scopeName={scopeSection?.name}
               />
             </div>
             <div className="mt-[14px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
@@ -8194,7 +8172,7 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <>
+                <div className="px-3 pb-3">
                   <TableHeaderRow
                     query={query}
                     onQueryChange={handleQueryChange}
@@ -8244,7 +8222,7 @@ function OverviewWorkspace({
                     />
                   )}
                   {feedback && <SelectionFeedback message={feedback} />}
-                </>
+                </div>
               )}
             </div>
           </div>
