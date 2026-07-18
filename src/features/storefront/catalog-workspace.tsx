@@ -4909,8 +4909,8 @@ function UnifiedCatalogTreePanel({
 
   const renderSectionQuickAdd = (section: TreeSection, addKind: ReturnType<typeof getSectionAddKind>) => {
     const baseClassName = cn(
-      "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[15px] font-medium leading-none text-[#79716b] transition hover:bg-[#e6e6db] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-      addKind === "mixed" && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#79716b]",
+      "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#a6a09b] transition hover:bg-[#e6e6db] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+      addKind === "mixed" && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#a6a09b]",
     );
     const commonProps = {
       type: "button" as const,
@@ -4931,7 +4931,7 @@ function UnifiedCatalogTreePanel({
               onSectionAction(section, "Добавить подраздел");
             }}
           >
-            ＋
+            <Plus size={13} />
           </button>
         </Tooltip>
       );
@@ -4949,7 +4949,7 @@ function UnifiedCatalogTreePanel({
               onAddPosition(section.id);
             }}
           >
-            ＋
+            <Plus size={13} />
           </button>
         </Tooltip>
       );
@@ -4964,7 +4964,7 @@ function UnifiedCatalogTreePanel({
             aria-label={`Нельзя быстро добавить в раздел “${section.name}”: смешанная структура`}
             className={baseClassName}
           >
-            ＋
+            <Plus size={13} />
           </button>
         </Tooltip>
       );
@@ -4980,7 +4980,7 @@ function UnifiedCatalogTreePanel({
             className={baseClassName}
             onClick={(event) => event.stopPropagation()}
           >
-            ＋
+            <Plus size={13} />
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="end">
