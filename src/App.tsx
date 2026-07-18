@@ -37,8 +37,8 @@ import { ManagementStub } from "@/features/management/management-stub";
 import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
 import {
+  CatalogTabs,
   CatalogWorkspace,
-  CatalogWorkspaceControls,
   type CatalogPhase,
   type CatalogTab,
   type CatalogViewMode,
@@ -440,7 +440,7 @@ function AppShell() {
   const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
   const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(null);
-  const [catalogResetSignal, setCatalogResetSignal] = useState(0);
+  const [catalogResetSignal] = useState(0);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
@@ -474,14 +474,25 @@ function AppShell() {
     setCatalogViewMode(mode);
     const flat = mode !== "sections";
     handleCatalogFlatModeChange(flat);
-    if (flat) setCatalogOverviewFilterId(mode);
+    if (flat) {
+      setCatalogTab("overview");
+      setCatalogOverviewFilterId(mode);
+    }
   };
-  const resetCatalogContext = () => {
-    setCatalogSectionScopeId(null);
-    changeCatalogViewMode("sections");
-    setCatalogResetSignal((current) => current + 1);
+  const changeCatalogTab = (next: CatalogTab) => {
+    setCatalogTab(next);
+    if (next === "overview") {
+      handleCatalogFlatModeChange(true);
+      if (catalogViewMode === "sections") {
+        setCatalogViewMode("quick:all");
+        setCatalogOverviewFilterId("quick:all");
+      } else {
+        setCatalogOverviewFilterId(catalogViewMode);
+      }
+      return;
+    }
+    handleCatalogFlatModeChange(false);
   };
-
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   useEffect(() => {
@@ -584,7 +595,7 @@ function AppShell() {
     openStoreTab("home");
     setHomeFocus("sections");
   };
-  const navUpsellPage = () => { openStoreTab("catalog"); setCatalogTab("upsell"); };
+  const navUpsellPage = () => { openStoreTab("catalog"); changeCatalogTab("upsell"); };
   const navAbout = () => openStoreTab("about");
   const navCatalogDish = (id: string) => {
     setSelectedDishId(id);
@@ -725,7 +736,7 @@ function AppShell() {
           sectionScopeId={catalogSectionScopeId}
           resetSignal={catalogResetSignal}
           onOverviewFilterChange={setCatalogOverviewFilterId}
-          onViewModeChange={setCatalogViewMode}
+          onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
           onFlatModeChange={handleCatalogFlatModeChange}
@@ -925,14 +936,8 @@ function AppShell() {
               )}>
                 <div className="shrink-0">
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
-                  {isCatalogPage && catalogTab !== "upsell" && catalogPhase !== "empty" && (
-                    <CatalogWorkspaceControls
-                      viewMode={catalogViewMode}
-                      sectionScopeId={catalogSectionScopeId}
-                      onViewModeChange={changeCatalogViewMode}
-                      onScopeChange={setCatalogSectionScopeId}
-                      onResetAll={resetCatalogContext}
-                    />
+                  {isCatalogPage && catalogPhase !== "empty" && (
+                    <CatalogTabs value={catalogTab} onChange={changeCatalogTab} />
                   )}
                   {isAboutPage && (
                     <AboutTabs

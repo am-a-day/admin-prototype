@@ -46,6 +46,7 @@ export type CatalogPhase = "empty" | "has-sections" | "has-items";
 export type CatalogTab = "sections" | "overview" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "sections", label: "Разделы" },
+  { id: "overview", label: "Позиции" },
   { id: "upsell", label: "Рекомендации" },
 ];
 
@@ -465,6 +466,35 @@ const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
   { label: "Возможности", ids: ["quick:no-recommendations", "quick:with-recommendations", "quick:discount", "quick:with-labels", "quick:with-tags"] },
   { label: "Отображение", ids: ["quick:with-options", "display:full", "display:no-button", "display:no-price"] },
 ];
+const HYBRID_PRIMARY_FILTER_IDS: OverviewFilterId[] = [
+  "quick:all",
+  "status:stop",
+  "status:archived",
+  "quick:no-description",
+  "quick:no-photo",
+];
+const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
+  "quick:all": "Все позиции",
+  "status:stop": "На стопе",
+  "status:archived": "В архиве",
+  "quick:no-description": "Без описания",
+  "quick:no-photo": "Без фото",
+  "quick:no-weight": "Без граммовки",
+  "quick:no-kbju": "Без КБЖУ",
+  "quick:no-translation": "Без перевода",
+  "quick:discount": "Со скидкой",
+  "quick:with-tags": "С тегами",
+  "quick:with-labels": "Со стикерами",
+  "quick:with-options": "С опциями",
+  "quick:with-recommendations": "С рекомендациями",
+  "quick:no-recommendations": "Без рекомендаций",
+  "display:full": "Полный вид",
+  "display:no-button": "Без кнопки",
+  "display:no-price": "Без кнопки и цены",
+  "status:active": "Активные",
+  "status:soon": "Скоро будут",
+  "status:schedule": "По расписанию",
+};
 
 const FILTER_PANEL_TITLES: Record<OverviewFilterId, string> = {
   "quick:all": "Все позиции",
@@ -3748,6 +3778,7 @@ function PositionEditor({
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
   onRequestPermanentDelete,
+  breadcrumb,
   headerMeta,
   onDescriptionChange,
   onMediaAdded,
@@ -3773,6 +3804,7 @@ function PositionEditor({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onRequestPermanentDelete: (item: CatalogItem) => void;
+  breadcrumb?: ReactNode;
   headerMeta?: ReactNode;
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
@@ -3874,8 +3906,9 @@ function PositionEditor({
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
         <div className="mx-auto w-full max-w-[800px]">
+          {breadcrumb && <div className="pt-5">{breadcrumb}</div>}
           {/* Название позиции + действия с позицией */}
-          <div className="flex items-center gap-2 pb-2 pt-6">
+          <div className={cn("flex items-center gap-2 pb-2", breadcrumb ? "pt-3" : "pt-6")}>
             <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
               <span className="truncate">{item.title}</span>
               {isArchived && (
@@ -7949,6 +7982,8 @@ function UnifiedFlatCatalogPanel({
   onQueryChange,
   onReset,
   onOpenTable,
+  onFilterChange,
+  onSectionScopeChange,
   onSelectItem,
 }: {
   filterId: OverviewFilterId;
@@ -7962,28 +7997,81 @@ function UnifiedFlatCatalogPanel({
   onQueryChange: (value: string) => void;
   onReset: () => void;
   onOpenTable: () => void;
+  onFilterChange: (id: OverviewFilterId) => void;
+  onSectionScopeChange: (id: string | null) => void;
   onSelectItem: (item: CatalogItem, fixed: boolean) => void;
 }) {
   const scope = catalogSections.find((section) => section.id === scopeSectionId) ?? null;
+  const scopeIds = getSectionScopeIds(scopeSectionId);
+  const countByFilter = (id: OverviewFilterId) =>
+    getOverviewItems(id).filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
+  const moreFilterIds = CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids)
+    .filter((id): id is OverviewFilterId => id !== "sections")
+    .filter((id) => !HYBRID_PRIMARY_FILTER_IDS.includes(id));
+  const panelTitle = filterId === "quick:all" ? "Недавние" : "Текущая выборка";
   const emptyText = scope
-    ? `В разделе «${scope.name}» нет позиций: ${OVERVIEW_FILTER_META[filterId].label.toLowerCase()}`
+    ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
 
   return (
-    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-6">
-        <div className="flex h-5 min-w-0 items-center gap-2">
-          <Tooltip label="Вернуться к разделам" side="bottom">
-            <button
-              type="button"
-              aria-label="Вернуться к разделам"
-              onClick={onReset}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <ArrowLeft size={18} />
-            </button>
-          </Tooltip>
-          <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#292524]">{getFilterPanelTitle(filterId)}</span>
+    <aside className="flex w-[274px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3 pt-4">
+        <div className="mb-3">
+          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
+        </div>
+        <div className="space-y-1">
+          {HYBRID_PRIMARY_FILTER_IDS.map((id) => (
+            <FilterPanelRow
+              key={id}
+              row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
+              selected={filterId === id}
+              onClick={() => onFilterChange(id)}
+            />
+          ))}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-2 p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                  moreFilterIds.includes(filterId)
+                    ? "rounded-[8px] border border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]"
+                    : "rounded-[12px] border border-transparent hover:bg-[#f0f0ea]",
+                )}
+              >
+                <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", moreFilterIds.includes(filterId) ? "text-[#292524]" : "text-[#79716b]")}>
+                  Ещё фильтры
+                </span>
+                {moreFilterIds.includes(filterId) && (
+                  <span className="min-w-0 truncate text-[12px] text-[#a8a29e]">{HYBRID_PRIMARY_FILTER_LABELS[filterId]}</span>
+                )}
+                <CaretDown size={12} className="shrink-0 text-[#79716b]" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="start">
+              <div className="max-h-[360px] overflow-y-auto">
+                {CATALOG_VIEW_MODE_GROUPS.filter((group) => group.ids.some((id) => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId))).map((group, groupIndex) => (
+                  <div key={group.label}>
+                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                    {group.ids
+                      .filter((id): id is OverviewFilterId => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId))
+                      .map((id) => (
+                        <DropdownMenu.Item
+                          key={id}
+                          onSelect={() => onFilterChange(id)}
+                          className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                          <span className="shrink-0 text-[12px] font-medium tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                          {filterId === id && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                        </DropdownMenu.Item>
+                      ))}
+                  </div>
+                ))}
+              </div>
+            </DropdownContent>
+          </DropdownMenu.Root>
         </div>
         <button
           type="button"
@@ -7998,7 +8086,11 @@ function UnifiedFlatCatalogPanel({
           <span className="shrink-0 rounded-[6px] bg-[#f4f3ef] px-1.5 text-[12px] font-medium leading-5 tabular-nums text-[#79716b]">{count}</span>
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="mb-2 flex h-5 items-center justify-between px-1.5">
+          <span className="min-w-0 truncate text-[12px] font-medium leading-5 text-[#a6a09b]">{panelTitle}</span>
+          <span className="shrink-0 text-[12px] tabular-nums text-[#a8a29e]">{items.length}</span>
+        </div>
         <div className="space-y-1">
           {items.map((item) => {
             const fixed = fixedIds?.has(item.id) ?? false;
@@ -8009,13 +8101,33 @@ function UnifiedFlatCatalogPanel({
               <p className="text-[12px] leading-5 text-[#79716b]">{query.trim() ? "По вашему запросу ничего не найдено" : emptyText}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {query.trim() && <button type="button" onClick={() => onQueryChange("")} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Очистить поиск</button>}
-                <button type="button" onClick={onReset} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Вернуться к разделам</button>
+                <button type="button" onClick={onReset} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Показать разделы</button>
               </div>
             </div>
           )}
         </div>
       </div>
     </aside>
+  );
+}
+
+function PositionEditorBreadcrumb({
+  filterId,
+  onBack,
+}: {
+  filterId: OverviewFilterId;
+  onBack: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    >
+      <span className="shrink-0">Позиции</span>
+      <CaretRight size={12} weight="bold" className="shrink-0 text-[#a8a29e]" />
+      <span className="min-w-0 truncate">{getFilterPanelTitle(filterId)}</span>
+    </button>
   );
 }
 
@@ -8259,6 +8371,27 @@ function OverviewWorkspace({
     setBulkDialog(null);
     clearSelection();
   };
+  const openPanelFilter = (id: OverviewFilterId) => {
+    if (queue) {
+      onQueryChange(queue.snapshot.query);
+      setPriceSort(queue.snapshot.sort);
+    }
+    setQueue(null);
+    setBulkDialog(null);
+    clearSelection();
+    onFilterChange(id);
+  };
+  const openPanelSectionScope = (id: string | null) => {
+    if (queue) {
+      onFilterChange(queue.snapshot.filterId);
+      onQueryChange(queue.snapshot.query);
+      setPriceSort(queue.snapshot.sort);
+    }
+    setQueue(null);
+    setBulkDialog(null);
+    clearSelection();
+    onSectionScopeChange(id);
+  };
   const selectQueueItem = (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => {
     setQueue((current) => current ? { ...current, currentId: id, currentBucket: bucket } : current);
   };
@@ -8419,6 +8552,8 @@ function OverviewWorkspace({
             onQueryChange={handleQueryChange}
             onReset={() => onReturnToSections(queue.currentId)}
             onOpenTable={returnToOverview}
+            onFilterChange={openPanelFilter}
+            onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item, fixed) => selectQueueItem(item.id, fixed ? "fixed" : "remaining")}
           />
           {currentItem ? (
@@ -8445,6 +8580,7 @@ function OverviewWorkspace({
               showStopQuickAction={!repairMode}
               onDescriptionChange={saveDescription}
               onMediaAdded={saveQueueMedia}
+              breadcrumb={<PositionEditorBreadcrumb filterId={queue.snapshot.filterId} onBack={returnToOverview} />}
               headerMeta={
                 <DescriptionQueueEditorControls
                   filterId={queue.snapshot.filterId}
@@ -8488,6 +8624,8 @@ function OverviewWorkspace({
           onQueryChange={handleQueryChange}
           onReset={() => onReturnToSections(null)}
           onOpenTable={() => {}}
+          onFilterChange={openPanelFilter}
+          onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
         />
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10">
@@ -8629,7 +8767,7 @@ export function CatalogWorkspace({
   const [flatQuery, setFlatQuery] = useState("");
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
   const resetSignalReadyRef = useRef(false);
-  const flatModeActiveRef = useRef(viewMode !== "sections");
+  const flatModeActiveRef = useRef(catalogTab === "overview");
   const setFlatModeActive = (flat: boolean) => {
     flatModeActiveRef.current = flat;
     onFlatModeChange(flat);
@@ -8641,12 +8779,13 @@ export function CatalogWorkspace({
     };
   }, []);
   useEffect(() => {
-    flatModeActiveRef.current = viewMode !== "sections";
-  }, [viewMode]);
+    flatModeActiveRef.current = catalogTab === "overview";
+    onFlatModeChange(catalogTab === "overview");
+  }, [catalogTab, onFlatModeChange]);
   useEffect(() => {
-    if (viewMode !== "sections") return;
+    if (catalogTab === "overview") return;
     setFlatQuery("");
-  }, [viewMode]);
+  }, [catalogTab]);
   useEffect(() => {
     if (!resetSignalReadyRef.current) {
       resetSignalReadyRef.current = true;
@@ -8667,9 +8806,9 @@ export function CatalogWorkspace({
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
-    ) : viewMode !== "sections" ? (
+    ) : catalogTab === "overview" ? (
       <OverviewWorkspace
-        filterId={viewMode}
+        filterId={viewMode === "sections" ? "quick:all" : viewMode}
         onFilterChange={(id) => {
           onViewModeChange(id);
           setFlatModeActive(true);
