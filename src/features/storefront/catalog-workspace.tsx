@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Archive,
   ArrowCounterClockwise,
@@ -5423,10 +5424,19 @@ function SectionEditor({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const archived = section.status === "archive";
-  const selectedCompositionIds = new Set(compositionItems.map((item) => item.id).filter((id) => selectedIds.has(id)));
+  const selectedCompositionIds = useMemo(
+    () => new Set(compositionItems.map((item) => item.id).filter((id) => selectedIds.has(id))),
+    [compositionItems, selectedIds],
+  );
   const selectedCount = selectedCompositionIds.size;
-  const allSelected = compositionItems.length > 0 && compositionItems.every((item) => selectedIds.has(item.id));
-  const someSelected = compositionItems.some((item) => selectedIds.has(item.id));
+  const allSelected = useMemo(
+    () => compositionItems.length > 0 && compositionItems.every((item) => selectedIds.has(item.id)),
+    [compositionItems, selectedIds],
+  );
+  const someSelected = useMemo(
+    () => compositionItems.some((item) => selectedIds.has(item.id)),
+    [compositionItems, selectedIds],
+  );
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -5541,16 +5551,14 @@ function SectionEditor({
                       </div>
                     )}
                     {compositionItems.length > 0 ? (
-                      compositionItems.map((item) => (
-                        <AuditDishRow
-                          key={item.id}
-                          item={item}
-                          selected={selectedIds.has(item.id)}
-                          selectionMode={selectedCount > 0}
-                          onSelectedChange={onSelectedChange}
-                          onAction={onItemAction}
-                        />
-                      ))
+                      <VirtualizedAuditRows
+                        items={compositionItems}
+                        selectedIds={selectedIds}
+                        selectionMode={selectedCount > 0}
+                        scrollParentRef={scrollContainerRef}
+                        onSelectedChange={onSelectedChange}
+                        onAction={onItemAction}
+                      />
                     ) : (
                       <div className="py-8 text-center text-[13px] leading-5 text-[#79716b]">
                         По поиску ничего не найдено
@@ -7602,6 +7610,90 @@ function AuditDishRow({
   );
 }
 
+const AUDIT_ROW_HEIGHT = 48;
+const QUEUE_ROW_HEIGHT = 36;
+
+function useVirtualScrollMargin(
+  scrollParentRef: RefObject<HTMLDivElement | null>,
+  listRef: RefObject<HTMLDivElement | null>,
+  deps: readonly unknown[],
+) {
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      const scrollElement = scrollParentRef.current;
+      const listElement = listRef.current;
+      if (!scrollElement || !listElement) return;
+      const scrollRect = scrollElement.getBoundingClientRect();
+      const listRect = listElement.getBoundingClientRect();
+      setScrollMargin(listRect.top - scrollRect.top + scrollElement.scrollTop);
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return scrollMargin;
+}
+
+function VirtualizedAuditRows({
+  items,
+  selectedIds,
+  selectionMode,
+  scrollParentRef,
+  onSelectedChange,
+  onAction,
+}: {
+  items: CatalogItem[];
+  selectedIds: Set<string>;
+  selectionMode: boolean;
+  scrollParentRef: RefObject<HTMLDivElement | null>;
+  onSelectedChange: (id: string, selected: boolean) => void;
+  onAction: (item: CatalogItem, action: string) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectionMode]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => AUDIT_ROW_HEIGHT,
+    getItemKey: (index) => items[index]?.id ?? index,
+    overscan: 8,
+    scrollMargin,
+  });
+
+  return (
+    <div
+      ref={listRef}
+      className="relative w-full"
+      style={{ height: Math.max(0, virtualizer.getTotalSize() - scrollMargin) }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const item = items[virtualRow.index];
+        if (!item) return null;
+        return (
+          <div
+            key={virtualRow.key}
+            className="absolute left-0 top-0 w-full"
+            style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start - scrollMargin}px)` }}
+          >
+            <AuditDishRow
+              item={item}
+              selected={selectedIds.has(item.id)}
+              selectionMode={selectionMode}
+              onSelectedChange={onSelectedChange}
+              onAction={onAction}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type BulkDialog =
   | { type: "schedule" }
   | { type: "discount" }
@@ -7877,6 +7969,59 @@ function DescriptionQueueRow({
   );
 }
 
+function VirtualizedDescriptionQueueRows({
+  items,
+  selectedItemId,
+  fixedIds,
+  scrollParentRef,
+  onSelectItem,
+}: {
+  items: CatalogItem[];
+  selectedItemId: string | null;
+  fixedIds?: Set<string>;
+  scrollParentRef: RefObject<HTMLDivElement | null>;
+  onSelectItem: (item: CatalogItem, fixed: boolean) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectedItemId, fixedIds?.size ?? 0]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => QUEUE_ROW_HEIGHT,
+    getItemKey: (index) => items[index]?.id ?? index,
+    overscan: 6,
+    scrollMargin,
+  });
+
+  return (
+    <div
+      ref={listRef}
+      className="relative w-full"
+      style={{ height: Math.max(0, virtualizer.getTotalSize() - scrollMargin) }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const item = items[virtualRow.index];
+        if (!item) return null;
+        const fixed = fixedIds?.has(item.id) ?? false;
+        return (
+          <div
+            key={virtualRow.key}
+            className="absolute left-0 top-0 w-full"
+            style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start - scrollMargin}px)` }}
+          >
+            <DescriptionQueueRow
+              item={item}
+              selected={item.id === selectedItemId}
+              fixed={fixed}
+              onClick={() => onSelectItem(item, fixed)}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function getSectionFullPath(sectionId: string) {
   const names: string[] = [];
   let current = catalogSections.find((section) => section.id === sectionId) ?? null;
@@ -8030,13 +8175,31 @@ function UnifiedFlatCatalogPanel({
   onSectionScopeChange: (id: string | null) => void;
   onSelectItem: (item: CatalogItem, fixed: boolean) => void;
 }) {
-  const scope = catalogSections.find((section) => section.id === scopeSectionId) ?? null;
-  const scopeIds = getSectionScopeIds(scopeSectionId);
-  const countByFilter = (id: OverviewFilterId) =>
-    getOverviewItems(id, allItems).filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
-  const moreFilterIds = CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids)
-    .filter((id): id is OverviewFilterId => id !== "sections")
-    .filter((id) => !HYBRID_PRIMARY_FILTER_IDS.includes(id));
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const scope = useMemo(() => catalogSections.find((section) => section.id === scopeSectionId) ?? null, [scopeSectionId]);
+  const scopeIds = useMemo(() => getSectionScopeIds(scopeSectionId), [scopeSectionId]);
+  const allFilterIds = useMemo(
+    () => Array.from(new Set([
+      ...HYBRID_PRIMARY_FILTER_IDS,
+      ...CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids),
+    ])).filter((id): id is OverviewFilterId => id !== "sections"),
+    [],
+  );
+  const moreFilterIds = useMemo(
+    () => allFilterIds.filter((id) => !HYBRID_PRIMARY_FILTER_IDS.includes(id)),
+    [allFilterIds],
+  );
+  const filterCounts = useMemo(() => {
+    const counts = Object.fromEntries(allFilterIds.map((id) => [id, 0])) as Record<OverviewFilterId, number>;
+    allItems.forEach((item) => {
+      if (scopeIds && !scopeIds.has(item.sectionId)) return;
+      allFilterIds.forEach((id) => {
+        if (FILTER_PREDICATES[id](item)) counts[id] += 1;
+      });
+    });
+    return counts;
+  }, [allFilterIds, allItems, scopeIds]);
+  const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
   const searchActive = query.trim().length > 0;
   const recentMode = filterId === "quick:all" && !searchActive;
   const panelTitle = searchActive ? "Результаты поиска" : recentMode ? "Недавние" : HYBRID_PRIMARY_FILTER_LABELS[filterId];
@@ -8111,16 +8274,21 @@ function UnifiedFlatCatalogPanel({
           </DropdownMenu.Root>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3">
+      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3">
         <div className="mb-3 flex h-[18px] items-center gap-1.5 px-[6px]">
           <span className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#292524]">{panelTitle}</span>
           {recentMode && <CaretDown size={11} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />}
         </div>
-        <div className="space-y-1">
-          {items.map((item) => {
-            const fixed = fixedIds?.has(item.id) ?? false;
-            return <DescriptionQueueRow key={item.id} item={item} selected={item.id === selectedItemId} fixed={fixed} onClick={() => onSelectItem(item, fixed)} />;
-          })}
+        <div>
+          {items.length > 0 && (
+            <VirtualizedDescriptionQueueRows
+              items={items}
+              selectedItemId={selectedItemId}
+              fixedIds={fixedIds}
+              scrollParentRef={listScrollRef}
+              onSelectItem={onSelectItem}
+            />
+          )}
           {items.length === 0 && (
             <div className={cn("px-[6px] py-1", !recentMode && "rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4")}>
               <p className="text-[12px] leading-5 text-[#79716b]">
@@ -8257,28 +8425,37 @@ function OverviewWorkspace({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
-  const scopeSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
-  const scopeIds = getSectionScopeIds(sectionScopeId);
-  const inScope = (item: CatalogItem) => !scopeIds || scopeIds.has(item.sectionId);
-  const filtered = getOverviewItems(filterId, items).filter(inScope);
-  const normalizedQuery = query.trim().toLowerCase();
-  const searched = normalizedQuery
-    ? filtered.filter((item) =>
-        [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
-      )
-    : filtered;
-  const visible = sortItemsByPrice(searched, priceSort);
-  const recentItems = recentPositionIds
-    .map((id) => items.find((item) => item.id === id))
-    .filter((item): item is CatalogItem => {
-      if (!item) return false;
-      return inScope(item);
-    });
+  const scopeSection = useMemo(() => catalogSections.find((section) => section.id === sectionScopeId) ?? null, [sectionScopeId]);
+  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const filtered = useMemo(
+    () => getOverviewItems(filterId, items).filter((item) => !scopeIds || scopeIds.has(item.sectionId)),
+    [filterId, items, scopeIds],
+  );
+  const normalizedQuery = useMemo(() => query.trim().toLowerCase(), [query]);
+  const searched = useMemo(
+    () => normalizedQuery
+      ? filtered.filter((item) =>
+          [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
+        )
+      : filtered,
+    [filtered, normalizedQuery],
+  );
+  const visible = useMemo(() => sortItemsByPrice(searched, priceSort), [searched, priceSort]);
+  const recentItems = useMemo(
+    () => recentPositionIds
+      .map((id) => itemById.get(id))
+      .filter((item): item is CatalogItem => Boolean(item && (!scopeIds || scopeIds.has(item.sectionId)))),
+    [itemById, recentPositionIds, scopeIds],
+  );
   const statusMeta = OVERVIEW_FILTER_META[filterId];
-  const visibleIds = visible.map((item) => item.id);
-  const visibleIdKey = visibleIds.join("|");
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
-  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+  const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
+  const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
+  const allVisibleSelected = useMemo(
+    () => visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id)),
+    [selectedIds, visibleIds],
+  );
+  const someVisibleSelected = useMemo(() => visibleIds.some((id) => selectedIds.has(id)), [selectedIds, visibleIds]);
 
   const resetFilter = () => {
     onQueryChange("");
@@ -8746,16 +8923,14 @@ function OverviewWorkspace({
                         />
                       </div>
                     )}
-                    {visible.map((item) => (
-                      <AuditDishRow
-                        key={item.id}
-                        item={item}
-                        selected={selectedIds.has(item.id)}
-                        selectionMode={selectedIds.size > 0}
-                        onSelectedChange={setItemSelected}
-                        onAction={prepareRowAction}
-                      />
-                    ))}
+                    <VirtualizedAuditRows
+                      items={visible}
+                      selectedIds={selectedIds}
+                      selectionMode={selectedIds.size > 0}
+                      scrollParentRef={scrollContainerRef}
+                      onSelectedChange={setItemSelected}
+                      onAction={prepareRowAction}
+                    />
                   </div>
                   {bulkDialog && (
                     <BulkDialogModal
