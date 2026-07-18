@@ -1497,6 +1497,7 @@ function EmptyCatalog({
 // ── Position editor: back → summary header → tabs ─────────────────────────────
 
 type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
+type SectionEditorTab = "composition" | "basic" | "availability";
 type AvailabilityMode = "always" | "unavailable" | "schedule";
 type UnavailableDisplayMode = "hidden" | "comingSoon";
 type OutsideScheduleMode = "hidden" | "comingSoon";
@@ -1554,6 +1555,14 @@ const CATALOG_SECTION_ORDER_STORAGE_KEY = "tasko.catalog.sectionOrderByParent";
 const CATALOG_ITEM_SECTION_STORAGE_KEY = "tasko.catalog.itemSectionOverrides";
 const CATALOG_SECTION_PARENT_STORAGE_KEY = "tasko.catalog.sectionParentOverrides";
 const CATALOG_RECENT_POSITION_STORAGE_KEY = "tasko.catalog.recentPositionIds";
+const CATALOG_ACTIVE_SECTION_STORAGE_KEY = "tasko.catalog.sections.activeSectionId";
+const CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY = "tasko.catalog.sections.editorTab";
+const CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY = "tasko.catalog.sections.tableQuery";
+const CATALOG_SECTION_TABLE_PRICE_SORT_STORAGE_KEY = "tasko.catalog.sections.tablePriceSort";
+const CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY = "tasko.catalog.sections.editorScrollTop";
+const CATALOG_SECTION_TREE_QUERY_STORAGE_KEY = "tasko.catalog.sections.treeQuery";
+const CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY = "tasko.catalog.sections.treeExpanded";
+const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = "tasko.catalog.sections.treeScrollTop";
 const CATALOG_RECENT_POSITION_LIMIT = 5;
 const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
@@ -4494,13 +4503,19 @@ function UnifiedCatalogTreePanel({
       ? findSectionPath(sections, selectedSectionId)
       : [sections[0]?.id ?? ""];
   const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(initialExpanded);
-  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
+    ...readJsonRecord<Record<string, boolean>>(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, {}),
+    ...initialExpanded,
+  }));
+  const [query, setQuery] = useState(() => readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""));
+  const [sectionSelectQuery, setSectionSelectQuery] = useState("");
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
   const [dropIntent, setDropIntent] = useState<CatalogTreeDropIntent | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
+  const initialPanelScrollTopRef = useRef(readJsonRecord<number>(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, 0));
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
+  const selectionScrollReadyRef = useRef(false);
   const suppressRowClickRef = useRef(false);
   const mixedSectionWarningKeyRef = useRef("");
   const autoExpandTimerRef = useRef<number | null>(null);
@@ -4515,11 +4530,27 @@ function UnifiedCatalogTreePanel({
   } | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const allFlatSections = flattenSections(sections);
-  const focusedSection = scopeSectionId
-    ? allFlatSections.find((section) => section.id === scopeSectionId) ?? null
+  const restrictedScopeSectionId = sectionEditingEnabled ? null : scopeSectionId;
+  const focusedSection = restrictedScopeSectionId
+    ? allFlatSections.find((section) => section.id === restrictedScopeSectionId) ?? null
+    : null;
+  const selectedSection = selectedSectionId
+    ? allFlatSections.find((section) => section.id === selectedSectionId) ?? null
     : null;
   const treeSections = focusedSection ? [focusedSection] : sections;
   const flatSections = flattenSections(treeSections);
+  const sectionDepthById = new Map<string, number>();
+  const collectSectionDepths = (list: TreeSection[], depth = 0) => {
+    list.forEach((section) => {
+      sectionDepthById.set(section.id, depth);
+      collectSectionDepths(section.children ?? [], depth + 1);
+    });
+  };
+  collectSectionDepths(sections);
+  const normalizedSectionSelectQuery = sectionSelectQuery.trim().toLowerCase();
+  const sectionSelectOptions = normalizedSectionSelectQuery
+    ? allFlatSections.filter((section) => section.name.toLowerCase().includes(normalizedSectionSelectQuery))
+    : allFlatSections;
   const sectionById = new Map(flatSections.map((section) => [section.id, section]));
   const directItemsBySection = new Map<string, CatalogItem[]>();
   const itemsBySection = new Map<string, CatalogItem[]>();
@@ -4553,6 +4584,21 @@ function UnifiedCatalogTreePanel({
       mixedSections.map((section) => section.name),
     );
   }, [mixedSectionWarningKey, mixedSections]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, expanded);
+  }, [expanded]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, query);
+  }, [query]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (panelScrollRef.current) panelScrollRef.current.scrollTop = initialPanelScrollTopRef.current;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const aggregateItemCountBySection = new Map<string, number>();
   const getAggregateItemCount = (section: TreeSection): number => {
@@ -4593,13 +4639,18 @@ function UnifiedCatalogTreePanel({
   useEffect(() => {
     const path = selectedItem
       ? findSectionPath(sections, selectedItem.sectionId)
-      : [];
+      : selectedSectionId
+        ? findSectionPath(sections, selectedSectionId)
+        : [];
     if (path.length > 0) {
       setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
     }
+    const shouldScrollToSelection = selectionScrollReadyRef.current || initialPanelScrollTopRef.current <= 0;
+    selectionScrollReadyRef.current = true;
+    if (!shouldScrollToSelection) return;
     const timeout = window.setTimeout(() => selectedRowRef.current?.scrollIntoView({ block: "nearest" }), 0);
     return () => window.clearTimeout(timeout);
-  }, [selectedItem?.id, selectedItem?.sectionId]);
+  }, [selectedItem?.id, selectedItem?.sectionId, selectedSectionId]);
 
   useEffect(() => {
     const focusSectionSorting = (event: Event) => {
@@ -4619,16 +4670,16 @@ function UnifiedCatalogTreePanel({
   }, [sections]);
 
   useEffect(() => {
-    if (!scopeSectionId || focusedSection) return;
+    if (!restrictedScopeSectionId || focusedSection) return;
     onScopeChange(null);
-  }, [focusedSection, scopeSectionId, onScopeChange]);
+  }, [focusedSection, restrictedScopeSectionId, onScopeChange]);
 
   useEffect(() => {
-    if (!scopeSectionId) return;
-    const path = findSectionPath(sections, scopeSectionId);
+    if (!restrictedScopeSectionId) return;
+    const path = findSectionPath(sections, restrictedScopeSectionId);
     if (path.length === 0) return;
     setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
-  }, [sections, scopeSectionId]);
+  }, [sections, restrictedScopeSectionId]);
 
   const toggleSection = (id: string) => {
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
@@ -4676,7 +4727,7 @@ function UnifiedCatalogTreePanel({
     mode: CatalogTreeDropIntent["mode"],
   ) => {
     if (source.id === targetId) return false;
-    if (scopeSectionId === targetId && mode !== "inside") return false;
+    if (restrictedScopeSectionId === targetId && mode !== "inside") return false;
     if (source.kind === "item") return targetKind === "item" ? mode !== "inside" : mode === "inside";
     if (targetKind !== "section") return false;
     const nextParentId = mode === "inside" ? targetId : targetParentId;
@@ -5060,12 +5111,12 @@ function UnifiedCatalogTreePanel({
     const parentId = section.parentId ?? null;
     const isSource = dragSource?.kind === "section" && dragSource.id === section.id;
     const activeDrop = dropIntent?.targetKind === "section" && dropIntent.targetId === section.id ? dropIntent : null;
-    const active = sectionEditingEnabled && selectedSectionId === section.id && !selectedItemId;
+    const active = sectionEditingEnabled && selectedSectionId === section.id;
     const activeCount = getAggregateItemCount(section);
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
     const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
     const addKind = getSectionAddKind(section);
-    const dragEnabled = !normalizedQuery && scopeSectionId !== section.id;
+    const dragEnabled = !normalizedQuery && restrictedScopeSectionId !== section.id;
     const sectionTrailingMeta = sectionEditingEnabled && section.status === "archive" ? (
       <Tooltip label="В архиве" side="top" delayDuration={200}>
         <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
@@ -5245,9 +5296,56 @@ function UnifiedCatalogTreePanel({
     >
       <div className="flex shrink-0 flex-col gap-4 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-5 min-w-0 items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
-            <span className="block truncate">{focusedSection ? focusedSection.name : "По разделам"}</span>
-          </div>
+          <DropdownMenu.Root onOpenChange={(open) => {
+            if (!open) setSectionSelectQuery("");
+          }}>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1 rounded-[6px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <span className="block min-w-0 flex-1 truncate">{selectedSection ? `В разделе: ${selectedSection.name}` : "Выберите раздел"}</span>
+                <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="start">
+              <div className="w-[242px]">
+                <label className="mb-1 flex h-8 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[#79716b]">
+                  <MagnifyingGlass size={13} />
+                  <input
+                    value={sectionSelectQuery}
+                    onChange={(event) => setSectionSelectQuery(event.target.value)}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    placeholder="Найти раздел"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#a8a29e]"
+                  />
+                </label>
+                <div className="max-h-[320px] overflow-y-auto overscroll-contain">
+                  {sectionSelectOptions.map((section) => (
+                    <DropdownMenu.Item
+                      key={section.id}
+                      onSelect={() => onSelectSection(section.id)}
+                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-2 text-[13px] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                    >
+                      <span
+                        className="block h-px shrink-0"
+                        style={{ width: `${(sectionDepthById.get(section.id) ?? 0) * 14}px` }}
+                        aria-hidden="true"
+                      />
+                      <CatalogTreeThumbnail src={section.imageUrl} selected={selectedSectionId === section.id} />
+                      <span className={cn("min-w-0 flex-1 truncate", selectedSectionId === section.id ? "font-medium text-[#292524]" : "text-[#57534d]")}>
+                        {section.name}
+                      </span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{getAggregateItemCount(section)}</span>
+                    </DropdownMenu.Item>
+                  ))}
+                  {sectionSelectOptions.length === 0 && (
+                    <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+                  )}
+                </div>
+              </div>
+            </DropdownContent>
+          </DropdownMenu.Root>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button
@@ -5290,7 +5388,12 @@ function UnifiedCatalogTreePanel({
           )}
         </label>
       </div>
-      <div ref={panelScrollRef} onDragOver={handlePanelDragOver} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-3">
+      <div
+        ref={panelScrollRef}
+        onDragOver={handlePanelDragOver}
+        onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-3"
+      >
         <div className="space-y-1">{treeSections.map((section) => renderSection(section))}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
@@ -5397,11 +5500,11 @@ function SectionEditor({
   compositionQuery: string;
   compositionPriceSort: PriceSortDirection;
   scrollTop: number;
-  activeTab: "composition" | "basic" | "availability";
+  activeTab: SectionEditorTab;
   availabilityMode: AvailabilityMode;
   outsideScheduleMode: OutsideScheduleMode;
   weeklySchedule: WeeklySchedule;
-  onTabChange: (tab: "composition" | "basic" | "availability") => void;
+  onTabChange: (tab: SectionEditorTab) => void;
   onNameChange: (name: string) => void;
   onImageChange: (imageUrl: string | null) => void;
   onAvailabilityModeChange: (mode: AvailabilityMode) => void;
@@ -5437,6 +5540,11 @@ function SectionEditor({
     () => compositionItems.some((item) => selectedIds.has(item.id)),
     [compositionItems, selectedIds],
   );
+  const title = activeTab === "composition"
+    ? compositionTitle
+    : activeTab === "basic"
+      ? `Настройки раздела “${section.name}”`
+      : `Доступность раздела “${section.name}”`;
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -5466,7 +5574,7 @@ function SectionEditor({
         <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
           <div className="flex items-center gap-2 pb-2 pt-6">
             <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium leading-7 text-[#292524]">
-              {activeTab === "composition" ? compositionTitle : section.name}
+              {title}
             </h2>
             {archived && <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium text-[#79716b]">В архиве</span>}
             <DropdownMenu.Root>
@@ -5486,8 +5594,8 @@ function SectionEditor({
             <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
               <div className="flex items-center gap-2 px-3">
                 {([
-                  { id: "composition", label: "Состав" },
-                  { id: "basic", label: "Основное" },
+                  { id: "composition", label: "Позиции" },
+                  { id: "basic", label: "Настройки раздела" },
                   { id: "availability", label: "Доступность" },
                 ] as const).map((tab) => (
                   <button
@@ -5570,7 +5678,7 @@ function SectionEditor({
             </section>
             ) : activeTab === "basic" ? (
             <section>
-              <div className="px-4 py-3 text-[13px] font-medium text-[#292524]">Основное</div>
+              <div className="px-4 py-3 text-[13px] font-medium text-[#292524]">{`Настройки раздела “${section.name}”`}</div>
               <div className="divide-y divide-[#f0efe9]">
                 <div className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
                   <div className="text-[13px] font-medium text-[#44403b]">Иконка раздела</div>
@@ -6214,6 +6322,16 @@ function writeJsonRecord(key: string, value: unknown) {
   }
 }
 
+function readSectionEditorTab() {
+  const tab = readJsonRecord<SectionEditorTab>(CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY, "composition");
+  return tab === "composition" || tab === "basic" || tab === "availability" ? tab : "composition";
+}
+
+function readSectionPriceSort() {
+  const sort = readJsonRecord<PriceSortDirection>(CATALOG_SECTION_TABLE_PRICE_SORT_STORAGE_KEY, "none");
+  return sort === "asc" || sort === "desc" || sort === "none" ? sort : "none";
+}
+
 function normalizeRecentPositionIds(value: unknown, items: CatalogItem[]) {
   if (!Array.isArray(value)) return [];
   const validIds = new Set(items.map((item) => item.id));
@@ -6281,7 +6399,11 @@ function PopulatedWorkspace({
   const directItem = directPositionId ? catalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
   const retainedItem = initialSelectedItemId ? catalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
-  const firstSectionId = retainedItem?.sectionId ?? directItem?.sectionId ?? directSection?.id ?? preferredSectionId;
+  const storedActiveSectionId = readJsonRecord<string | null>(CATALOG_ACTIVE_SECTION_STORAGE_KEY, null);
+  const firstTopLevelSectionId = catalogSections.find((section) => !section.parentId)?.id ?? catalogSections[0]?.id ?? null;
+  const firstSectionId = directSection?.id
+    ?? (storedActiveSectionId && catalogSections.some((section) => section.id === storedActiveSectionId) ? storedActiveSectionId : null)
+    ?? firstTopLevelSectionId;
   const firstItemId = editorNavMode === "entity" || editorNavMode === "unified" ? retainedItem?.id ?? directItem?.id ?? null : preferredItemId;
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
@@ -6348,11 +6470,14 @@ function PopulatedWorkspace({
   const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
-  const [sectionEditorTab, setSectionEditorTab] = useState<"composition" | "basic" | "availability">("composition");
-  const [sectionTableScopeId, setSectionTableScopeId] = useState<string | null>(() => scopeSectionId);
-  const [sectionTableQuery, setSectionTableQuery] = useState("");
-  const [sectionTablePriceSort, setSectionTablePriceSort] = useState<PriceSortDirection>("none");
-  const [sectionEditorScrollTop, setSectionEditorScrollTop] = useState(0);
+  const [sectionEditorTab, setSectionEditorTab] = useState<SectionEditorTab>(() => readSectionEditorTab());
+  const [sectionTableQuery, setSectionTableQuery] = useState(() =>
+    readJsonRecord<string>(CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY, ""),
+  );
+  const [sectionTablePriceSort, setSectionTablePriceSort] = useState<PriceSortDirection>(() => readSectionPriceSort());
+  const [sectionEditorScrollTop, setSectionEditorScrollTop] = useState(() =>
+    readJsonRecord<number>(CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY, 0),
+  );
   const [stopBusyIds, setStopBusyIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
@@ -6436,9 +6561,8 @@ function PopulatedWorkspace({
     }
     return result;
   };
-  const sectionScope = allSections.find((candidate) => candidate.id === sectionTableScopeId) ?? null;
-  const sectionTableScopeIds = getLocalSectionScopeIds(sectionTableScopeId);
-  const sectionTableBaseItems = allItems.filter((item) => !sectionTableScopeIds || sectionTableScopeIds.has(item.sectionId));
+  const sectionTableScopeIds = getLocalSectionScopeIds(selectedSectionId);
+  const sectionTableBaseItems = allItems.filter((item) => sectionTableScopeIds?.has(item.sectionId));
   const normalizedSectionTableQuery = sectionTableQuery.trim().toLowerCase();
   const sectionTableSearchedItems = normalizedSectionTableQuery
     ? sectionTableBaseItems.filter((item) =>
@@ -6446,9 +6570,9 @@ function PopulatedWorkspace({
       )
     : sectionTableBaseItems;
   const sectionTableItems = sortItemsByPrice(sectionTableSearchedItems, sectionTablePriceSort);
-  const sectionTableTitle = sectionScope
-    ? `Позиции раздела “${sectionScope.name}” · ${sectionTableBaseItems.length}`
-    : `Позиции меню · ${sectionTableBaseItems.length}`;
+  const sectionTableTitle = section
+    ? `Позиции раздела “${section.name}” · ${sectionTableBaseItems.length}`
+    : `Позиции раздела · ${sectionTableBaseItems.length}`;
 
   const rememberItem = (id: string) => {
     const it = allItems.find((i) => i.id === id);
@@ -6457,21 +6581,36 @@ function PopulatedWorkspace({
   };
 
   useEffect(() => {
-    setSectionTableScopeId(scopeSectionId);
+    if (selectedSectionId && allSections.some((candidate) => candidate.id === selectedSectionId)) return;
+    const replacement = allSections.find((candidate) => candidate.status !== "archive" && !candidate.parentId)
+      ?? allSections.find((candidate) => candidate.status !== "archive")
+      ?? allSections[0]
+      ?? null;
+    setSelectedSectionId(replacement?.id ?? null);
     setSelectedItemId(null);
-    setSelectedIds(new Set());
     setEditing(false);
-    setSectionEditorTab("composition");
-    setSectionEditorScrollTop(0);
-    if (!scopeSectionId) return;
-    if (!allSections.some((candidate) => candidate.id === scopeSectionId)) return;
-    setSelectedSectionId(scopeSectionId);
-  }, [scopeSectionId]);
+  }, [allSections, selectedSectionId]);
 
   useEffect(() => {
-    setSelectedIds(new Set());
-    setSectionEditorScrollTop(0);
-  }, [scopeSectionId]);
+    if (!selectedSectionId) return;
+    writeJsonRecord(CATALOG_ACTIVE_SECTION_STORAGE_KEY, selectedSectionId);
+  }, [selectedSectionId]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY, sectionEditorTab);
+  }, [sectionEditorTab]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY, sectionTableQuery);
+  }, [sectionTableQuery]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_TABLE_PRICE_SORT_STORAGE_KEY, sectionTablePriceSort);
+  }, [sectionTablePriceSort]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY, sectionEditorScrollTop);
+  }, [sectionEditorScrollTop]);
 
   useEffect(() => {
     if (!resetSignalReadyRef.current) {
@@ -6480,7 +6619,6 @@ function PopulatedWorkspace({
     }
     setSectionTableQuery("");
     setSectionTablePriceSort("none");
-    setSectionTableScopeId(null);
     setSelectedIds(new Set());
     setSelectedItemId(null);
     setEditing(false);
@@ -6491,7 +6629,6 @@ function PopulatedWorkspace({
   // Правило 1: клик по разделу в дереве — только обзор, редактор не открываем.
   const selectSectionOverview = (id: string) => {
     setSelectedSectionId(id);
-    setSectionTableScopeId(id);
     setSelectedIds(new Set());
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
@@ -6499,7 +6636,6 @@ function PopulatedWorkspace({
 
   const openSectionEditor = (id: string) => {
     setSelectedSectionId(id);
-    setSectionTableScopeId(id);
     setSelectedItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
@@ -6515,8 +6651,6 @@ function PopulatedWorkspace({
 
   // Открыть позицию (из обзора или sibling-навигации) → войти в editor mode.
   const openItem = (id: string) => {
-    const item = allItems.find((candidate) => candidate.id === id);
-    if (item) setSelectedSectionId(item.sectionId);
     setSelectedItemId(id);
     setEditing(true);
     rememberItem(id);
@@ -6530,7 +6664,6 @@ function PopulatedWorkspace({
   // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
-    setSectionTableScopeId(id);
     setSelectedIds(new Set());
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
