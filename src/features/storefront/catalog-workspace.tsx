@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -4363,6 +4363,7 @@ function UnifiedCatalogTreePanel({
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const suppressRowClickRef = useRef(false);
+  const mixedSectionWarningKeyRef = useRef("");
   const autoExpandTimerRef = useRef<number | null>(null);
   const autoExpandTargetRef = useRef<string | null>(null);
   const touchDragRef = useRef<{
@@ -4381,14 +4382,38 @@ function UnifiedCatalogTreePanel({
   const treeSections = focusedSection ? [focusedSection] : sections;
   const flatSections = flattenSections(treeSections);
   const sectionById = new Map(flatSections.map((section) => [section.id, section]));
+  const directItemsBySection = new Map<string, CatalogItem[]>();
   const itemsBySection = new Map<string, CatalogItem[]>();
 
   items.forEach((item) => {
+    const directItems = directItemsBySection.get(item.sectionId) ?? [];
+    directItems.push(item);
+    directItemsBySection.set(item.sectionId, directItems);
     if (!includeArchived && item.status === "archive" && item.id !== selectedItemId) return;
     const current = itemsBySection.get(item.sectionId) ?? [];
     current.push(item);
     itemsBySection.set(item.sectionId, current);
   });
+
+  const getSectionAddKind = (section: TreeSection): "section" | "item" | "empty" | "mixed" => {
+    const directSectionCount = section.children?.length ?? 0;
+    const directItemCount = directItemsBySection.get(section.id)?.length ?? 0;
+    if (directSectionCount > 0 && directItemCount > 0) return "mixed";
+    if (directSectionCount > 0) return "section";
+    if (directItemCount > 0) return "item";
+    return "empty";
+  };
+  const mixedSections = allFlatSections.filter((section) => getSectionAddKind(section) === "mixed");
+  const mixedSectionWarningKey = mixedSections.map((section) => section.id).join("|");
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !mixedSectionWarningKey || mixedSectionWarningKeyRef.current === mixedSectionWarningKey) return;
+    mixedSectionWarningKeyRef.current = mixedSectionWarningKey;
+    console.warn(
+      "[catalog-tree] Sections with mixed direct children are not supported for quick add:",
+      mixedSections.map((section) => section.name),
+    );
+  }, [mixedSectionWarningKey, mixedSections]);
 
   const aggregateItemCountBySection = new Map<string, number>();
   const getAggregateItemCount = (section: TreeSection): number => {
@@ -4744,14 +4769,14 @@ function UnifiedCatalogTreePanel({
           activeDrop && !activeDrop.valid && "cursor-not-allowed",
           !dragEnabled && "cursor-default",
         )}
-        style={{ marginLeft: (sectionEditingEnabled ? 30 : 18) + depth * 12 }}
+        style={{ marginLeft: (sectionEditingEnabled ? 42 : 30) + depth * 12 }}
       >
         {activeDrop?.valid && activeDrop.mode !== "inside" && (
           <span className={cn("pointer-events-none absolute left-0 right-1 z-10 h-px bg-[#6d5dfc]", activeDrop.mode === "before" ? "top-0" : "bottom-0")}>
             <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
           </span>
         )}
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e9e9df]">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e9e9df]">
           {item.thumbnailUrl ? (
             <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
           ) : (
@@ -4773,6 +4798,111 @@ function UnifiedCatalogTreePanel({
     );
   };
 
+  const stopSectionControlEvent = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+
+  const renderSectionAddChoice = (
+    label: string,
+    description: string,
+    onSelect: () => void,
+  ) => (
+    <DropdownMenu.Item
+      onSelect={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+      className="flex min-h-[44px] cursor-pointer select-none flex-col justify-center rounded-[8px] px-2.5 py-1.5 outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+    >
+      <span className="text-[13px] font-medium leading-4 text-[#44403b]">{label}</span>
+      <span className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">{description}</span>
+    </DropdownMenu.Item>
+  );
+
+  const renderSectionQuickAdd = (section: TreeSection, addKind: ReturnType<typeof getSectionAddKind>) => {
+    const baseClassName = cn(
+      "flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[18px] font-medium leading-none text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+      addKind === "mixed" && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#79716b]",
+    );
+    const commonProps = {
+      type: "button" as const,
+      "data-no-tree-drag": true,
+      draggable: false,
+      onPointerDown: stopSectionControlEvent,
+    };
+
+    if (addKind === "section") {
+      return (
+        <Tooltip label="Добавить подраздел" side="top" delayDuration={200}>
+          <button
+            {...commonProps}
+            aria-label={`Добавить подраздел в раздел “${section.name}”`}
+            className={baseClassName}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSectionAction(section, "Добавить подраздел");
+            }}
+          >
+            ＋
+          </button>
+        </Tooltip>
+      );
+    }
+
+    if (addKind === "item") {
+      return (
+        <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
+          <button
+            {...commonProps}
+            aria-label={`Добавить позицию в раздел “${section.name}”`}
+            className={baseClassName}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddPosition(section.id);
+            }}
+          >
+            ＋
+          </button>
+        </Tooltip>
+      );
+    }
+
+    if (addKind === "mixed") {
+      return (
+        <Tooltip label="Смешанные прямые дети: используйте меню действий" side="top" delayDuration={200}>
+          <button
+            {...commonProps}
+            disabled
+            aria-label={`Нельзя быстро добавить в раздел “${section.name}”: смешанная структура`}
+            className={baseClassName}
+          >
+            ＋
+          </button>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            {...commonProps}
+            title="Добавить в раздел"
+            aria-label={`Добавить в раздел “${section.name}”`}
+            className={baseClassName}
+            onClick={(event) => event.stopPropagation()}
+          >
+            ＋
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          {renderSectionAddChoice("Добавить подраздел", "Создать вложенный раздел", () => onSectionAction(section, "Добавить подраздел"))}
+          {renderSectionAddChoice("Добавить позицию", "Добавить блюдо или товар", () => onAddPosition(section.id))}
+        </DropdownContent>
+      </DropdownMenu.Root>
+    );
+  };
+
   const renderSection = (section: TreeSection, depth = 0): ReactNode => {
     if (normalizedQuery && !visibleSectionIds.has(section.id)) return null;
     const sectionItems = orderSectionItems(itemsBySection.get(section.id) ?? [], positionOrderBySection[section.id]);
@@ -4787,6 +4917,7 @@ function UnifiedCatalogTreePanel({
     const activeCount = getAggregateItemCount(section);
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
     const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
+    const addKind = getSectionAddKind(section);
     const dragEnabled = !normalizedQuery && scopeSectionId !== section.id;
     const sectionIcon = section.imageUrl ? (
       <img src={section.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -4854,6 +4985,7 @@ function UnifiedCatalogTreePanel({
             <button
               type="button"
               data-no-tree-drag
+              draggable={false}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleSection(section.id);
@@ -4862,27 +4994,21 @@ function UnifiedCatalogTreePanel({
               aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
               className="grid h-7 w-7 shrink-0 place-items-center rounded-[6px] text-[#79716b] transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
-              {!isExpanded && (
-                <span className="col-start-1 row-start-1 flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#a8a29e] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
-                  {sectionIcon}
-                </span>
-              )}
               <CaretRight
-                size={12}
+                size={13}
                 className={cn(
-                  "col-start-1 row-start-1 transition-all",
-                  isExpanded ? "rotate-90 opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                  "col-start-1 row-start-1 opacity-100 transition-transform",
+                  isExpanded && "rotate-90",
                 )}
               />
             </button>
           ) : (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-              <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#a8a29e]">
-                {sectionIcon}
-              </span>
-            </span>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center" aria-hidden="true" />
           )}
-          <div className="flex h-full min-w-0 flex-1 items-center gap-2 text-left">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
+            {sectionIcon}
+          </span>
+          <div className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left">
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{section.name}</span>
             {sectionEditingEnabled && section.status === "archive" && (
               <Tooltip label="В архиве" side="top" delayDuration={200}>
@@ -4900,39 +5026,50 @@ function UnifiedCatalogTreePanel({
               </Tooltip>
             )}
           </div>
-          <div className="grid w-7 shrink-0 grid-cols-1 items-center pr-1">
-            <span className="col-start-1 row-start-1 justify-self-end text-[11px] tabular-nums text-[#a8a29e] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+          <div className="flex h-full w-[88px] shrink-0 items-center justify-end gap-0.5 pr-1">
+            <div
+              className={cn(
+                "pointer-events-none flex h-full w-[58px] shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                active && "pointer-events-auto opacity-100",
+              )}
+            >
+              {renderSectionQuickAdd(section, addKind)}
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    data-no-tree-drag
+                    draggable={false}
+                    aria-label={`Действия с разделом ${section.name}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <DotsThreeVertical size={14} weight="bold" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownContent align="end">
+                  {(addKind === "section" || addKind === "empty") && (
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                  )}
+                  {(addKind === "item" || addKind === "empty") && (
+                    <DropdownActionItem onSelect={() => onAddPosition(section.id)}>Добавить позицию</DropdownActionItem>
+                  )}
+                  {addKind !== "mixed" && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                  <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
+                  <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
+                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                  {section.status === "archive" ? (
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
+                  ) : (
+                    <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
+                  )}
+                </DropdownContent>
+              </DropdownMenu.Root>
+            </div>
+            <span className="w-6 shrink-0 text-right text-[11px] tabular-nums text-[#a8a29e]">
               {activeCount}
             </span>
-            <div className="pointer-events-none col-start-1 row-start-1 flex justify-end opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-              <div className="flex">
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger asChild>
-                    <button
-                      type="button"
-                      data-no-tree-drag
-                      aria-label={`Действия с разделом ${section.name}`}
-                      onClick={(event) => event.stopPropagation()}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] hover:bg-white hover:text-[#292524] focus-visible:outline-none"
-                    >
-                      <DotsThreeVertical size={14} weight="bold" />
-                    </button>
-                  </DropdownMenu.Trigger>
-                  <DropdownContent align="end">
-                    <DropdownActionItem onSelect={() => onSectionAction(section, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onAddPosition(section.id)}>Добавить позицию</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    {section.status === "archive" ? (
-                      <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
-                    ) : (
-                      <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
-                    )}
-                  </DropdownContent>
-                </DropdownMenu.Root>
-              </div>
-            </div>
           </div>
         </div>
         {isExpanded && (
@@ -6041,6 +6178,7 @@ function PopulatedWorkspace({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
   const [sectionEditorTab, setSectionEditorTab] = useState<"composition" | "basic" | "availability">("composition");
+  const [sectionTableScopeId, setSectionTableScopeId] = useState<string | null>(() => scopeSectionId);
   const [sectionTableQuery, setSectionTableQuery] = useState("");
   const [sectionTablePriceSort, setSectionTablePriceSort] = useState<PriceSortDirection>("none");
   const [sectionEditorScrollTop, setSectionEditorScrollTop] = useState(0);
@@ -6127,8 +6265,8 @@ function PopulatedWorkspace({
     }
     return result;
   };
-  const sectionScope = allSections.find((candidate) => candidate.id === scopeSectionId) ?? null;
-  const sectionTableScopeIds = getLocalSectionScopeIds(scopeSectionId);
+  const sectionScope = allSections.find((candidate) => candidate.id === sectionTableScopeId) ?? null;
+  const sectionTableScopeIds = getLocalSectionScopeIds(sectionTableScopeId);
   const sectionTableBaseItems = allItems.filter((item) => !sectionTableScopeIds || sectionTableScopeIds.has(item.sectionId));
   const normalizedSectionTableQuery = sectionTableQuery.trim().toLowerCase();
   const sectionTableSearchedItems = normalizedSectionTableQuery
@@ -6147,15 +6285,16 @@ function PopulatedWorkspace({
   };
 
   useEffect(() => {
-    if (!scopeSectionId || scopeSectionId === selectedSectionId) return;
-    if (!allSections.some((candidate) => candidate.id === scopeSectionId)) return;
-    setSelectedSectionId(scopeSectionId);
+    setSectionTableScopeId(scopeSectionId);
     setSelectedItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
-  }, [scopeSectionId, selectedSectionId, allSections]);
+    if (!scopeSectionId) return;
+    if (!allSections.some((candidate) => candidate.id === scopeSectionId)) return;
+    setSelectedSectionId(scopeSectionId);
+  }, [scopeSectionId]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -6169,6 +6308,7 @@ function PopulatedWorkspace({
     }
     setSectionTableQuery("");
     setSectionTablePriceSort("none");
+    setSectionTableScopeId(null);
     setSelectedIds(new Set());
     setSelectedItemId(null);
     setEditing(false);
@@ -6179,18 +6319,18 @@ function PopulatedWorkspace({
   // Правило 1: клик по разделу в дереве — только обзор, редактор не открываем.
   const selectSectionOverview = (id: string) => {
     setSelectedSectionId(id);
+    setSectionTableScopeId(id);
     setSelectedIds(new Set());
-    onScopeChange(id);
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
   };
 
   const openSectionEditor = (id: string) => {
     setSelectedSectionId(id);
+    setSectionTableScopeId(id);
     setSelectedItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
-    onScopeChange(id);
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
     if (editorNavMode === "entity") {
@@ -6218,8 +6358,8 @@ function PopulatedWorkspace({
   // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
   const selectSectionInEditor = (id: string) => {
     setSelectedSectionId(id);
+    setSectionTableScopeId(id);
     setSelectedIds(new Set());
-    onScopeChange(id);
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
     const items = allItems.filter((item) => item.sectionId === id);
