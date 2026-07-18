@@ -4181,34 +4181,29 @@ function SectionBulkToolbar({
         {count} {plural(count, "выбрана", "выбраны", "выбрано")}
       </button>
       <ToolbarDivider />
+      <ToolbarDropdown label="Статус">
+        <DropdownActionItem onSelect={() => onAction("В меню")}>В меню</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("В архив")} tone="danger">В архив</DropdownActionItem>
+      </ToolbarDropdown>
+      <ToolbarDivider />
       <ToolbarDropdown label="Доступность">
         <DropdownActionItem onSelect={() => onAction("Поставить на стоп")}>Поставить на стоп</DropdownActionItem>
         <DropdownActionItem onSelect={() => onAction("Убрать со стопа")}>Убрать со стопа</DropdownActionItem>
         <DropdownActionItem onSelect={() => onAction("Скоро будет")}>Скоро будет</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("По расписанию")}>По расписанию</DropdownActionItem>
       </ToolbarDropdown>
       <ToolbarDivider />
-      <ToolbarDropdown label="Переместить">
-        <div className="max-h-[260px] overflow-y-auto">
-          {catalogSections.slice(0, 16).map((section) => (
-            <DropdownActionItem key={section.id} onSelect={() => onAction(`Переместить в ${section.name}`)}>
-              <span className="flex w-full items-center justify-between gap-3">
-                <span className="min-w-0 truncate">{section.name}</span>
-                <span className="text-[12px] text-[#a8a29e]">
-                  {catalogItems.filter((item) => item.sectionId === section.id).length}
-                </span>
-              </span>
-            </DropdownActionItem>
-          ))}
-        </div>
+      <ToolbarDropdown label="Скидка">
+        <DropdownActionItem onSelect={() => onAction("Задать скидку")}>Задать скидку</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("Убрать скидку")}>Убрать скидку</DropdownActionItem>
       </ToolbarDropdown>
       <ToolbarDivider />
-      <button
-        type="button"
-        onClick={() => onAction("Архивировать")}
-        className="flex h-full items-center px-2.5 text-[13px] font-medium text-[#9f1239] transition hover:bg-white/70"
-      >
-        Архивировать
-      </button>
+      <ToolbarDropdown label="Ещё">
+        <DropdownActionItem onSelect={() => onAction("Добавить тег")}>Добавить тег</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("Дублировать")}>Дублировать</DropdownActionItem>
+        <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+        <DropdownActionItem onSelect={() => onAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
+      </ToolbarDropdown>
       <ToolbarDivider />
       <button
         type="button"
@@ -5065,12 +5060,16 @@ function SectionEditor({
   onAddPosition,
   onOpenItem,
   onOpenSection,
-  onReorderItem,
-  onReorderSection,
   getSectionDirectChildCount,
   onArchive,
   onRestore,
   onAction,
+  selectedIds,
+  onSelectedChange,
+  onSelectAll,
+  onClearSelection,
+  onBulkAction,
+  onItemAction,
 }: {
   section: TreeSection;
   childSections: TreeSection[];
@@ -5088,21 +5087,27 @@ function SectionEditor({
   onAddPosition: () => void;
   onOpenItem: (id: string) => void;
   onOpenSection: (id: string) => void;
-  onReorderItem: (draggedId: string, targetId: string) => void;
-  onReorderSection: (draggedId: string, targetId: string) => void;
   getSectionDirectChildCount: (sectionId: string) => number;
   onArchive: () => void;
   onRestore: () => void;
   onAction: (action: string) => void;
+  selectedIds: Set<string>;
+  onSelectedChange: (id: string, selected: boolean) => void;
+  onSelectAll: (selected: boolean) => void;
+  onClearSelection: () => void;
+  onBulkAction: (action: string) => void;
+  onItemAction: (item: CatalogItem, action: string) => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const [draggedCompositionRow, setDraggedCompositionRow] = useState<{ type: "item" | "section"; id: string } | null>(null);
-  const [dragOverCompositionRow, setDragOverCompositionRow] = useState<{ type: "item" | "section"; id: string } | null>(null);
   const archived = section.status === "archive";
   const compositionRows = [
-    ...compositionItems.map((item) => ({ type: "item" as const, id: item.id, item })),
     ...childSections.map((child) => ({ type: "section" as const, id: child.id, section: child })),
+    ...compositionItems.map((item) => ({ type: "item" as const, id: item.id, item })),
   ];
+  const selectedCompositionIds = new Set(compositionItems.map((item) => item.id).filter((id) => selectedIds.has(id)));
+  const selectedCount = selectedCompositionIds.size;
+  const allSelected = compositionItems.length > 0 && compositionItems.every((item) => selectedIds.has(item.id));
+  const someSelected = compositionItems.some((item) => selectedIds.has(item.id));
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -5115,23 +5120,12 @@ function SectionEditor({
     reader.readAsDataURL(file);
   };
 
-  useEffect(() => {
-    setDraggedCompositionRow(null);
-    setDragOverCompositionRow(null);
-  }, [section.id]);
-
   const renderCompositionStatus = (item: CatalogItem) => {
-    if (item.status === "stopped") return <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Стоп</span>;
-    if (item.status === "coming-soon") return <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Скоро</span>;
-    if (item.status === "archive") return <Archive size={13} className="text-[#a8a29e]" />;
-    if (item.scheduled) return <Clock size={13} className="text-[#a8a29e]" />;
+    if (item.status === "stopped") return <StatusBadge label="На стопе" />;
+    if (item.status === "coming-soon") return <StatusBadge label="Скоро будет" />;
+    if (item.status === "archive") return <StatusBadge label="В архиве" />;
+    if (item.scheduled) return <StatusBadge label="С расписанием" />;
     return null;
-  };
-
-  const handleCompositionDrop = (target: { type: "item" | "section"; id: string }) => {
-    if (!draggedCompositionRow || draggedCompositionRow.id === target.id || draggedCompositionRow.type !== target.type) return;
-    if (target.type === "item") onReorderItem(draggedCompositionRow.id, target.id);
-    else onReorderSection(draggedCompositionRow.id, target.id);
   };
 
   return (
@@ -5189,7 +5183,7 @@ function SectionEditor({
                 <div className="min-w-0">
                   <div className="text-[13px] font-medium text-[#292524]">Состав раздела</div>
                   <div className="mt-0.5 truncate text-[12px] text-[#a8a29e]">
-                    {compositionRows.length} {plural(compositionRows.length, "элемент", "элемента", "элементов")} в порядке витрины
+                    {compositionRows.length} {plural(compositionRows.length, "элемент", "элемента", "элементов")} прямого состава
                   </div>
                 </div>
                 {!archived && (
@@ -5212,102 +5206,116 @@ function SectionEditor({
                   </div>
                 </div>
               ) : (
-                <div className="divide-y divide-[#f0efe9]">
+                <div>
+                  {selectedCount > 0 && (
+                    <div className="border-b border-[#eceae7] px-3 py-2">
+                      <SectionBulkToolbar
+                        count={selectedCount}
+                        checked={allSelected}
+                        indeterminate={!allSelected && someSelected}
+                        onSelectAll={onSelectAll}
+                        onClear={onClearSelection}
+                        onAction={onBulkAction}
+                      />
+                    </div>
+                  )}
+                  <div className="grid h-9 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#eceae7] px-3 text-[12px] leading-4 text-[#79716b]">
+                    <div className="pl-[26px]">Элемент</div>
+                    <div className="text-right">Цена / состав</div>
+                    <div />
+                  </div>
                   {compositionRows.map((row) => {
-                    const isDropTarget = dragOverCompositionRow?.type === row.type && dragOverCompositionRow.id === row.id && draggedCompositionRow?.id !== row.id;
                     if (row.type === "section") {
                       const child = row.section;
                       const childCount = getSectionDirectChildCount(child.id);
                       return (
                         <div
                           key={`section-${child.id}`}
-                          onDragOver={(event) => {
-                            if (!draggedCompositionRow || draggedCompositionRow.type !== "section" || draggedCompositionRow.id === child.id) return;
-                            event.preventDefault();
-                            event.dataTransfer.dropEffect = "move";
-                            setDragOverCompositionRow({ type: "section", id: child.id });
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            handleCompositionDrop({ type: "section", id: child.id });
-                            setDraggedCompositionRow(null);
-                            setDragOverCompositionRow(null);
-                          }}
-                          className={cn("group flex h-10 items-center gap-2 px-3 transition hover:bg-[#fafaf9]", isDropTarget && "bg-[#f5f3ff]")}
+                          className="group grid h-12 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#f0efe9] px-3 transition last:border-b-0 hover:bg-[#fafaf9]"
                         >
-                          <span
-                            draggable
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`Изменить порядок подраздела ${child.name}`}
-                            onDragStart={(event) => {
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData("text/plain", child.id);
-                              setDraggedCompositionRow({ type: "section", id: child.id });
-                            }}
-                            onDragEnd={() => {
-                              setDraggedCompositionRow(null);
-                              setDragOverCompositionRow(null);
-                            }}
-                            className="flex h-full w-5 shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-60 transition hover:text-[#57534d] active:cursor-grabbing"
-                          >
-                            <DotsSixVertical size={13} />
-                          </span>
-                          <button type="button" onClick={() => onOpenSection(child.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f1f1ea] text-[#79716b]">
-                              {child.imageUrl ? <img src={child.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ForkKnife size={13} weight="fill" />}
+                          <button type="button" onClick={() => onOpenSection(child.id)} className="flex h-full min-w-0 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-[#a8a29e]">
+                              <CaretRight size={14} weight="bold" />
+                            </span>
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f1f1ea] text-[#79716b]">
+                              {child.imageUrl ? <img src={child.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ForkKnife size={14} weight="fill" />}
                             </span>
                             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{child.name}</span>
-                            <span className="shrink-0 whitespace-nowrap text-[12px] text-[#a8a29e]">{childCount} {plural(childCount, "элемент", "элемента", "элементов")}</span>
                           </button>
+                          <div className="text-right text-[12px] text-[#a8a29e]">{childCount} {plural(childCount, "элемент", "элемента", "элементов")}</div>
+                          <div className="flex justify-end">
+                            <DropdownMenu.Root>
+                              <DropdownMenu.Trigger asChild>
+                                <button type="button" aria-label={`Действия с подразделом ${child.name}`} className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                                  <DotsThreeVertical size={17} weight="bold" />
+                                </button>
+                              </DropdownMenu.Trigger>
+                              <DropdownContent align="end">
+                                <DropdownActionItem onSelect={() => onOpenSection(child.id)}>Открыть подраздел</DropdownActionItem>
+                                <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
+                                <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
+                                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                                <DropdownActionItem tone="danger" onSelect={() => onAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
+                              </DropdownContent>
+                            </DropdownMenu.Root>
+                          </div>
                         </div>
                       );
                     }
                     const item = row.item;
                     const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
+                    const selected = selectedIds.has(item.id);
                     return (
                       <div
                         key={`item-${item.id}`}
-                        onDragOver={(event) => {
-                          if (!draggedCompositionRow || draggedCompositionRow.type !== "item" || draggedCompositionRow.id === item.id) return;
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "move";
-                          setDragOverCompositionRow({ type: "item", id: item.id });
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          handleCompositionDrop({ type: "item", id: item.id });
-                          setDraggedCompositionRow(null);
-                          setDragOverCompositionRow(null);
-                        }}
-                        className={cn("group flex h-10 items-center gap-2 px-3 transition hover:bg-[#fafaf9]", isDropTarget && "bg-[#f5f3ff]")}
+                        className={cn(
+                          "group grid h-12 grid-cols-[minmax(0,1fr)_92px_44px] items-center border-b border-[#f0efe9] px-3 transition last:border-b-0 hover:bg-[#fafaf9]",
+                          selected && "bg-[#f7f6f2]",
+                        )}
                       >
-                        <span
-                          draggable
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Изменить порядок позиции ${item.title}`}
-                          onDragStart={(event) => {
-                            event.dataTransfer.effectAllowed = "move";
-                            event.dataTransfer.setData("text/plain", item.id);
-                            setDraggedCompositionRow({ type: "item", id: item.id });
-                          }}
-                          onDragEnd={() => {
-                            setDraggedCompositionRow(null);
-                            setDragOverCompositionRow(null);
-                          }}
-                          className="flex h-full w-5 shrink-0 cursor-grab items-center justify-center text-[#a8a29e] opacity-60 transition hover:text-[#57534d] active:cursor-grabbing"
-                        >
-                          <DotsSixVertical size={13} />
-                        </span>
-                        <button type="button" onClick={() => onOpenItem(item.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                        <div className="flex h-full min-w-0 items-center gap-2">
+                          <span
+                            className="flex h-full w-[18px] shrink-0 items-center"
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
+                            <TableCheckbox
+                              ariaLabel={`Выбрать ${item.title}`}
+                              checked={selected}
+                              quiet
+                              hideQuietUntilInteractive
+                              forceVisible={selectedCount > 0}
+                              onChange={(checked) => onSelectedChange(item.id, checked)}
+                            />
+                          </span>
+                          <button type="button" onClick={() => onOpenItem(item.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
                           <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#f5f5f4]">
                             {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageBroken size={13} className="text-[#a8a29e]" />}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#292524]">{item.title}</span>
-                          <span className="shrink-0 whitespace-nowrap text-[13px] text-[#44403b]">{item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}</span>
-                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center whitespace-nowrap">{renderCompositionStatus(item)}</span>
-                        </button>
+                            <span className="min-w-0 truncate text-[13px] font-medium text-[#292524]">{item.title}</span>
+                            <span className="flex h-5 shrink-0 items-center whitespace-nowrap">{renderCompositionStatus(item)}</span>
+                          </button>
+                        </div>
+                        <div className="text-right text-[13px] text-[#44403b]">{item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}</div>
+                        <div className="flex justify-end">
+                          <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                              <button type="button" aria-label={`Действия для ${item.title}`} className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                                <DotsThreeVertical size={17} weight="bold" />
+                              </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownContent align="end">
+                              <DropdownActionItem onSelect={() => onOpenItem(item.id)}>Открыть позицию</DropdownActionItem>
+                              <DropdownActionItem onSelect={() => onItemAction(item, item.status === "stopped" ? "Убрать со стопа" : "На стоп")}>
+                                {item.status === "stopped" ? "Убрать со стопа" : "На стоп"}
+                              </DropdownActionItem>
+                              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                              <DropdownActionItem tone={item.status === "archive" ? "default" : "danger"} onSelect={() => onItemAction(item, item.status === "archive" ? "Восстановить" : "В архив")}>
+                                {item.status === "archive" ? "Восстановить" : "В архив"}
+                              </DropdownActionItem>
+                            </DropdownContent>
+                          </DropdownMenu.Root>
+                        </div>
                       </div>
                     );
                   })}
@@ -6208,22 +6216,6 @@ function PopulatedWorkspace({
     setFeedback("Порядок позиций изменён");
   };
 
-  const reorderSections = (parentId: string | null, draggedId: string, targetId: string) => {
-    if (draggedId === targetId) return;
-    const ids = allSections
-      .filter((candidate) => (candidate.parentId ?? null) === parentId && candidate.status !== "archive")
-      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
-      .map((candidate) => candidate.id);
-    const fromIndex = ids.indexOf(draggedId);
-    const toIndex = ids.indexOf(targetId);
-    if (fromIndex < 0 || toIndex < 0) return;
-    const nextIds = [...ids];
-    const [draggedIdValue] = nextIds.splice(fromIndex, 1);
-    nextIds.splice(toIndex, 0, draggedIdValue);
-    setSectionOrderByParent((current) => ({ ...current, [parentId ?? "__root__"]: nextIds }));
-    setFeedback("Порядок разделов изменён");
-  };
-
   const moveTreeItem = (
     draggedId: string,
     targetSectionId: string,
@@ -6602,18 +6594,64 @@ function PopulatedWorkspace({
     setFeedback("Позиция удалена навсегда");
   };
   const handleBulkAction = (action: string) => {
-    showPlaceholderFeedback(`${action}: ${selectedIds.size} ${plural(selectedIds.size, "позиция", "позиции", "позиций")}`);
-    if (action === "Архивировать") {
+    const selectedCount = selectedIds.size;
+    const selectedLabel = `${selectedCount} ${plural(selectedCount, "позиция", "позиции", "позиций")}`;
+    const setSelectedStatus = (status: CatalogItem["status"], message: string) => {
       setItemStatusOverrides((prev) => {
         const next = { ...prev };
         selectedIds.forEach((id) => {
-          next[id] = "archive";
+          next[id] = status;
         });
         return next;
       });
-      setArchiveOpen(true);
+      setFeedback(message);
       setSelectedIds(new Set());
+    };
+
+    if (action === "В меню" || action === "Убрать со стопа") {
+      setSelectedStatus("active", `${selectedLabel} возвращены в меню`);
+      setItemScheduledOverrides((prev) => {
+        const next = { ...prev };
+        selectedIds.forEach((id) => {
+          next[id] = false;
+        });
+        return next;
+      });
+      return;
     }
+    if (action === "В архив" || action === "Архивировать") {
+      setSelectedStatus("archive", `${selectedLabel} перенесены в архив`);
+      setArchiveOpen(true);
+      return;
+    }
+    if (action === "Поставить на стоп") {
+      setSelectedStatus("stopped", `${selectedLabel} поставлены на стоп`);
+      return;
+    }
+    if (action === "Скоро будет") {
+      setSelectedStatus("coming-soon", `${selectedLabel} отмечены как скоро доступные`);
+      return;
+    }
+    if (action === "По расписанию") {
+      setItemStatusOverrides((prev) => {
+        const next = { ...prev };
+        selectedIds.forEach((id) => {
+          next[id] = "active";
+        });
+        return next;
+      });
+      setItemScheduledOverrides((prev) => {
+        const next = { ...prev };
+        selectedIds.forEach((id) => {
+          next[id] = true;
+        });
+        return next;
+      });
+      setFeedback(`${selectedLabel} доступны по расписанию`);
+      setSelectedIds(new Set());
+      return;
+    }
+    showPlaceholderFeedback(`${action}: ${selectedLabel}`);
   };
 
   useEffect(() => {
@@ -6735,12 +6773,20 @@ function PopulatedWorkspace({
               onAddPosition={() => addPositionToSection(section.id)}
               onOpenItem={openItem}
               onOpenSection={openSectionEditor}
-              onReorderItem={(draggedId, targetId) => reorderItemsInSection(section.id, draggedId, targetId)}
-              onReorderSection={(draggedId, targetId) => reorderSections(section.id, draggedId, targetId)}
               getSectionDirectChildCount={getSectionDirectChildCount}
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
               onAction={(action) => handleUnifiedSectionAction(section, action)}
+              selectedIds={selectedIds}
+              onSelectedChange={setItemSelected}
+              onSelectAll={(selected) => setSelectedIds(selected ? new Set(sectionItems.map((item) => item.id)) : new Set())}
+              onClearSelection={() => setSelectedIds(new Set())}
+              onBulkAction={handleBulkAction}
+              onItemAction={(item, action) => {
+                if (action === "На стоп" || action === "Убрать со стопа") toggleStopItem(item);
+                if (action === "В архив") archiveItem(item);
+                if (action === "Восстановить") restoreItem(item);
+              }}
             />
           ) : (
             <UnifiedCatalogSelectionState />
@@ -6853,6 +6899,7 @@ function TableCheckbox({
   onChange,
   quiet = false,
   forceVisible = false,
+  hideQuietUntilInteractive = false,
 }: {
   ariaLabel: string;
   checked?: boolean;
@@ -6860,6 +6907,7 @@ function TableCheckbox({
   onChange?: (checked: boolean) => void;
   quiet?: boolean;
   forceVisible?: boolean;
+  hideQuietUntilInteractive?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -6875,7 +6923,8 @@ function TableCheckbox({
       aria-label={ariaLabel}
       className={cn(
         "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#a8a29e] bg-white accent-[#a8a29e] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        quiet && !checked && !indeterminate && !forceVisible && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
+        quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
+        quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
         (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
       )}
     />
