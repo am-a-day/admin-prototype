@@ -5443,9 +5443,6 @@ function UnifiedCatalogTreePanel({
       onPointerCancel={finishTouchDrag}
     >
       <div className="flex shrink-0 flex-col gap-3 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
-          Каталог
-        </div>
         <div className="flex h-8 min-w-0 items-center justify-between gap-2">
           <DropdownMenu.Root onOpenChange={(open) => {
             if (!open) setSectionSelectQuery("");
@@ -8515,9 +8512,6 @@ function UnifiedFlatCatalogPanel({
   return (
     <aside className="flex w-[251px] shrink-0 flex-col gap-1 overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
       <div className="shrink-0 px-3 pb-3">
-        <div className="mb-3 px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
-          Каталог
-        </div>
         <div className="mb-3">
           <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         </div>
