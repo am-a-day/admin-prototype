@@ -460,14 +460,12 @@ function AppShell() {
       if (!catalogFlatModeRef.current) {
         previewBeforeCatalogFlatRef.current = previewCollapsed;
         catalogFlatModeRef.current = true;
-        setPreviewCollapsed(true);
       }
       return;
     }
 
     if (catalogFlatModeRef.current) {
       catalogFlatModeRef.current = false;
-      setPreviewCollapsed(previewBeforeCatalogFlatRef.current);
     }
   };
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
