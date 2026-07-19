@@ -5344,7 +5344,7 @@ function UnifiedCatalogTreePanel({
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-1 rounded-[6px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <span className="block min-w-0 flex-1 truncate">Перейти к разделу</span>
+                <span className="block min-w-0 truncate">Разделы</span>
                 <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
               </button>
             </DropdownMenu.Trigger>
