@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Archive,
+  Asterisk,
   ArrowCounterClockwise,
   ArrowLeft,
   CaretLeft,
@@ -50,7 +51,6 @@ export type CatalogPhase = "empty" | "has-sections" | "has-items";
 export type CatalogTab = "sections" | "overview" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "sections", label: "Разделы" },
-  { id: "overview", label: "Позиции" },
   { id: "upsell", label: "Рекомендации" },
 ];
 
@@ -176,7 +176,7 @@ type PanelRow = {
   id: string;
   label: string;
   count?: number;
-  icon?: string;
+  icon?: ReactNode;
   imageUrl?: string | null;
   accent?: boolean;
 };
@@ -671,6 +671,18 @@ type DescriptionAuditQueueState = {
   currentBucket: "remaining" | "fixed";
 };
 type DescriptionSaveStatus = "idle" | "saving" | "saved";
+type OverviewWorkspacePersistedState = {
+  items: CatalogItem[];
+  queue: DescriptionAuditQueueState | null;
+  queueUpsellByItem: CatalogUpsellStateByItem;
+  descriptionSaveStateById: Record<string, DescriptionSaveStatus>;
+  priceSort: PriceSortDirection;
+  selectedIds: string[];
+  recentPositionIds: string[];
+  bulkDialog: BulkDialog | null;
+  feedback: string;
+  scrollTop: number | null;
+};
 
 const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
   "quick:no-description",
@@ -4471,6 +4483,7 @@ function UnifiedCatalogTreePanel({
   onSelectSection,
   onSelectItem,
   onScopeChange,
+  onOpenAllPositions,
   onAddSection,
   onAddPositionRequest,
   onAddPosition,
@@ -4489,6 +4502,7 @@ function UnifiedCatalogTreePanel({
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
+  onOpenAllPositions: () => void;
   onAddSection: () => void;
   onAddPositionRequest: () => void;
   onAddPosition: (sectionId: string) => void;
@@ -5334,18 +5348,24 @@ function UnifiedCatalogTreePanel({
       onPointerUp={finishTouchDrag}
       onPointerCancel={finishTouchDrag}
     >
-      <div className="flex shrink-0 flex-col gap-4 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="flex h-5 min-w-0 items-start justify-between gap-4">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-[#e7e5e4] px-3 pb-3">
+        <div className="px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
+          Каталог
+        </div>
+        <div className="flex h-8 min-w-0 items-center justify-between gap-2">
           <DropdownMenu.Root onOpenChange={(open) => {
             if (!open) setSectionSelectQuery("");
           }}>
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center gap-1 rounded-[6px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-[6px] text-left text-[#57534d] transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
-                <span className="block min-w-0 truncate">Разделы</span>
-                <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
+                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-[3px] bg-white">
+                  <ForkKnife size={12} weight="fill" />
+                </span>
+                <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]">Выбрать раздел</span>
+                <CaretDown size={12} weight="bold" className="shrink-0 text-[#79716b]" />
               </button>
             </DropdownMenu.Trigger>
             <DropdownContent align="start">
@@ -5418,6 +5438,19 @@ function UnifiedCatalogTreePanel({
               )}
             </DropdownContent>
           </DropdownMenu.Root>
+        </div>
+        <div className="space-y-1">
+          <CatalogPanelRow
+            row={{ id: "sections", label: "Разделы", icon: <List size={14} /> }}
+            selected
+            onClick={() => {
+              if (selectedSectionId) navigateToSectionAnchor(selectedSectionId);
+            }}
+          />
+          <CatalogPanelRow
+            row={{ id: "all-positions", label: "Все позиции", count: items.length, icon: <Asterisk size={14} /> }}
+            onClick={onOpenAllPositions}
+          />
         </div>
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />
@@ -6412,12 +6445,14 @@ function PopulatedWorkspace({
   resetSignal,
   initialSelectedItemId,
   onScopeChange,
+  onOpenAllPositions,
 }: {
   sections: TreeSection[];
   scopeSectionId: string | null;
   resetSignal: number;
   initialSelectedItemId: string | null;
   onScopeChange: (id: string | null) => void;
+  onOpenAllPositions: () => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -7223,6 +7258,7 @@ function PopulatedWorkspace({
             onSelectSection={openSectionEditor}
             onSelectItem={openItem}
             onScopeChange={onScopeChange}
+            onOpenAllPositions={onOpenAllPositions}
             onAddSection={() => showPlaceholderFeedback("Добавить раздел: placeholder")}
             onAddPositionRequest={() => showPlaceholderFeedback("Добавить позицию: выберите родительский раздел")}
             onAddPosition={addPositionToSection}
@@ -8337,6 +8373,7 @@ function UnifiedFlatCatalogPanel({
   fixedIds,
   onQueryChange,
   onReset,
+  onOpenSections,
   onFilterChange,
   onSectionScopeChange,
   onSelectItem,
@@ -8350,6 +8387,7 @@ function UnifiedFlatCatalogPanel({
   fixedIds?: Set<string>;
   onQueryChange: (value: string) => void;
   onReset: () => void;
+  onOpenSections: () => void;
   onFilterChange: (id: OverviewFilterId) => void;
   onSectionScopeChange: (id: string | null) => void;
   onSelectItem: (item: CatalogItem, fixed: boolean) => void;
@@ -8389,14 +8427,23 @@ function UnifiedFlatCatalogPanel({
   return (
     <aside className="flex w-[251px] shrink-0 flex-col gap-1 overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
       <div className="shrink-0 px-3 pb-3">
-        <div className="mb-4 px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
-          Позиции
+        <div className="mb-3 px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
+          Каталог
         </div>
-        <div className="mb-4">
+        <div className="mb-3">
           <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         </div>
         <div className="space-y-1">
-          {HYBRID_PRIMARY_FILTER_IDS.map((id) => (
+          <CatalogPanelRow
+            row={{ id: "sections", label: "Разделы", icon: <List size={14} /> }}
+            onClick={onOpenSections}
+          />
+          <CatalogPanelRow
+            row={{ id: "all-positions", label: "Все позиции", count: allItems.length, icon: <Asterisk size={14} /> }}
+            selected
+            onClick={() => onFilterChange("quick:all")}
+          />
+          {HYBRID_PRIMARY_FILTER_IDS.filter((id) => id !== "quick:all").map((id) => (
             <FilterPanelRow
               key={id}
               row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
@@ -8419,7 +8466,7 @@ function UnifiedFlatCatalogPanel({
                   <DotsThree size={14} />
                 </span>
                 <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", moreFilterIds.includes(filterId) ? "text-[#292524]" : "text-[#79716b]")}>
-                  Еще фильтры
+                  Больше
                 </span>
                 {moreFilterIds.includes(filterId) && (
                   <span className="min-w-0 truncate text-[12px] text-[#a8a29e]">{HYBRID_PRIMARY_FILTER_LABELS[filterId]}</span>
@@ -8582,6 +8629,8 @@ function OverviewWorkspace({
   query,
   onQueryChange,
   onReturnToSections,
+  persistedState,
+  onPersistedStateChange,
 }: {
   filterId: OverviewFilterId;
   onFilterChange: (id: OverviewFilterId) => void;
@@ -8590,20 +8639,41 @@ function OverviewWorkspace({
   query: string;
   onQueryChange: (value: string) => void;
   onReturnToSections: (openItemId: string | null) => void;
+  persistedState: OverviewWorkspacePersistedState;
+  onPersistedStateChange: (patch: Partial<OverviewWorkspacePersistedState>) => void;
 }) {
   const { registerChange } = usePublish();
-  const [items, setItems] = useState<CatalogItem[]>(catalogItems);
-  const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(null);
-  const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
-  const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
-  const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(catalogItems));
-  const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
-  const [feedback, setFeedback] = useState("");
+  const [items, setItems] = useState<CatalogItem[]>(() => persistedState.items);
+  const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(() => persistedState.queue);
+  const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>(() => persistedState.queueUpsellByItem);
+  const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>(() => persistedState.descriptionSaveStateById);
+  const [priceSort, setPriceSort] = useState<PriceSortDirection>(() => persistedState.priceSort);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(persistedState.selectedIds));
+  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => persistedState.recentPositionIds);
+  const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(() => persistedState.bulkDialog);
+  const [feedback, setFeedback] = useState(() => persistedState.feedback);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
+  useEffect(() => onPersistedStateChange({ items }), [items, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ queue }), [queue, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ queueUpsellByItem }), [queueUpsellByItem, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ descriptionSaveStateById }), [descriptionSaveStateById, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ priceSort }), [priceSort, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ selectedIds: Array.from(selectedIds) }), [selectedIds, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ recentPositionIds }), [recentPositionIds, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ bulkDialog }), [bulkDialog, onPersistedStateChange]);
+  useEffect(() => onPersistedStateChange({ feedback }), [feedback, onPersistedStateChange]);
+  useEffect(() => {
+    if (persistedState.scrollTop == null) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = persistedState.scrollTop ?? 0;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => () => {
+    onPersistedStateChange({ scrollTop: scrollContainerRef.current?.scrollTop ?? null });
+  }, [onPersistedStateChange]);
   const scopeSection = useMemo(() => catalogSections.find((section) => section.id === sectionScopeId) ?? null, [sectionScopeId]);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
@@ -8960,6 +9030,7 @@ function OverviewWorkspace({
             fixedIds={fixedIds}
             onQueryChange={handleQueryChange}
             onReset={() => onReturnToSections(queue.currentId)}
+            onOpenSections={() => onReturnToSections(queue.currentId)}
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item, fixed) => selectQueueItem(item.id, fixed ? "fixed" : "remaining")}
@@ -9030,6 +9101,7 @@ function OverviewWorkspace({
           selectedItemId={null}
           onQueryChange={handleQueryChange}
           onReset={() => onReturnToSections(null)}
+          onOpenSections={() => onReturnToSections(null)}
           onFilterChange={openPanelFilter}
           onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
@@ -9170,8 +9242,25 @@ export function CatalogWorkspace({
         : buildSectionTree(catalogSections);
   const [flatQuery, setFlatQuery] = useState("");
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
+  const [flatWorkspaceState, setFlatWorkspaceState] = useState<OverviewWorkspacePersistedState>(() => ({
+    items: catalogItems,
+    queue: null,
+    queueUpsellByItem: {},
+    descriptionSaveStateById: {},
+    priceSort: "none",
+    selectedIds: [],
+    recentPositionIds: readRecentPositionIds(catalogItems),
+    bulkDialog: null,
+    feedback: "",
+    scrollTop: null,
+  }));
+  const updateFlatWorkspaceState = useCallback((patch: Partial<OverviewWorkspacePersistedState>) => {
+    setFlatWorkspaceState((current) => ({ ...current, ...patch }));
+  }, []);
+  const [lastFlatFilterId, setLastFlatFilterId] = useState<OverviewFilterId>("quick:all");
   const resetSignalReadyRef = useRef(false);
-  const flatModeActiveRef = useRef(catalogTab === "overview");
+  const flatWorkspaceActive = catalogTab !== "upsell" && viewMode !== "sections";
+  const flatModeActiveRef = useRef(flatWorkspaceActive);
   const setFlatModeActive = (flat: boolean) => {
     flatModeActiveRef.current = flat;
     onFlatModeChange(flat);
@@ -9183,13 +9272,9 @@ export function CatalogWorkspace({
     };
   }, []);
   useEffect(() => {
-    flatModeActiveRef.current = catalogTab === "overview";
-    onFlatModeChange(catalogTab === "overview");
-  }, [catalogTab, onFlatModeChange]);
-  useEffect(() => {
-    if (catalogTab === "overview") return;
-    setFlatQuery("");
-  }, [catalogTab]);
+    flatModeActiveRef.current = flatWorkspaceActive;
+    onFlatModeChange(flatWorkspaceActive);
+  }, [flatWorkspaceActive, onFlatModeChange]);
   useEffect(() => {
     if (!resetSignalReadyRef.current) {
       resetSignalReadyRef.current = true;
@@ -9197,12 +9282,49 @@ export function CatalogWorkspace({
     }
     setFlatQuery("");
     setRetainedItemId(null);
+    setFlatWorkspaceState((current) => ({
+      ...current,
+      queue: null,
+      priceSort: "none",
+      selectedIds: [],
+      bulkDialog: null,
+      feedback: "",
+      scrollTop: null,
+    }));
+    setLastFlatFilterId("quick:all");
   }, [resetSignal]);
   const returnToSections = (openItemId: string | null) => {
-    setFlatQuery("");
     setRetainedItemId(openItemId);
     onViewModeChange("sections");
     setFlatModeActive(false);
+  };
+  const openAllPositions = () => {
+    const filterId = lastFlatFilterId;
+    if (retainedItemId) {
+      setFlatWorkspaceState((current) => {
+        if (current.queue) return current;
+        const itemIds = getQueueItemIds(filterId, current.items, flatQuery, sectionScopeId, current.priceSort);
+        return {
+          ...current,
+          queue: {
+            snapshot: {
+              itemIds,
+              filterId,
+              query: flatQuery,
+              sectionScopeId,
+              scrollTop: current.scrollTop ?? 0,
+              entryItemId: retainedItemId,
+              sort: current.priceSort,
+            },
+            currentId: itemIds.includes(retainedItemId) ? retainedItemId : itemIds[0] ?? retainedItemId,
+            currentBucket: "remaining",
+          },
+        };
+      });
+    }
+    onViewModeChange(filterId);
+    onOverviewFilterChange(filterId);
+    setFlatModeActive(true);
   };
   const workspace = catalogPhase === "empty" && catalogTab === "sections" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
@@ -9210,10 +9332,11 @@ export function CatalogWorkspace({
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
-    ) : catalogTab === "overview" ? (
+    ) : flatWorkspaceActive ? (
       <OverviewWorkspace
-        filterId={viewMode === "sections" ? "quick:all" : viewMode}
+        filterId={viewMode}
         onFilterChange={(id) => {
+          setLastFlatFilterId(id);
           onViewModeChange(id);
           setFlatModeActive(true);
           onOverviewFilterChange(id);
@@ -9223,6 +9346,8 @@ export function CatalogWorkspace({
         query={flatQuery}
         onQueryChange={setFlatQuery}
         onReturnToSections={returnToSections}
+        persistedState={flatWorkspaceState}
+        onPersistedStateChange={updateFlatWorkspaceState}
       />
     ) : catalogPhase === "has-items" ? (
       <PopulatedWorkspace
@@ -9231,6 +9356,7 @@ export function CatalogWorkspace({
         resetSignal={resetSignal}
         initialSelectedItemId={retainedItemId}
         onScopeChange={onSectionScopeChange}
+        onOpenAllPositions={openAllPositions}
       />
     ) : (
       <EmptyCatalog

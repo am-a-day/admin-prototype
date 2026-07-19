@@ -475,13 +475,13 @@ function AppShell() {
     const flat = mode !== "sections";
     handleCatalogFlatModeChange(flat);
     if (flat) {
-      setCatalogTab("overview");
+      setCatalogTab("sections");
       setCatalogOverviewFilterId(mode);
     }
   };
   const changeCatalogTab = (next: CatalogTab) => {
-    setCatalogTab(next);
     if (next === "overview") {
+      setCatalogTab("sections");
       handleCatalogFlatModeChange(true);
       if (catalogViewMode === "sections") {
         setCatalogViewMode("quick:all");
@@ -491,7 +491,8 @@ function AppShell() {
       }
       return;
     }
-    handleCatalogFlatModeChange(false);
+    setCatalogTab(next);
+    handleCatalogFlatModeChange(next !== "upsell" && catalogViewMode !== "sections");
   };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -937,7 +938,7 @@ function AppShell() {
                 <div className="shrink-0">
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && catalogPhase !== "empty" && (
-                    <CatalogTabs value={catalogTab} onChange={changeCatalogTab} />
+                    <CatalogTabs value={catalogTab === "overview" ? "sections" : catalogTab} onChange={changeCatalogTab} />
                   )}
                   {isAboutPage && (
                     <AboutTabs
