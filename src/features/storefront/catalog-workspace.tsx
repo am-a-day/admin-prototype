@@ -5443,24 +5443,32 @@ function UnifiedCatalogTreePanel({
       onPointerCancel={finishTouchDrag}
     >
       <div className="flex shrink-0 flex-col gap-3 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="flex h-8 min-w-0 items-center justify-between gap-2">
+        <CatalogLocalViewTabs
+          value="sections"
+          onSectionsClick={() => {
+            if (selectedSectionId) navigateToSectionAnchor(selectedSectionId);
+          }}
+          onAllPositionsClick={onOpenAllPositions}
+        />
+        <div className="flex min-h-8 items-center gap-1.5 px-[2px]">
           <DropdownMenu.Root onOpenChange={(open) => {
             if (!open) setSectionSelectQuery("");
           }}>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[8px] bg-[#f0f0ea] px-[6px] text-left text-[#57534d] transition hover:bg-[#eae9e2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-[3px] bg-white">
-                  <ForkKnife size={12} weight="fill" />
-                </span>
-                <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]">Выбрать раздел</span>
-                <CaretDown size={12} weight="bold" className="shrink-0 text-[#79716b]" />
-              </button>
-            </DropdownMenu.Trigger>
+            <Tooltip label="Перейти к разделу" side="top">
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label="Перейти к разделу"
+                  className="flex min-h-8 min-w-0 items-center gap-1.5 rounded-[6px] px-[4px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <span className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#292524]">Разделы</span>
+                  <CaretDown size={11} weight="bold" className="shrink-0 text-[#79716b]" />
+                </button>
+              </DropdownMenu.Trigger>
+            </Tooltip>
             <DropdownContent align="start">
-              <div className="w-[242px]">
+              <div className="w-[236px]">
+                <div className="px-1 pb-1.5 pt-0.5 text-[12px] font-medium text-[#a6a09b]">Перейти к разделу</div>
                 <label className="mb-1 flex h-8 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[#79716b]">
                   <MagnifyingGlass size={13} />
                   <input
@@ -5481,14 +5489,16 @@ function UnifiedCatalogTreePanel({
                         selectedSectionId === section.id && "bg-[#f3f3ed]",
                       )}
                     >
-                      <span
-                        className="block h-px shrink-0"
-                        style={{ width: `${(sectionDepthById.get(section.id) ?? 0) * 14}px` }}
-                        aria-hidden="true"
-                      />
+                      {!normalizedSectionSelectQuery && (
+                        <span
+                          className="block h-px shrink-0"
+                          style={{ width: `${(sectionDepthById.get(section.id) ?? 0) * 14}px` }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <CatalogTreeThumbnail src={section.imageUrl} selected={selectedSectionId === section.id} />
                       <span className={cn("min-w-0 flex-1 truncate", selectedSectionId === section.id ? "font-medium text-[#292524]" : "text-[#57534d]")}>
-                        {section.name}
+                        {normalizedSectionSelectQuery ? getSectionFullPath(section.id) : section.name}
                       </span>
                       <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{getAggregateItemCount(section)}</span>
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
@@ -5508,7 +5518,7 @@ function UnifiedCatalogTreePanel({
               <button
                 type="button"
                 aria-label="Добавить"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5.263px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-[5.263px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
               >
                 <PlusCircle size={18} />
               </button>
@@ -5530,13 +5540,6 @@ function UnifiedCatalogTreePanel({
             </DropdownContent>
           </DropdownMenu.Root>
         </div>
-        <CatalogLocalViewTabs
-          value="sections"
-          onSectionsClick={() => {
-            if (selectedSectionId) navigateToSectionAnchor(selectedSectionId);
-          }}
-          onAllPositionsClick={onOpenAllPositions}
-        />
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />
           <input
@@ -8513,14 +8516,16 @@ function UnifiedFlatCatalogPanel({
     <aside className="flex w-[251px] shrink-0 flex-col gap-1 overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
       <div className="shrink-0 px-3 pb-3">
         <div className="mb-3">
-          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
-        </div>
-        <div className="space-y-1">
           <CatalogLocalViewTabs
             value="all"
             onSectionsClick={onOpenSections}
             onAllPositionsClick={() => undefined}
           />
+        </div>
+        <div className="mb-3">
+          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
+        </div>
+        <div className="space-y-1">
           <div className="space-y-0.5">
             {HYBRID_PRIMARY_FILTER_IDS.map((id) => (
               <FilterPanelRow
