@@ -4467,6 +4467,7 @@ function UnifiedCatalogTreePanel({
   selectedItemId,
   sectionEditingEnabled,
   includeArchived,
+  showPositions = true,
   positionOrderBySection,
   onSelectSection,
   onSelectItem,
@@ -4485,6 +4486,7 @@ function UnifiedCatalogTreePanel({
   selectedItemId: string | null;
   sectionEditingEnabled: boolean;
   includeArchived: boolean;
+  showPositions?: boolean;
   positionOrderBySection: Record<string, string[]>;
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
@@ -4652,7 +4654,9 @@ function UnifiedCatalogTreePanel({
     flatSections.forEach((section) => {
       const sectionItems = itemsBySection.get(section.id) ?? [];
       const sectionMatches = section.name.toLowerCase().includes(normalizedQuery);
-      const matchingItems = sectionItems.filter((item) => item.title.toLowerCase().includes(normalizedQuery));
+      const matchingItems = showPositions
+        ? sectionItems.filter((item) => item.title.toLowerCase().includes(normalizedQuery))
+        : [];
       if (!sectionMatches && matchingItems.length === 0) return;
       markSectionAndParents(section);
       if (sectionMatches) {
@@ -5153,7 +5157,7 @@ function UnifiedCatalogTreePanel({
     const highlighted = highlightedSectionId === section.id;
     const activeCount = getAggregateItemCount(section);
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
-    const hasTreeChildren = sectionItems.length > 0 || (section.children?.length ?? 0) > 0;
+    const hasTreeChildren = (showPositions && sectionItems.length > 0) || (section.children?.length ?? 0) > 0;
     const addKind = getSectionAddKind(section);
     const dragEnabled = !normalizedQuery && restrictedScopeSectionId !== section.id;
     const sectionTrailingMeta = sectionEditingEnabled && section.status === "archive" ? (
@@ -5305,8 +5309,8 @@ function UnifiedCatalogTreePanel({
         </div>
         {isExpanded && (
           <div className="space-y-1 py-[2px] pl-5">
-            {visibleItems.map((item) => renderPosition(item, section))}
-            {visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
+            {showPositions && visibleItems.map((item) => renderPosition(item, section))}
+            {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
               <div className="flex min-h-8 items-center gap-2 rounded-[12px] px-1.5 py-1.5 text-[12px] text-[#a8a29e]">
                 <span className="min-w-0 flex-1 truncate">В разделе пока нет позиций</span>
                 <button type="button" onClick={() => onAddPosition(section.id)} className="mr-2 inline-flex shrink-0 items-center gap-1 text-[#57534d] hover:text-[#292524]">
@@ -5424,7 +5428,7 @@ function UnifiedCatalogTreePanel({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск позиций"
+            placeholder={showPositions ? "Поиск позиций" : "Поиск по разделам"}
             className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#79716b] outline-none placeholder:text-[#79716b]"
           />
           {query && (
@@ -5539,6 +5543,7 @@ function SectionEditor({
   onClearSelection,
   onBulkAction,
   onItemAction,
+  highlightItemId,
 }: {
   section: TreeSection;
   compositionTitle: string;
@@ -5569,6 +5574,7 @@ function SectionEditor({
   onClearSelection: () => void;
   onBulkAction: (action: string) => void;
   onItemAction: (item: CatalogItem, action: string) => void;
+  highlightItemId?: string | null;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -5670,11 +5676,12 @@ function SectionEditor({
               {compositionItems.length === 0 && !compositionQuery.trim() ? (
                 <div className="py-3">
                   <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
-                    <p className="text-[13px] font-medium text-[#44403b]">В выбранной области пока нет позиций</p>
+                    <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
+                    <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Создайте новую позицию — она откроется в полном редакторе во вкладке «Позиции» и будет привязана к этому разделу.</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
                         <Plus size={13} />
-                        Добавить позицию
+                        Создать позицию
                       </button>
                     </div>
                   </div>
@@ -5712,6 +5719,8 @@ function SectionEditor({
                         scrollParentRef={scrollContainerRef}
                         onSelectedChange={onSelectedChange}
                         onAction={onItemAction}
+                        compositionMode
+                        highlightItemId={highlightItemId}
                       />
                     ) : (
                       <div className="py-8 text-center text-[13px] leading-5 text-[#79716b]">
@@ -6412,12 +6421,14 @@ function PopulatedWorkspace({
   resetSignal,
   initialSelectedItemId,
   onScopeChange,
+  onEditPositionInOverview,
 }: {
   sections: TreeSection[];
   scopeSectionId: string | null;
   resetSignal: number;
   initialSelectedItemId: string | null;
   onScopeChange: (id: string | null) => void;
+  onEditPositionInOverview: (positionId: string, sectionId: string, newItem?: CatalogItem) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -6474,6 +6485,13 @@ function PopulatedWorkspace({
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   // Черновики, созданные кнопкой «Добавить позицию» (статичные catalogItems не мутируем).
   const [extraItems, setExtraItems] = useState<CatalogItem[]>([]);
+  // Подсветка исходной позиции после возврата из вкладки «Позиции».
+  const [highlightItemId, setHighlightItemId] = useState<string | null>(initialSelectedItemId);
+  useEffect(() => {
+    if (!highlightItemId) return;
+    const timer = window.setTimeout(() => setHighlightItemId(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [highlightItemId]);
   const [itemStatusOverrides, setItemStatusOverrides] = useState<Record<string, CatalogItem["status"]>>(() =>
     readJsonRecord<Record<string, CatalogItem["status"]>>(CATALOG_STATUS_STORAGE_KEY, {}),
   );
@@ -6813,9 +6831,10 @@ function PopulatedWorkspace({
     const draft = makeDraftItem(targetSection);
     setExtraItems((prev) => [...prev, draft]);
     setSelectedSectionId(sectionId);
-    setSelectedItemId(draft.id);
-    setEditing(true);
     setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
+    // Новая позиция создаётся с привязкой к разделу и открывается в полном
+    // редакторе вкладки «Позиции»; отдельной сокращённой формы в «Разделах» нет.
+    onEditPositionInOverview(draft.id, sectionId, draft);
   };
   const addPosition = () => {
     if (selectedSectionId) addPositionToSection(selectedSectionId);
@@ -7219,6 +7238,7 @@ function PopulatedWorkspace({
             selectedItemId={selectedItemId}
             sectionEditingEnabled={editorNavMode === "entity"}
             includeArchived={editorNavMode === "entity"}
+            showPositions={editorNavMode !== "entity"}
             positionOrderBySection={positionOrderBySection}
             onSelectSection={openSectionEditor}
             onSelectItem={openItem}
@@ -7270,11 +7290,10 @@ function PopulatedWorkspace({
           />
         )}
         {editorNavMode === "entity" ? (
-          selectedItem ? (
-            renderPositionEditor(selectedItem)
-          ) : section ? (
+          section ? (
             <SectionEditor
               section={section}
+              highlightItemId={highlightItemId}
               compositionTitle={sectionTableTitle}
               compositionItems={sectionTableItems}
               compositionQuery={sectionTableQuery}
@@ -7315,7 +7334,8 @@ function PopulatedWorkspace({
               onClearSelection={() => setSelectedIds(new Set())}
               onBulkAction={handleBulkAction}
               onItemAction={(item, action) => {
-                if (action === "Открыть позицию" || action === "Редактировать") openItem(item.id);
+                if (action === "Редактировать в Позициях") { onEditPositionInOverview(item.id, item.sectionId); return; }
+                if (action === "Открыть позицию" || action === "Редактировать") onEditPositionInOverview(item.id, item.sectionId);
                 if (action === "На стоп" || action === "Убрать со стопа") toggleStopItem(item);
                 if (action === "В архив") archiveItem(item);
                 if (action === "Восстановить") restoreItem(item);
@@ -7628,7 +7648,7 @@ function DropdownActionItem({
   );
 }
 
-function AuditRowActionsMenu({ item, onAction }: { item: CatalogItem; onAction: (action: string) => void }) {
+function AuditRowActionsMenu({ item, onAction, compositionMode }: { item: CatalogItem; onAction: (action: string) => void; compositionMode?: boolean }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -7641,8 +7661,14 @@ function AuditRowActionsMenu({ item, onAction }: { item: CatalogItem; onAction: 
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent>
-        <DropdownActionItem onSelect={() => onAction("Открыть позицию")}>Открыть позицию</DropdownActionItem>
-        <DropdownActionItem onSelect={() => onAction("Редактировать")}>Редактировать</DropdownActionItem>
+        {compositionMode ? (
+          <DropdownActionItem onSelect={() => onAction("Редактировать в Позициях")}>Редактировать в «Позициях»</DropdownActionItem>
+        ) : (
+          <>
+            <DropdownActionItem onSelect={() => onAction("Открыть позицию")}>Открыть позицию</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onAction("Редактировать")}>Редактировать</DropdownActionItem>
+          </>
+        )}
         <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
         <DropdownActionItem onSelect={() => onAction(item.status === "stopped" ? "Убрать со стопа" : "На стоп")}>
           {item.status === "stopped" ? "Убрать со стопа" : "На стоп"}
@@ -7677,13 +7703,19 @@ function AuditDishRow({
   selected,
   selectionMode,
   onSelectedChange,
+  compositionMode,
+  highlighted,
 }: {
   item: CatalogItem;
   onAction: (item: CatalogItem, action: string) => void;
   selected: boolean;
   selectionMode: boolean;
   onSelectedChange: (id: string, selected: boolean) => void;
+  compositionMode?: boolean;
+  highlighted?: boolean;
 }) {
+  const primaryClick = () =>
+    compositionMode ? onSelectedChange(item.id, !selected) : onAction(item, "Открыть позицию");
   const kbjuState =
     item.nutritionFilledCount === 4 ? "filled" : item.nutritionFilledCount > 0 ? "partial" : "missing";
   const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
@@ -7693,16 +7725,17 @@ function AuditDishRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onAction(item, "Открыть позицию")}
+      onClick={primaryClick}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onAction(item, "Открыть позицию");
+          primaryClick();
         }
       }}
       className={cn(
         "group flex h-12 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
+        highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -7783,7 +7816,7 @@ function AuditDishRow({
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} />
+        <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} compositionMode={compositionMode} />
       </span>
     </div>
   );
@@ -7825,6 +7858,8 @@ function VirtualizedAuditRows({
   scrollParentRef,
   onSelectedChange,
   onAction,
+  compositionMode,
+  highlightItemId,
 }: {
   items: CatalogItem[];
   selectedIds: Set<string>;
@@ -7832,6 +7867,8 @@ function VirtualizedAuditRows({
   scrollParentRef: RefObject<HTMLDivElement | null>;
   onSelectedChange: (id: string, selected: boolean) => void;
   onAction: (item: CatalogItem, action: string) => void;
+  compositionMode?: boolean;
+  highlightItemId?: string | null;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectionMode]);
@@ -7865,6 +7902,8 @@ function VirtualizedAuditRows({
               selectionMode={selectionMode}
               onSelectedChange={onSelectedChange}
               onAction={onAction}
+              compositionMode={compositionMode}
+              highlighted={highlightItemId != null && item.id === highlightItemId}
             />
           </div>
         );
@@ -8507,6 +8546,21 @@ function PositionEditorBreadcrumb({
   );
 }
 
+function SectionReturnBreadcrumb({ sectionId, onBack }: { sectionId: string; onBack: () => void }) {
+  const sectionName = catalogSections.find((section) => section.id === sectionId)?.name ?? "Раздел";
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    >
+      <CaretLeft size={12} weight="bold" className="shrink-0 text-[#a8a29e]" />
+      <span className="shrink-0">Назад в раздел</span>
+      <span className="min-w-0 truncate text-[#292524]">«{sectionName}»</span>
+    </button>
+  );
+}
+
 function DescriptionQueueEditorControls({
   filterId,
   prevDisabled,
@@ -8582,6 +8636,10 @@ function OverviewWorkspace({
   query,
   onQueryChange,
   onReturnToSections,
+  pendingOpen,
+  onPendingOpenHandled,
+  sectionReturn,
+  onReturnToSection,
 }: {
   filterId: OverviewFilterId;
   onFilterChange: (id: OverviewFilterId) => void;
@@ -8590,6 +8648,10 @@ function OverviewWorkspace({
   query: string;
   onQueryChange: (value: string) => void;
   onReturnToSections: (openItemId: string | null) => void;
+  pendingOpen?: { id: string; item?: CatalogItem } | null;
+  onPendingOpenHandled?: () => void;
+  sectionReturn?: { sectionId: string; itemId: string } | null;
+  onReturnToSection?: () => void;
 }) {
   const { registerChange } = usePublish();
   const [items, setItems] = useState<CatalogItem[]>(catalogItems);
@@ -8747,6 +8809,28 @@ function OverviewWorkspace({
       currentBucket: "remaining",
     });
   };
+  // Открыть позицию, пришедшую из вкладки «Разделы» (существующую или только что созданную).
+  useEffect(() => {
+    if (!pendingOpen) return;
+    const injected = pendingOpen.item;
+    const baseItems = injected && !items.some((candidate) => candidate.id === injected.id)
+      ? [...items, injected]
+      : items;
+    if (baseItems !== items) setItems(baseItems);
+    const target = baseItems.find((candidate) => candidate.id === pendingOpen.id);
+    if (target) {
+      rememberOpenedPosition(target.id);
+      const itemIds = getQueueItemIds("quick:all", baseItems, "", sectionScopeId, "none");
+      setSelectedIds(new Set());
+      setQueue({
+        snapshot: { itemIds, filterId: "quick:all", query: "", sectionScopeId, scrollTop: 0, entryItemId: target.id, sort: "none" },
+        currentId: target.id,
+        currentBucket: "remaining",
+      });
+    }
+    onPendingOpenHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpen]);
   const prepareRowAction = (item: CatalogItem, action: string) => {
     if (action === "Открыть позицию") {
       startDescriptionQueue(item, filterId);
@@ -8988,7 +9072,11 @@ function OverviewWorkspace({
               showStopQuickAction={!repairMode}
               onDescriptionChange={saveDescription}
               onMediaAdded={saveQueueMedia}
-              breadcrumb={<PositionEditorBreadcrumb filterId={queue.snapshot.filterId} onBack={returnToOverview} />}
+              breadcrumb={
+                sectionReturn && onReturnToSection && currentItem.id === sectionReturn.itemId
+                  ? <SectionReturnBreadcrumb sectionId={sectionReturn.sectionId} onBack={onReturnToSection} />
+                  : <PositionEditorBreadcrumb filterId={queue.snapshot.filterId} onBack={returnToOverview} />
+              }
               headerMeta={
                 <DescriptionQueueEditorControls
                   filterId={queue.snapshot.filterId}
@@ -9157,11 +9245,27 @@ export function CatalogWorkspace({
   onOverviewFilterChange,
   onViewModeChange,
   onSectionScopeChange,
+  onCatalogTabChange,
   onFlatModeChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
+  // Переход «Редактировать в Позициях» из вкладки «Разделы» и обратный контекст.
+  const [pendingOpen, setPendingOpen] = useState<{ id: string; item?: CatalogItem } | null>(null);
+  const [sectionReturn, setSectionReturn] = useState<{ sectionId: string; itemId: string } | null>(null);
+  const openPositionFromSection = (positionId: string, sectionId: string, newItem?: CatalogItem) => {
+    setSectionReturn({ sectionId, itemId: positionId });
+    setPendingOpen({ id: positionId, item: newItem });
+    onCatalogTabChange("overview");
+  };
+  const returnToSectionFromOverview = () => {
+    const target = sectionReturn;
+    setSectionReturn(null);
+    setPendingOpen(null);
+    setRetainedItemId(target?.itemId ?? null);
+    onCatalogTabChange("sections");
+  };
   const sections: TreeSection[] =
     catalogPhase === "empty"
       ? []
@@ -9223,6 +9327,10 @@ export function CatalogWorkspace({
         query={flatQuery}
         onQueryChange={setFlatQuery}
         onReturnToSections={returnToSections}
+        pendingOpen={pendingOpen}
+        onPendingOpenHandled={() => setPendingOpen(null)}
+        sectionReturn={sectionReturn}
+        onReturnToSection={returnToSectionFromOverview}
       />
     ) : catalogPhase === "has-items" ? (
       <PopulatedWorkspace
@@ -9231,6 +9339,7 @@ export function CatalogWorkspace({
         resetSignal={resetSignal}
         initialSelectedItemId={retainedItemId}
         onScopeChange={onSectionScopeChange}
+        onEditPositionInOverview={openPositionFromSection}
       />
     ) : (
       <EmptyCatalog
