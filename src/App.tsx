@@ -472,9 +472,8 @@ function AppShell() {
   };
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
     setCatalogViewMode(mode);
-    const flat = mode !== "sections";
-    handleCatalogFlatModeChange(flat);
-    if (flat) {
+    // Flat/preview-состояние теперь ведёт CatalogWorkspace (учитывает открытый редактор).
+    if (mode !== "sections") {
       setCatalogTab("overview");
       setCatalogOverviewFilterId(mode);
     }
@@ -482,16 +481,13 @@ function AppShell() {
   const changeCatalogTab = (next: CatalogTab) => {
     setCatalogTab(next);
     if (next === "overview") {
-      handleCatalogFlatModeChange(true);
       if (catalogViewMode === "sections") {
         setCatalogViewMode("quick:all");
         setCatalogOverviewFilterId("quick:all");
       } else {
         setCatalogOverviewFilterId(catalogViewMode);
       }
-      return;
     }
-    handleCatalogFlatModeChange(false);
   };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
