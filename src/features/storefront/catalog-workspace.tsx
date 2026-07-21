@@ -1421,7 +1421,12 @@ function FilterPanelRow({
       >
         {row.label}
       </span>
-      {selected && onClear ? (
+      {row.count != null && (
+        <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
+          {row.count}
+        </span>
+      )}
+      {selected && onClear && (
         <button
           type="button"
           onClick={(event) => {
@@ -1435,11 +1440,7 @@ function FilterPanelRow({
         >
           <XCircle size={14} />
         </button>
-      ) : row.count != null ? (
-        <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
-          {row.count}
-        </span>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -3960,66 +3961,76 @@ function PositionEditor({
   const addRowClass =
     "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
 
+  const positionActions = (
+    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      {headerMeta}
+      {showStopQuickAction && <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Действия с позицией"
+            title="Действия с позицией"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <DotsThreeVertical size={18} weight="bold" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          {isArchived ? (
+            <>
+              <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
+                Удалить навсегда
+              </DropdownActionItem>
+            </>
+          ) : (
+            <>
+              {(item.status === "active" || item.status === "stopped") && (
+                <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
+                  {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
+                </DropdownActionItem>
+              )}
+              <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
+            </>
+          )}
+        </DropdownContent>
+      </DropdownMenu.Root>
+    </div>
+  );
+
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
         <div className="mx-auto w-full max-w-[800px]">
-          {breadcrumb && <div className="pt-5">{breadcrumb}</div>}
-          {/* Название позиции + действия с позицией */}
-          <div className={cn("flex items-center gap-2 pb-2", breadcrumb ? "pt-3" : "pt-6")}>
-            <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
-              <span className="truncate">{item.title}</span>
-              {isArchived && (
-                <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-                  В архиве
-                </span>
-              )}
-              {item.status === "stopped" && !isArchived && (
-                <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-                  На стопе
-                </span>
-              )}
-            </h2>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              {headerMeta}
-              {showStopQuickAction && <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  aria-label="Действия с позицией"
-                  title="Действия с позицией"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <DotsThreeVertical size={18} weight="bold" />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownContent align="end">
-                {isArchived ? (
-                  <>
-                    <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
-                      Удалить навсегда
-                    </DropdownActionItem>
-                  </>
-                ) : (
-                  <>
-                    {(item.status === "active" || item.status === "stopped") && (
-                      <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
-                        {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
-                      </DropdownActionItem>
-                    )}
-                    <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
-                  </>
-                )}
-              </DropdownContent>
-            </DropdownMenu.Root>
+          {breadcrumb ? (
+            // «Позиции»: одна строка — breadcrumb вместо отдельного крупного заголовка позиции.
+            <div className="flex items-center gap-2 pb-2 pt-5">
+              <div className="min-w-0 flex-1">{breadcrumb}</div>
+              {positionActions}
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 pb-2 pt-6">
+              <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
+                <span className="truncate">{item.title}</span>
+                {isArchived && (
+                  <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+                    В архиве
+                  </span>
+                )}
+                {item.status === "stopped" && !isArchived && (
+                  <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+                    На стопе
+                  </span>
+                )}
+              </h2>
+              {positionActions}
+            </div>
+          )}
 
           <div className="space-y-2">
             <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
@@ -8771,7 +8782,7 @@ function PositionEditorBreadcrumb({
         </>
       )}
       <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>
-      <span className="min-w-0 truncate px-1 text-[13px] font-medium text-[#292524]">{positionTitle}</span>
+      <span className="min-w-0 flex-1 truncate px-1 text-[13px] font-medium text-[#292524]" title={positionTitle}>{positionTitle}</span>
     </nav>
   );
 }
