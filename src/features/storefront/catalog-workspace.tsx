@@ -6,7 +6,6 @@ import {
   Archive,
   ArrowCounterClockwise,
   ArrowLeft,
-  CaretLeft,
   CaretDown,
   CaretRight,
   CaretUp,
@@ -28,6 +27,7 @@ import {
   Plus,
   PlusCircle,
   Prohibit,
+  SquaresFour,
   StopCircle,
   TextTSlash,
   Trash,
@@ -50,7 +50,8 @@ export type CatalogPhase = "empty" | "has-sections" | "has-items";
 export type CatalogTab = "sections" | "overview" | "upsell";
 const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "sections", label: "Разделы" },
-  { id: "overview", label: "Позиции" },
+  // Общий счётчик каталога живёт в верхнем табе; полный каталог, не зависит от scope/фильтра.
+  { id: "overview", label: "Позиции", count: catalogItems.length },
   { id: "upsell", label: "Рекомендации" },
 ];
 
@@ -659,14 +660,14 @@ type PriceSortDirection = "none" | "asc" | "desc";
 type DescriptionAuditQueueSnapshot = {
   itemIds: string[];
   filterId: AuditQueueFilterId;
+  /** Фильтр, из которого редактор был открыт. Задаёт forced editor tab и не
+   * меняется при смене browse (фильтра/scope), чтобы не дёргать вкладку редактора. */
+  entryFilterId: AuditQueueFilterId;
   query: string;
   sectionScopeId: string | null;
   scrollTop: number;
   entryItemId: string;
   sort: PriceSortDirection;
-  /** Источник открытия редактора. Когда задан section — активен контекст «Из раздела»
-   * (никакой фильтр не выделяется, слева показывается список позиций раздела). */
-  sectionSource?: { sectionId: string; sectionName: string } | null;
 };
 type DescriptionAuditQueueState = {
   snapshot: DescriptionAuditQueueSnapshot;
@@ -766,25 +767,6 @@ function getPriceSortTooltip(direction: PriceSortDirection) {
   if (direction === "none") return "Сортировать по возрастанию";
   if (direction === "asc") return "Сортировать по убыванию";
   return "Сбросить сортировку";
-}
-
-function getAdjacentUnfixedId(
-  itemIds: string[],
-  items: CatalogItem[],
-  filterId: AuditQueueFilterId,
-  currentId: string | null,
-  direction: 1 | -1,
-) {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const repairMode = isRepairQueueFilter(filterId);
-  const currentIndex = currentId ? itemIds.indexOf(currentId) : -1;
-  let index = currentIndex + direction;
-  while (index >= 0 && index < itemIds.length) {
-    const item = byId.get(itemIds[index]);
-    if (item && (!repairMode || FILTER_PREDICATES[filterId](item))) return item.id;
-    index += direction;
-  }
-  return null;
 }
 
 function getQueueItemIds(
@@ -1425,9 +1407,11 @@ function FilterPanelRow({
       >
         {row.label}
       </span>
-      <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
-        {row.count}
-      </span>
+      {row.count != null && (
+        <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
+          {row.count}
+        </span>
+      )}
     </button>
   );
 }
@@ -4528,7 +4512,6 @@ function UnifiedCatalogTreePanel({
     ...initialExpanded,
   }));
   const [query, setQuery] = useState(() => readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""));
-  const [sectionSelectQuery, setSectionSelectQuery] = useState("");
   const [navigationTargetSectionId, setNavigationTargetSectionId] = useState<string | null>(null);
   const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
@@ -4566,10 +4549,6 @@ function UnifiedCatalogTreePanel({
     });
   };
   collectSectionDepths(sections);
-  const normalizedSectionSelectQuery = sectionSelectQuery.trim().toLowerCase();
-  const sectionSelectOptions = normalizedSectionSelectQuery
-    ? allFlatSections.filter((section) => section.name.toLowerCase().includes(normalizedSectionSelectQuery))
-    : allFlatSections;
   const sectionById = new Map(flatSections.map((section) => [section.id, section]));
   const directItemsBySection = new Map<string, CatalogItem[]>();
   const itemsBySection = new Map<string, CatalogItem[]>();
@@ -4632,12 +4611,6 @@ function UnifiedCatalogTreePanel({
   const visibleSectionIds = new Set<string>();
   const visibleItemIds = new Set<string>();
 
-  const expandSectionPath = (sectionId: string) => {
-    const path = findSectionPath(sections, sectionId);
-    if (path.length === 0) return;
-    setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
-  };
-
   const scrollSelectedRowNearTop = () => {
     const panel = panelScrollRef.current;
     const row = selectedRowRef.current;
@@ -4651,13 +4624,6 @@ function UnifiedCatalogTreePanel({
       Math.min(maxScrollTop, panel.scrollTop + rowRect.top - panelRect.top - preferredTopOffset),
     );
     panel.scrollTo({ top: nextScrollTop, behavior: "smooth" });
-  };
-
-  const navigateToSectionAnchor = (sectionId: string) => {
-    expandSectionPath(sectionId);
-    setNavigationTargetSectionId(sectionId);
-    setSectionSelectQuery("");
-    onSelectSection(sectionId);
   };
 
   const markSectionAndParents = (section: TreeSection) => {
@@ -5326,7 +5292,7 @@ function UnifiedCatalogTreePanel({
           </div>
         </div>
         {isExpanded && (
-          <div className="space-y-1 py-[2px] pl-5">
+          <div className="space-y-0.5 py-[1px] pl-5">
             {showPositions && visibleItems.map((item) => renderPosition(item, section))}
             {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
               <div className="flex min-h-8 items-center gap-2 rounded-[12px] px-1.5 py-1.5 text-[12px] text-[#a8a29e]">
@@ -5356,64 +5322,9 @@ function UnifiedCatalogTreePanel({
       onPointerUp={finishTouchDrag}
       onPointerCancel={finishTouchDrag}
     >
-      <div className="flex shrink-0 flex-col gap-4 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="flex h-5 min-w-0 items-start justify-between gap-4">
-          <DropdownMenu.Root onOpenChange={(open) => {
-            if (!open) setSectionSelectQuery("");
-          }}>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-1 rounded-[6px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span className="block min-w-0 truncate">Разделы</span>
-                <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="start">
-              <div className="w-[242px]">
-                <label className="mb-1 flex h-8 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[#79716b]">
-                  <MagnifyingGlass size={13} />
-                  <input
-                    value={sectionSelectQuery}
-                    onChange={(event) => setSectionSelectQuery(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    placeholder="Найти раздел"
-                    className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#a8a29e]"
-                  />
-                </label>
-                <div className="max-h-[320px] overflow-y-auto overscroll-contain">
-                  {sectionSelectOptions.map((section) => (
-                    <DropdownMenu.Item
-                      key={section.id}
-                      onSelect={() => navigateToSectionAnchor(section.id)}
-                      className={cn(
-                        "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-2 text-[13px] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
-                        selectedSectionId === section.id && "bg-[#f3f3ed]",
-                      )}
-                    >
-                      <span
-                        className="block h-px shrink-0"
-                        style={{ width: `${(sectionDepthById.get(section.id) ?? 0) * 14}px` }}
-                        aria-hidden="true"
-                      />
-                      <CatalogTreeThumbnail src={section.imageUrl} selected={selectedSectionId === section.id} />
-                      <span className={cn("min-w-0 flex-1 truncate", selectedSectionId === section.id ? "font-medium text-[#292524]" : "text-[#57534d]")}>
-                        {section.name}
-                      </span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{getAggregateItemCount(section)}</span>
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
-                        {selectedSectionId === section.id ? <Check size={12} weight="bold" /> : null}
-                      </span>
-                    </DropdownMenu.Item>
-                  ))}
-                  {sectionSelectOptions.length === 0 && (
-                    <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
-                  )}
-                </div>
-              </div>
-            </DropdownContent>
-          </DropdownMenu.Root>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
+        <div className="flex h-5 min-w-0 items-center justify-between gap-4">
+          <span className="min-w-0 flex-1 truncate px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">Разделы</span>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button
@@ -5460,9 +5371,9 @@ function UnifiedCatalogTreePanel({
         ref={panelScrollRef}
         onDragOver={handlePanelDragOver}
         onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-3"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2"
       >
-        <div className="space-y-1">{treeSections.map((section) => renderSection(section))}</div>
+        <div className="space-y-0.5">{treeSections.map((section) => renderSection(section))}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
         )}
@@ -8543,11 +8454,9 @@ function UnifiedFlatCatalogPanel({
   items,
   selectedItemId,
   fixedIds,
-  sectionSource,
-  returnContext,
-  onReturnToSection,
+  showList = true,
+  onShowTable,
   onQueryChange,
-  onReset,
   onFilterChange,
   onSectionScopeChange,
   onSelectItem,
@@ -8559,11 +8468,11 @@ function UnifiedFlatCatalogPanel({
   items: CatalogItem[];
   selectedItemId: string | null;
   fixedIds?: Set<string>;
-  sectionSource?: { sectionId: string; sectionName: string } | null;
-  returnContext?: SectionReturnContext | null;
-  onReturnToSection?: () => void;
+  /** Контекстный список снизу показывается только при открытом редакторе. */
+  showList?: boolean;
+  /** Служебное действие «Показать таблицу» над очередью (только при открытом редакторе). */
+  onShowTable?: () => void;
   onQueryChange: (value: string) => void;
-  onReset: () => void;
   onFilterChange: (id: OverviewFilterId) => void;
   onSectionScopeChange: (id: string | null) => void;
   onSelectItem: (item: CatalogItem, fixed: boolean) => void;
@@ -8594,12 +8503,9 @@ function UnifiedFlatCatalogPanel({
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
   const searchActive = query.trim().length > 0;
-  // Контекст «Из раздела»: ни один фильтр не выделен, свой заголовок списка.
-  const sectionMode = Boolean(sectionSource);
-  const recentMode = !sectionMode && filterId === "quick:all" && !searchActive;
-  const panelTitle = sectionMode
-    ? `Из раздела «${sectionSource!.sectionName}»`
-    : searchActive ? "Результаты поиска" : recentMode ? "Недавние" : HYBRID_PRIMARY_FILTER_LABELS[filterId];
+  const scopeLabel = scope?.name ?? "Все разделы";
+  // Единая формула заголовка очереди: «<выборка> · <scope>».
+  const panelTitle = searchActive ? "Результаты поиска" : `${HYBRID_PRIMARY_FILTER_LABELS[filterId]} · ${scopeLabel}`;
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
@@ -8607,37 +8513,15 @@ function UnifiedFlatCatalogPanel({
   return (
     <aside className="flex w-[251px] shrink-0 flex-col gap-1 overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
       <div className="shrink-0 px-3 pb-3">
-        <div className="mb-4 px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">
-          Позиции
+        <div className="mb-4">
+          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         </div>
-        {/* Точка возврата держится, пока жив return context (даже при фильтре). */}
-        {returnContext && (
-          <div className={cn(sectionMode ? "mb-4" : "mb-2")}>
-            <button
-              type="button"
-              onClick={onReturnToSection}
-              title={returnContext.sectionName}
-              className="group flex h-8 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <CaretLeft size={13} weight="bold" className="shrink-0 text-[#a8a29e] transition group-hover:text-[#57534d]" />
-              <span className="shrink-0 text-[13px] leading-[18px]">В раздел</span>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]">«{returnContext.sectionName}»</span>
-            </button>
-          </div>
-        )}
-        {/* Scope-селект скрыт ТОЛЬКО когда текущая выборка сама section («Из раздела»).
-            При фильтре/глобальной выборке он возвращается, даже если return context жив. */}
-        {!sectionMode && (
-          <div className="mb-4">
-            <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
-          </div>
-        )}
         <div className="space-y-1">
           {HYBRID_PRIMARY_FILTER_IDS.map((id) => (
             <FilterPanelRow
               key={id}
-              row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
-              selected={!sectionMode && filterId === id}
+              row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: id === "quick:all" ? undefined : countByFilter(id) }}
+              selected={filterId === id}
               onClick={() => onFilterChange(id)}
             />
           ))}
@@ -8690,119 +8574,95 @@ function UnifiedFlatCatalogPanel({
           </DropdownMenu.Root>
         </div>
       </div>
-      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3">
-        <div className="mb-3 flex h-[18px] items-center gap-1.5 px-[6px]">
-          <span className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#292524]" title={sectionMode ? sectionSource!.sectionName : undefined}>{panelTitle}</span>
-          {recentMode && <CaretDown size={11} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />}
-          {sectionMode && <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{items.length}</span>}
-        </div>
-        <div>
-          {items.length > 0 && (
-            <VirtualizedDescriptionQueueRows
-              items={items}
-              selectedItemId={selectedItemId}
-              fixedIds={fixedIds}
-              scrollParentRef={listScrollRef}
-              onSelectItem={onSelectItem}
-            />
+      {showList && (
+        <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3">
+          <div className="mb-2 flex h-[18px] items-center gap-1.5 px-[6px]">
+            <span className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#292524]" title={panelTitle}>{panelTitle}</span>
+            <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{items.length}</span>
+          </div>
+          {onShowTable && (
+            <button
+              type="button"
+              onClick={onShowTable}
+              className="mb-2 flex h-8 w-full items-center gap-2 rounded-[8px] border border-dashed border-[#e0ded9] px-2 text-left text-[13px] text-[#79716b] transition hover:border-[#d6d3d1] hover:bg-[#f4f4ee] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <SquaresFour size={14} className="shrink-0 text-[#a6a09b]" />
+              <span className="min-w-0 truncate">Показать таблицу</span>
+            </button>
           )}
-          {items.length === 0 && (
-            <div className={cn("px-[6px] py-1", !recentMode && "rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4")}>
-              <p className="text-[12px] leading-5 text-[#79716b]">
-                {recentMode ? "Здесь появятся недавно открытые позиции" : query.trim() ? "По вашему запросу ничего не найдено" : emptyText}
-              </p>
-              {!recentMode && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {query.trim() && <button type="button" onClick={() => onQueryChange("")} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Очистить поиск</button>}
-                  <button type="button" onClick={onReset} className="text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Показать разделы</button>
-                </div>
-              )}
-            </div>
-          )}
+          <div>
+            {items.length > 0 && (
+              <VirtualizedDescriptionQueueRows
+                items={items}
+                selectedItemId={selectedItemId}
+                fixedIds={fixedIds}
+                scrollParentRef={listScrollRef}
+                onSelectItem={onSelectItem}
+              />
+            )}
+            {items.length === 0 && (
+              <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4">
+                <p className="text-[12px] leading-5 text-[#79716b]">
+                  {query.trim() ? "По вашему запросу ничего не найдено" : emptyText}
+                </p>
+                {query.trim() && (
+                  <button type="button" onClick={() => onQueryChange("")} className="mt-3 text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Очистить поиск</button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </aside>
   );
 }
 
+/** Breadcrumb над редактором: Позиции / <выборка · scope> / <название позиции>.
+ * Сегмент выборки открывает таблицу с теми же filter/scope/scroll; «Позиции» —
+ * корневое состояние вкладки. Название позиции не кликабельно. */
 function PositionEditorBreadcrumb({
   filterId,
-  onBack,
+  scopeName,
+  positionTitle,
+  sectionReturnName,
+  onOpenRoot,
+  onOpenList,
+  onOpenSection,
 }: {
   filterId: OverviewFilterId;
-  onBack: () => void;
+  scopeName: string | null;
+  positionTitle: string;
+  sectionReturnName?: string | null;
+  onOpenRoot: () => void;
+  onOpenList: () => void;
+  onOpenSection?: () => void;
 }) {
+  const listLabel = `${HYBRID_PRIMARY_FILTER_LABELS[filterId]} · ${scopeName ?? "Все разделы"}`;
+  const crumbButton = "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10";
   return (
-    <button
-      type="button"
-      onClick={onBack}
-      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-    >
-      <span className="shrink-0">Позиции</span>
-      <CaretRight size={12} weight="bold" className="shrink-0 text-[#a8a29e]" />
-      <span className="min-w-0 truncate">{getFilterPanelTitle(filterId)}</span>
-    </button>
-  );
-}
-
-function SectionReturnBreadcrumb({ sectionName, onBack }: { sectionName: string; onBack: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onBack}
-      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-    >
-      <CaretLeft size={12} weight="bold" className="shrink-0 text-[#a8a29e]" />
-      <span className="shrink-0">Назад в раздел</span>
-      <span className="min-w-0 truncate text-[#292524]">«{sectionName}»</span>
-    </button>
-  );
-}
-
-function DescriptionQueueEditorControls({
-  filterId,
-  prevDisabled,
-  nextDisabled,
-  onPrev,
-  onNext,
-}: {
-  filterId: AuditQueueFilterId;
-  prevDisabled: boolean;
-  nextDisabled: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const label = OVERVIEW_FILTER_META[filterId].label.toLowerCase();
-  const previousLabel = `Предыдущая позиция ${label}`;
-  const nextLabel = `Следующая позиция ${label}`;
-
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Tooltip label={previousLabel} side="top">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <nav aria-label="Навигация по позициям" className="flex min-w-0 items-center gap-1">
+        <button type="button" onClick={onOpenRoot} className={cn(crumbButton, "shrink-0")}>Позиции</button>
+        <CaretRight size={11} weight="bold" className="shrink-0 text-[#d6d3d1]" aria-hidden="true" />
+        <button type="button" onClick={onOpenList} title={listLabel} className={crumbButton}>{listLabel}</button>
+        <CaretRight size={11} weight="bold" className="shrink-0 text-[#d6d3d1]" aria-hidden="true" />
+        <span className="min-w-0 truncate px-1 text-[13px] font-medium text-[#292524]">{positionTitle}</span>
+      </nav>
+      {sectionReturnName && onOpenSection && (
         <button
           type="button"
-          aria-label={previousLabel}
-          disabled={prevDisabled}
-          onClick={onPrev}
-          className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          onClick={onOpenSection}
+          title={sectionReturnName}
+          className="inline-flex h-6 max-w-full shrink-0 items-center gap-1 rounded-[6px] px-1.5 text-[12px] text-[#a6a09b] transition hover:bg-[#f1f1ea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <CaretLeft size={16} weight="bold" />
+          <span className="shrink-0">Открыть раздел</span>
+          <span className="min-w-0 truncate">«{sectionReturnName}»</span>
         </button>
-      </Tooltip>
-      <Tooltip label={nextLabel} side="top">
-        <button
-          type="button"
-          aria-label={nextLabel}
-          disabled={nextDisabled}
-          onClick={onNext}
-          className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <CaretRight size={16} weight="bold" />
-        </button>
-      </Tooltip>
+      )}
     </div>
   );
 }
+
 
 function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFilterId; onBack: () => void }) {
   return (
@@ -8844,13 +8704,15 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
   return {
     snapshot: {
       itemIds,
+      // Переход из раздела = обычная выборка «Все позиции · <раздел>» (scope = раздел),
+      // без отдельного визуального режима. Возврат в раздел живёт в return context.
       filterId: "quick:all",
+      entryFilterId: "quick:all",
       query: "",
-      sectionScopeId: null,
+      sectionScopeId: section ? section.sectionId : null,
       scrollTop: 0,
       entryItemId: target.id,
       sort: "none",
-      sectionSource: section ? { sectionId: section.sectionId, sectionName: section.sectionName } : null,
     },
     currentId: target.id,
     currentBucket: "remaining",
@@ -8903,12 +8765,18 @@ function OverviewWorkspace({
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(catalogItems));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
+  // Подсветка последней открытой позиции после возврата из редактора к таблице.
+  const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!tableHighlightId) return;
+    const timer = window.setTimeout(() => setTableHighlightId(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [tableHighlightId]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
   const scopeSection = useMemo(() => catalogSections.find((section) => section.id === sectionScopeId) ?? null, [sectionScopeId]);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
-  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const filtered = useMemo(
     () => getOverviewItems(filterId, items).filter((item) => !scopeIds || scopeIds.has(item.sectionId)),
     [filterId, items, scopeIds],
@@ -8923,12 +8791,6 @@ function OverviewWorkspace({
     [filtered, normalizedQuery],
   );
   const visible = useMemo(() => sortItemsByPrice(searched, priceSort), [searched, priceSort]);
-  const recentItems = useMemo(
-    () => recentPositionIds
-      .map((id) => itemById.get(id))
-      .filter((item): item is CatalogItem => Boolean(item && (!scopeIds || scopeIds.has(item.sectionId)))),
-    [itemById, recentPositionIds, scopeIds],
-  );
   const statusMeta = OVERVIEW_FILTER_META[filterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
   const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
@@ -8961,11 +8823,8 @@ function OverviewWorkspace({
   const rememberOpenedPosition = (id: string) => {
     setRecentPositionIds((current) => promoteRecentPositionId(normalizeRecentPositionIds(current, items), id));
   };
-  const getPanelItems = (nextFilterId: OverviewFilterId, sourceItems: CatalogItem[], activeQuery = query) => {
-    if (activeQuery.trim()) return sourceItems;
-    if (nextFilterId === "quick:all") return recentItems;
-    return sourceItems;
-  };
+  // Контекстный список всегда соответствует текущей выборке (Недавние удалены).
+  const getPanelItems = (_nextFilterId: OverviewFilterId, sourceItems: CatalogItem[]) => sourceItems;
   const handleQueryChange = (value: string) => {
     clearSelection();
     onQueryChange(value);
@@ -9032,6 +8891,7 @@ function OverviewWorkspace({
   ): DescriptionAuditQueueSnapshot => ({
     itemIds: getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort),
     filterId: nextFilterId,
+    entryFilterId: nextFilterId,
     query: snapshotQuery,
     sectionScopeId: snapshotSectionScopeId,
     scrollTop,
@@ -9075,6 +8935,8 @@ function OverviewWorkspace({
       updateItems(ids, (current) => ({ ...current, hasDiscount: true, priceWithSale: Math.round(current.price * 0.9) }));
     }
   };
+  // Открыть таблицу текущей выборки: сохранить filter/scope, восстановить scroll,
+  // подсветить последнюю открытую позицию.
   const returnToOverview = () => {
     if (queue) {
       onFilterChange(queue.snapshot.filterId);
@@ -9082,44 +8944,63 @@ function OverviewWorkspace({
       onSectionScopeChange(queue.snapshot.sectionScopeId);
       setPriceSort(queue.snapshot.sort);
       restoreScrollTopRef.current = queue.snapshot.scrollTop;
+      setTableHighlightId(queue.currentId);
     }
     setQueue(null);
     setBulkDialog(null);
     clearSelection();
   };
-  const openPanelFilter = (id: OverviewFilterId) => {
-    if (queue) {
-      onQueryChange(queue.snapshot.query);
-      setPriceSort(queue.snapshot.sort);
-    }
+  // «Позиции» в breadcrumb: корневое состояние вкладки — таблица всех позиций.
+  const goToRootOverview = () => {
     setQueue(null);
+    setBulkDialog(null);
+    clearSelection();
+    onQueryChange("");
+    setPriceSort("none");
+    onFilterChange("quick:all");
+    onSectionScopeChange(null);
+  };
+  // Пока редактор открыт, смена фильтра/scope меняет ТОЛЬКО browse (список слева),
+  // не закрывая редактор. Пересобираем очередь, сохраняя currentId (activePositionId);
+  // если позиция не входит в новую выборку — строка просто не будет выделена.
+  const rebrowse = (nextFilterId: OverviewFilterId, nextScopeId: string | null) => {
+    setQueue((current) => {
+      if (!current) return current;
+      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, "none");
+      return {
+        ...current,
+        snapshot: {
+          ...current.snapshot,
+          itemIds,
+          filterId: nextFilterId,
+          sectionScopeId: nextScopeId,
+          query: "",
+          sort: "none",
+        },
+      };
+    });
+  };
+  const openPanelFilter = (id: OverviewFilterId) => {
     setBulkDialog(null);
     clearSelection();
     onFilterChange(id);
+    if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
   };
   const openPanelSectionScope = (id: string | null) => {
-    if (queue) {
-      onFilterChange(queue.snapshot.filterId);
-      onQueryChange(queue.snapshot.query);
-      setPriceSort(queue.snapshot.sort);
-    }
-    setQueue(null);
     setBulkDialog(null);
     clearSelection();
     onSectionScopeChange(id);
+    if (queue) rebrowse(queue.snapshot.filterId, id);
   };
   const selectQueueItem = (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => {
     rememberOpenedPosition(id);
-    // При навигации по позициям раздела двигаем подсветку возврата на последнюю открытую.
-    if (queue?.snapshot.sectionSource) {
+    // Двигаем подсветку возврата на последнюю открытую позицию (пока жив return context).
+    if (returnContext) {
       setReturnContext((current) => (current ? { ...current, highlightedPositionId: id } : current));
     }
     setQueue((current) => current ? { ...current, currentId: id, currentBucket: bucket } : current);
   };
   const handleReturnToSection = () => onReturnToSection?.(returnContext?.highlightedPositionId ?? null);
-  const finishQueue = () => {
-    setQueue((current) => current ? { ...current, currentId: null, currentBucket: "fixed" } : current);
-  };
   const saveDescription = (item: CatalogItem, value: string) => {
     window.clearTimeout(descriptionSaveTimersRef.current[item.id]);
     setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saving" }));
@@ -9242,16 +9123,8 @@ function OverviewWorkspace({
   if (queue) {
     const repairMode = isRepairQueueFilter(queue.snapshot.filterId);
     const currentItem = queue.currentId ? items.find((item) => item.id === queue.currentId) ?? null : null;
-    const remaining = queue.snapshot.itemIds.filter((id) => {
-      const item = items.find((candidate) => candidate.id === id);
-      return item && repairMode ? FILTER_PREDICATES[queue.snapshot.filterId](item) : false;
-    }).length;
-    const prevId = getAdjacentUnfixedId(queue.snapshot.itemIds, items, queue.snapshot.filterId, queue.currentId, -1);
-    const nextId = getAdjacentUnfixedId(queue.snapshot.itemIds, items, queue.snapshot.filterId, queue.currentId, 1);
-    const currentFixed = Boolean(repairMode && currentItem && !FILTER_PREDICATES[queue.snapshot.filterId](currentItem));
-    const canFinish = repairMode && currentFixed && remaining === 0;
     const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
-    const editorContext = getQueueEditorContext(queue.snapshot.filterId);
+    const editorContext = getQueueEditorContext(queue.snapshot.entryFilterId);
     const byId = new Map(items.map((item) => [item.id, item]));
     const remainingIds = queue.snapshot.itemIds.filter((id) => {
       const item = byId.get(id);
@@ -9275,14 +9148,11 @@ function OverviewWorkspace({
             scopeSectionId={queue.snapshot.sectionScopeId}
             query={queue.snapshot.query}
             allItems={items}
-            items={queue.snapshot.sectionSource ? panelItems : getPanelItems(queue.snapshot.filterId, panelItems, queue.snapshot.query)}
+            items={getPanelItems(queue.snapshot.filterId, panelItems)}
             selectedItemId={queue.currentId}
             fixedIds={fixedIds}
-            sectionSource={queue.snapshot.sectionSource ?? null}
-            returnContext={returnContext}
-            onReturnToSection={handleReturnToSection}
+            onShowTable={returnToOverview}
             onQueryChange={handleQueryChange}
-            onReset={() => onReturnToSections(queue.currentId)}
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item, fixed) => selectQueueItem(item.id, fixed ? "fixed" : "remaining")}
@@ -9312,22 +9182,14 @@ function OverviewWorkspace({
               onDescriptionChange={saveDescription}
               onMediaAdded={saveQueueMedia}
               breadcrumb={
-                queue.snapshot.sectionSource
-                  ? <SectionReturnBreadcrumb sectionName={queue.snapshot.sectionSource.sectionName} onBack={handleReturnToSection} />
-                  : <PositionEditorBreadcrumb filterId={queue.snapshot.filterId} onBack={returnToOverview} />
-              }
-              headerMeta={
-                <DescriptionQueueEditorControls
+                <PositionEditorBreadcrumb
                   filterId={queue.snapshot.filterId}
-                  prevDisabled={!prevId}
-                  nextDisabled={!nextId && !canFinish}
-                  onPrev={() => {
-                    if (prevId) selectQueueItem(prevId, "remaining");
-                  }}
-                  onNext={() => {
-                    if (nextId) selectQueueItem(nextId, "remaining");
-                    else if (canFinish) finishQueue();
-                  }}
+                  scopeName={catalogSections.find((section) => section.id === queue.snapshot.sectionScopeId)?.name ?? null}
+                  positionTitle={currentItem.title}
+                  sectionReturnName={returnContext?.sectionName ?? null}
+                  onOpenRoot={goToRootOverview}
+                  onOpenList={returnToOverview}
+                  onOpenSection={handleReturnToSection}
                 />
               }
             />
@@ -9355,10 +9217,8 @@ function OverviewWorkspace({
           allItems={items}
           items={getPanelItems(filterId, visible)}
           selectedItemId={null}
-          returnContext={returnContext}
-          onReturnToSection={handleReturnToSection}
+          showList={false}
           onQueryChange={handleQueryChange}
-          onReset={() => onReturnToSections(null)}
           onFilterChange={openPanelFilter}
           onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
@@ -9438,6 +9298,7 @@ function OverviewWorkspace({
                       scrollParentRef={scrollContainerRef}
                       onSelectedChange={setItemSelected}
                       onAction={prepareRowAction}
+                      highlightItemId={tableHighlightId}
                     />
                   </div>
                   {bulkDialog && (
@@ -9500,7 +9361,12 @@ export function CatalogWorkspace({
     section: { sectionId: string; sectionName: string; positionIds: string[] },
     newItem?: CatalogItem,
   ) => {
+    // Атомарно: редактор строится из pendingOpen на маунте (scope=раздел, «Все позиции»),
+    // а parent-state приводим в соответствие, чтобы никакой прошлый фильтр не всплыл.
     setPendingOpen({ id: positionId, item: newItem, section });
+    onSectionScopeChange(section.sectionId);
+    onViewModeChange("quick:all");
+    onOverviewFilterChange("quick:all");
     onCatalogTabChange("overview");
   };
   const returnToSectionFromOverview = (itemId: string | null) => {
