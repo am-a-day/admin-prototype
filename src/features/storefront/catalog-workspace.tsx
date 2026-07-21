@@ -3,6 +3,26 @@ import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Archive,
   ArrowCounterClockwise,
   ArrowLeft,
@@ -44,6 +64,23 @@ import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/catalog";
 import { cn } from "@/lib/utils";
+
+/** DnD-прототип (dnd-kit): спокойная анимация ~200мс, отключается при
+ * prefers-reduced-motion. Используется деревом разделов и списком позиций раздела. */
+const DND_TRANSITION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" };
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return reduced;
+}
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
 
@@ -4499,6 +4536,44 @@ type CatalogTreeDropIntent = {
   valid: boolean;
 };
 
+/** dnd-kit sortable-обёртка вокруг раздела: узел `setNodeRef` охватывает строку
+ * раздела И весь вложенный поддерево-контент, поэтому перетаскивание родителя
+ * переносит вместе с ним все дочерние разделы. Хэндл (activator) — отдельный
+ * элемент внутри строки, передаётся через render-prop, чтобы drag начинался
+ * только за него, а не за всю строку. */
+function SortableSectionRow({
+  id,
+  parentId,
+  disabled,
+  children,
+}: {
+  id: string;
+  parentId: string | null;
+  disabled?: boolean;
+  children: (args: {
+    handleRef: (element: HTMLElement | null) => void;
+    handleProps: Record<string, unknown>;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id,
+    data: { parentId },
+    disabled,
+    transition: reducedMotion ? null : DND_TRANSITION,
+  });
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}>
+      {children({
+        handleRef: setActivatorNodeRef,
+        handleProps: { ...attributes, ...listeners },
+        isDragging,
+      })}
+    </div>
+  );
+}
+
 function UnifiedCatalogTreePanel({
   sections,
   items,
@@ -4518,6 +4593,7 @@ function UnifiedCatalogTreePanel({
   onSectionAction,
   onMoveItem,
   onMoveSection,
+  onReorderSections,
 }: {
   sections: TreeSection[];
   items: CatalogItem[];
@@ -4537,6 +4613,8 @@ function UnifiedCatalogTreePanel({
   onSectionAction: (section: TreeSection, action: string) => void;
   onMoveItem: (draggedId: string, targetSectionId: string, targetItemId: string | null, mode: "before" | "after" | "inside") => void;
   onMoveSection: (draggedId: string, targetParentId: string | null, targetSectionId: string | null, mode: "before" | "after" | "inside") => void;
+  /** dnd-kit прототип: перестановка соседей на одном уровне того же родителя. */
+  onReorderSections: (parentId: string | null, draggedId: string, overId: string) => void;
 }) {
   const selectedItem = selectedItemId ? items.find((item) => item.id === selectedItemId) ?? null : null;
   const initialExpandedPath = selectedItem
@@ -4555,6 +4633,36 @@ function UnifiedCatalogTreePanel({
   const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
   const [dropIntent, setDropIntent] = useState<CatalogTreeDropIntent | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
+  // dnd-kit прототип сортировки разделов (отдельно от нативного dragSource/dropIntent
+  // выше, который остаётся только для перетаскивания позиций в дерево раздела).
+  const [activeSectionDragId, setActiveSectionDragId] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const sectionDndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  // Коллизии считаем только среди строк с тем же parentId, что и у active —
+  // это и есть ограничение «только соседи того же уровня и родителя».
+  const sectionCollisionDetection: CollisionDetection = (args) => {
+    const activeParentId = (args.active.data.current as { parentId?: string | null } | undefined)?.parentId ?? null;
+    const sameParent = args.droppableContainers.filter((container) => {
+      const containerParentId = (container.data.current as { parentId?: string | null } | undefined)?.parentId ?? null;
+      return containerParentId === activeParentId;
+    });
+    return closestCenter({ ...args, droppableContainers: sameParent });
+  };
+  const handleSectionDragStart = (event: DragStartEvent) => {
+    setActiveSectionDragId(String(event.active.id));
+  };
+  const handleSectionDragEnd = (event: DragEndEvent) => {
+    setActiveSectionDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeParentId = (active.data.current as { parentId?: string | null } | undefined)?.parentId ?? null;
+    const overParentId = (over.data.current as { parentId?: string | null } | undefined)?.parentId ?? null;
+    if (activeParentId !== overParentId) return;
+    onReorderSections(activeParentId, String(active.id), String(over.id));
+  };
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
   const initialPanelScrollTopRef = useRef(readJsonRecord<number>(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, 0));
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
@@ -5173,7 +5281,6 @@ function UnifiedCatalogTreePanel({
       : sectionItems;
     const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
     const parentId = section.parentId ?? null;
-    const isSource = dragSource?.kind === "section" && dragSource.id === section.id;
     const activeDrop = dropIntent?.targetKind === "section" && dropIntent.targetId === section.id ? dropIntent : null;
     const active = sectionEditingEnabled && selectedSectionId === section.id;
     const highlighted = highlightedSectionId === section.id;
@@ -5199,7 +5306,9 @@ function UnifiedCatalogTreePanel({
     );
 
     return (
-      <div key={section.id}>
+      <SortableSectionRow key={section.id} id={section.id} parentId={parentId} disabled={!dragEnabled}>
+        {({ handleRef, handleProps, isDragging }) => (
+          <>
         <div
           ref={active ? selectedRowRef : undefined}
           data-tree-dnd-kind="section"
@@ -5208,22 +5317,6 @@ function UnifiedCatalogTreePanel({
           data-tree-dnd-expanded={isExpanded ? "true" : "false"}
           role="button"
           tabIndex={0}
-          draggable={dragEnabled}
-          onDragStart={(event) => startTreeDrag(event, {
-            kind: "section",
-            id: section.id,
-            parentId,
-            title: section.name,
-            imageUrl: section.imageUrl,
-          })}
-          onDragEnd={finishTreeDrag}
-          onPointerDown={(event) => beginTouchDrag(event, {
-            kind: "section",
-            id: section.id,
-            parentId,
-            title: section.name,
-            imageUrl: section.imageUrl,
-          }, dragEnabled)}
           onDragOver={(event) => updateDropIntent(event, "section", section.id, parentId, isExpanded)}
           onDrop={applyTreeDrop}
           onClick={() => {
@@ -5237,13 +5330,12 @@ function UnifiedCatalogTreePanel({
           }}
           title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
           className={cn(
-            "group relative flex min-h-8 cursor-grab items-center rounded-[12px] py-1.5 pl-1.5 pr-2 transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
+            "group relative flex min-h-8 items-center rounded-[12px] py-1.5 pl-1.5 pr-2 transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
             active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
             highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18),0_0_0_3px_rgba(250,204,21,0.16)]",
-            isSource && "cursor-grabbing opacity-35",
+            isDragging && "opacity-40",
             activeDrop?.valid && activeDrop.mode === "inside" && "bg-[#f3f1ff] ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
             activeDrop && !activeDrop.valid && "cursor-not-allowed",
-            !dragEnabled && "cursor-default",
           )}
         >
           {activeDrop?.valid && activeDrop.mode !== "inside" && (
@@ -5280,6 +5372,19 @@ function UnifiedCatalogTreePanel({
             <span className="flex h-[11px] w-[11px] shrink-0 items-center justify-center" aria-hidden="true" />
           )}
           <div className="ml-1 flex min-w-0 flex-1 items-center gap-2">
+            {dragEnabled && (
+              <button
+                type="button"
+                ref={handleRef}
+                {...handleProps}
+                data-no-tree-drag
+                aria-label={`Изменить порядок раздела ${section.name}`}
+                onClick={(event) => event.stopPropagation()}
+                className="-ml-[3px] flex h-5 w-3.5 shrink-0 cursor-grab items-center justify-center rounded-[4px] text-[#a8a29e] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#57534d] focus-visible:opacity-100 focus-visible:outline-none active:cursor-grabbing group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+              >
+                <DotsSixVertical size={12} />
+              </button>
+            )}
             <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
             <TruncatedText className={cn("h-4 text-left text-[13px] font-medium leading-[18px] transition-[padding] group-hover:pr-11 group-has-[:focus-visible]:pr-11", active ? "text-[#292524]" : "text-[#79716b]")}>
               {section.name}
@@ -5341,10 +5446,16 @@ function UnifiedCatalogTreePanel({
                 </button>
               </div>
             )}
-            {section.children?.map((child) => renderSection(child, depth + 1))}
+            {section.children && section.children.length > 0 && (
+              <SortableContext items={section.children.map((child) => child.id)} strategy={verticalListSortingStrategy}>
+                {section.children.map((child) => renderSection(child, depth + 1))}
+              </SortableContext>
+            )}
           </div>
         )}
-      </div>
+          </>
+        )}
+      </SortableSectionRow>
     );
   };
 
@@ -5411,7 +5522,28 @@ function UnifiedCatalogTreePanel({
         onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2"
       >
-        <div className="space-y-0.5">{treeSections.map((section) => renderSection(section))}</div>
+        <DndContext
+          sensors={sectionDndSensors}
+          collisionDetection={sectionCollisionDetection}
+          onDragStart={handleSectionDragStart}
+          onDragEnd={handleSectionDragEnd}
+          onDragCancel={() => setActiveSectionDragId(null)}
+        >
+          <SortableContext items={treeSections.map((section) => section.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-0.5">{treeSections.map((section) => renderSection(section))}</div>
+          </SortableContext>
+          <DragOverlay dropAnimation={reducedMotion ? null : DND_TRANSITION}>
+            {activeSectionDragId ? (() => {
+              const dragged = allFlatSections.find((candidate) => candidate.id === activeSectionDragId);
+              return dragged ? (
+                <div className="flex max-w-[220px] items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 py-1.5 shadow-[0_10px_28px_rgba(41,37,36,0.18)]">
+                  <CatalogTreeThumbnail src={dragged.imageUrl} />
+                  <span className="min-w-0 truncate text-[13px] font-medium text-[#44403b]">{dragged.name}</span>
+                </div>
+              ) : null;
+            })() : null}
+          </DragOverlay>
+        </DndContext>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
         )}
@@ -6812,6 +6944,25 @@ function PopulatedWorkspace({
     setFeedback(mode === "inside" ? "Раздел перемещён" : "Порядок разделов изменён");
   };
 
+  // dnd-kit прототип (первая итерация): перестановка только среди соседей одного
+  // родителя — без переноса между родителями и без смены уровня вложенности.
+  const reorderSiblingSections = (parentId: string | null, draggedId: string, overId: string) => {
+    if (draggedId === overId) return;
+    setSectionOrderByParent((current) => {
+      const siblingIds = allSections
+        .filter((section) => (section.parentId ?? null) === parentId)
+        .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+        .map((section) => section.id);
+      const oldIndex = siblingIds.indexOf(draggedId);
+      const newIndex = siblingIds.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0) return current;
+      const parentKey = parentId ?? "__root__";
+      return { ...current, [parentKey]: arrayMove(siblingIds, oldIndex, newIndex) };
+    });
+    registerChange("catalog");
+    setFeedback("Порядок разделов изменён");
+  };
+
   // «Добавить позицию» в текущий раздел → создаём черновик и сразу открываем.
   const addPositionToSection = (sectionId: string) => {
     const targetSection = allSections.find((candidate) => candidate.id === sectionId) ?? null;
@@ -7241,6 +7392,7 @@ function PopulatedWorkspace({
             onSectionAction={handleUnifiedSectionAction}
             onMoveItem={moveTreeItem}
             onMoveSection={moveTreeSection}
+            onReorderSections={reorderSiblingSections}
           />
         ) : editing ? (
           <SectionPositionNav
@@ -7920,6 +8072,89 @@ function VirtualizedAuditRows({
 // Компактный sortable-список состава раздела (вкладка «Разделы»).
 // Отличается по форме от аудитной таблицы вкладки «Позиции»: только структура,
 // членство и порядок — без колонок описания/веса/КБЖУ/перевода/фото.
+function SortableCompositionRow({
+  item,
+  selected,
+  selectionMode,
+  canDrag,
+  highlightItemId,
+  onSelectedChange,
+  onItemAction,
+  onPrimaryClick,
+}: {
+  item: CatalogItem;
+  selected: boolean;
+  selectionMode: boolean;
+  canDrag: boolean;
+  highlightItemId?: string | null;
+  onSelectedChange: (id: string, selected: boolean) => void;
+  onItemAction: (item: CatalogItem, action: string) => void;
+  onPrimaryClick: () => void;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    disabled: !canDrag,
+    transition: reducedMotion ? null : DND_TRANSITION,
+  });
+  const status = getPrimaryRowStatusLabel(item);
+  const archived = item.status === "archive";
+  const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined, opacity: isDragging ? 0.4 : 1 }}
+      className={cn(
+        "group flex h-11 items-center gap-1 rounded-[10px] border pl-0.5 pr-1.5 transition-colors",
+        selected ? "border-[#e7e5e4] bg-[#f7f6f2]" : "border-transparent hover:bg-[#faf9f7]",
+        highlightItemId != null && item.id === highlightItemId && "bg-[#fff7d6]",
+      )}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Изменить порядок: ${item.title}`}
+        className={cn(
+          "flex h-8 w-5 shrink-0 items-center justify-center text-[#a8a29e] transition",
+          canDrag
+            ? "cursor-grab opacity-0 hover:text-[#57534d] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100 active:cursor-grabbing"
+            : "opacity-0",
+        )}
+      >
+        <DotsSixVertical size={14} />
+      </button>
+      <span className="flex w-5 shrink-0 items-center justify-center">
+        <TableCheckbox
+          ariaLabel={`Выбрать ${item.title}`}
+          checked={selected}
+          quiet
+          forceVisible={selectionMode}
+          onChange={(checked) => onSelectedChange(item.id, checked)}
+        />
+      </span>
+      <button
+        type="button"
+        onClick={onPrimaryClick}
+        className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-[8px] pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
+        <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2", archived ? "text-[#8a8179]" : "text-[#292524]")}>
+          {item.title}
+        </span>
+        {status && <StatusBadge label={status} />}
+        <span className="shrink-0 text-[12px] leading-5 tabular-nums text-[#a6a09b]">
+          {item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center">
+        <AuditRowActionsMenu item={item} onAction={(action) => onItemAction(item, action)} compositionMode />
+      </span>
+    </div>
+  );
+}
+
 function SectionCompositionList({
   items,
   selectedIds,
@@ -7939,99 +8174,67 @@ function SectionCompositionList({
   reorderEnabled: boolean;
   highlightItemId?: string | null;
 }) {
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  // Синхронный флаг (не state) — гарантирует, что клик по строке во время drag
+  // не откроет редактор, даже если click успевает сработать раньше re-render.
+  const isDraggingRef = useRef(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const activeItem = activeDragId ? items.find((item) => item.id === activeDragId) ?? null : null;
 
   return (
-    <div className="flex flex-col gap-0.5 py-1">
-      {items.map((item) => {
-        const selected = selectedIds.has(item.id);
-        const status = getPrimaryRowStatusLabel(item);
-        const archived = item.status === "archive";
-        const canDrag = reorderEnabled && !archived;
-        const isDragTarget = dragOverId === item.id && draggedId !== item.id;
-        const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
-        const primaryClick = () => {
-          if (selectionMode) onSelectedChange(item.id, !selected);
-          else onItemAction(item, "Редактировать в Позициях");
-        };
-        return (
-          <div
-            key={item.id}
-            onDragOver={(event) => {
-              if (!canDrag || !draggedId || draggedId === item.id) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              setDragOverId(item.id);
-            }}
-            onDrop={(event) => {
-              if (!canDrag || !draggedId) return;
-              event.preventDefault();
-              if (draggedId !== item.id) onReorder(draggedId, item.id);
-              setDraggedId(null);
-              setDragOverId(null);
-            }}
-            className={cn(
-              "group flex h-11 items-center gap-1 rounded-[10px] border pl-0.5 pr-1.5 transition",
-              selected ? "border-[#e7e5e4] bg-[#f7f6f2]" : "border-transparent hover:bg-[#faf9f7]",
-              isDragTarget && "border-[#c7c2ff] bg-[#f5f3ff]",
-              highlightItemId != null && item.id === highlightItemId && "bg-[#fff7d6]",
-            )}
-          >
-            <span
-              draggable={canDrag}
-              role="button"
-              tabIndex={canDrag ? 0 : -1}
-              aria-label={`Изменить порядок: ${item.title}`}
-              onDragStart={(event) => {
-                if (!canDrag) return;
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", item.id);
-                setDraggedId(item.id);
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={(event) => {
+        isDraggingRef.current = true;
+        setActiveDragId(String(event.active.id));
+      }}
+      onDragEnd={(event) => {
+        isDraggingRef.current = false;
+        setActiveDragId(null);
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        onReorder(String(active.id), String(over.id));
+      }}
+      onDragCancel={() => {
+        isDraggingRef.current = false;
+        setActiveDragId(null);
+      }}
+    >
+      <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-0.5 py-1">
+          {items.map((item) => (
+            <SortableCompositionRow
+              key={item.id}
+              item={item}
+              selected={selectedIds.has(item.id)}
+              selectionMode={selectionMode}
+              canDrag={reorderEnabled && item.status !== "archive"}
+              highlightItemId={highlightItemId}
+              onSelectedChange={onSelectedChange}
+              onItemAction={onItemAction}
+              onPrimaryClick={() => {
+                if (isDraggingRef.current) return;
+                if (selectionMode) onSelectedChange(item.id, !selectedIds.has(item.id));
+                else onItemAction(item, "Редактировать в Позициях");
               }}
-              onDragEnd={() => {
-                setDraggedId(null);
-                setDragOverId(null);
-              }}
-              className={cn(
-                "flex h-8 w-5 shrink-0 items-center justify-center text-[#a8a29e] transition",
-                canDrag
-                  ? "cursor-grab opacity-0 hover:text-[#57534d] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100 active:cursor-grabbing"
-                  : "opacity-0",
-              )}
-            >
-              <DotsSixVertical size={14} />
-            </span>
-            <span className="flex w-5 shrink-0 items-center justify-center">
-              <TableCheckbox
-                ariaLabel={`Выбрать ${item.title}`}
-                checked={selected}
-                quiet
-                forceVisible={selectionMode}
-                onChange={(checked) => onSelectedChange(item.id, checked)}
-              />
-            </span>
-            <button
-              type="button"
-              onClick={primaryClick}
-              className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-[8px] pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
-              <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2", archived ? "text-[#8a8179]" : "text-[#292524]")}>
-                {item.title}
-              </span>
-              {status && <StatusBadge label={status} />}
-              <span className="shrink-0 text-[12px] leading-5 tabular-nums text-[#a6a09b]">
-                {item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}
-              </span>
-            </button>
-            <span className="flex shrink-0 items-center">
-              <AuditRowActionsMenu item={item} onAction={(action) => onItemAction(item, action)} compositionMode />
-            </span>
+            />
+          ))}
+        </div>
+      </SortableContext>
+      <DragOverlay dropAnimation={reducedMotion ? null : DND_TRANSITION}>
+        {activeItem ? (
+          <div className="flex h-11 max-w-[420px] items-center gap-2.5 rounded-[10px] border border-[#e7e5e4] bg-white pl-2 pr-3 shadow-[0_10px_28px_rgba(41,37,36,0.18)]">
+            <CatalogThumbnail src={activeItem.thumbnailUrl} kind="item" />
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{activeItem.title}</span>
           </div>
-        );
-      })}
-    </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
