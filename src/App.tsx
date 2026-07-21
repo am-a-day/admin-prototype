@@ -451,28 +451,11 @@ function AppShell() {
   const [upsellFocused, setUpsellFocused] = useState(false);
   const [homeFocus, setHomeFocus] = useState<"hero" | "sections" | null>(null);
 
-  // Панель превью можно скрыть
+  // Панель превью можно скрыть — чисто пользовательский тумблер, не зависит
+  // от вкладки/фильтра/выбранной позиции каталога.
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
-  const catalogFlatModeRef = useRef(false);
-  const previewBeforeCatalogFlatRef = useRef(false);
-  const handleCatalogFlatModeChange = (flat: boolean) => {
-    if (flat) {
-      if (!catalogFlatModeRef.current) {
-        previewBeforeCatalogFlatRef.current = previewCollapsed;
-        catalogFlatModeRef.current = true;
-        setPreviewCollapsed(true);
-      }
-      return;
-    }
-
-    if (catalogFlatModeRef.current) {
-      catalogFlatModeRef.current = false;
-      setPreviewCollapsed(previewBeforeCatalogFlatRef.current);
-    }
-  };
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
     setCatalogViewMode(mode);
-    // Flat/preview-состояние теперь ведёт CatalogWorkspace (учитывает открытый редактор).
     if (mode !== "sections") {
       setCatalogTab("overview");
       setCatalogOverviewFilterId(mode);
@@ -735,7 +718,6 @@ function AppShell() {
           onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
-          onFlatModeChange={handleCatalogFlatModeChange}
           onAdvancePhase={(next) => {
             setCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");

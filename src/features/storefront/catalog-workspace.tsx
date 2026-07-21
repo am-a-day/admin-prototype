@@ -42,7 +42,7 @@ import { usePublish } from "@/contexts/publish-context";
 import type { Category } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
-import type { CatalogItem } from "@/data/catalog";
+import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
@@ -150,7 +150,6 @@ type CatalogWorkspaceProps = {
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
-  onFlatModeChange: (flat: boolean) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
@@ -8412,9 +8411,55 @@ function CatalogScopeSelect({
   const canReset = value !== null;
   const selectedLabel = selected?.name ?? "Выбрать раздел";
   const normalizedQuery = query.trim().toLowerCase();
-  const options = catalogSections
-    .map((section) => ({ section, path: getSectionFullPath(section.id) }))
-    .filter((option) => !normalizedQuery || option.path.toLowerCase().includes(normalizedQuery));
+  const sectionTree = useMemo(() => buildSectionTree(catalogSections), []);
+  // Счётчик раздела включает позиции всех его подразделов (как в дереве «Разделов»).
+  const sectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const parentById = new Map(catalogSections.map((section) => [section.id, section.parentId]));
+    catalogItems.forEach((item) => {
+      let current: string | null = item.sectionId;
+      const seen = new Set<string>();
+      while (current && !seen.has(current)) {
+        seen.add(current);
+        counts.set(current, (counts.get(current) ?? 0) + 1);
+        current = parentById.get(current) ?? null;
+      }
+    });
+    return counts;
+  }, []);
+  const searchResults = normalizedQuery
+    ? catalogSections.filter((section) => getSectionFullPath(section.id).toLowerCase().includes(normalizedQuery))
+    : [];
+
+  const renderRow = (section: CatalogSection, depth: number, parentName?: string) => {
+    const isSelected = value === section.id;
+    return (
+      <DropdownMenu.Item
+        key={section.id}
+        onSelect={() => onChange(section.id)}
+        title={parentName ? `${parentName} / ${section.name}` : section.name}
+        style={{ paddingLeft: 8 + depth * 16 }}
+        className={cn(
+          "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] pr-2 text-[13px] font-medium outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+          isSelected && "bg-[#f3f3ed]",
+        )}
+      >
+        <CatalogTreeThumbnail src={section.imageUrl} selected={isSelected} />
+        <span className={cn("min-w-0 flex-1 truncate", isSelected ? "text-[#292524]" : "text-[#44403b]")}>
+          {section.name}
+          {parentName && <span className="ml-1 font-normal text-[11px] text-[#a8a29e]">· {parentName}</span>}
+        </span>
+        <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{sectionCounts.get(section.id) ?? 0}</span>
+        {isSelected && <Check size={13} className="shrink-0 text-[#57534d]" />}
+      </DropdownMenu.Item>
+    );
+  };
+  const renderNode = (node: CatalogSectionNode, depth = 0): ReactNode => (
+    <div key={node.id}>
+      {renderRow(node, depth)}
+      {node.children.map((child) => renderNode(child, depth + 1))}
+    </div>
+  );
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
@@ -8460,16 +8505,16 @@ function CatalogScopeSelect({
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
               </>
             )}
-            <DropdownMenu.Item onSelect={() => onChange(null)} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
-              <span className="min-w-0 flex-1">Всё меню</span>{value === null && <Check size={13} />}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            {options.map(({ section, path }) => (
-              <DropdownMenu.Item key={section.id} onSelect={() => onChange(section.id)} title={path} className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
-                <span className="min-w-0 flex-1 truncate">{path}</span>{value === section.id && <Check size={13} />}
-              </DropdownMenu.Item>
-            ))}
-            {options.length === 0 && <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>}
+            {normalizedQuery ? (
+              <>
+                {searchResults.map((section) =>
+                  renderRow(section, 0, catalogSections.find((candidate) => candidate.id === section.parentId)?.name),
+                )}
+                {searchResults.length === 0 && <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>}
+              </>
+            ) : (
+              sectionTree.map((node) => renderNode(node))
+            )}
           </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -8854,7 +8899,6 @@ function OverviewWorkspace({
   onReturnToSections,
   pendingOpen,
   onPendingOpenHandled,
-  onEditorOpenChange,
 }: {
   filterId: OverviewFilterId;
   onFilterChange: (id: OverviewFilterId) => void;
@@ -8865,7 +8909,6 @@ function OverviewWorkspace({
   onReturnToSections: (openItemId: string | null) => void;
   pendingOpen?: PendingOpen | null;
   onPendingOpenHandled?: () => void;
-  onEditorOpenChange?: (open: boolean) => void;
 }) {
   const { registerChange } = usePublish();
   // Открытие из «Разделов» обрабатывается атомарно на маунте: сразу строим items и
@@ -9028,10 +9071,6 @@ function OverviewWorkspace({
       currentBucket: "remaining",
     });
   };
-  // Сообщаем наверх, открыт ли редактор (нужно для preview: при редакторе не сворачивать).
-  useEffect(() => {
-    onEditorOpenChange?.(Boolean(queue));
-  }, [queue, onEditorOpenChange]);
   // Очередь/return context уже построены из pendingOpen в инициализаторах useState.
   // Здесь только фиксируем MRU и сбрасываем pendingOpen у родителя (один раз).
   useEffect(() => {
@@ -9476,14 +9515,12 @@ export function CatalogWorkspace({
   onViewModeChange,
   onSectionScopeChange,
   onCatalogTabChange,
-  onFlatModeChange,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
   const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(null);
-  const [overviewEditorOpen, setOverviewEditorOpen] = useState(false);
   const openPositionFromSection = (
     positionId: string,
     section: { sectionId: string; sectionName: string; positionIds: string[] },
@@ -9518,16 +9555,6 @@ export function CatalogWorkspace({
     }
   }, [catalogTab, sectionScopeId]);
   const resetSignalReadyRef = useRef(false);
-  // «Плоский» режим (preview свёрнут) — только когда во вкладке «Позиции» показан
-  // СПИСОК, а не редактор. При открытом редакторе preview остаётся по состоянию
-  // пользователя. pendingOpen учитываем сразу, чтобы preview не мигал при переходе.
-  const flatForPreview = catalogTab === "overview" && !pendingOpen && !overviewEditorOpen;
-  const onFlatModeChangeRef = useRef(onFlatModeChange);
-  onFlatModeChangeRef.current = onFlatModeChange;
-  useEffect(() => {
-    onFlatModeChangeRef.current(flatForPreview);
-  }, [flatForPreview]);
-  useEffect(() => () => onFlatModeChangeRef.current(false), []);
   useEffect(() => {
     if (catalogTab === "overview") return;
     setFlatQuery("");
@@ -9565,7 +9592,6 @@ export function CatalogWorkspace({
         onReturnToSections={returnToSections}
         pendingOpen={pendingOpen}
         onPendingOpenHandled={() => setPendingOpen(null)}
-        onEditorOpenChange={setOverviewEditorOpen}
       />
     ) : catalogPhase === "has-items" ? (
       <PopulatedWorkspace
