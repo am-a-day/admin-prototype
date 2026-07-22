@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -8,15 +8,22 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
-  useDraggable,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragMoveEvent,
+  type DragOverEvent,
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Archive,
   Asterisk,
@@ -84,9 +91,11 @@ function usePrefersReducedMotion(): boolean {
  * (порядок соседей) и «на строку» (вложение). Handle отсутствует: draggable — вся
  * строка, кроме элементов с data-no-dnd. */
 type CatalogDndKind = "section" | "item";
+type CatalogDndSurface = "tree" | "composition";
 type CatalogDropZone = "before" | "after" | "inside";
 type CatalogDropTarget = {
   kind: CatalogDndKind;
+  surface: CatalogDndSurface;
   id: string;
   containerId: string | null;
   zone: CatalogDropZone;
@@ -134,50 +143,49 @@ function mergeRefs<T extends HTMLElement>(...refs: Array<RefObject<T | null> | (
   };
 }
 
-function useCatalogDndRow({
-  kind,
-  id,
-  containerId,
-  disabled,
-}: {
-  kind: CatalogDndKind;
-  id: string;
-  containerId: string | null;
-  disabled?: boolean;
-}) {
-  const dndId = catalogDndId(kind, id);
-  const data = { kind, containerId };
-  const { setNodeRef: setDragRef, listeners, attributes, isDragging } = useDraggable({ id: dndId, data, disabled });
-  const { setNodeRef: setDropRef } = useDroppable({ id: dndId, data, disabled });
-  const setNodeRef = (element: HTMLElement | null) => {
-    setDragRef(element);
-    setDropRef(element);
-  };
-  return { setNodeRef, listeners, attributes, isDragging };
-}
-
-/** Render-prop обёртка вокруг useCatalogDndRow — хуки нельзя звать внутри
+/** Render-prop обёртка вокруг useSortable — хуки нельзя звать внутри
  * рекурсивных функций-рендереров напрямую, поэтому каждая строка получает
  * собственный компонент с устойчивым порядком вызова хуков. */
 function CatalogDndRow({
   kind,
   id,
   containerId,
+  surface = "tree",
   disabled,
   children,
 }: {
   kind: CatalogDndKind;
   id: string;
   containerId: string | null;
+  surface?: CatalogDndSurface;
   disabled?: boolean;
   children: (args: {
     setNodeRef: (element: HTMLElement | null) => void;
     dragProps: Record<string, unknown>;
     isDragging: boolean;
+    style: CSSProperties;
   }) => ReactNode;
 }) {
-  const { setNodeRef, listeners, attributes, isDragging } = useCatalogDndRow({ kind, id, containerId, disabled });
-  return <>{children({ setNodeRef, dragProps: disabled ? {} : { ...attributes, ...listeners }, isDragging })}</>;
+  const { setNodeRef, listeners, attributes, isDragging, transform, transition } = useSortable({
+    id: catalogDndId(kind, id),
+    data: { kind, containerId, surface },
+    disabled,
+    transition: DND_TRANSITION,
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return <>{children({ setNodeRef, dragProps: disabled ? {} : { ...attributes, ...listeners }, isDragging, style })}</>;
+}
+
+function CatalogDragOverlayRow({ drag }: { drag: NonNullable<CatalogActiveDrag> }) {
+  return (
+    <div className="flex h-8 w-[235px] cursor-grabbing items-center gap-2 opacity-75">
+      <CatalogTreeThumbnail src={drag.imageUrl} />
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{drag.title}</span>
+    </div>
+  );
 }
 
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
@@ -622,17 +630,17 @@ function buildHybridQuickFilterIds(
   activeFilterId: OverviewFilterId,
   secondaryFilterIds: OverviewFilterId[],
 ) {
-  const primary = HYBRID_PRIMARY_AUDIT_FILTER_IDS.filter(
-    (id) => counts[id] > 0 || id === activeFilterId,
-  );
-  const activeSecondary = secondaryFilterIds.includes(activeFilterId) ? activeFilterId : null;
-  const result = primary.slice(0, activeSecondary ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS);
+  const activeSecondaryFilterId = secondaryFilterIds.includes(activeFilterId) ? activeFilterId : null;
+  const limit = activeSecondaryFilterId ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS;
+  const result = HYBRID_PRIMARY_AUDIT_FILTER_IDS
+    .filter((id) => counts[id] > 0 || id === activeFilterId)
+    .slice(0, limit);
 
-  if (activeSecondary) result.push(activeSecondary);
   for (const id of secondaryFilterIds) {
-    if (result.length >= HYBRID_MAX_QUICK_FILTERS) break;
-    if (id !== activeSecondary && counts[id] > 0) result.push(id);
+    if (result.length >= limit) break;
+    if (id !== activeSecondaryFilterId && counts[id] > 0) result.push(id);
   }
+
   return result;
 }
 
@@ -1587,7 +1595,7 @@ function getHybridFilterIcon(id: OverviewFilterId) {
   if (id === "status:archived") return <Archive size={16} />;
   if (id === "quick:no-description") return <TextTSlash size={16} />;
   if (id === "quick:no-photo") return <CameraSlash size={16} />;
-  return <DotsThree size={16} />;
+  return <FunnelSimple size={16} weight="regular" />;
 }
 
 function CatalogContextPanel({
@@ -4611,6 +4619,15 @@ function orderSectionItems(items: CatalogItem[], order: string[] | undefined): C
   );
 }
 
+function getSortableDestinationIndex(
+  fromIndex: number,
+  overIndex: number,
+  zone: Exclude<CatalogDropZone, "inside">,
+) {
+  if (zone === "before") return fromIndex < overIndex ? overIndex - 1 : overIndex;
+  return fromIndex < overIndex ? overIndex : overIndex + 1;
+}
+
 function findSectionPath(sections: TreeSection[], targetId: string): string[] {
   for (const section of sections) {
     if (section.id === targetId) return [section.id];
@@ -4619,22 +4636,6 @@ function findSectionPath(sections: TreeSection[], targetId: string): string[] {
   }
   return [];
 }
-
-type CatalogTreeDragSource = {
-  kind: "item" | "section";
-  id: string;
-  parentId: string | null;
-  title: string;
-  imageUrl?: string | null;
-};
-
-type CatalogTreeDropIntent = {
-  targetKind: "item" | "section";
-  targetId: string;
-  targetParentId: string | null;
-  mode: "before" | "inside" | "after";
-  valid: boolean;
-};
 
 function UnifiedCatalogTreePanel({
   sections,
@@ -4653,7 +4654,6 @@ function UnifiedCatalogTreePanel({
   onAddPositionRequest,
   onAddPosition,
   onSectionAction,
-  onMoveItem,
   dropTarget,
   dragActiveRef,
 }: {
@@ -4673,7 +4673,6 @@ function UnifiedCatalogTreePanel({
   onAddPositionRequest: () => void;
   onAddPosition: (sectionId: string) => void;
   onSectionAction: (section: TreeSection, action: string) => void;
-  onMoveItem: (draggedId: string, targetSectionId: string, targetItemId: string | null, mode: "before" | "after" | "inside") => void;
   /** Текущая цель drag'а (общий DndContext вкладки «Разделы», см. PopulatedWorkspace). */
   dropTarget: CatalogDropTarget;
   /** Синхронный флаг активного drag — блокирует клик по строке без задержки re-render. */
@@ -4693,25 +4692,11 @@ function UnifiedCatalogTreePanel({
   const [query, setQuery] = useState(() => readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""));
   const [navigationTargetSectionId, setNavigationTargetSectionId] = useState<string | null>(null);
   const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
-  const [dragSource, setDragSource] = useState<CatalogTreeDragSource | null>(null);
-  const [dropIntent, setDropIntent] = useState<CatalogTreeDropIntent | null>(null);
-  const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
   const initialPanelScrollTopRef = useRef(readJsonRecord<number>(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, 0));
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const selectionScrollReadyRef = useRef(false);
-  const suppressRowClickRef = useRef(false);
   const mixedSectionWarningKeyRef = useRef("");
-  const autoExpandTimerRef = useRef<number | null>(null);
-  const autoExpandTargetRef = useRef<string | null>(null);
-  const touchDragRef = useRef<{
-    source: CatalogTreeDragSource;
-    startX: number;
-    startY: number;
-    pointerId: number;
-    timer: number | null;
-    active: boolean;
-  } | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const allFlatSections = flattenSections(sections);
   const restrictedScopeSectionId = sectionEditingEnabled ? null : scopeSectionId;
@@ -4890,307 +4875,66 @@ function UnifiedCatalogTreePanel({
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
   };
 
-  const clearAutoExpand = () => {
-    if (autoExpandTimerRef.current != null) window.clearTimeout(autoExpandTimerRef.current);
-    autoExpandTimerRef.current = null;
-    autoExpandTargetRef.current = null;
-  };
-
-  const autoScrollPanel = (clientY: number) => {
-    if (!panelScrollRef.current) return;
-    const bounds = panelScrollRef.current.getBoundingClientRect();
-    const edge = 56;
-    if (clientY < bounds.top + edge) {
-      const strength = Math.max(0, Math.min(1, (bounds.top + edge - clientY) / edge));
-      panelScrollRef.current.scrollTop -= 2 + strength * 12;
-    } else if (clientY > bounds.bottom - edge) {
-      const strength = Math.max(0, Math.min(1, (clientY - (bounds.bottom - edge)) / edge));
-      panelScrollRef.current.scrollTop += 2 + strength * 12;
-    }
-  };
-
-  const handlePanelDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!dragSource) return;
-    event.preventDefault();
-    setDropIntent(null);
-    clearAutoExpand();
-    setDragPoint({ x: event.clientX, y: event.clientY });
-    autoScrollPanel(event.clientY);
-  };
-
-  const isSectionDescendant = (sourceId: string, possibleDescendantId: string | null) => {
-    if (!possibleDescendantId) return false;
-    const source = allFlatSections.find((section) => section.id === sourceId);
-    return Boolean(source && findSectionPath(source.children ?? [], possibleDescendantId).length > 0);
-  };
-
-  const getDropValidity = (
-    source: CatalogTreeDragSource,
-    targetKind: CatalogTreeDropIntent["targetKind"],
-    targetId: string,
-    targetParentId: string | null,
-    mode: CatalogTreeDropIntent["mode"],
-  ) => {
-    if (source.id === targetId) return false;
-    if (restrictedScopeSectionId === targetId && mode !== "inside") return false;
-    if (source.kind === "item") return targetKind === "item" ? mode !== "inside" : mode === "inside";
-    if (targetKind !== "section") return false;
-    const nextParentId = mode === "inside" ? targetId : targetParentId;
-    return nextParentId !== source.id && !isSectionDescendant(source.id, nextParentId);
-  };
-
-  const setDropIntentForTarget = (
-    clientX: number,
-    clientY: number,
-    bounds: DOMRect,
-    targetKind: CatalogTreeDropIntent["targetKind"],
-    targetId: string,
-    targetParentId: string | null,
-    isExpanded = false,
-  ) => {
-    if (!dragSource) return;
-    const ratio = (clientY - bounds.top) / Math.max(bounds.height, 1);
-    const mode: CatalogTreeDropIntent["mode"] = targetKind === "section"
-      ? ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "inside"
-      : ratio < 0.5 ? "before" : "after";
-    const valid = getDropValidity(dragSource, targetKind, targetId, targetParentId, mode);
-    setDropIntent({ targetKind, targetId, targetParentId, mode, valid });
-    setDragPoint({ x: clientX, y: clientY });
-    autoScrollPanel(clientY);
-
-    if (targetKind === "section" && mode === "inside" && valid && !isExpanded) {
-      if (autoExpandTargetRef.current !== targetId) {
-        clearAutoExpand();
-        autoExpandTargetRef.current = targetId;
-        autoExpandTimerRef.current = window.setTimeout(() => {
-          setExpanded((current) => ({ ...current, [targetId]: true }));
-          clearAutoExpand();
-        }, 700);
-      }
-    } else {
-      clearAutoExpand();
-    }
-  };
-
-  const updateDropIntent = (
-    event: DragEvent<HTMLElement>,
-    targetKind: CatalogTreeDropIntent["targetKind"],
-    targetId: string,
-    targetParentId: string | null,
-    isExpanded = false,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDropIntentForTarget(
-      event.clientX,
-      event.clientY,
-      event.currentTarget.getBoundingClientRect(),
-      targetKind,
-      targetId,
-      targetParentId,
-      isExpanded,
-    );
-  };
-
-  const startTreeDrag = (event: DragEvent<HTMLElement>, source: CatalogTreeDragSource) => {
-    const target = event.target as HTMLElement;
-    if (normalizedQuery || target.closest("[data-no-tree-drag]")) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", `${source.kind}:${source.id}`);
-    const transparentPreview = new Image();
-    transparentPreview.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-    event.dataTransfer.setDragImage(transparentPreview, 0, 0);
-    setDragPoint({ x: event.clientX, y: event.clientY });
-    setDragSource(source);
-    suppressRowClickRef.current = true;
-  };
-
-  const finishTreeDrag = () => {
-    clearAutoExpand();
-    setDragSource(null);
-    setDropIntent(null);
-    window.setTimeout(() => {
-      suppressRowClickRef.current = false;
-    }, 0);
-  };
-
-  const performTreeDrop = () => {
-    if (!dragSource || !dropIntent?.valid) {
-      finishTreeDrag();
-      return;
-    }
-    // dragSource всегда kind === "item": разделы больше не используют нативный
-    // drag (см. CatalogDndRow/PopulatedWorkspace) — только позиции в дереве.
-    const targetSectionId = dropIntent.targetKind === "section"
-      ? dropIntent.targetId
-      : dropIntent.targetParentId;
-    if (targetSectionId) {
-      onMoveItem(
-        dragSource.id,
-        targetSectionId,
-        dropIntent.targetKind === "item" ? dropIntent.targetId : null,
-        dropIntent.mode,
-      );
-    }
-    finishTreeDrag();
-  };
-
-  const applyTreeDrop = (event: DragEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    performTreeDrop();
-  };
-
-  const beginTouchDrag = (
-    event: ReactPointerEvent<HTMLElement>,
-    source: CatalogTreeDragSource,
-    enabled: boolean,
-  ) => {
-    if (event.pointerType !== "touch" || !enabled) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("[data-no-tree-drag]")) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const pending = {
-      source,
-      startX: event.clientX,
-      startY: event.clientY,
-      pointerId: event.pointerId,
-      timer: null as number | null,
-      active: false,
-    };
-    pending.timer = window.setTimeout(() => {
-      pending.active = true;
-      pending.timer = null;
-      suppressRowClickRef.current = true;
-      setDragPoint({ x: pending.startX, y: pending.startY });
-      setDragSource(source);
-    }, 225);
-    touchDragRef.current = pending;
-  };
-
-  const handleTouchDragMove = (event: ReactPointerEvent<HTMLElement>) => {
-    const touch = touchDragRef.current;
-    if (!touch || event.pointerId !== touch.pointerId) return;
-    const distance = Math.hypot(event.clientX - touch.startX, event.clientY - touch.startY);
-    if (!touch.active) {
-      if (distance > 8 && touch.timer != null) {
-        window.clearTimeout(touch.timer);
-        touchDragRef.current = null;
-      }
-      return;
-    }
-    event.preventDefault();
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-tree-dnd-kind]");
-    if (!target) {
-      setDropIntent(null);
-      clearAutoExpand();
-      setDragPoint({ x: event.clientX, y: event.clientY });
-      autoScrollPanel(event.clientY);
-      return;
-    }
-    const targetKind = target.dataset.treeDndKind === "section" ? "section" : "item";
-    setDropIntentForTarget(
-      event.clientX,
-      event.clientY,
-      target.getBoundingClientRect(),
-      targetKind,
-      target.dataset.treeDndId ?? "",
-      target.dataset.treeDndParentId || null,
-      target.dataset.treeDndExpanded === "true",
-    );
-  };
-
-  const finishTouchDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    const touch = touchDragRef.current;
-    if (!touch || event.pointerId !== touch.pointerId) return;
-    if (touch.timer != null) window.clearTimeout(touch.timer);
-    touchDragRef.current = null;
-    if (touch.active) {
-      event.preventDefault();
-      performTreeDrop();
-    }
-  };
-
   const renderPosition = (item: CatalogItem, section: TreeSection) => {
     const active = item.id === selectedItemId;
-    const isSource = dragSource?.kind === "item" && dragSource.id === item.id;
-    const activeDrop = dropIntent?.targetKind === "item" && dropIntent.targetId === item.id ? dropIntent : null;
+    const isDropHere = dropTarget?.kind === "item" && dropTarget.id === item.id;
     const dragEnabled = !normalizedQuery;
     return (
-      <div
-        key={item.id}
-        ref={active ? selectedRowRef : undefined}
-        data-position-section-id={section.id}
-        data-tree-dnd-kind="item"
-        data-tree-dnd-id={item.id}
-        data-tree-dnd-parent-id={section.id}
-        role="button"
-        tabIndex={0}
-        draggable={dragEnabled}
-        onDragStart={(event) => startTreeDrag(event, {
-          kind: "item",
-          id: item.id,
-          parentId: section.id,
-          title: item.title,
-          imageUrl: item.thumbnailUrl,
-        })}
-        onDragEnd={finishTreeDrag}
-        onPointerDown={(event) => beginTouchDrag(event, {
-          kind: "item",
-          id: item.id,
-          parentId: section.id,
-          title: item.title,
-          imageUrl: item.thumbnailUrl,
-        }, dragEnabled)}
-        onDragOver={(event) => updateDropIntent(event, "item", item.id, section.id)}
-        onDrop={applyTreeDrop}
-        onClick={() => {
-          if (!suppressRowClickRef.current) onSelectItem(item.id);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onSelectItem(item.id);
-          }
-        }}
-        title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
-        className={cn(
-          "group relative flex min-h-8 cursor-grab items-center rounded-[12px] py-1.5 pl-1.5 pr-2 text-left transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
-          active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
-          isSource && "cursor-grabbing opacity-35",
-          activeDrop && !activeDrop.valid && "cursor-not-allowed",
-          !dragEnabled && "cursor-default",
-        )}
-      >
-        {activeDrop?.valid && activeDrop.mode !== "inside" && (
-          <span className={cn("pointer-events-none absolute left-0 right-1 z-10 h-px bg-[#6d5dfc]", activeDrop.mode === "before" ? "top-0" : "bottom-0")}>
-            <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
-          </span>
-        )}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <CatalogTreeThumbnail src={item.thumbnailUrl} selected={active} />
-          <TruncatedText
-            className={cn("h-4 text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : "text-[#79716b]")}
+      <CatalogDndRow key={item.id} kind="item" id={item.id} containerId={section.id} disabled={!dragEnabled}>
+        {({ setNodeRef, dragProps, isDragging, style }) => (
+          <div
+            ref={mergeRefs(active ? selectedRowRef : undefined, setNodeRef)}
+            {...dragProps}
+            style={style}
+            data-position-section-id={section.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (!dragActiveRef.current) onSelectItem(item.id);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelectItem(item.id);
+              }
+            }}
+            title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : isDropHere ? dropTarget?.reason : undefined}
+            className={cn(
+              "group relative flex min-h-8 cursor-grab items-center rounded-[12px] py-1.5 pl-1.5 pr-2 text-left transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
+              active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
+              isDragging && "opacity-0",
+              isDropHere && !dropTarget?.valid && "cursor-not-allowed",
+              !dragEnabled && "cursor-default",
+            )}
           >
-            {item.title}
-          </TruncatedText>
-        </div>
-        <span className="ml-2 flex min-w-0 shrink-0 items-center justify-end">
-          {sectionEditingEnabled && item.status === "stopped" && (
-            <Tooltip label="На стопе" side="top" delayDuration={200}>
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
-            </Tooltip>
-          )}
-          {sectionEditingEnabled && item.status === "archive" && (
-            <Tooltip label="В архиве" side="top" delayDuration={200}>
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
-            </Tooltip>
-          )}
-        </span>
-      </div>
+            {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
+              <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
+                {dropTarget.reason}
+              </span>
+            )}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <CatalogTreeThumbnail src={item.thumbnailUrl} selected={active} />
+              <TruncatedText
+                className={cn("h-4 text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : "text-[#79716b]")}
+              >
+                {item.title}
+              </TruncatedText>
+            </div>
+            <span className="ml-2 flex min-w-0 shrink-0 items-center justify-end">
+              {sectionEditingEnabled && item.status === "stopped" && (
+                <Tooltip label="На стопе" side="top" delayDuration={200}>
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
+                </Tooltip>
+              )}
+              {sectionEditingEnabled && item.status === "archive" && (
+                <Tooltip label="В архиве" side="top" delayDuration={200}>
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
+                </Tooltip>
+              )}
+            </span>
+          </div>
+        )}
+      </CatalogDndRow>
     );
   };
 
@@ -5308,10 +5052,6 @@ function UnifiedCatalogTreePanel({
       : sectionItems;
     const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
     const parentId = section.parentId ?? null;
-    // Старая нативная цель drop (dragSource/dropIntent) — используется только
-    // позициями, перетаскиваемыми в дерево (см. showPositions), не разделами.
-    const activeItemDrop = dropIntent?.targetKind === "section" && dropIntent.targetId === section.id ? dropIntent : null;
-    // Новая общая цель drag'а (см. PopulatedWorkspace) — используется разделами.
     const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
     const active = sectionEditingEnabled && selectedSectionId === section.id;
     const highlighted = highlightedSectionId === section.id;
@@ -5338,21 +5078,15 @@ function UnifiedCatalogTreePanel({
 
     return (
       <CatalogDndRow key={section.id} kind="section" id={section.id} containerId={parentId} disabled={!dragEnabled}>
-        {({ setNodeRef, dragProps, isDragging }) => (
-          <>
+        {({ setNodeRef, dragProps, isDragging, style }) => (
+          <div ref={setNodeRef} style={style}>
         <div
-          ref={mergeRefs(active ? selectedRowRef : undefined, setNodeRef)}
+          ref={active ? selectedRowRef : undefined}
           {...dragProps}
-          data-tree-dnd-kind="section"
-          data-tree-dnd-id={section.id}
-          data-tree-dnd-parent-id={parentId ?? ""}
-          data-tree-dnd-expanded={isExpanded ? "true" : "false"}
           role="button"
           tabIndex={0}
-          onDragOver={(event) => updateDropIntent(event, "section", section.id, parentId, isExpanded)}
-          onDrop={applyTreeDrop}
           onClick={() => {
-            if (!suppressRowClickRef.current && !dragActiveRef.current) onSelectSection(section.id);
+            if (!dragActiveRef.current) onSelectSection(section.id);
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -5366,29 +5100,11 @@ function UnifiedCatalogTreePanel({
             dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
             active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
             highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18),0_0_0_3px_rgba(250,204,21,0.16)]",
-            isDragging && "opacity-40",
-            activeItemDrop?.valid && activeItemDrop.mode === "inside" && "bg-[#f3f1ff] ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
-            activeItemDrop && !activeItemDrop.valid && "cursor-not-allowed",
+            isDragging && "opacity-0",
             isDropHere && dropTarget?.valid && dropTarget.zone === "inside" && "bg-[#f3f1ff] ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
         >
-          {activeItemDrop?.valid && activeItemDrop.mode !== "inside" && (
-            <span
-              className={cn("pointer-events-none absolute right-1 z-10 h-px bg-[#6d5dfc]", activeItemDrop.mode === "before" ? "top-0" : "bottom-0")}
-              style={{ left: 0 }}
-            >
-              <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
-            </span>
-          )}
-          {isDropHere && dropTarget?.valid && dropTarget.zone !== "inside" && (
-            <span
-              className={cn("pointer-events-none absolute right-1 z-10 h-px bg-[#6d5dfc]", dropTarget.zone === "before" ? "top-0" : "bottom-0")}
-              style={{ left: 0 }}
-            >
-              <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
-            </span>
-          )}
           {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
             <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
               {dropTarget.reason}
@@ -5472,37 +5188,39 @@ function UnifiedCatalogTreePanel({
           </div>
         </div>
         {isExpanded && (
-          <div className="space-y-0.5 py-[1px] pl-5">
-            {showPositions && visibleItems.map((item) => renderPosition(item, section))}
-            {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
-              <div className="flex min-h-8 items-center gap-2 rounded-[12px] px-1.5 py-1.5 text-[12px] text-[#a8a29e]">
-                <span className="min-w-0 flex-1 truncate">В разделе пока нет позиций</span>
-                <button type="button" onClick={() => onAddPosition(section.id)} className="mr-2 inline-flex shrink-0 items-center gap-1 text-[#57534d] hover:text-[#292524]">
-                  <PlusCircle size={13} />
-                  Добавить
-                </button>
-              </div>
-            )}
-            {section.children?.map((child) => renderSection(child, depth + 1))}
-          </div>
+          <SortableContext
+            items={[
+              ...(showPositions ? visibleItems.map((item) => catalogDndId("item", item.id)) : []),
+              ...(section.children ?? [])
+                .filter((child) => !normalizedQuery || visibleSectionIds.has(child.id))
+                .map((child) => catalogDndId("section", child.id)),
+            ]}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-0.5 py-[1px] pl-5">
+              {showPositions && visibleItems.map((item) => renderPosition(item, section))}
+              {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
+                <div className="flex min-h-8 items-center gap-2 rounded-[12px] px-1.5 py-1.5 text-[12px] text-[#a8a29e]">
+                  <span className="min-w-0 flex-1 truncate">В разделе пока нет позиций</span>
+                  <button type="button" onClick={() => onAddPosition(section.id)} className="mr-2 inline-flex shrink-0 items-center gap-1 text-[#57534d] hover:text-[#292524]">
+                    <PlusCircle size={13} />
+                    Добавить
+                  </button>
+                </div>
+              )}
+              {section.children?.map((child) => renderSection(child, depth + 1))}
+            </div>
+          </SortableContext>
         )}
-          </>
+          </div>
         )}
       </CatalogDndRow>
     );
   };
 
-  const nestingTarget = dropIntent?.valid && dropIntent.mode === "inside" && dropIntent.targetKind === "section"
-    ? allFlatSections.find((section) => section.id === dropIntent.targetId) ?? null
-    : null;
-
   return (
-    <>
     <aside
       className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6"
-      onPointerMove={handleTouchDragMove}
-      onPointerUp={finishTouchDrag}
-      onPointerCancel={finishTouchDrag}
     >
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-5 min-w-0 items-center justify-between gap-4">
@@ -5551,32 +5269,20 @@ function UnifiedCatalogTreePanel({
       </div>
       <div
         ref={panelScrollRef}
-        onDragOver={handlePanelDragOver}
         onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2"
       >
-        <div className="space-y-0.5">{treeSections.map((section) => renderSection(section))}</div>
+        <SortableContext
+          items={treeSections.map((section) => catalogDndId("section", section.id))}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-0.5">{treeSections.map((section) => renderSection(section))}</div>
+        </SortableContext>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
         )}
       </div>
     </aside>
-    {dragSource && createPortal(
-      <div
-        className="pointer-events-none fixed z-[100006] max-w-[220px] rounded-[8px] border border-[#e7e5e4] bg-white px-2 py-1.5 shadow-[0_10px_28px_rgba(41,37,36,0.18)]"
-        style={{ left: dragPoint.x + 12, top: dragPoint.y + 12 }}
-      >
-        <div className="flex items-center gap-2">
-          <CatalogThumbnail src={dragSource.imageUrl} kind={dragSource.kind === "section" ? "section" : "item"} />
-          <span className="min-w-0 truncate text-[13px] font-medium text-[#44403b]">{dragSource.title}</span>
-        </div>
-        {nestingTarget && (
-          <p className="mt-1 truncate pl-8 text-[11px] text-[#79716b]">В раздел «{nestingTarget.name}»</p>
-        )}
-      </div>,
-      document.body,
-    )}
-    </>
   );
 }
 
@@ -6896,35 +6602,64 @@ function PopulatedWorkspace({
     setFeedback("Порядок позиций изменён");
   };
 
+  const reorderCompositionItems = (
+    containerId: string,
+    draggedId: string,
+    targetId: string,
+    zone: Exclude<CatalogDropZone, "inside">,
+  ) => {
+    const ids = sectionTableItems.map((item) => item.id);
+    const fromIndex = ids.indexOf(draggedId);
+    const overIndex = ids.indexOf(targetId);
+    if (fromIndex < 0 || overIndex < 0) return;
+    const toIndex = getSortableDestinationIndex(fromIndex, overIndex, zone);
+    setPositionOrderBySection((current) => ({
+      ...current,
+      [containerId]: arrayMove(ids, fromIndex, toIndex),
+    }));
+  };
+
   const moveTreeItem = (
     draggedId: string,
     targetSectionId: string,
     targetItemId: string | null,
     mode: "before" | "after" | "inside",
+    announce = true,
   ) => {
     const dragged = allItems.find((item) => item.id === draggedId);
     if (!dragged) return;
     const sourceSectionId = dragged.sectionId;
     setPositionOrderBySection((current) => {
-      const getIds = (sectionId: string) => orderSectionItems(
-        allItems.filter((item) => item.sectionId === sectionId && item.id !== draggedId),
+      const getIds = (sectionId: string, excludeDragged = false) => orderSectionItems(
+        allItems.filter((item) => item.sectionId === sectionId && (!excludeDragged || item.id !== draggedId)),
         current[sectionId],
       ).map((item) => item.id);
-      const targetIds = getIds(targetSectionId);
+      if (sourceSectionId === targetSectionId) {
+        if (!targetItemId || mode === "inside") return current;
+        const ids = getIds(sourceSectionId);
+        const fromIndex = ids.indexOf(draggedId);
+        const overIndex = ids.indexOf(targetItemId);
+        if (fromIndex < 0 || overIndex < 0) return current;
+        const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
+        return { ...current, [sourceSectionId]: arrayMove(ids, fromIndex, toIndex) };
+      }
+
+      const sourceIds = getIds(sourceSectionId, true);
+      const targetIds = getIds(targetSectionId, true);
       const targetIndex = targetItemId ? targetIds.indexOf(targetItemId) : -1;
-      const insertionIndex = targetIndex < 0
-        ? targetIds.length
-        : mode === "after" ? targetIndex + 1 : targetIndex;
+      const insertionIndex = targetIndex < 0 ? targetIds.length : mode === "after" ? targetIndex + 1 : targetIndex;
       targetIds.splice(insertionIndex, 0, draggedId);
-      const next = { ...current, [targetSectionId]: targetIds };
-      if (sourceSectionId !== targetSectionId) next[sourceSectionId] = getIds(sourceSectionId);
+      const next = { ...current, [sourceSectionId]: sourceIds, [targetSectionId]: targetIds };
       return next;
     });
-    setItemSectionOverrides((current) => ({ ...current, [draggedId]: targetSectionId }));
-    if (selectedItemId === draggedId) setSelectedSectionId(targetSectionId);
-    setLastItemBySection((current) => ({ ...current, [targetSectionId]: draggedId }));
-    registerChange("catalog");
-    setFeedback(sourceSectionId === targetSectionId ? "Порядок позиций изменён" : "Позиция перемещена");
+    if (sourceSectionId !== targetSectionId) {
+      setItemSectionOverrides((current) => ({ ...current, [draggedId]: targetSectionId }));
+    }
+    if (announce) {
+      setLastItemBySection((current) => ({ ...current, [targetSectionId]: draggedId }));
+      registerChange("catalog");
+      setFeedback(sourceSectionId === targetSectionId ? "Порядок позиций изменён" : "Позиция перемещена");
+    }
   };
 
   const moveTreeSection = (
@@ -6932,6 +6667,7 @@ function PopulatedWorkspace({
     targetParentId: string | null,
     targetSectionId: string | null,
     mode: "before" | "after" | "inside",
+    announce = true,
   ) => {
     const dragged = allSections.find((section) => section.id === draggedId);
     if (!dragged || targetParentId === draggedId) return;
@@ -6940,24 +6676,37 @@ function PopulatedWorkspace({
     if (targetParentId && descendants.has(targetParentId)) return;
     const sourceParentId = dragged.parentId ?? null;
     setSectionOrderByParent((current) => {
-      const getIds = (parentId: string | null) => allSections
-        .filter((section) => (section.parentId ?? null) === parentId && section.id !== draggedId)
+      const getIds = (parentId: string | null, excludeDragged = false) => allSections
+        .filter((section) => (section.parentId ?? null) === parentId && (!excludeDragged || section.id !== draggedId))
         .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
         .map((section) => section.id);
-      const targetIds = getIds(targetParentId);
+
+      if (sourceParentId === targetParentId) {
+        if (!targetSectionId || mode === "inside") return current;
+        const ids = getIds(sourceParentId);
+        const fromIndex = ids.indexOf(draggedId);
+        const overIndex = ids.indexOf(targetSectionId);
+        if (fromIndex < 0 || overIndex < 0) return current;
+        const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
+        return { ...current, [sourceParentId ?? "__root__"]: arrayMove(ids, fromIndex, toIndex) };
+      }
+
+      const sourceIds = getIds(sourceParentId, true);
+      const targetIds = getIds(targetParentId, true);
       const targetIndex = targetSectionId ? targetIds.indexOf(targetSectionId) : -1;
-      const insertionIndex = targetIndex < 0
-        ? targetIds.length
-        : mode === "after" ? targetIndex + 1 : targetIndex;
+      const insertionIndex = targetIndex < 0 ? targetIds.length : mode === "after" ? targetIndex + 1 : targetIndex;
       targetIds.splice(insertionIndex, 0, draggedId);
       const targetKey = targetParentId ?? "__root__";
-      const next = { ...current, [targetKey]: targetIds };
-      if (sourceParentId !== targetParentId) next[sourceParentId ?? "__root__"] = getIds(sourceParentId);
+      const next = { ...current, [sourceParentId ?? "__root__"]: sourceIds, [targetKey]: targetIds };
       return next;
     });
-    setSectionParentOverrides((current) => ({ ...current, [draggedId]: targetParentId }));
-    registerChange("catalog");
-    setFeedback(mode === "inside" ? "Раздел перемещён" : "Порядок разделов изменён");
+    if (sourceParentId !== targetParentId) {
+      setSectionParentOverrides((current) => ({ ...current, [draggedId]: targetParentId }));
+    }
+    if (announce) {
+      registerChange("catalog");
+      setFeedback(sourceParentId === targetParentId ? "Порядок разделов изменён" : "Раздел перемещён");
+    }
   };
 
   // ---- Общий DnD вкладки «Разделы» (дерево + состав раздела) ----
@@ -6965,12 +6714,26 @@ function PopulatedWorkspace({
   // строку раздела в дереве (перенос между разделами с позициями и обратно).
   const [activeDrag, setActiveDrag] = useState<CatalogActiveDrag>(null);
   const [dropTarget, setDropTarget] = useState<CatalogDropTarget>(null);
+  const dndSourceRef = useRef<{
+    kind: CatalogDndKind;
+    id: string;
+    surface: CatalogDndSurface;
+    containerId: string | null;
+    actualParentId: string | null;
+  } | null>(null);
+  const dndSnapshotRef = useRef<{
+    positionOrderBySection: Record<string, string[]>;
+    sectionOrderByParent: Record<string, string[]>;
+    itemSectionOverrides: Record<string, string>;
+    sectionParentOverrides: Record<string, string | null>;
+  } | null>(null);
+  const dndPreviewKeyRef = useRef("");
   // Синхронный флаг активного drag — блокирует клик по строке без задержки re-render.
   const dragActiveRef = useRef(false);
   const dndReducedMotion = usePrefersReducedMotion();
   const dndSensors = useSensors(
     useSensor(CatalogPointerSensor, { activationConstraint: { distance: 7 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   // Прямой состав раздела: подразделы ИЛИ позиции, никогда вместе (структурное правило).
@@ -7023,7 +6786,7 @@ function PopulatedWorkspace({
     return { valid: true };
   };
 
-  type CatalogDndData = { kind: CatalogDndKind; containerId: string | null };
+  type CatalogDndData = { kind: CatalogDndKind; containerId: string | null; surface: CatalogDndSurface };
   const computeDropTarget = (
     activeId: string | number,
     overId: string | number | null | undefined,
@@ -7039,10 +6802,10 @@ function PopulatedWorkspace({
     const activeCenterY = activeRect.top + activeRect.height / 2;
     const relative = (activeCenterY - overRect.top) / Math.max(overRect.height, 1);
     const zone: CatalogDropZone = overData.kind === "section"
-      ? (relative < 0.25 ? "before" : relative > 0.75 ? "after" : "inside")
+      ? (relative < 0.35 ? "before" : relative > 0.65 ? "after" : "inside")
       : (relative < 0.5 ? "before" : "after");
     const { valid, reason } = isDropValid(activeData.kind, activeRealId, overData.kind, overRealId, overData.containerId, zone);
-    return { kind: overData.kind, id: overRealId, containerId: overData.containerId, zone, valid, reason };
+    return { kind: overData.kind, surface: overData.surface, id: overRealId, containerId: overData.containerId, zone, valid, reason };
   };
 
   const handleDndDragStart = (event: DragStartEvent) => {
@@ -7050,6 +6813,27 @@ function PopulatedWorkspace({
     const data = event.active.data.current as CatalogDndData | undefined;
     if (!data) return;
     const realId = parseCatalogDndId(event.active.id);
+    const actualParentId = data.kind === "section"
+      ? allSections.find((candidate) => candidate.id === realId)?.parentId ?? null
+      : allItems.find((candidate) => candidate.id === realId)?.sectionId ?? data.containerId;
+    dndSourceRef.current = {
+      kind: data.kind,
+      id: realId,
+      surface: data.surface,
+      containerId: data.containerId,
+      actualParentId,
+    };
+    dndSnapshotRef.current = {
+      positionOrderBySection: Object.fromEntries(
+        Object.entries(positionOrderBySection).map(([key, ids]) => [key, [...ids]]),
+      ),
+      sectionOrderByParent: Object.fromEntries(
+        Object.entries(sectionOrderByParent).map(([key, ids]) => [key, [...ids]]),
+      ),
+      itemSectionOverrides: { ...itemSectionOverrides },
+      sectionParentOverrides: { ...sectionParentOverrides },
+    };
+    dndPreviewKeyRef.current = "";
     if (data.kind === "section") {
       const found = allSections.find((candidate) => candidate.id === realId);
       setActiveDrag(found ? { kind: "section", id: realId, title: found.name, imageUrl: found.imageUrl ?? null } : null);
@@ -7058,40 +6842,147 @@ function PopulatedWorkspace({
       setActiveDrag(found ? { kind: "item", id: realId, title: found.title, imageUrl: found.thumbnailUrl ?? null } : null);
     }
   };
+  const previewDndTarget = (target: CatalogDropTarget) => {
+    const source = dndSourceRef.current;
+    if (!source || !target?.valid) return;
+
+    if (source.kind === "section") {
+      if (target.kind !== "section") return;
+      const currentParentId = allSections.find((section) => section.id === source.id)?.parentId ?? null;
+      const targetParentId = target.zone === "inside"
+        ? target.id
+        : allSections.find((section) => section.id === target.id)?.parentId ?? target.containerId;
+      if (currentParentId === targetParentId) return;
+      const previewKey = `section:${source.id}:${targetParentId ?? "root"}:${target.id}:${target.zone}`;
+      if (dndPreviewKeyRef.current === previewKey) return;
+      dndPreviewKeyRef.current = previewKey;
+      moveTreeSection(
+        source.id,
+        targetParentId,
+        target.zone === "inside" ? null : target.id,
+        target.zone,
+        false,
+      );
+      return;
+    }
+
+    if (source.surface === "composition" && target.surface === "composition") return;
+    const currentSectionId = allItems.find((item) => item.id === source.id)?.sectionId ?? source.actualParentId;
+    const targetSectionId = target.kind === "section"
+      ? target.id
+      : allItems.find((item) => item.id === target.id)?.sectionId ?? target.containerId;
+    if (!targetSectionId || currentSectionId === targetSectionId) return;
+    const previewKey = `item:${source.id}:${targetSectionId}:${target.id}:${target.zone}`;
+    if (dndPreviewKeyRef.current === previewKey) return;
+    dndPreviewKeyRef.current = previewKey;
+    moveTreeItem(
+      source.id,
+      targetSectionId,
+      target.kind === "item" ? target.id : null,
+      target.zone,
+      false,
+    );
+  };
+
   const handleDndDragMove = (event: DragMoveEvent) => {
     const { active, over } = event;
     const activeData = active.data.current as CatalogDndData | undefined;
     const overData = over?.data.current as CatalogDndData | undefined;
-    setDropTarget(computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData));
+    const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData);
+    setDropTarget(target);
+    previewDndTarget(target);
   };
-  const handleDndDragEnd = (event: DragEndEvent) => {
-    dragActiveRef.current = false;
-    setActiveDrag(null);
-    setDropTarget(null);
+
+  const handleDndDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     const activeData = active.data.current as CatalogDndData | undefined;
     const overData = over?.data.current as CatalogDndData | undefined;
     const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData);
-    if (!target || !target.valid || !activeData) return;
-    const activeRealId = parseCatalogDndId(active.id);
-    if (activeData.kind === "section") {
-      if (target.kind !== "section") return;
-      moveTreeSection(
-        activeRealId,
-        target.zone === "inside" ? target.id : target.containerId,
-        target.zone === "inside" ? null : target.id,
-        target.zone,
-      );
-    } else {
-      const targetSectionId = target.kind === "section" ? target.id : target.containerId;
-      if (!targetSectionId) return;
-      moveTreeItem(activeRealId, targetSectionId, target.kind === "item" ? target.id : null, target.zone);
-    }
+    setDropTarget(target);
+    previewDndTarget(target);
   };
-  const handleDndDragCancel = () => {
+
+  const restoreDndSnapshot = () => {
+    const snapshot = dndSnapshotRef.current;
+    if (!snapshot) return;
+    setPositionOrderBySection(snapshot.positionOrderBySection);
+    setSectionOrderByParent(snapshot.sectionOrderByParent);
+    setItemSectionOverrides(snapshot.itemSectionOverrides);
+    setSectionParentOverrides(snapshot.sectionParentOverrides);
+  };
+
+  const clearDndState = () => {
     dragActiveRef.current = false;
     setActiveDrag(null);
     setDropTarget(null);
+    dndSourceRef.current = null;
+    dndSnapshotRef.current = null;
+    dndPreviewKeyRef.current = "";
+  };
+
+  const handleDndDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    const activeData = active.data.current as CatalogDndData | undefined;
+    const overData = over?.data.current as CatalogDndData | undefined;
+    const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData)
+      ?? dropTarget;
+    const source = dndSourceRef.current;
+    if (!target?.valid || !source) {
+      restoreDndSnapshot();
+      clearDndState();
+      return;
+    }
+
+    if (source.kind === "section") {
+      if (target.kind !== "section") {
+        restoreDndSnapshot();
+        clearDndState();
+        return;
+      }
+      const targetParentId = target.zone === "inside"
+        ? target.id
+        : allSections.find((section) => section.id === target.id)?.parentId ?? target.containerId;
+      moveTreeSection(
+        source.id,
+        targetParentId,
+        target.zone === "inside" ? null : target.id,
+        target.zone,
+        false,
+      );
+      registerChange("catalog");
+      setFeedback(source.actualParentId === targetParentId ? "Порядок разделов изменён" : "Раздел перемещён");
+    } else {
+      if (
+        source.surface === "composition"
+        && target.surface === "composition"
+        && target.kind === "item"
+        && target.zone !== "inside"
+        && source.containerId
+      ) {
+        reorderCompositionItems(source.containerId, source.id, target.id, target.zone);
+        registerChange("catalog");
+        setFeedback("Порядок позиций изменён");
+        clearDndState();
+        return;
+      }
+      const targetSectionId = target.kind === "section"
+        ? target.id
+        : allItems.find((item) => item.id === target.id)?.sectionId ?? target.containerId;
+      if (!targetSectionId) {
+        restoreDndSnapshot();
+        clearDndState();
+        return;
+      }
+      moveTreeItem(source.id, targetSectionId, target.kind === "item" ? target.id : null, target.zone, false);
+      setLastItemBySection((current) => ({ ...current, [targetSectionId]: source.id }));
+      registerChange("catalog");
+      setFeedback(source.actualParentId === targetSectionId ? "Порядок позиций изменён" : "Позиция перемещена");
+    }
+    clearDndState();
+  };
+  const handleDndDragCancel = () => {
+    restoreDndSnapshot();
+    clearDndState();
   };
 
   // «Добавить позицию» в текущий раздел → создаём черновик и сразу открываем.
@@ -7505,8 +7396,10 @@ function PopulatedWorkspace({
       <DndContext
         sensors={dndSensors}
         collisionDetection={closestCenter}
+        autoScroll
         onDragStart={handleDndDragStart}
         onDragMove={handleDndDragMove}
+        onDragOver={handleDndDragOver}
         onDragEnd={handleDndDragEnd}
         onDragCancel={handleDndDragCancel}
       >
@@ -7529,7 +7422,6 @@ function PopulatedWorkspace({
             onAddPositionRequest={() => showPlaceholderFeedback("Добавить позицию: выберите родительский раздел")}
             onAddPosition={addPositionToSection}
             onSectionAction={handleUnifiedSectionAction}
-            onMoveItem={moveTreeItem}
             dropTarget={dropTarget}
             dragActiveRef={dragActiveRef}
           />
@@ -7710,21 +7602,7 @@ function PopulatedWorkspace({
         )}
       </div>
       <DragOverlay dropAnimation={dndReducedMotion ? null : DND_TRANSITION} modifiers={[overlayCursorOffset]}>
-        {activeDrag ? (
-          <div
-            className={cn(
-              "flex max-w-[240px] items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white/90 px-1.5 shadow-[0_2px_8px_rgba(41,37,36,0.12)]",
-              activeDrag.kind === "section" ? "h-8" : "h-11",
-            )}
-          >
-            {activeDrag.kind === "section" ? (
-              <CatalogTreeThumbnail src={activeDrag.imageUrl} />
-            ) : (
-              <CatalogThumbnail src={activeDrag.imageUrl} kind="item" />
-            )}
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#44403b]">{activeDrag.title}</span>
-          </div>
-        ) : null}
+        {activeDrag ? <CatalogDragOverlayRow drag={activeDrag} /> : null}
       </DragOverlay>
       </DndContext>
     </main>
@@ -8259,29 +8137,22 @@ function CompositionRow({
   const isDropHere = dropTarget?.kind === "item" && dropTarget.id === item.id;
 
   return (
-    <CatalogDndRow kind="item" id={item.id} containerId={sectionId} disabled={!canDrag}>
-      {({ setNodeRef, dragProps, isDragging }) => (
+    <CatalogDndRow kind="item" id={item.id} containerId={sectionId} surface="composition" disabled={!canDrag}>
+      {({ setNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
           {...dragProps}
+          style={style}
           title={isDropHere ? dropTarget?.reason : undefined}
           className={cn(
             "group relative flex h-11 items-center gap-1 rounded-[10px] border pl-0.5 pr-1.5 transition-colors",
             canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default",
             selected ? "border-[#e7e5e4] bg-[#f7f6f2]" : "border-transparent hover:bg-[#faf9f7]",
             highlightItemId != null && item.id === highlightItemId && "bg-[#fff7d6]",
-            isDragging && "opacity-40",
+            isDragging && "opacity-0",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
         >
-          {isDropHere && dropTarget?.valid && (
-            <span
-              className={cn("pointer-events-none absolute right-1 z-10 h-px bg-[#6d5dfc]", dropTarget.zone === "before" ? "top-0" : "bottom-0")}
-              style={{ left: 0 }}
-            >
-              <span className="absolute -left-0.5 -top-[2px] h-[5px] w-[5px] rounded-full bg-[#6d5dfc]" />
-            </span>
-          )}
           {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
             <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
               {dropTarget.reason}
@@ -8296,10 +8167,17 @@ function CompositionRow({
               onChange={(checked) => onSelectedChange(item.id, checked)}
             />
           </span>
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => {
               if (dragActiveRef.current) return;
+              if (selectionMode) onSelectedChange(item.id, !selected);
+              else onItemAction(item, "Редактировать в Позициях");
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
               if (selectionMode) onSelectedChange(item.id, !selected);
               else onItemAction(item, "Редактировать в Позициях");
             }}
@@ -8313,7 +8191,7 @@ function CompositionRow({
             <span className="shrink-0 text-[12px] leading-5 tabular-nums text-[#a6a09b]">
               {item.price === 0 && salePrice == null ? "—" : formatPrice(salePrice ?? item.price)}
             </span>
-          </button>
+          </div>
           <span data-no-dnd className="flex shrink-0 items-center">
             <AuditRowActionsMenu item={item} onAction={(action) => onItemAction(item, action)} compositionMode />
           </span>
@@ -8347,23 +8225,28 @@ function SectionCompositionList({
   onItemAction: (item: CatalogItem, action: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 py-1">
-      {items.map((item) => (
-        <CompositionRow
-          key={item.id}
-          item={item}
-          sectionId={sectionId}
-          selected={selectedIds.has(item.id)}
-          selectionMode={selectionMode}
-          canDrag={reorderEnabled && item.status !== "archive"}
-          highlightItemId={highlightItemId}
-          dropTarget={dropTarget}
-          dragActiveRef={dragActiveRef}
-          onSelectedChange={onSelectedChange}
-          onItemAction={onItemAction}
-        />
-      ))}
-    </div>
+    <SortableContext
+      items={items.map((item) => catalogDndId("item", item.id))}
+      strategy={verticalListSortingStrategy}
+    >
+      <div className="flex flex-col gap-0.5 py-1">
+        {items.map((item) => (
+          <CompositionRow
+            key={item.id}
+            item={item}
+            sectionId={sectionId}
+            selected={selectedIds.has(item.id)}
+            selectionMode={selectionMode}
+            canDrag={reorderEnabled && item.status !== "archive"}
+            highlightItemId={highlightItemId}
+            dropTarget={dropTarget}
+            dragActiveRef={dragActiveRef}
+            onSelectedChange={onSelectedChange}
+            onItemAction={onItemAction}
+          />
+        ))}
+      </div>
+    </SortableContext>
   );
 }
 
@@ -8937,9 +8820,13 @@ function UnifiedFlatCatalogPanel({
     return counts;
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
+  const activeSecondaryFilterId = secondaryFilterIds.includes(filterId) ? filterId : null;
   const [quickFilterIds, setQuickFilterIds] = useState<OverviewFilterId[]>(() =>
     buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds),
   );
+  const visibleQuickFilterIds = quickFilterIds
+    .filter((id) => id !== activeSecondaryFilterId)
+    .slice(0, activeSecondaryFilterId ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS);
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
@@ -8983,7 +8870,11 @@ function UnifiedFlatCatalogPanel({
   const moreFilterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
     ...group,
     ids: group.ids.filter(
-      (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all" && !quickFilterIds.includes(id),
+      (id): id is OverviewFilterId =>
+        id !== "sections"
+        && secondaryFilterIds.includes(id as OverviewFilterId)
+        && id !== activeSecondaryFilterId
+        && !visibleQuickFilterIds.includes(id),
     ),
   })).filter((group) => group.ids.length > 0);
 
@@ -8997,7 +8888,7 @@ function UnifiedFlatCatalogPanel({
             selected={filterId === "quick:all"}
             onClick={() => openFilter("quick:all")}
           />
-          {quickFilterIds.map((id) => (
+          {visibleQuickFilterIds.map((id) => (
             <FilterPanelRow
               key={id}
               row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
@@ -9005,42 +8896,70 @@ function UnifiedFlatCatalogPanel({
               onClick={() => openFilter(id)}
             />
           ))}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex h-[30px] w-full items-center gap-2 rounded-[8px] px-2 pl-1.5 text-left transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
-                  <DotsThree size={16} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#44403b]">
-                  Ещё
-                </span>
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="start">
-              <div className="max-h-[360px] overflow-y-auto">
-                {moreFilterGroups.map((group, groupIndex) => (
-                  <div key={group.label}>
-                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                    {group.ids.map((id) => (
-                      <DropdownMenu.Item
-                        key={id}
-                        onSelect={() => onFilterChange(id)}
-                        className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                        <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                        {filterId === id && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                      </DropdownMenu.Item>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </DropdownContent>
-          </DropdownMenu.Root>
+          <div className="flex flex-col">
+            <div
+              className={cn(
+                "overflow-hidden transition-[height,opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
+                activeSecondaryFilterId
+                  ? "h-8 translate-y-0 opacity-100"
+                  : "h-0 -translate-y-1 opacity-0",
+              )}
+              aria-hidden={!activeSecondaryFilterId}
+            >
+              {activeSecondaryFilterId && (
+                <div
+                  key={activeSecondaryFilterId}
+                  className="animate-in fade-in-0 slide-in-from-top-1 duration-[180ms] motion-reduce:animate-none"
+                >
+                  <FilterPanelRow
+                    row={{
+                      id: activeSecondaryFilterId,
+                      label: HYBRID_PRIMARY_FILTER_LABELS[activeSecondaryFilterId],
+                      count: countByFilter(activeSecondaryFilterId),
+                    }}
+                    selected
+                    onClick={() => openFilter(activeSecondaryFilterId)}
+                  />
+                </div>
+              )}
+            </div>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className="flex h-[30px] w-full items-center gap-2 rounded-[8px] px-2 pl-1.5 text-left transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
+                    <DotsThree size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#44403b]">
+                    Ещё
+                  </span>
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="start">
+                <div className="max-h-[360px] overflow-y-auto">
+                  {moreFilterGroups.map((group, groupIndex) => (
+                    <div key={group.label}>
+                      {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                      <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                      {group.ids.map((id) => (
+                        <DropdownMenu.Item
+                          key={id}
+                          onSelect={() => onFilterChange(id)}
+                          className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                        >
+                          <FunnelSimple size={16} weight="regular" className="shrink-0 text-[#57534d]" />
+                          <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                          <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                        </DropdownMenu.Item>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </DropdownContent>
+            </DropdownMenu.Root>
+          </div>
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-2 pb-3">
