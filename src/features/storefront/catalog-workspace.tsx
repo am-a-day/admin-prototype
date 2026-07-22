@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -42,7 +42,6 @@ import {
   Plus,
   PlusCircle,
   Prohibit,
-  SquaresFour,
   StopCircle,
   TextTSlash,
   Trash,
@@ -796,7 +795,10 @@ type DescriptionAuditQueueSnapshot = {
   /** Фильтр, из которого редактор был открыт. Задаёт forced editor tab и не
    * меняется при смене browse (фильтра/scope), чтобы не дёргать вкладку редактора. */
   entryFilterId: AuditQueueFilterId;
+  /** Локальный поиск в списке левой панели. */
   query: string;
+  /** Поиск центральной таблицы хранится отдельно и восстанавливается при возврате. */
+  tableQuery: string;
   sectionScopeId: string | null;
   scrollTop: number;
   entryItemId: string;
@@ -808,7 +810,6 @@ type DescriptionAuditQueueSnapshot = {
 type DescriptionAuditQueueState = {
   snapshot: DescriptionAuditQueueSnapshot;
   currentId: string | null;
-  currentBucket: "remaining" | "fixed";
 };
 type DescriptionSaveStatus = "idle" | "saving" | "saved";
 
@@ -8602,12 +8603,10 @@ function OverviewStatusBar({
 function DescriptionQueueRow({
   item,
   selected,
-  fixed,
   onClick,
 }: {
   item: CatalogItem;
   selected: boolean;
-  fixed: boolean;
   onClick: () => void;
 }) {
   return (
@@ -8618,23 +8617,17 @@ function DescriptionQueueRow({
       className={cn(
         "group flex w-full items-center gap-2 rounded-[12px] border py-[6px] pl-[6px] pr-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]" : "border-transparent hover:bg-[#f0f0ea]",
-        fixed && !selected && "text-[#8a8179]",
       )}
     >
       <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[5.5px]" />
       <span
         className={cn(
           "min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]",
-          fixed ? "text-[#8a8179]" : selected ? "text-[#292524]" : "text-[#79716b]",
+          selected ? "text-[#292524]" : "text-[#79716b]",
         )}
       >
         {item.title}
       </span>
-      {fixed && (
-        <span title="Исправлено" className="flex h-6 w-6 shrink-0 items-center justify-center text-[#79716b]">
-          <Check size={14} />
-        </span>
-      )}
     </button>
   );
 }
@@ -8642,7 +8635,6 @@ function DescriptionQueueRow({
 function VirtualizedDescriptionQueueRows({
   items,
   selectedItemId,
-  fixedIds,
   scrollParentRef,
   onSelectItem,
   scrollSelectedToTop,
@@ -8650,9 +8642,8 @@ function VirtualizedDescriptionQueueRows({
 }: {
   items: CatalogItem[];
   selectedItemId: string | null;
-  fixedIds?: Set<string>;
   scrollParentRef: RefObject<HTMLDivElement | null>;
-  onSelectItem: (item: CatalogItem, fixed: boolean) => void;
+  onSelectItem: (item: CatalogItem) => void;
   /** Один раз при монтировании прокрутить так, чтобы выбранная строка стала первой
    * видимой под закреплённой областью (переход «Разделы → позиция»). */
   scrollSelectedToTop?: boolean;
@@ -8660,7 +8651,7 @@ function VirtualizedDescriptionQueueRows({
   stickyOffset?: number;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectedItemId, fixedIds?.size ?? 0]);
+  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectedItemId]);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollParentRef.current,
@@ -8695,7 +8686,6 @@ function VirtualizedDescriptionQueueRows({
       {virtualizer.getVirtualItems().map((virtualRow) => {
         const item = items[virtualRow.index];
         if (!item) return null;
-        const fixed = fixedIds?.has(item.id) ?? false;
         return (
           <div
             key={virtualRow.key}
@@ -8705,8 +8695,7 @@ function VirtualizedDescriptionQueueRows({
             <DescriptionQueueRow
               item={item}
               selected={item.id === selectedItemId}
-              fixed={fixed}
-              onClick={() => onSelectItem(item, fixed)}
+              onClick={() => onSelectItem(item)}
             />
           </div>
         );
@@ -8887,33 +8876,12 @@ export function CatalogWorkspaceControls({
   );
 }
 
-/** Измеряет реальную высоту DOM-узла (ResizeObserver) — нужна для точного top-офсета
- * закреплённых строк, независимо от точных паддингов внутри. */
-function useMeasuredHeight(ref: RefObject<HTMLElement | null>): number {
-  const [height, setHeight] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) {
-      setHeight(0);
-      return;
-    }
-    const update = () => setHeight(el.offsetHeight);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  });
-  return height;
-}
-
 function UnifiedFlatCatalogPanel({
   filterId,
   scopeSectionId,
   allItems,
   items,
   selectedItemId,
-  fixedIds,
-  showList = true,
   onShowTable,
   listQuery = "",
   onListQueryChange,
@@ -8927,10 +8895,7 @@ function UnifiedFlatCatalogPanel({
   allItems: CatalogItem[];
   items: CatalogItem[];
   selectedItemId: string | null;
-  fixedIds?: Set<string>;
-  /** Контекстный список снизу показывается только при открытом редакторе. */
-  showList?: boolean;
-  /** Служебное действие «Показать таблицу» над очередью (только при открытом редакторе). */
+  /** В редакторе повторный клик по активному фильтру возвращает таблицу выборки. */
   onShowTable?: () => void;
   /** Локальный поиск внутри текущего раздела/фильтра — не трогает scope/фильтр/таблицу. */
   listQuery?: string;
@@ -8940,13 +8905,9 @@ function UnifiedFlatCatalogPanel({
   scrollSelectedToTop?: boolean;
   onFilterChange: (id: OverviewFilterId) => void;
   onSectionScopeChange: (id: string | null) => void;
-  onSelectItem: (item: CatalogItem, fixed: boolean) => void;
+  onSelectItem: (item: CatalogItem) => void;
 }) {
   const listScrollRef = useRef<HTMLDivElement | null>(null);
-  const headerRef = useRef<HTMLDivElement | null>(null);
-  const activeFilterRowRef = useRef<HTMLDivElement | null>(null);
-  const headerHeight = useMeasuredHeight(headerRef);
-  const activeFilterRowHeight = useMeasuredHeight(activeFilterRowRef);
   const scope = useMemo(() => catalogSections.find((section) => section.id === scopeSectionId) ?? null, [scopeSectionId]);
   const scopeIds = useMemo(() => getSectionScopeIds(scopeSectionId), [scopeSectionId]);
   const allFilterIds = useMemo(
@@ -8971,48 +8932,34 @@ function UnifiedFlatCatalogPanel({
     return counts;
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
-  const primaryFilterIds = HYBRID_PRIMARY_FILTER_IDS.filter((id) => id !== "quick:all");
+  const primaryFilterIds = HYBRID_PRIMARY_FILTER_IDS;
   const moreFilterActive = moreFilterIds.includes(filterId);
-  // Закрепляем активный фильтр только когда он один из базовых: строка «доп.
-  // фильтра» анимируется через overflow-hidden-обёртку, что несовместимо со sticky.
-  const activePrimaryStickyTop = filterId !== "quick:all" && HYBRID_PRIMARY_FILTER_IDS.includes(filterId) ? headerHeight : undefined;
-  const stickyOffset = headerHeight + (activePrimaryStickyTop != null ? activeFilterRowHeight : 0);
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
+  const openFilter = (id: OverviewFilterId) => {
+    if (id === filterId && onShowTable) {
+      onShowTable();
+      return;
+    }
+    onFilterChange(id);
+  };
 
   return (
     <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div ref={headerRef} className="sticky top-0 z-20 bg-[#fbfbf9] pb-2 pt-6">
-          <div className="px-3">
-            <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
-          </div>
-          {showList && onListQueryChange && (
-            <div className="mt-2 px-3">
-              <label className="flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] transition focus-within:border-[#a8a29e]">
-                <MagnifyingGlass size={14} />
-                <input
-                  value={listQuery}
-                  onChange={(event) => onListQueryChange(event.target.value)}
-                  placeholder="Найти позицию"
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                />
-              </label>
-            </div>
-          )}
+      <div className="shrink-0 pb-3 pt-6">
+        <div className="px-3">
+          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         </div>
-        <div className="px-3 pb-3">
+        <div className="mt-2 px-3">
           <div className="space-y-1">
             {primaryFilterIds.map((id) => (
               <FilterPanelRow
                 key={id}
                 row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
                 selected={filterId === id}
-                onClick={() => onFilterChange(id)}
-                onClear={() => onFilterChange("quick:all")}
-                stickyTop={activePrimaryStickyTop}
-                rowRef={filterId === id ? activeFilterRowRef : undefined}
+                onClick={() => openFilter(id)}
+                onClear={id === "quick:all" ? undefined : () => onFilterChange("quick:all")}
               />
             ))}
             <div
@@ -9027,7 +8974,7 @@ function UnifiedFlatCatalogPanel({
                     <FilterPanelRow
                       row={{ id: filterId, label: HYBRID_PRIMARY_FILTER_LABELS[filterId], count: countByFilter(filterId) }}
                       selected
-                      onClick={() => {}}
+                      onClick={() => openFilter(filterId)}
                       onClear={() => onFilterChange("quick:all")}
                     />
                   </div>
@@ -9074,42 +9021,30 @@ function UnifiedFlatCatalogPanel({
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
-          {onShowTable && (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={onShowTable}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onShowTable();
-                }
-              }}
-              className="mt-4 flex w-full cursor-pointer items-center gap-2 rounded-[12px] border border-transparent py-[6px] pl-[6px] pr-2 text-left transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#57534d]">
-                <SquaresFour size={14} />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#79716b]">
-                Показать таблицу
-              </span>
-              <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
-                {items.length}
-              </span>
-            </div>
-          )}
         </div>
-        {showList && (
-          <div className="border-t border-[#e7e5e4] px-3 pt-2">
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7e5e4]">
+        {onListQueryChange && (
+          <div className="shrink-0 px-3 py-2">
+            <label className="flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] transition focus-within:border-[#a8a29e]">
+              <MagnifyingGlass size={14} />
+              <input
+                value={listQuery}
+                onChange={(event) => onListQueryChange(event.target.value)}
+                placeholder="Найти позицию"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+              />
+            </label>
+          </div>
+        )}
+        <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
             {items.length > 0 && (
               <VirtualizedDescriptionQueueRows
                 items={items}
                 selectedItemId={selectedItemId}
-                fixedIds={fixedIds}
                 scrollParentRef={listScrollRef}
                 onSelectItem={onSelectItem}
                 scrollSelectedToTop={scrollSelectedToTop}
-                stickyOffset={stickyOffset}
               />
             )}
             {items.length === 0 && (
@@ -9122,8 +9057,7 @@ function UnifiedFlatCatalogPanel({
                 )}
               </div>
             )}
-          </div>
-        )}
+        </div>
       </div>
     </aside>
   );
@@ -9207,6 +9141,7 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
       filterId: "quick:all",
       entryFilterId: "quick:all",
       query: "",
+      tableQuery: "",
       sectionScopeId: section ? section.sectionId : null,
       scrollTop: 0,
       entryItemId: target.id,
@@ -9214,7 +9149,6 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
       entryFromSection: true,
     },
     currentId: target.id,
-    currentBucket: "remaining",
   };
 }
 
@@ -9247,6 +9181,8 @@ function OverviewWorkspace({
   const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(() =>
     pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialItemsWithPending(pendingOpen)) : null,
   );
+  const [activePositionId, setActivePositionId] = useState<string | null>(() => pendingOpen?.id ?? null);
+  const [panelQuery, setPanelQuery] = useState("");
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
@@ -9281,6 +9217,15 @@ function OverviewWorkspace({
     [filtered, normalizedQuery],
   );
   const visible = useMemo(() => sortItemsByPrice(searched, priceSort), [searched, priceSort]);
+  const normalizedPanelQuery = useMemo(() => panelQuery.trim().toLowerCase(), [panelQuery]);
+  const panelItems = useMemo(
+    () => normalizedPanelQuery
+      ? filtered.filter((item) =>
+          [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedPanelQuery)),
+        )
+      : filtered,
+    [filtered, normalizedPanelQuery],
+  );
   const statusMeta = OVERVIEW_FILTER_META[filterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
   const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
@@ -9374,7 +9319,7 @@ function OverviewWorkspace({
   const buildQueueSnapshot = (
     nextFilterId: AuditQueueFilterId,
     entryItemId: string,
-    snapshotQuery = query,
+    snapshotQuery = panelQuery,
     snapshotSectionScopeId = sectionScopeId,
     scrollTop = scrollContainerRef.current?.scrollTop ?? 0,
     snapshotPriceSort = priceSort,
@@ -9383,6 +9328,7 @@ function OverviewWorkspace({
     filterId: nextFilterId,
     entryFilterId: nextFilterId,
     query: snapshotQuery,
+    tableQuery: query,
     sectionScopeId: snapshotSectionScopeId,
     scrollTop,
     entryItemId,
@@ -9394,10 +9340,10 @@ function OverviewWorkspace({
     const nextSnapshot = buildQueueSnapshot(nextFilterId, item.id);
     const currentId = nextSnapshot.itemIds.includes(item.id) ? item.id : nextSnapshot.itemIds[0] ?? null;
     setSelectedIds(new Set());
+    setActivePositionId(currentId);
     setQueue({
       snapshot: { ...nextSnapshot, entryItemId: currentId ?? item.id },
       currentId,
-      currentBucket: "remaining",
     });
   };
   // Очередь/return context уже построены из pendingOpen в инициализаторах useState.
@@ -9427,7 +9373,8 @@ function OverviewWorkspace({
   const returnToOverview = () => {
     if (queue) {
       onFilterChange(queue.snapshot.filterId);
-      onQueryChange(queue.snapshot.query);
+      onQueryChange(queue.snapshot.tableQuery);
+      setPanelQuery(queue.snapshot.query);
       onSectionScopeChange(queue.snapshot.sectionScopeId);
       setPriceSort(queue.snapshot.sort);
       restoreScrollTopRef.current = queue.snapshot.scrollTop;
@@ -9455,7 +9402,7 @@ function OverviewWorkspace({
   const rebrowse = (nextFilterId: OverviewFilterId, nextScopeId: string | null) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, "none");
+      const itemIds = getQueueItemIds(nextFilterId, items, current.snapshot.query, nextScopeId, current.snapshot.sort);
       return {
         ...current,
         snapshot: {
@@ -9463,8 +9410,6 @@ function OverviewWorkspace({
           itemIds,
           filterId: nextFilterId,
           sectionScopeId: nextScopeId,
-          query: "",
-          sort: "none",
         },
       };
     });
@@ -9490,9 +9435,10 @@ function OverviewWorkspace({
     onSectionScopeChange(id);
     if (queue) rebrowse(queue.snapshot.filterId, id);
   };
-  const selectQueueItem = (id: string, bucket: DescriptionAuditQueueState["currentBucket"]) => {
+  const selectQueueItem = (id: string) => {
     rememberOpenedPosition(id);
-    setQueue((current) => current ? { ...current, currentId: id, currentBucket: bucket } : current);
+    setActivePositionId(id);
+    setQueue((current) => current ? { ...current, currentId: id } : current);
   };
   const saveDescription = (item: CatalogItem, value: string) => {
     window.clearTimeout(descriptionSaveTimersRef.current[item.id]);
@@ -9619,20 +9565,15 @@ function OverviewWorkspace({
     const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
     const editorContext = getQueueEditorContext(queue.snapshot.entryFilterId);
     const byId = new Map(items.map((item) => [item.id, item]));
-    const remainingIds = queue.snapshot.itemIds.filter((id) => {
-      const item = byId.get(id);
-      if (!item) return false;
-      if (!repairMode) return true;
-      if (id === queue.currentId && queue.currentBucket === "remaining") return true;
-      return FILTER_PREDICATES[queue.snapshot.filterId](item);
-    });
-    const fixedIds = new Set(queue.snapshot.itemIds.filter((id) => {
-      const item = byId.get(id);
-      if (!item || !repairMode) return false;
-      if (id === queue.currentId && queue.currentBucket === "remaining") return false;
-      return !FILTER_PREDICATES[queue.snapshot.filterId](item);
-    }));
-    const panelItems = [...remainingIds, ...fixedIds].map((id) => byId.get(id)).filter((item): item is CatalogItem => Boolean(item));
+    // Список всегда вычисляется заново из живых данных. Исправленная позиция сразу
+    // исчезает из аудитной выборки, при этом её редактор остаётся открыт отдельно.
+    const panelItems = getQueueItemIds(
+      queue.snapshot.filterId,
+      items,
+      queue.snapshot.query,
+      queue.snapshot.sectionScopeId,
+      queue.snapshot.sort,
+    ).map((id) => byId.get(id)).filter((item): item is CatalogItem => Boolean(item));
     // Раздел для breadcrumb: текущий scope выборки, а если позиция открыта без scope —
     // родной раздел позиции (у каждой позиции ровно один раздел).
     const breadcrumbSectionId = queue.snapshot.sectionScopeId ?? currentItem?.sectionId ?? null;
@@ -9648,14 +9589,13 @@ function OverviewWorkspace({
             allItems={items}
             items={getPanelItems(queue.snapshot.filterId, panelItems)}
             selectedItemId={queue.currentId}
-            fixedIds={fixedIds}
             onShowTable={returnToOverview}
             listQuery={queue.snapshot.query}
             onListQueryChange={rebrowseQuery}
             scrollSelectedToTop={queue.snapshot.entryFromSection}
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
-            onSelectItem={(item, fixed) => selectQueueItem(item.id, fixed ? "fixed" : "remaining")}
+            onSelectItem={(item) => selectQueueItem(item.id)}
           />
           {currentItem ? (
             <PositionEditor
@@ -9712,9 +9652,10 @@ function OverviewWorkspace({
           filterId={filterId}
           scopeSectionId={sectionScopeId}
           allItems={items}
-          items={getPanelItems(filterId, visible)}
-          selectedItemId={null}
-          showList={false}
+          items={getPanelItems(filterId, panelItems)}
+          selectedItemId={activePositionId}
+          listQuery={panelQuery}
+          onListQueryChange={setPanelQuery}
           onFilterChange={openPanelFilter}
           onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, filterId)}
