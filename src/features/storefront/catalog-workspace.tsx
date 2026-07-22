@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import {
   Archive,
+  Asterisk,
   ArrowCounterClockwise,
   ArrowLeft,
   CaretDown,
@@ -45,6 +46,7 @@ import {
   StopCircle,
   TextTSlash,
   Trash,
+  X,
   XCircle,
 } from "@phosphor-icons/react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
@@ -610,6 +612,30 @@ const HYBRID_PRIMARY_FILTER_IDS: OverviewFilterId[] = [
   "quick:no-description",
   "quick:no-photo",
 ];
+const HYBRID_PRIMARY_AUDIT_FILTER_IDS = HYBRID_PRIMARY_FILTER_IDS.filter(
+  (id): id is OverviewFilterId => id !== "quick:all",
+);
+const HYBRID_MAX_QUICK_FILTERS = 4;
+
+function buildHybridQuickFilterIds(
+  counts: Record<OverviewFilterId, number>,
+  activeFilterId: OverviewFilterId,
+  secondaryFilterIds: OverviewFilterId[],
+) {
+  const primary = HYBRID_PRIMARY_AUDIT_FILTER_IDS.filter(
+    (id) => counts[id] > 0 || id === activeFilterId,
+  );
+  const activeSecondary = secondaryFilterIds.includes(activeFilterId) ? activeFilterId : null;
+  const result = primary.slice(0, activeSecondary ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS);
+
+  if (activeSecondary) result.push(activeSecondary);
+  for (const id of secondaryFilterIds) {
+    if (result.length >= HYBRID_MAX_QUICK_FILTERS) break;
+    if (id !== activeSecondary && counts[id] > 0) result.push(id);
+  }
+  return result;
+}
+
 const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
   "quick:all": "Все позиции",
   "status:stop": "На стопе",
@@ -1508,24 +1534,14 @@ function FilterPanelRow({
   row,
   selected,
   onClick,
-  onClear,
-  stickyTop,
-  rowRef,
 }: {
   row: PanelRow;
   selected?: boolean;
   onClick: () => void;
-  /** Активный фильтр можно снять «×», не трогая остальную выборку (scope сохраняется). */
-  onClear?: () => void;
-  /** Когда задано и строка активна — «прилипает» под шапкой панели при прокрутке. */
-  stickyTop?: number;
-  rowRef?: RefObject<HTMLDivElement | null>;
 }) {
   const icon = getHybridFilterIcon(row.id as OverviewFilterId);
-  const sticky = Boolean(selected && stickyTop != null);
   return (
     <div
-      ref={rowRef}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -1535,57 +1551,43 @@ function FilterPanelRow({
           onClick();
         }
       }}
-      style={sticky ? { top: stickyTop } : undefined}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 py-[6px] pl-[6px] pr-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "flex h-[30px] w-full cursor-pointer items-center gap-2 border px-2 pl-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected
-          ? "rounded-[5px] border border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]"
-          : "rounded-[12px] border border-transparent hover:bg-[#f0f0ea]",
-        sticky && "sticky z-10",
+          ? "rounded-[8px] border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]"
+          : "rounded-[8px] border-transparent hover:bg-[#f0f0ea]",
       )}
     >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[#57534d]">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
         {icon}
       </span>
       <span
         className={cn(
-          "min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]",
-          selected ? "text-[#292524]" : "text-[#79716b]",
+          "min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px]",
+          selected ? "text-[#1c1917]" : "text-[#44403b]",
         )}
       >
         {row.label}
       </span>
       {row.count != null && (
-        <span className="flex h-[16.8px] min-w-6 shrink-0 items-center justify-center rounded-[4.8px] bg-[#f3f3ed] px-[2.4px] text-[12px] font-medium leading-[19.2px] text-[#79716b]">
+        <span className={cn(
+          "shrink-0 text-[12px] font-normal leading-[19.2px] tabular-nums",
+          selected ? "text-[#292524]" : "text-[rgba(90,90,92,0.8)]",
+        )}>
           {row.count}
         </span>
-      )}
-      {selected && onClear && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onClear();
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-          title="Снять фильтр"
-          aria-label="Снять фильтр"
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4.8px] text-[#a6a09b] transition hover:bg-[#f3f3ed] hover:text-[#57534d]"
-        >
-          <XCircle size={14} />
-        </button>
       )}
     </div>
   );
 }
 
 function getHybridFilterIcon(id: OverviewFilterId) {
-  if (id === "quick:all") return <List size={14} />;
-  if (id === "status:stop") return <StopCircle size={14} />;
-  if (id === "status:archived") return <Archive size={14} />;
-  if (id === "quick:no-description") return <TextTSlash size={14} />;
-  if (id === "quick:no-photo") return <CameraSlash size={14} />;
-  return <DotsThree size={14} />;
+  if (id === "quick:all") return <Asterisk size={16} />;
+  if (id === "status:stop") return <StopCircle size={16} />;
+  if (id === "status:archived") return <Archive size={16} />;
+  if (id === "quick:no-description") return <TextTSlash size={16} />;
+  if (id === "quick:no-photo") return <CameraSlash size={16} />;
+  return <DotsThree size={16} />;
 }
 
 function CatalogContextPanel({
@@ -8615,8 +8617,8 @@ function DescriptionQueueRow({
       onClick={onClick}
       title={`${item.title} · ${item.sectionName}`}
       className={cn(
-        "group flex w-full items-center gap-2 rounded-[12px] border py-[6px] pl-[6px] pr-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        selected ? "border-[#e7e5e4] bg-white shadow-[0_0_2px_rgba(0,0,0,0.09)]" : "border-transparent hover:bg-[#f0f0ea]",
+        "group flex h-8 w-full items-center gap-2 rounded-[8px] py-1.5 pl-1 pr-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        selected ? "bg-[#f3f3ed]" : "hover:bg-[#f0f0ea]",
       )}
     >
       <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[5.5px]" />
@@ -8781,17 +8783,17 @@ function CatalogScopeSelect({
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <div className="flex w-full min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f0f0ea] p-[6px] transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10">
+      <div className="flex h-9 w-full min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5 transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10">
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label={selected ? `Выбран раздел: ${selectedLabel}` : "Выбрать раздел"}
             className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
           >
-            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-[3px] bg-white text-[#57534d]">
-              {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : null}
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-white text-[#57534d]">
+              {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#57534d]">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#44403b]">
               {selectedLabel}
             </span>
           </button>
@@ -8908,6 +8910,9 @@ function UnifiedFlatCatalogPanel({
   onSelectItem: (item: CatalogItem) => void;
 }) {
   const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const previousSelectionRef = useRef({ filterId, scopeSectionId });
+  const [searchOpen, setSearchOpen] = useState(() => Boolean(listQuery.trim()));
   const scope = useMemo(() => catalogSections.find((section) => section.id === scopeSectionId) ?? null, [scopeSectionId]);
   const scopeIds = useMemo(() => getSectionScopeIds(scopeSectionId), [scopeSectionId]);
   const allFilterIds = useMemo(
@@ -8917,7 +8922,7 @@ function UnifiedFlatCatalogPanel({
     ])).filter((id): id is OverviewFilterId => id !== "sections"),
     [],
   );
-  const moreFilterIds = useMemo(
+  const secondaryFilterIds = useMemo(
     () => allFilterIds.filter((id) => !HYBRID_PRIMARY_FILTER_IDS.includes(id)),
     [allFilterIds],
   );
@@ -8932,11 +8937,20 @@ function UnifiedFlatCatalogPanel({
     return counts;
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
-  const primaryFilterIds = HYBRID_PRIMARY_FILTER_IDS;
-  const moreFilterActive = moreFilterIds.includes(filterId);
+  const [quickFilterIds, setQuickFilterIds] = useState<OverviewFilterId[]>(() =>
+    buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds),
+  );
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
+  const closeSearch = () => {
+    onListQueryChange?.("");
+    setSearchOpen(false);
+  };
+  const toggleSearch = () => {
+    if (searchOpen) closeSearch();
+    else setSearchOpen(true);
+  };
   const openFilter = (id: OverviewFilterId) => {
     if (id === filterId && onShowTable) {
       onShowTable();
@@ -8945,118 +8959,149 @@ function UnifiedFlatCatalogPanel({
     onFilterChange(id);
   };
 
+  useEffect(() => {
+    const previous = previousSelectionRef.current;
+    const selectionChanged = previous.filterId !== filterId || previous.scopeSectionId !== scopeSectionId;
+    if (selectionChanged || !onShowTable) {
+      const next = buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds);
+      setQuickFilterIds((current) =>
+        current.length === next.length && current.every((id, index) => id === next[index]) ? current : next,
+      );
+    }
+    if (selectionChanged) {
+      onListQueryChange?.("");
+      setSearchOpen(false);
+    }
+    previousSelectionRef.current = { filterId, scopeSectionId };
+  }, [filterCounts, filterId, onListQueryChange, onShowTable, scopeSectionId, secondaryFilterIds]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [searchOpen]);
+
+  const moreFilterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
+    ...group,
+    ids: group.ids.filter(
+      (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all" && !quickFilterIds.includes(id),
+    ),
+  })).filter((group) => group.ids.length > 0);
+
   return (
-    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
-      <div className="shrink-0 pb-3 pt-6">
-        <div className="px-3">
-          <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
-        </div>
-        <div className="mt-2 px-3">
-          <div className="space-y-1">
-            {primaryFilterIds.map((id) => (
-              <FilterPanelRow
-                key={id}
-                row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
-                selected={filterId === id}
-                onClick={() => openFilter(id)}
-                onClear={id === "quick:all" ? undefined : () => onFilterChange("quick:all")}
-              />
-            ))}
-            <div
-              className={cn(
-                "grid transition-[grid-template-rows,opacity] duration-[180ms] ease-out motion-reduce:transition-none",
-                moreFilterActive ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-              )}
-            >
-              <div className="overflow-hidden">
-                {moreFilterActive && (
-                  <div className="pb-1">
-                    <FilterPanelRow
-                      row={{ id: filterId, label: HYBRID_PRIMARY_FILTER_LABELS[filterId], count: countByFilter(filterId) }}
-                      selected
-                      onClick={() => openFilter(filterId)}
-                      onClear={() => onFilterChange("quick:all")}
-                    />
+    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
+      <div className="shrink-0 px-2 pb-5">
+        <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
+        <div className="mt-3 flex flex-col gap-0.5">
+          <FilterPanelRow
+            row={{ id: "quick:all", label: HYBRID_PRIMARY_FILTER_LABELS["quick:all"], count: countByFilter("quick:all") }}
+            selected={filterId === "quick:all"}
+            onClick={() => openFilter("quick:all")}
+          />
+          {quickFilterIds.map((id) => (
+            <FilterPanelRow
+              key={id}
+              row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
+              selected={filterId === id}
+              onClick={() => openFilter(id)}
+            />
+          ))}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="flex h-[30px] w-full items-center gap-2 rounded-[8px] px-2 pl-1.5 text-left transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#57534d]">
+                  <DotsThree size={16} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#44403b]">
+                  Ещё
+                </span>
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="start">
+              <div className="max-h-[360px] overflow-y-auto">
+                {moreFilterGroups.map((group, groupIndex) => (
+                  <div key={group.label}>
+                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                    {group.ids.map((id) => (
+                      <DropdownMenu.Item
+                        key={id}
+                        onSelect={() => onFilterChange(id)}
+                        className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                        <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                        {filterId === id && <Check size={13} className="shrink-0 text-[#79716b]" />}
+                      </DropdownMenu.Item>
+                    ))}
                   </div>
-                )}
+                ))}
               </div>
-            </div>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-[12px] border border-transparent py-[6px] pl-[6px] pr-2 text-left transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] text-[#57534d]">
-                    <DotsThree size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-[#79716b]">
-                    Еще фильтры
-                  </span>
-                  <CaretDown size={12} className="shrink-0 text-[#79716b]" />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownContent align="start">
-                <div className="max-h-[360px] overflow-y-auto">
-                  {CATALOG_VIEW_MODE_GROUPS.filter((group) => group.ids.some((id) => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId))).map((group, groupIndex) => (
-                    <div key={group.label}>
-                      {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                      <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                      {group.ids
-                        .filter((id): id is OverviewFilterId => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId))
-                        .map((id) => (
-                          <DropdownMenu.Item
-                            key={id}
-                            onSelect={() => onFilterChange(id)}
-                            className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                          >
-                            <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                            <span className="shrink-0 text-[12px] font-medium tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                            {filterId === id && <Check size={13} className="shrink-0 text-[#79716b]" />}
-                          </DropdownMenu.Item>
-                        ))}
-                    </div>
-                  ))}
-                </div>
-              </DropdownContent>
-            </DropdownMenu.Root>
-          </div>
+            </DropdownContent>
+          </DropdownMenu.Root>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7e5e4]">
-        {onListQueryChange && (
-          <div className="shrink-0 px-3 py-2">
-            <label className="flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] transition focus-within:border-[#a8a29e]">
+      <div className="flex min-h-0 flex-1 flex-col px-2 pb-3">
+        <div className="flex h-[18px] shrink-0 items-center justify-between pl-1 pr-1.5">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#292524]">
+            {HYBRID_PRIMARY_FILTER_LABELS[filterId]}
+          </span>
+          {onListQueryChange && (
+            <button
+              type="button"
+              onClick={toggleSearch}
+              aria-label={searchOpen ? "Закрыть поиск по позициям" : "Открыть поиск по позициям"}
+              aria-expanded={searchOpen}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#57534d] transition hover:bg-[#f0f0ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {searchOpen ? <X size={16} /> : <MagnifyingGlass size={16} />}
+            </button>
+          )}
+        </div>
+        <div
+          className={cn(
+            "grid shrink-0 transition-[grid-template-rows,opacity] duration-[180ms] ease-out motion-reduce:transition-none",
+            searchOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          )}
+        >
+          <div className="overflow-hidden">
+            <label className="mt-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
               <MagnifyingGlass size={14} />
               <input
+                ref={searchInputRef}
                 value={listQuery}
-                onChange={(event) => onListQueryChange(event.target.value)}
+                onChange={(event) => onListQueryChange?.(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeSearch();
+                  }
+                }}
                 placeholder="Найти позицию"
                 className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
               />
             </label>
           </div>
-        )}
-        <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-            {items.length > 0 && (
-              <VirtualizedDescriptionQueueRows
-                items={items}
-                selectedItemId={selectedItemId}
-                scrollParentRef={listScrollRef}
-                onSelectItem={onSelectItem}
-                scrollSelectedToTop={scrollSelectedToTop}
-              />
-            )}
-            {items.length === 0 && (
-              <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4">
-                <p className="text-[12px] leading-5 text-[#79716b]">
-                  {listQuery.trim() ? "По вашему запросу ничего не найдено" : emptyText}
-                </p>
-                {listQuery.trim() && onListQueryChange && (
-                  <button type="button" onClick={() => onListQueryChange("")} className="mt-3 text-[12px] font-medium text-[#57534d] hover:text-[#292524]">Очистить поиск</button>
-                )}
-              </div>
-            )}
+        </div>
+        <div ref={listScrollRef} className="mt-3 min-h-0 flex-1 overflow-y-auto">
+          {items.length > 0 && (
+            <VirtualizedDescriptionQueueRows
+              items={items}
+              selectedItemId={selectedItemId}
+              scrollParentRef={listScrollRef}
+              onSelectItem={onSelectItem}
+              scrollSelectedToTop={scrollSelectedToTop}
+            />
+          )}
+          {items.length === 0 && (
+            <div className="px-1 py-2">
+              <p className="text-[12px] leading-5 text-[#79716b]">
+                {listQuery.trim() ? "По вашему запросу ничего не найдено" : emptyText}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -9392,6 +9437,7 @@ function OverviewWorkspace({
     setBulkDialog(null);
     clearSelection();
     onQueryChange("");
+    setPanelQuery("");
     setPriceSort("none");
     onFilterChange("quick:all");
     onSectionScopeChange(targetSectionId);
@@ -9402,7 +9448,7 @@ function OverviewWorkspace({
   const rebrowse = (nextFilterId: OverviewFilterId, nextScopeId: string | null) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(nextFilterId, items, current.snapshot.query, nextScopeId, current.snapshot.sort);
+      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, current.snapshot.sort);
       return {
         ...current,
         snapshot: {
@@ -9410,6 +9456,7 @@ function OverviewWorkspace({
           itemIds,
           filterId: nextFilterId,
           sectionScopeId: nextScopeId,
+          query: "",
         },
       };
     });
@@ -9426,12 +9473,14 @@ function OverviewWorkspace({
   const openPanelFilter = (id: OverviewFilterId) => {
     setBulkDialog(null);
     clearSelection();
+    setPanelQuery("");
     onFilterChange(id);
     if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
   };
   const openPanelSectionScope = (id: string | null) => {
     setBulkDialog(null);
     clearSelection();
+    setPanelQuery("");
     onSectionScopeChange(id);
     if (queue) rebrowse(queue.snapshot.filterId, id);
   };
