@@ -8,8 +8,10 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
@@ -101,8 +103,40 @@ type CatalogDropTarget = {
   zone: CatalogDropZone;
   valid: boolean;
   reason?: string;
+  insideActive?: boolean;
 } | null;
 type CatalogActiveDrag = { kind: CatalogDndKind; id: string; title: string; imageUrl?: string | null } | null;
+
+type CatalogDropIntentState = {
+  targetId: string | null;
+  pendingIntent: CatalogDropZone | null;
+  activeIntent: CatalogDropZone | null;
+  insideStartedAt: number | null;
+  invalidReason?: string;
+};
+
+type CatalogPointerPosition = { x: number; y: number };
+type CatalogTargetRect = { top: number; height: number };
+
+const EMPTY_DROP_INTENT: CatalogDropIntentState = {
+  targetId: null,
+  pendingIntent: null,
+  activeIntent: null,
+  insideStartedAt: null,
+};
+const CATALOG_INSIDE_DELAY_MS = 300;
+const CATALOG_INVALID_HINT_DELAY_MS = 500;
+const CATALOG_INVALID_DROP_HOLD_MS = 1800;
+const CATALOG_DROP_HYSTERESIS_PX = 5;
+
+/** Единая геометрия section drop-зон: 25% / 50% / 25%. */
+function getDropIntent(pointer: CatalogPointerPosition, targetRect: CatalogTargetRect): CatalogDropZone {
+  const height = Math.max(targetRect.height, 1);
+  const relativeY = (pointer.y - targetRect.top) / height;
+  if (relativeY < 0.25) return "before";
+  if (relativeY > 0.75) return "after";
+  return "inside";
+}
 
 function catalogDndId(kind: CatalogDndKind, id: string) {
   return `${kind}:${id}`;
@@ -132,6 +166,13 @@ class CatalogPointerSensor extends PointerSensor {
 /** Смещает DragOverlay на фиксированный отступ от курсора (~10–12px), чтобы
  * не закрывать курсор и не совпадать с оригинальной (приглушённой) строкой. */
 const overlayCursorOffset: Modifier = ({ transform }) => ({ ...transform, x: transform.x + 12, y: transform.y + 10 });
+
+/** Во время pointer-drag целью остаётся строка непосредственно под курсором.
+ * closestCenter нужен как fallback для клавиатуры и промежутков между строками. */
+const catalogCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+};
 
 function mergeRefs<T extends HTMLElement>(...refs: Array<RefObject<T | null> | ((element: T | null) => void) | undefined>) {
   return (element: T | null) => {
@@ -1541,19 +1582,22 @@ export function CatalogFiltersPanel({
 function FilterPanelRow({
   row,
   selected,
+  disabled = false,
   onClick,
 }: {
   row: PanelRow;
   selected?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   const icon = getHybridFilterIcon(row.id as OverviewFilterId);
   return (
     <div
       role="button"
-      tabIndex={0}
-      onClick={onClick}
+      tabIndex={disabled ? -1 : 0}
+      onClick={disabled ? undefined : onClick}
       onKeyDown={(event) => {
+        if (disabled) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onClick();
@@ -4655,6 +4699,7 @@ function UnifiedCatalogTreePanel({
   onAddPosition,
   onSectionAction,
   dropTarget,
+  invalidNestingHintVisible,
   dragActiveRef,
 }: {
   sections: TreeSection[];
@@ -4675,6 +4720,8 @@ function UnifiedCatalogTreePanel({
   onSectionAction: (section: TreeSection, action: string) => void;
   /** Текущая цель drag'а (общий DndContext вкладки «Разделы», см. PopulatedWorkspace). */
   dropTarget: CatalogDropTarget;
+  /** Единая служебная подсказка для недопустимого вложения раздела. */
+  invalidNestingHintVisible: boolean;
   /** Синхронный флаг активного drag — блокирует клик по строке без задержки re-render. */
   dragActiveRef: RefObject<boolean>;
 }) {
@@ -4898,7 +4945,7 @@ function UnifiedCatalogTreePanel({
                 onSelectItem(item.id);
               }
             }}
-            title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : isDropHere ? dropTarget?.reason : undefined}
+            title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
             className={cn(
               "group relative flex min-h-8 cursor-grab items-center rounded-[12px] py-1.5 pl-1.5 pr-2 text-left transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing",
               active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
@@ -4907,11 +4954,6 @@ function UnifiedCatalogTreePanel({
               !dragEnabled && "cursor-default",
             )}
           >
-            {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
-              <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
-                {dropTarget.reason}
-              </span>
-            )}
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <CatalogTreeThumbnail src={item.thumbnailUrl} selected={active} />
               <TruncatedText
@@ -5094,22 +5136,18 @@ function UnifiedCatalogTreePanel({
               onSelectSection(section.id);
             }
           }}
-          title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : isDropHere ? dropTarget?.reason : undefined}
+          title={normalizedQuery ? "Очистите поиск, чтобы изменить порядок" : undefined}
           className={cn(
-            "group relative flex min-h-8 items-center rounded-[12px] py-1.5 pl-1.5 pr-2 transition-[opacity,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            "group relative flex min-h-8 items-center rounded-[12px] py-1.5 pl-1.5 pr-2 transition-[opacity,background-color,box-shadow,padding-left] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
             dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
             active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
             highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18),0_0_0_3px_rgba(250,204,21,0.16)]",
             isDragging && "opacity-0",
-            isDropHere && dropTarget?.valid && dropTarget.zone === "inside" && "bg-[#f3f1ff] ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
+            isDropHere && dropTarget?.valid && dropTarget.zone === "inside" && !dropTarget.insideActive && "bg-[#f7f6ff]",
+            isDropHere && dropTarget?.valid && dropTarget.zone === "inside" && dropTarget.insideActive && "bg-[#f3f1ff] pl-2.5 ring-1 ring-[#9d93ff] shadow-[inset_0_0_0_1px_rgba(109,93,252,0.12)]",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
         >
-          {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
-            <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
-              {dropTarget.reason}
-            </span>
-          )}
           {hasTreeChildren ? (
             <button
               type="button"
@@ -5220,7 +5258,7 @@ function UnifiedCatalogTreePanel({
 
   return (
     <aside
-      className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6"
+      className="relative flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6"
     >
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-5 min-w-0 items-center justify-between gap-4">
@@ -5281,6 +5319,16 @@ function UnifiedCatalogTreePanel({
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
         )}
+      </div>
+      <div
+        aria-live="polite"
+        aria-hidden={!invalidNestingHintVisible}
+        className={cn(
+          "pointer-events-none absolute bottom-2 left-2 right-2 z-30 rounded-[8px] bg-[#292524] px-2.5 py-2 text-[11px] font-medium leading-4 text-white shadow-[0_5px_16px_rgba(41,37,36,0.18)] transition-[opacity,transform] duration-150 motion-reduce:transition-none",
+          invalidNestingHintVisible ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+        )}
+      >
+        Нельзя вложить раздел: здесь уже находятся позиции
       </div>
     </aside>
   );
@@ -6714,6 +6762,22 @@ function PopulatedWorkspace({
   // строку раздела в дереве (перенос между разделами с позициями и обратно).
   const [activeDrag, setActiveDrag] = useState<CatalogActiveDrag>(null);
   const [dropTarget, setDropTarget] = useState<CatalogDropTarget>(null);
+  const [, setDropIntentState] = useState<CatalogDropIntentState>(EMPTY_DROP_INTENT);
+  const [invalidNestingHintVisible, setInvalidNestingHintVisible] = useState(false);
+  const dropTargetRef = useRef<CatalogDropTarget>(null);
+  const dropIntentStateRef = useRef<CatalogDropIntentState>(EMPTY_DROP_INTENT);
+  const pendingDropTargetRef = useRef<CatalogDropTarget>(null);
+  const stableInsideTargetRef = useRef<{
+    target: NonNullable<CatalogDropTarget>;
+    rect: CatalogTargetRect;
+  } | null>(null);
+  const dndPointerStartRef = useRef<CatalogPointerPosition | null>(null);
+  const dndPointerCurrentRef = useRef<CatalogPointerPosition | null>(null);
+  const insideActivationTimerRef = useRef<number | null>(null);
+  const invalidHintTimerRef = useRef<number | null>(null);
+  const invalidDropHoldTimerRef = useRef<number | null>(null);
+  const invalidZoneContinuousRef = useRef(false);
+  const invalidDropHeldRef = useRef(false);
   const dndSourceRef = useRef<{
     kind: CatalogDndKind;
     id: string;
@@ -6735,6 +6799,71 @@ function PopulatedWorkspace({
     useSensor(CatalogPointerSensor, { activationConstraint: { distance: 7 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  const updateDropIntentState = (next: CatalogDropIntentState) => {
+    dropIntentStateRef.current = next;
+    setDropIntentState(next);
+  };
+  const updateDropTarget = (next: CatalogDropTarget) => {
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  };
+  const clearInsideActivationTimer = () => {
+    if (insideActivationTimerRef.current != null) {
+      window.clearTimeout(insideActivationTimerRef.current);
+      insideActivationTimerRef.current = null;
+    }
+  };
+  const setInvalidZonePresence = (present: boolean) => {
+    if (invalidDropHeldRef.current) return;
+    if (present) {
+      if (invalidZoneContinuousRef.current) return;
+      invalidZoneContinuousRef.current = true;
+      invalidHintTimerRef.current = window.setTimeout(() => {
+        invalidHintTimerRef.current = null;
+        if (invalidZoneContinuousRef.current && !invalidDropHeldRef.current) {
+          setInvalidNestingHintVisible(true);
+        }
+      }, CATALOG_INVALID_HINT_DELAY_MS);
+      return;
+    }
+    invalidZoneContinuousRef.current = false;
+    if (invalidHintTimerRef.current != null) {
+      window.clearTimeout(invalidHintTimerRef.current);
+      invalidHintTimerRef.current = null;
+    }
+    setInvalidNestingHintVisible(false);
+  };
+  const holdInvalidDropHint = () => {
+    invalidZoneContinuousRef.current = false;
+    if (invalidHintTimerRef.current != null) {
+      window.clearTimeout(invalidHintTimerRef.current);
+      invalidHintTimerRef.current = null;
+    }
+    if (invalidDropHoldTimerRef.current != null) window.clearTimeout(invalidDropHoldTimerRef.current);
+    invalidDropHeldRef.current = true;
+    setInvalidNestingHintVisible(true);
+    invalidDropHoldTimerRef.current = window.setTimeout(() => {
+      invalidDropHoldTimerRef.current = null;
+      invalidDropHeldRef.current = false;
+      setInvalidNestingHintVisible(false);
+    }, CATALOG_INVALID_DROP_HOLD_MS);
+  };
+
+  useEffect(() => () => {
+    clearInsideActivationTimer();
+    if (invalidHintTimerRef.current != null) window.clearTimeout(invalidHintTimerRef.current);
+    if (invalidDropHoldTimerRef.current != null) window.clearTimeout(invalidDropHoldTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const rememberPointer = (event: PointerEvent) => {
+      if (!dragActiveRef.current) return;
+      dndPointerCurrentRef.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener("pointermove", rememberPointer, { passive: true });
+    return () => window.removeEventListener("pointermove", rememberPointer);
+  }, []);
 
   // Прямой состав раздела: подразделы ИЛИ позиции, никогда вместе (структурное правило).
   const getDirectContentKind = (sectionId: string): "section" | "item" | "empty" | "mixed" => {
@@ -6787,26 +6916,6 @@ function PopulatedWorkspace({
   };
 
   type CatalogDndData = { kind: CatalogDndKind; containerId: string | null; surface: CatalogDndSurface };
-  const computeDropTarget = (
-    activeId: string | number,
-    overId: string | number | null | undefined,
-    activeRect: { top: number; height: number } | null,
-    overRect: { top: number; height: number } | null,
-    activeData: CatalogDndData | undefined,
-    overData: CatalogDndData | undefined,
-  ): CatalogDropTarget => {
-    if (overId == null || !activeRect || !overRect || !activeData || !overData) return null;
-    const activeRealId = parseCatalogDndId(activeId);
-    const overRealId = parseCatalogDndId(overId);
-    if (activeRealId === overRealId) return null;
-    const activeCenterY = activeRect.top + activeRect.height / 2;
-    const relative = (activeCenterY - overRect.top) / Math.max(overRect.height, 1);
-    const zone: CatalogDropZone = overData.kind === "section"
-      ? (relative < 0.35 ? "before" : relative > 0.65 ? "after" : "inside")
-      : (relative < 0.5 ? "before" : "after");
-    const { valid, reason } = isDropValid(activeData.kind, activeRealId, overData.kind, overRealId, overData.containerId, zone);
-    return { kind: overData.kind, surface: overData.surface, id: overRealId, containerId: overData.containerId, zone, valid, reason };
-  };
 
   const handleDndDragStart = (event: DragStartEvent) => {
     dragActiveRef.current = true;
@@ -6834,6 +6943,26 @@ function PopulatedWorkspace({
       sectionParentOverrides: { ...sectionParentOverrides },
     };
     dndPreviewKeyRef.current = "";
+    const activatorEvent = event.activatorEvent;
+    if (activatorEvent instanceof MouseEvent || activatorEvent instanceof PointerEvent) {
+      dndPointerStartRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
+    } else if (
+      typeof TouchEvent !== "undefined"
+      && activatorEvent instanceof TouchEvent
+      && activatorEvent.touches[0]
+    ) {
+      dndPointerStartRef.current = {
+        x: activatorEvent.touches[0].clientX,
+        y: activatorEvent.touches[0].clientY,
+      };
+    } else {
+      dndPointerStartRef.current = null;
+    }
+    dndPointerCurrentRef.current = dndPointerStartRef.current;
+    clearInsideActivationTimer();
+    updateDropIntentState(EMPTY_DROP_INTENT);
+    updateDropTarget(null);
+    setInvalidZonePresence(false);
     if (data.kind === "section") {
       const found = allSections.find((candidate) => candidate.id === realId);
       setActiveDrag(found ? { kind: "section", id: realId, title: found.name, imageUrl: found.imageUrl ?? null } : null);
@@ -6884,23 +7013,182 @@ function PopulatedWorkspace({
     );
   };
 
-  const handleDndDragMove = (event: DragMoveEvent) => {
+  const resolveDndTarget = (event: DragMoveEvent | DragOverEvent): CatalogDropTarget => {
     const { active, over } = event;
     const activeData = active.data.current as CatalogDndData | undefined;
     const overData = over?.data.current as CatalogDndData | undefined;
-    const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData);
-    setDropTarget(target);
-    previewDndTarget(target);
+    if (!activeData) return null;
+
+    const activeRealId = parseCatalogDndId(active.id);
+    const translated = active.rect.current.translated;
+    if (!dndPointerCurrentRef.current && (!translated || !over)) return null;
+    const pointer = dndPointerCurrentRef.current
+      ? dndPointerCurrentRef.current
+      : {
+          x: translated!.left + translated!.width / 2,
+          y: translated!.top + translated!.height / 2,
+        };
+
+    const previousIntent = dropIntentStateRef.current;
+    const stableInsideTarget = stableInsideTargetRef.current;
+    if (
+      previousIntent.pendingIntent === "inside"
+      && stableInsideTarget
+      && stableInsideTarget.target.id === previousIntent.targetId
+    ) {
+      let stableIntent = getDropIntent(pointer, stableInsideTarget.rect);
+      if (previousIntent.activeIntent === "inside" && stableIntent !== "inside") {
+        const insideTop = stableInsideTarget.rect.top + stableInsideTarget.rect.height * 0.25;
+        const insideBottom = stableInsideTarget.rect.top + stableInsideTarget.rect.height * 0.75;
+        if (
+          pointer.y >= insideTop - CATALOG_DROP_HYSTERESIS_PX
+          && pointer.y <= insideBottom + CATALOG_DROP_HYSTERESIS_PX
+        ) stableIntent = "inside";
+      }
+      // Sortable transforms могут на мгновение отдать соседний `over`. Пока
+      // курсор остаётся в центральной зоне исходного layout-rect, цель не меняем.
+      if (stableIntent === "inside") {
+        const stableTarget = stableInsideTarget.target;
+        const { valid, reason } = isDropValid(
+          activeData.kind,
+          activeRealId,
+          stableTarget.kind,
+          stableTarget.id,
+          stableTarget.containerId,
+          "inside",
+        );
+        return { ...stableTarget, zone: "inside", valid, reason, insideActive: previousIntent.activeIntent === "inside" };
+      }
+    }
+
+    if (!over || !overData) return null;
+    const overRealId = parseCatalogDndId(over.id);
+    if (activeRealId === overRealId) return null;
+
+    // over.rect — измеренный layout-rect строки, а не transform-положение overlay.
+    // После подтверждения inside расширяем центральную зону на 5px с обеих сторон.
+    let zone = overData.kind === "section"
+      ? getDropIntent(pointer, over.rect)
+      : pointer.y < over.rect.top + over.rect.height / 2 ? "before" as const : "after" as const;
+    if (
+      overData.kind === "section"
+      && previousIntent.targetId === overRealId
+      && previousIntent.activeIntent === "inside"
+      && zone !== "inside"
+    ) {
+      const insideTop = over.rect.top + over.rect.height * 0.25;
+      const insideBottom = over.rect.top + over.rect.height * 0.75;
+      if (
+        pointer.y >= insideTop - CATALOG_DROP_HYSTERESIS_PX
+        && pointer.y <= insideBottom + CATALOG_DROP_HYSTERESIS_PX
+      ) {
+        zone = "inside";
+      }
+    }
+
+    const { valid, reason } = isDropValid(
+      activeData.kind,
+      activeRealId,
+      overData.kind,
+      overRealId,
+      overData.containerId,
+      zone,
+    );
+    const nextTarget = {
+      kind: overData.kind,
+      surface: overData.surface,
+      id: overRealId,
+      containerId: overData.containerId,
+      zone,
+      valid,
+      reason,
+      insideActive: false,
+    };
+    if (zone === "inside") {
+      stableInsideTargetRef.current = {
+        target: nextTarget,
+        rect: { top: over.rect.top, height: over.rect.height },
+      };
+    }
+    return nextTarget;
   };
 
-  const handleDndDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    const activeData = active.data.current as CatalogDndData | undefined;
-    const overData = over?.data.current as CatalogDndData | undefined;
-    const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData);
-    setDropTarget(target);
-    previewDndTarget(target);
+  const applyResolvedDndTarget = (event: DragMoveEvent | DragOverEvent) => {
+    if (!dragActiveRef.current) return;
+    const target = resolveDndTarget(event);
+    if (!target) {
+      clearInsideActivationTimer();
+      pendingDropTargetRef.current = null;
+      stableInsideTargetRef.current = null;
+      updateDropIntentState(EMPTY_DROP_INTENT);
+      updateDropTarget(null);
+      setInvalidZonePresence(false);
+      return;
+    }
+
+    const previous = dropIntentStateRef.current;
+    if (target.zone !== "inside") {
+      clearInsideActivationTimer();
+      pendingDropTargetRef.current = target;
+      stableInsideTargetRef.current = null;
+      updateDropIntentState({
+        targetId: target.id,
+        pendingIntent: target.zone,
+        activeIntent: target.zone,
+        insideStartedAt: null,
+        invalidReason: target.reason,
+      });
+      updateDropTarget(target);
+      setInvalidZonePresence(false);
+      previewDndTarget(target);
+      return;
+    }
+
+    const samePendingInside = previous.targetId === target.id && previous.pendingIntent === "inside";
+    const insideStartedAt = samePendingInside && previous.insideStartedAt != null
+      ? previous.insideStartedAt
+      : Date.now();
+    const insideActive = samePendingInside && previous.activeIntent === "inside";
+    const nextTarget = { ...target, insideActive };
+    pendingDropTargetRef.current = nextTarget;
+    updateDropIntentState({
+      targetId: target.id,
+      pendingIntent: "inside",
+      activeIntent: insideActive ? "inside" : null,
+      insideStartedAt,
+      invalidReason: target.reason,
+    });
+    updateDropTarget(nextTarget);
+    setInvalidZonePresence(!target.valid && target.reason === "В этом разделе уже есть позиции");
+
+    if (insideActive) {
+      previewDndTarget(nextTarget);
+      return;
+    }
+    if (samePendingInside && insideActivationTimerRef.current != null) return;
+
+    clearInsideActivationTimer();
+    const remainingDelay = Math.max(0, CATALOG_INSIDE_DELAY_MS - (Date.now() - insideStartedAt));
+    insideActivationTimerRef.current = window.setTimeout(() => {
+      insideActivationTimerRef.current = null;
+      const currentIntent = dropIntentStateRef.current;
+      const pendingTarget = pendingDropTargetRef.current;
+      if (
+        currentIntent.targetId !== target.id
+        || currentIntent.pendingIntent !== "inside"
+        || !pendingTarget
+        || pendingTarget.id !== target.id
+      ) return;
+      const activeTarget = { ...pendingTarget, insideActive: true };
+      pendingDropTargetRef.current = activeTarget;
+      updateDropIntentState({ ...currentIntent, activeIntent: "inside" });
+      updateDropTarget(activeTarget);
+      previewDndTarget(activeTarget);
+    }, remainingDelay);
   };
+
+  const handleDndDragMove = (event: DragMoveEvent) => applyResolvedDndTarget(event);
+  const handleDndDragOver = (event: DragOverEvent) => applyResolvedDndTarget(event);
 
   const restoreDndSnapshot = () => {
     const snapshot = dndSnapshotRef.current;
@@ -6913,21 +7201,30 @@ function PopulatedWorkspace({
 
   const clearDndState = () => {
     dragActiveRef.current = false;
+    clearInsideActivationTimer();
     setActiveDrag(null);
-    setDropTarget(null);
+    updateDropTarget(null);
+    updateDropIntentState(EMPTY_DROP_INTENT);
+    pendingDropTargetRef.current = null;
+    stableInsideTargetRef.current = null;
+    dndPointerStartRef.current = null;
+    dndPointerCurrentRef.current = null;
     dndSourceRef.current = null;
     dndSnapshotRef.current = null;
     dndPreviewKeyRef.current = "";
+    setInvalidZonePresence(false);
   };
 
-  const handleDndDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    const activeData = active.data.current as CatalogDndData | undefined;
-    const overData = over?.data.current as CatalogDndData | undefined;
-    const target = computeDropTarget(active.id, over?.id, active.rect.current.translated, over?.rect ?? null, activeData, overData)
-      ?? dropTarget;
+  const handleDndDragEnd = (_event: DragEndEvent) => {
+    const target = dropTargetRef.current;
+    const intent = dropIntentStateRef.current;
     const source = dndSourceRef.current;
-    if (!target?.valid || !source) {
+    const insideConfirmed = target?.zone !== "inside" || intent.activeIntent === "inside";
+    if (!target?.valid || !source || !insideConfirmed) {
+      if (
+        target?.zone === "inside"
+        && target.reason === "В этом разделе уже есть позиции"
+      ) holdInvalidDropHint();
       restoreDndSnapshot();
       clearDndState();
       return;
@@ -6982,6 +7279,11 @@ function PopulatedWorkspace({
   };
   const handleDndDragCancel = () => {
     restoreDndSnapshot();
+    invalidDropHeldRef.current = false;
+    if (invalidDropHoldTimerRef.current != null) {
+      window.clearTimeout(invalidDropHoldTimerRef.current);
+      invalidDropHoldTimerRef.current = null;
+    }
     clearDndState();
   };
 
@@ -7395,7 +7697,7 @@ function PopulatedWorkspace({
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <DndContext
         sensors={dndSensors}
-        collisionDetection={closestCenter}
+        collisionDetection={catalogCollisionDetection}
         autoScroll
         onDragStart={handleDndDragStart}
         onDragMove={handleDndDragMove}
@@ -7423,6 +7725,7 @@ function PopulatedWorkspace({
             onAddPosition={addPositionToSection}
             onSectionAction={handleUnifiedSectionAction}
             dropTarget={dropTarget}
+            invalidNestingHintVisible={invalidNestingHintVisible}
             dragActiveRef={dragActiveRef}
           />
         ) : editing ? (
@@ -8143,7 +8446,6 @@ function CompositionRow({
           ref={setNodeRef}
           {...dragProps}
           style={style}
-          title={isDropHere ? dropTarget?.reason : undefined}
           className={cn(
             "group relative flex h-11 items-center gap-1 rounded-[10px] border pl-0.5 pr-1.5 transition-colors",
             canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default",
@@ -8153,11 +8455,6 @@ function CompositionRow({
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
         >
-          {isDropHere && !dropTarget?.valid && dropTarget?.reason && (
-            <span className="pointer-events-none absolute -top-7 left-2 z-20 whitespace-nowrap rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-medium text-white shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
-              {dropTarget.reason}
-            </span>
-          )}
           <span data-no-dnd className="flex w-5 shrink-0 items-center justify-center">
             <TableCheckbox
               ariaLabel={`Выбрать ${item.title}`}
@@ -8821,11 +9118,19 @@ function UnifiedFlatCatalogPanel({
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
   const activeSecondaryFilterId = secondaryFilterIds.includes(filterId) ? filterId : null;
+  const secondaryRowReducedMotion = usePrefersReducedMotion();
+  const secondaryRowExitTimerRef = useRef<number | null>(null);
+  const secondaryRowFrameRef = useRef<number | null>(null);
+  const [renderedSecondaryFilterId, setRenderedSecondaryFilterId] = useState<OverviewFilterId | null>(
+    activeSecondaryFilterId,
+  );
+  const [secondaryRowVisible, setSecondaryRowVisible] = useState(Boolean(activeSecondaryFilterId));
   const [quickFilterIds, setQuickFilterIds] = useState<OverviewFilterId[]>(() =>
     buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds),
   );
   const visibleQuickFilterIds = quickFilterIds
     .filter((id) => id !== activeSecondaryFilterId)
+    .filter((id) => id !== renderedSecondaryFilterId)
     .slice(0, activeSecondaryFilterId ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS);
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
@@ -8863,6 +9168,48 @@ function UnifiedFlatCatalogPanel({
   }, [filterCounts, filterId, onListQueryChange, onShowTable, scopeSectionId, secondaryFilterIds]);
 
   useEffect(() => {
+    if (secondaryRowExitTimerRef.current != null) {
+      window.clearTimeout(secondaryRowExitTimerRef.current);
+      secondaryRowExitTimerRef.current = null;
+    }
+    if (secondaryRowFrameRef.current != null) {
+      window.cancelAnimationFrame(secondaryRowFrameRef.current);
+      secondaryRowFrameRef.current = null;
+    }
+
+    if (secondaryRowReducedMotion) {
+      setRenderedSecondaryFilterId(activeSecondaryFilterId);
+      setSecondaryRowVisible(Boolean(activeSecondaryFilterId));
+      return;
+    }
+
+    if (activeSecondaryFilterId) {
+      setRenderedSecondaryFilterId(activeSecondaryFilterId);
+      secondaryRowFrameRef.current = window.requestAnimationFrame(() => {
+        setSecondaryRowVisible(true);
+        secondaryRowFrameRef.current = null;
+      });
+    } else {
+      setSecondaryRowVisible(false);
+      secondaryRowExitTimerRef.current = window.setTimeout(() => {
+        setRenderedSecondaryFilterId(null);
+        secondaryRowExitTimerRef.current = null;
+      }, 220);
+    }
+
+    return () => {
+      if (secondaryRowExitTimerRef.current != null) {
+        window.clearTimeout(secondaryRowExitTimerRef.current);
+        secondaryRowExitTimerRef.current = null;
+      }
+      if (secondaryRowFrameRef.current != null) {
+        window.cancelAnimationFrame(secondaryRowFrameRef.current);
+        secondaryRowFrameRef.current = null;
+      }
+    };
+  }, [activeSecondaryFilterId, secondaryRowReducedMotion]);
+
+  useEffect(() => {
     if (!searchOpen) return;
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }, [searchOpen]);
@@ -8874,6 +9221,7 @@ function UnifiedFlatCatalogPanel({
         id !== "sections"
         && secondaryFilterIds.includes(id as OverviewFilterId)
         && id !== activeSecondaryFilterId
+        && id !== renderedSecondaryFilterId
         && !visibleQuickFilterIds.includes(id),
     ),
   })).filter((group) => group.ids.length > 0);
@@ -8898,27 +9246,45 @@ function UnifiedFlatCatalogPanel({
           ))}
           <div className="flex flex-col">
             <div
+              data-secondary-filter-row
+              data-state={activeSecondaryFilterId
+                ? secondaryRowVisible ? "open" : "entering"
+                : renderedSecondaryFilterId ? "exiting" : "closed"}
+              onTransitionEnd={(event) => {
+                if (
+                  event.propertyName !== "height"
+                  || activeSecondaryFilterId
+                  || secondaryRowVisible
+                  || !renderedSecondaryFilterId
+                ) return;
+                if (secondaryRowExitTimerRef.current != null) {
+                  window.clearTimeout(secondaryRowExitTimerRef.current);
+                  secondaryRowExitTimerRef.current = null;
+                }
+                setRenderedSecondaryFilterId(null);
+              }}
               className={cn(
-                "overflow-hidden transition-[height,opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
-                activeSecondaryFilterId
-                  ? "h-8 translate-y-0 opacity-100"
-                  : "h-0 -translate-y-1 opacity-0",
+                "overflow-hidden transition-[height,margin-bottom,opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
+                secondaryRowVisible
+                  ? "mb-0.5 h-[30px] translate-y-0 opacity-100"
+                  : "pointer-events-none mb-0 h-0 -translate-y-1 opacity-0",
               )}
-              aria-hidden={!activeSecondaryFilterId}
+              aria-hidden={!secondaryRowVisible}
             >
-              {activeSecondaryFilterId && (
+              {renderedSecondaryFilterId && (
                 <div
-                  key={activeSecondaryFilterId}
+                  key={renderedSecondaryFilterId}
                   className="animate-in fade-in-0 slide-in-from-top-1 duration-[180ms] motion-reduce:animate-none"
                 >
                   <FilterPanelRow
                     row={{
-                      id: activeSecondaryFilterId,
-                      label: HYBRID_PRIMARY_FILTER_LABELS[activeSecondaryFilterId],
-                      count: countByFilter(activeSecondaryFilterId),
+                      id: renderedSecondaryFilterId,
+                      label: HYBRID_PRIMARY_FILTER_LABELS[renderedSecondaryFilterId],
+                      count: countByFilter(renderedSecondaryFilterId),
                     }}
                     selected
-                    onClick={() => openFilter(activeSecondaryFilterId)}
+                    disabled={!secondaryRowVisible}
+                    onClick={() => openFilter(renderedSecondaryFilterId)}
                   />
                 </div>
               )}
