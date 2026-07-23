@@ -110,7 +110,11 @@ function writeStoredChanges(accountId: string | undefined, changes: Record<PageK
 const PublishContext = createContext<PublishContextValue | null>(null);
 
 export function PublishProvider({ children }: { children: ReactNode }) {
-  const { account, markDraftChanged, publishWorkspace } = useMockAuth();
+  const {
+    account,
+    markDraftChanged,
+    publishWorkspace,
+  } = useMockAuth();
   const accountId = account?.id;
   const [changes, setChanges] = useState<Record<PageKey, number>>(() => readStoredChanges(accountId));
   const [publishing, setPublishing] = useState(false);
@@ -157,7 +161,11 @@ export function PublishProvider({ children }: { children: ReactNode }) {
         savingTimerRef.current = window.setTimeout(() => setSaving(false), SAVING_DURATION_MS);
       }
     },
-    [accountId, markDraftChanged, saveMode],
+    [
+      accountId,
+      markDraftChanged,
+      saveMode,
+    ],
   );
 
   const totalChanges = useMemo(

@@ -7,8 +7,16 @@ import {
   type ReactNode,
 } from "react";
 import { MOCK_USER } from "@/data/mock-data";
+import { LANGUAGES, type LanguageCode } from "@/data/languages";
 
 export type MockWorkspaceStatus = "draft" | "published" | "changes";
+export type OrganizationType = "restaurant" | "store" | "services" | "other";
+export type WorkspaceLanguageStatus = "empty" | "partial" | "ready";
+
+export type WorkspaceLanguage = {
+  code: LanguageCode;
+  status: WorkspaceLanguageStatus;
+};
 
 export type PublishedMenuSnapshot = {
   version: number;
@@ -16,6 +24,8 @@ export type PublishedMenuSnapshot = {
   name: string;
   catalogPhase: "empty" | "has-sections" | "has-items";
   catalogSnapshot: Record<string, string>;
+  publishedLanguages: LanguageCode[];
+  localizedNames: Partial<Record<LanguageCode, string>>;
 };
 
 export type MockWorkspace = {
@@ -25,7 +35,11 @@ export type MockWorkspace = {
   webAddress: string;
   privatePreviewAvailable: boolean;
   contactVerified: boolean;
-  primaryLanguage: string;
+  setupCompleted: boolean;
+  organizationType: OrganizationType;
+  primaryLanguage: LanguageCode;
+  languages: WorkspaceLanguage[];
+  localizedNames: Partial<Record<LanguageCode, string>>;
   currency: string;
   timezone: string;
   firstEntry: boolean;
@@ -54,6 +68,10 @@ type MockAuthContextValue = {
   validateAuthContact: (contact: string, kind: AuthContactKind) => ValidatedContact | AuthError;
   verifyCode: (contact: string, kind: AuthContactKind, code: string) => AuthSuccess | AuthError;
   loginWithPassword: (contact: string, kind: AuthContactKind, password: string) => AuthSuccess | AuthError;
+  completeWorkspaceSetup: (organizationType: OrganizationType, primaryLanguage: LanguageCode) => void;
+  addWorkspaceLanguage: (language: LanguageCode) => void;
+  setWorkspaceLanguageHasContent: (language: LanguageCode, hasContent: boolean) => void;
+  updateWorkspaceNameTranslation: (language: LanguageCode, name: string) => void;
   logout: () => void;
   resetTestAccount: () => void;
   updateWorkspace: (patch: Partial<MockWorkspace>) => void;
@@ -89,14 +107,20 @@ function getBrowserTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Almaty";
 }
 
-const createWorkspace = (firstEntry: boolean, seed: string): MockWorkspace => ({
+const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = true): MockWorkspace => ({
   name: firstEntry ? "Новое меню" : "Kimchi Astana",
   status: firstEntry ? "draft" : "published",
   technicalAddress: `tasko.menu/m/${stableMenuId(seed)}`,
   webAddress: firstEntry ? "" : "kimchi.tasko.app",
   privatePreviewAvailable: true,
   contactVerified: !firstEntry,
+  setupCompleted,
+  organizationType: "restaurant",
   primaryLanguage: "ru",
+  languages: setupCompleted
+    ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const }))
+    : [],
+  localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
   currency: "KZT",
   timezone: getBrowserTimezone(),
   firstEntry,
@@ -108,6 +132,8 @@ const createWorkspace = (firstEntry: boolean, seed: string): MockWorkspace => ({
         name: "Kimchi Astana",
         catalogPhase: "has-items",
         catalogSnapshot: {},
+        publishedLanguages: LANGUAGES.map(({ code }) => code),
+        localizedNames: { ru: "Kimchi Astana" },
       },
 });
 
@@ -130,7 +156,7 @@ const createAccount = (contact: string): MockAccount => {
     displayName: contact.includes("@") ? contact : `Пользователь ${contact.slice(-4)}`,
     role: "Владелец",
     workspace: {
-      ...createWorkspace(true, contact),
+      ...createWorkspace(true, contact, false),
       contactVerified: true,
     },
     catalogSnapshot: {},
@@ -187,8 +213,18 @@ function readAuthState(): StoredAuthState {
                     name: account.workspace.name || fallback.name,
                     catalogPhase: "has-items" as const,
                     catalogSnapshot: account.catalogSnapshot ?? {},
+                    publishedLanguages: LANGUAGES.map(({ code }) => code),
+                    localizedNames: account.workspace.localizedNames ?? {
+                      [account.workspace.primaryLanguage ?? "ru"]: account.workspace.name || fallback.name,
+                    },
                   }
                 : null);
+            const primaryLanguage = LANGUAGES.some(({ code }) => code === account.workspace.primaryLanguage)
+              ? account.workspace.primaryLanguage as LanguageCode
+              : "ru";
+            const languages = account.workspace.languages?.length
+              ? account.workspace.languages
+              : LANGUAGES.map(({ code }) => ({ code, status: "ready" as const }));
             return [
               id,
               {
@@ -203,9 +239,27 @@ function readAuthState(): StoredAuthState {
                   ...account.workspace,
                   status,
                   technicalAddress: account.workspace.technicalAddress || fallback.technicalAddress,
+                  setupCompleted: account.workspace.setupCompleted ?? true,
+                  organizationType: account.workspace.organizationType ?? "restaurant",
+                  primaryLanguage,
+                  languages,
+                  localizedNames: account.workspace.localizedNames ?? {
+                    [primaryLanguage]: account.workspace.name || fallback.name,
+                  },
                   currency: account.workspace.currency || fallback.currency,
                   timezone: account.workspace.timezone || fallback.timezone,
-                  publishedSnapshot,
+                  publishedSnapshot: publishedSnapshot
+                    ? {
+                        ...publishedSnapshot,
+                        publishedLanguages:
+                          publishedSnapshot.publishedLanguages?.length
+                            ? publishedSnapshot.publishedLanguages
+                            : LANGUAGES.map(({ code }) => code),
+                        localizedNames: publishedSnapshot.localizedNames ?? {
+                          [primaryLanguage]: publishedSnapshot.name,
+                        },
+                      }
+                    : null,
                 },
               },
             ];
@@ -307,6 +361,25 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     writeSessionId(nextAccount.id);
   }, []);
 
+  const updateWorkspaceAccount = useCallback((
+    accountId: string,
+    update: (workspace: MockWorkspace) => MockWorkspace,
+  ) => {
+    setAuthState((prev) => {
+      const current = prev.accounts[accountId];
+      if (!current) return prev;
+      const next = {
+        ...prev,
+        accounts: {
+          ...prev.accounts,
+          [accountId]: { ...current, workspace: update(current.workspace) },
+        },
+      };
+      writeAuthState(next);
+      return next;
+    });
+  }, []);
+
   const validateAuthContact = useCallback(
     (rawContact: string, kind: AuthContactKind) => validateContact(rawContact, kind),
     [],
@@ -362,6 +435,80 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       return { ok: true as const, account: existingAccount };
     },
     [account, authState, setActiveAccount],
+  );
+
+  const completeWorkspaceSetup = useCallback(
+    (organizationType: OrganizationType, primaryLanguage: LanguageCode) => {
+      if (!account || account.workspace.setupCompleted) return;
+      const name =
+        organizationType === "restaurant"
+          ? "Новое меню"
+          : organizationType === "store"
+            ? "Новая витрина магазина"
+            : organizationType === "services"
+              ? "Новая витрина услуг"
+              : "Новая витрина";
+      updateWorkspaceAccount(account.id, (workspace) => ({
+        ...workspace,
+        name,
+        setupCompleted: true,
+        organizationType,
+        primaryLanguage,
+        languages: [{ code: primaryLanguage, status: "ready" }],
+        localizedNames: { [primaryLanguage]: name },
+      }));
+    },
+    [account],
+  );
+
+  const addWorkspaceLanguage = useCallback(
+    (language: LanguageCode) => {
+      if (!account || account.workspace.languages.some(({ code }) => code === language)) return;
+      updateWorkspaceAccount(account.id, (workspace) => {
+        if (workspace.languages.some(({ code }) => code === language)) return workspace;
+        return {
+          ...workspace,
+          languages: [...workspace.languages, { code: language, status: "empty" }],
+        };
+      });
+    },
+    [account],
+  );
+
+  const updateWorkspaceNameTranslation = useCallback(
+    (language: LanguageCode, rawName: string) => {
+      if (!account) return;
+      const name = rawName.trim();
+      updateWorkspaceAccount(account.id, (workspace) => ({
+        ...workspace,
+        name: language === workspace.primaryLanguage && name ? name : workspace.name,
+        localizedNames: {
+          ...workspace.localizedNames,
+          [language]: name,
+        },
+        languages: workspace.languages.map((item) =>
+          item.code === language && item.code !== workspace.primaryLanguage
+            ? { ...item, status: name ? "ready" : "partial" }
+            : item,
+        ),
+      }));
+    },
+    [account, updateWorkspaceAccount],
+  );
+
+  const setWorkspaceLanguageHasContent = useCallback(
+    (language: LanguageCode, hasContent: boolean) => {
+      if (!account || language === account.workspace.primaryLanguage) return;
+      updateWorkspaceAccount(account.id, (workspace) => ({
+        ...workspace,
+        languages: workspace.languages.map((item) =>
+          item.code === language
+            ? { ...item, status: hasContent ? "ready" : "partial" }
+            : item,
+        ),
+      }));
+    },
+    [account, updateWorkspaceAccount],
   );
 
   const logout = useCallback(() => {
@@ -425,6 +572,13 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
           name: account.workspace.name || "Новое меню",
           catalogPhase: "has-items",
           catalogSnapshot: snapshotCatalog(),
+          publishedLanguages: account.workspace.languages
+            .filter(
+              ({ code, status }) =>
+                code === account.workspace.primaryLanguage || status === "ready",
+            )
+            .map(({ code }) => code),
+          localizedNames: account.workspace.localizedNames,
         },
       });
       return true;
@@ -456,6 +610,10 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       validateAuthContact,
       verifyCode,
       loginWithPassword,
+      completeWorkspaceSetup,
+      addWorkspaceLanguage,
+      setWorkspaceLanguageHasContent,
+      updateWorkspaceNameTranslation,
       logout,
       resetTestAccount,
       updateWorkspace,
@@ -469,6 +627,10 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       validateAuthContact,
       verifyCode,
       loginWithPassword,
+      completeWorkspaceSetup,
+      addWorkspaceLanguage,
+      setWorkspaceLanguageHasContent,
+      updateWorkspaceNameTranslation,
       logout,
       resetTestAccount,
       updateWorkspace,

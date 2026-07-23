@@ -17,6 +17,7 @@ import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
 import { AuthScreen } from "@/features/auth/auth-screen";
+import { WorkspaceSetupScreen } from "@/features/auth/workspace-setup-screen";
 import { BookOpen, Flask } from "@phosphor-icons/react";
 import {
   banners as seedBanners,
@@ -900,7 +901,11 @@ function AuthenticatedShell() {
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
           onToggleSidebar={wide ? toggleNav : undefined}
           sidebarCollapsed={inlineSidebarMode === "rail"}
-          pageTitle={getPageTitle(section, activeTab)}
+          pageTitle={getPageTitle(
+            section,
+            activeTab,
+            account?.workspace.organizationType ?? "restaurant",
+          )}
           isLaunchPage={isLaunchPage}
           catalogHasVisibleItems={catalogPhase === "has-items"}
         />
@@ -1037,8 +1042,10 @@ export default function App() {
 }
 
 function AppShell() {
-  const { isAuthenticated, getAccountById } = useMockAuth();
+  const { account, isAuthenticated, getAccountById } = useMockAuth();
   const publicMenuId = new URLSearchParams(window.location.search).get("publicMenu");
   if (publicMenuId) return <PublicMenuPage account={getAccountById(publicMenuId)} />;
-  return isAuthenticated ? <AuthenticatedShell /> : <AuthScreen />;
+  if (!isAuthenticated) return <AuthScreen />;
+  if (account && !account.workspace.setupCompleted) return <WorkspaceSetupScreen />;
+  return <AuthenticatedShell />;
 }

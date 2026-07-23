@@ -12,6 +12,7 @@ import {
 import { usePlan } from "@/contexts/plan-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
+import { useAppSettings } from "@/contexts/app-settings-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
 
@@ -36,10 +37,15 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId } = usePlan();
-  const { account, updateWorkspace } = useMockAuth();
+  const { account, updateWorkspace, updateWorkspaceNameTranslation } = useMockAuth();
+  const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
   const vitrine = useVitrineStatus();
-  const workspaceName = account?.workspace.name || RESTAURANT_NAME;
+  const workspaceName =
+    account?.workspace.localizedNames[contentLanguage] ||
+    account?.workspace.localizedNames[account.workspace.primaryLanguage] ||
+    account?.workspace.name ||
+    RESTAURANT_NAME;
   const workspaceAddress =
     account?.workspace.webAddress ||
     account?.workspace.technicalAddress ||
@@ -136,7 +142,7 @@ export function OrgMenu({
       return;
     }
     if (nextName !== workspaceName) {
-      updateWorkspace({ name: nextName });
+      updateWorkspaceNameTranslation(contentLanguage, nextName);
       registerChange("about");
     }
     setDraftName(nextName);

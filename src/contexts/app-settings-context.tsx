@@ -1,11 +1,13 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { getLanguage, type LanguageCode } from "@/data/languages";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 type AppSettingsContextValue = {
   contentLanguage: LanguageCode;
@@ -39,7 +41,10 @@ type AppSettingsContextValue = {
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
-  const [contentLanguage, setContentLanguage] = useState<LanguageCode>("ru");
+  const { account } = useMockAuth();
+  const [contentLanguage, setContentLanguage] = useState<LanguageCode>(
+    () => account?.workspace.primaryLanguage ?? "ru",
+  );
   const [uiLanguage, setUiLanguage] = useState<LanguageCode>("ru");
   const [serviceFeeEnabled, setServiceFeeEnabled] = useState(true);
   const [serviceFeePercent, setServiceFeePercent] = useState(10);
@@ -55,6 +60,19 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     "Заказ будет готов через 20 минут.",
   );
   const pickupAddress = "пр. Кабанбай Батыра, 48, вход со двора";
+
+  useEffect(() => {
+    if (!account) return;
+    const languageAvailable = account.workspace.languages.some(
+      ({ code }) => code === contentLanguage,
+    );
+    if (!languageAvailable) setContentLanguage(account.workspace.primaryLanguage);
+  }, [
+    account,
+    account?.workspace.languages,
+    account?.workspace.primaryLanguage,
+    contentLanguage,
+  ]);
 
   const value = useMemo<AppSettingsContextValue>(() => {
     const lang = getLanguage(contentLanguage);

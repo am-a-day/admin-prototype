@@ -87,6 +87,7 @@ export function PhonePreview({
     deliveryComment,
     pickupComment,
     pickupAddress,
+    contentLanguage,
   } = useAppSettings();
   const { routes } = useOrderRouting();
   const { publishPhase } = usePublish();
@@ -95,7 +96,13 @@ export function PhonePreview({
   const { stage } = useVitrineLaunch();
   const { webAddress } = useVitrineStatus();
   const privatePreview = Boolean(account?.workspace.privatePreviewAvailable);
-  const restaurantName = account?.workspace.name || "Новое меню";
+  const restaurantName =
+    account?.workspace.localizedNames[contentLanguage] ||
+    (account
+      ? account.workspace.localizedNames[account.workspace.primaryLanguage]
+      : undefined) ||
+    account?.workspace.name ||
+    "Новое меню";
   const previewAddress = account?.workspace.webAddress || "preview.tasko.local";
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");

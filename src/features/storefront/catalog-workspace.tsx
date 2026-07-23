@@ -2555,6 +2555,7 @@ function BasicTab({
         key={`name-${item.id}`}
         label="Название"
         initialTranslations={{ ru: item.title }}
+        storageKey={`item-name-${item.id}`}
         showTranslationMeta={false}
         plain
       />

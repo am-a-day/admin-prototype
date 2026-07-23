@@ -8,6 +8,7 @@ import { usePlanStatus } from "@/lib/use-plan-status";
 import { cn } from "@/lib/utils";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
+import { useAppSettings } from "@/contexts/app-settings-context";
 
 // ── Plan features config ───────────────────────────────────────────────────────
 
@@ -323,21 +324,29 @@ function BillingWorkspace() {
 // ── Generic stub ──────────────────────────────────────────────────────────────
 
 function AccountWorkspace() {
-  const { account, updateWorkspace } = useMockAuth();
+  const { account, updateWorkspaceNameTranslation } = useMockAuth();
+  const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
-  const [name, setName] = useState(account?.workspace.name ?? "Новое меню");
+  const workspaceName =
+    account?.workspace.localizedNames[contentLanguage] ||
+    (account
+      ? account.workspace.localizedNames[account.workspace.primaryLanguage]
+      : undefined) ||
+    account?.workspace.name ||
+    "Новое меню";
+  const [name, setName] = useState(workspaceName);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
-    setName(account?.workspace.name ?? "Новое меню");
-  }, [account?.id, account?.workspace.name]);
+    setName(workspaceName);
+  }, [account?.id, contentLanguage, workspaceName]);
 
   const saveName = () => {
     const nextName = name.trim() || "Новое меню";
-    if (nextName === account?.workspace.name) return;
+    if (nextName === workspaceName) return;
     setSaveState("saving");
     window.setTimeout(() => {
-      updateWorkspace({ name: nextName });
+      updateWorkspaceNameTranslation(contentLanguage, nextName);
       registerChange("about");
       setName(nextName);
       setSaveState("saved");

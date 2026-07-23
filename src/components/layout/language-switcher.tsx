@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { cn } from "@/lib/utils";
 import { createPortal } from "react-dom";
 
@@ -42,6 +43,7 @@ function LanguageOption({
 
 export function LanguageSwitcher({ compact = true }: { compact?: boolean }) {
   const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
+  const { account } = useMockAuth();
   const [open, setOpen] = useState(false);
   const [popupPos, setPopupPos] = useState({ bottom: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -87,7 +89,9 @@ export function LanguageSwitcher({ compact = true }: { compact?: boolean }) {
         Версия меню и витрины для редактирования.
       </p>
       <div className="space-y-0.5">
-        {LANGUAGES.map((lang) => (
+        {LANGUAGES.filter((lang) =>
+          account?.workspace.languages.some(({ code }) => code === lang.code),
+        ).map((lang) => (
           <LanguageOption
             key={lang.code}
             label={lang.label}

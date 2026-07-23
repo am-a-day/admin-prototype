@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,6 +12,7 @@ import { cn } from "@/lib/utils";
  */
 export function ContentLanguageControl({ compact = false }: { compact?: boolean }) {
   const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
+  const { account } = useMockAuth();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -76,7 +78,9 @@ export function ContentLanguageControl({ compact = false }: { compact?: boolean 
             Версия меню и витрины для редактирования.
           </p>
           <div className="space-y-0.5">
-            {LANGUAGES.map((lang) => {
+            {LANGUAGES.filter((lang) =>
+              account?.workspace.languages.some(({ code }) => code === lang.code),
+            ).map((lang) => {
               const selected = contentLanguage === lang.code;
               return (
                 <button

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, Plus } from "lucide-react";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { cn } from "@/lib/utils";
 
 type Translations = Partial<Record<LanguageCode, string>>;
@@ -24,6 +25,7 @@ export function TranslationIndicator({
   onPickLanguage: (lang: LanguageCode) => void;
 }) {
   const { contentLanguage, contentLanguageShort } = useAppSettings();
+  const { account, addWorkspaceLanguage } = useMockAuth();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -62,6 +64,9 @@ export function TranslationIndicator({
   };
 
   const pick = (lang: LanguageCode) => {
+    if (!account?.workspace.languages.some(({ code }) => code === lang)) {
+      addWorkspaceLanguage(lang);
+    }
     onPickLanguage(lang);
     setOpen(false);
   };

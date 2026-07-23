@@ -1,6 +1,9 @@
-import { type ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth, type WorkspaceLanguageStatus } from "@/contexts/mock-auth-context";
+import { usePublish } from "@/contexts/publish-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { LANGUAGES } from "@/data/languages";
 import { cn } from "@/lib/utils";
@@ -51,31 +54,138 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
 
 export function PageLangSwitcher() {
   const { contentLanguage, setContentLanguage } = useAppSettings();
+  const { account, addWorkspaceLanguage } = useMockAuth();
+  const { registerChange } = usePublish();
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, right: 0 });
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const workspaceLanguages = account?.workspace.languages ?? [];
+  const availableLanguages = LANGUAGES.filter(
+    (language) => !workspaceLanguages.some(({ code }) => code === language.code),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (addButtonRef.current?.contains(target)) return;
+      if (document.getElementById("add-language-popover")?.contains(target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const togglePopover = () => {
+    if (!open && addButtonRef.current) {
+      const rect = addButtonRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    }
+    setOpen((current) => !current);
+  };
+
+  const statusLabel: Record<WorkspaceLanguageStatus, string> = {
+    empty: "Не заполнен",
+    partial: "Частично заполнен",
+    ready: "Готов к публикации",
+  };
 
   return (
-    <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-transparent px-1 text-[12px] text-[#57534d]">
-      <span className="px-1.5 text-[13px] font-normal text-[#79716b]">Языковая версия:</span>
-      <div className="flex items-center gap-0.5">
-        {LANGUAGES.map((lang) => {
+    <>
+      <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-transparent px-1 text-[12px] text-[#57534d]">
+        <span className="px-1.5 text-[13px] font-normal text-[#79716b]">Языковая версия:</span>
+        <div className="flex items-center gap-0.5">
+        {workspaceLanguages.map((workspaceLanguage) => {
+          const lang = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
+          if (!lang) return null;
           const active = contentLanguage === lang.code;
+          const primary = account?.workspace.primaryLanguage === lang.code;
           return (
             <button
               key={lang.code}
               type="button"
               onClick={() => setContentLanguage(lang.code)}
+              title={`${lang.label}${primary ? " · Основной язык" : ` · ${statusLabel[workspaceLanguage.status]}`}`}
               className={cn(
-                "flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
+                "relative flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
                 active
                   ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
                   : "text-[#79716b] hover:bg-white/70 hover:text-[#292524]",
               )}
             >
               {lang.short}
+              {!primary && (
+                <span
+                  className={cn(
+                    "absolute right-1 top-1 h-1.5 w-1.5 rounded-full ring-1 ring-white",
+                    workspaceLanguage.status === "empty" && "bg-zinc-300",
+                    workspaceLanguage.status === "partial" && "bg-amber-400",
+                    workspaceLanguage.status === "ready" && "bg-emerald-500",
+                  )}
+                />
+              )}
             </button>
           );
         })}
+          <button
+            ref={addButtonRef}
+            type="button"
+            onClick={togglePopover}
+            aria-expanded={open}
+            title="Добавить язык"
+            className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-md text-[#79716b] transition hover:bg-white hover:text-[#292524]",
+              open && "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]",
+            )}
+          >
+            <Plus size={14} />
+          </button>
+        </div>
       </div>
-    </div>
+      {open &&
+        createPortal(
+          <div
+            id="add-language-popover"
+            style={{ top: position.top, right: position.right }}
+            className="fixed z-[200] w-64 rounded-[8px] border border-[#e7e5e4] bg-white p-3 shadow-xl shadow-zinc-300/30"
+          >
+            <div className="px-1 text-[13px] font-bold text-zinc-950">Добавить язык</div>
+            <p className="mt-1 px-1 text-[11px] leading-4 text-zinc-500">
+              Язык появится на витрине после заполнения и публикации.
+            </p>
+            <div className="mt-3 space-y-1">
+              {availableLanguages.length > 0 ? (
+                availableLanguages.map((language) => (
+                  <button
+                    key={language.code}
+                    type="button"
+                    onClick={() => {
+                      addWorkspaceLanguage(language.code);
+                      registerChange("about");
+                      setContentLanguage(language.code);
+                      setOpen(false);
+                    }}
+                    className="flex h-9 w-full items-center justify-between rounded-[7px] px-2 text-left text-[13px] text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950"
+                  >
+                    <span>{language.label}</span>
+                    <span className="text-[11px] font-semibold text-zinc-400">{language.short}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="px-1 py-2 text-[12px] text-zinc-400">Все доступные языки уже добавлены.</p>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

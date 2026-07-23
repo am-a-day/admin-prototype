@@ -1,9 +1,20 @@
+import { useEffect, useState } from "react";
 import { Search, UtensilsCrossed } from "lucide-react";
 import type { MockAccount } from "@/contexts/mock-auth-context";
 import { categories, dishes } from "@/data/mock-data";
+import { LANGUAGES } from "@/data/languages";
 
 export function PublicMenuPage({ account }: { account: MockAccount | null }) {
   const snapshot = account?.workspace.publishedSnapshot;
+  const [language, setLanguage] = useState(
+    snapshot?.publishedLanguages[0] ?? account?.workspace.primaryLanguage ?? "ru",
+  );
+
+  useEffect(() => {
+    if (snapshot && !snapshot.publishedLanguages.includes(language)) {
+      setLanguage(snapshot.publishedLanguages[0] ?? account?.workspace.primaryLanguage ?? "ru");
+    }
+  }, [account?.workspace.primaryLanguage, language, snapshot]);
 
   if (!account || !snapshot) {
     return (
@@ -22,7 +33,9 @@ export function PublicMenuPage({ account }: { account: MockAccount | null }) {
         <header className="border-b border-[#e7e5e4] px-5 pb-5 pt-8 sm:px-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-[24px] font-bold">{snapshot.name}</h1>
+              <h1 className="text-[24px] font-bold">
+                {snapshot.localizedNames[language] || snapshot.name}
+              </h1>
               <p className="mt-1 text-[13px] text-[#79716b]">Онлайн-меню</p>
             </div>
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-[#292524] text-white">
@@ -33,6 +46,27 @@ export function PublicMenuPage({ account }: { account: MockAccount | null }) {
             <Search size={15} />
             <span className="ml-2 text-[13px]">Поиск по меню</span>
           </div>
+          {snapshot.publishedLanguages.length > 1 && (
+            <div className="mt-3 flex items-center gap-1" aria-label="Языки витрины">
+              {snapshot.publishedLanguages.map((code) => {
+                const languageOption = LANGUAGES.find((item) => item.code === code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setLanguage(code)}
+                    className={
+                      code === language
+                        ? "rounded-[6px] bg-[#292524] px-2 py-1 text-[11px] font-semibold text-white"
+                        : "rounded-[6px] bg-[#f5f5f4] px-2 py-1 text-[11px] font-semibold text-[#79716b]"
+                    }
+                  >
+                    {languageOption?.short ?? code.toUpperCase()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </header>
 
         <div className="sticky top-0 z-10 flex gap-2 overflow-x-auto border-b border-[#e7e5e4] bg-white px-5 py-3 sm:px-8">

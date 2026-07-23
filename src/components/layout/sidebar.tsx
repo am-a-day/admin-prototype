@@ -34,6 +34,10 @@ import { MiniLogo } from "@/components/ui/mini-logo";
 import { cn } from "@/lib/utils";
 import { dishes, RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
+import {
+  useMockAuth,
+  type OrganizationType,
+} from "@/contexts/mock-auth-context";
 
 export type SidebarMode = "full" | "rail" | "topbar";
 
@@ -83,6 +87,33 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+function getOrganizationLabels(type: OrganizationType) {
+  if (type === "restaurant") {
+    return { group: "Мой ресторан", about: "О заведении" };
+  }
+  if (type === "store") {
+    return { group: "Мой магазин", about: "О магазине" };
+  }
+  return { group: "Мой бизнес", about: "О компании" };
+}
+
+function getNavGroups(type: OrganizationType) {
+  const labels = getOrganizationLabels(type);
+  return NAV_GROUPS.map((group, groupIndex) =>
+    groupIndex === 0
+      ? {
+          ...group,
+          title: labels.group,
+          items: group.items.map((item) =>
+            item.section === "storefront" && item.tab === "about"
+              ? { ...item, label: labels.about }
+              : item,
+          ),
+        }
+      : group,
+  );
+}
 
 
 // ── «Ещё» items ───────────────────────────────────────────────────────────────
@@ -401,10 +432,13 @@ function NavList({
   compact: boolean;
   showTooltips?: boolean;
 }) {
+  const { account } = useMockAuth();
+  const navGroups = getNavGroups(account?.workspace.organizationType ?? "restaurant");
+
   return (
     <nav className={cn("flex-1 overflow-y-auto pb-2", compact ? "mt-4 space-y-5 px-[7px]" : "mt-2 space-y-[6px] px-2 pt-1")}>
 
-      {NAV_GROUPS.map((group) => (
+      {navGroups.map((group) => (
         <div key={group.title}>
           <GroupHeaderRow compact={compact} title={group.title} />
           <div className={compact ? "space-y-1" : undefined}>
@@ -466,6 +500,7 @@ export function NavDrawer({
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
 }) {
+  const { account } = useMockAuth();
   const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -500,7 +535,9 @@ export function NavDrawer({
         )}
       >
         <div className="flex items-center justify-between px-3 py-3">
-          <span className="text-sm font-black tracking-tight text-zinc-950">{RESTAURANT_NAME}</span>
+          <span className="text-sm font-black tracking-tight text-zinc-950">
+            {account?.workspace.name || RESTAURANT_NAME}
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -640,19 +677,28 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
 
 // ── TopBar (small viewport — replaces sidebar entirely) ───────────────────────
 
-export function getPageTitle(section: SectionId, activeTab: string | null): string {
+export function getPageTitle(
+  section: SectionId,
+  activeTab: string | null,
+  organizationType: OrganizationType = "restaurant",
+): string {
   if (section === "qr") return "QR-меню";
   if (section === "am") return "";
   if (section === "training") return "Обучение";
 
-  const allItems = NAV_GROUPS.flatMap((g) => g.items);
+  const allItems = getNavGroups(organizationType).flatMap((g) => g.items);
   const match = allItems.find((i) => i.section === section && i.tab === activeTab);
   return match?.label ?? "";
 }
 
 export function TopBar({ section, activeTab, onNavigate }: NavProps) {
+  const { account } = useMockAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const title = getPageTitle(section, activeTab);
+  const title = getPageTitle(
+    section,
+    activeTab,
+    account?.workspace.organizationType ?? "restaurant",
+  );
 
   return (
     <>
