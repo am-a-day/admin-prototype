@@ -12,9 +12,11 @@ import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider, usePlan } from "@/contexts/plan-context";
 import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
 import { PreviewDemoProvider, usePreviewDemo } from "@/contexts/preview-demo-context";
+import { MockAuthProvider, useMockAuth } from "@/contexts/mock-auth-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
+import { AuthScreen } from "@/features/auth/auth-screen";
 import { BookOpen, Flask } from "@phosphor-icons/react";
 import {
   banners as seedBanners,
@@ -415,7 +417,40 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
   );
 }
 
-function AppShell() {
+function FirstEntryChecklist({
+  onNavigate,
+}: {
+  onNavigate: (section: SectionId, tab: string) => void;
+}) {
+  const { account } = useMockAuth();
+  if (!account?.workspace.firstEntry) return null;
+
+  return (
+    <div className="mx-3 mb-3 mt-0 rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[14px] font-bold text-zinc-950">Подготовьте меню к публикации</div>
+          <div className="mt-1 flex items-center gap-2 text-[13px] text-zinc-600">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-[11px] font-bold text-zinc-400">
+              1
+            </span>
+            <span>Укажите название заведения</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate("management", "account")}
+          className="h-8 rounded-[9px] border border-[#e7e5e4] px-3 text-[13px] font-semibold text-[#44403b] transition hover:bg-[#f5f5f4]"
+        >
+          Перейти
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AuthenticatedShell() {
+  const { account } = useMockAuth();
   const { markVisited, stage } = useVitrineLaunch();
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
@@ -435,7 +470,9 @@ function AppShell() {
     DEFAULT_RECOMMENDATION_TEXTS,
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
-  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>("has-items");
+  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>(() =>
+    account?.workspace.firstEntry ? "empty" : "has-items",
+  );
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
   const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
@@ -954,6 +991,7 @@ function AppShell() {
                 description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
+              <FirstEntryChecklist onNavigate={guardedNavigate} />
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
               </div>
@@ -1003,20 +1041,27 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AppSettingsProvider>
-      <OrderRoutingProvider>
-        <PlanProvider>
-          <PublishProvider>
-            <VitrineLaunchProvider>
-              <PreviewDemoProvider>
-                <HeaderActionsProvider>
-                  <AppShell />
-                </HeaderActionsProvider>
-              </PreviewDemoProvider>
-            </VitrineLaunchProvider>
-          </PublishProvider>
-        </PlanProvider>
-      </OrderRoutingProvider>
-    </AppSettingsProvider>
+    <MockAuthProvider>
+      <AppSettingsProvider>
+        <OrderRoutingProvider>
+          <PlanProvider>
+            <PublishProvider>
+              <VitrineLaunchProvider>
+                <PreviewDemoProvider>
+                  <HeaderActionsProvider>
+                    <AppShell />
+                  </HeaderActionsProvider>
+                </PreviewDemoProvider>
+              </VitrineLaunchProvider>
+            </PublishProvider>
+          </PlanProvider>
+        </OrderRoutingProvider>
+      </AppSettingsProvider>
+    </MockAuthProvider>
   );
+}
+
+function AppShell() {
+  const { isAuthenticated } = useMockAuth();
+  return isAuthenticated ? <AuthenticatedShell /> : <AuthScreen />;
 }

@@ -10,6 +10,7 @@ import {
   type SectionId,
 } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,10 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId } = usePlan();
+  const { account } = useMockAuth();
   const vitrine = useVitrineStatus();
+  const workspaceName = account?.workspace.name || RESTAURANT_NAME;
+  const workspaceAddress = account?.workspace.webAddress || RESTAURANT_ADDRESS || vitrine.webAddress;
 
   const planCtaLabel = planId === "Ultra" ? "Управление тарифом" : "Улучшить тариф";
   const locationsCount = MOCK_VITRINES.length;
@@ -110,12 +114,12 @@ export function OrgMenu({
           aria-haspopup="dialog"
           title={`${RESTAURANT_NAME} · ${RESTAURANT_ADDRESS || vitrine.webAddress}`}
         >
-          <span className="max-w-[140px] truncate text-[13px] font-medium text-zinc-900">{RESTAURANT_NAME}</span>
+          <span className="max-w-[140px] truncate text-[13px] font-medium text-zinc-900">{workspaceName}</span>
           <span className="hidden text-[13px] text-zinc-300 lg:inline" aria-hidden>
             ·
           </span>
           <span className="hidden max-w-[160px] truncate text-[13px] text-zinc-400 lg:inline">
-            {RESTAURANT_ADDRESS || vitrine.webAddress}
+            {workspaceAddress}
           </span>
           <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
         </button>
@@ -151,14 +155,14 @@ export function OrgMenu({
           <div className="px-3 py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-[13px] font-semibold leading-none text-[#292524]">
-                {current.name}
+                {workspaceName}
               </span>
               <span className="shrink-0 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#57534d]">
                 {planId.toUpperCase()}
               </span>
             </div>
             <div className="mt-1.5 truncate text-[12px] leading-none text-[#a6a09b]">
-              {current.address}
+              {workspaceAddress || current.address}
             </div>
           </div>
 

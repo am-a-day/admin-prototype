@@ -5,6 +5,7 @@ import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
 import { usePreviewDemo } from "@/contexts/preview-demo-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import {
   categories,
   dishes,
@@ -88,8 +89,13 @@ export function PhonePreview({
   const { routes } = useOrderRouting();
   const { publishPhase } = usePublish();
   const { emptyVitrine } = usePreviewDemo();
+  const { account } = useMockAuth();
   const { stage } = useVitrineLaunch();
   const { webAddress } = useVitrineStatus();
+  const privatePreview =
+    account?.workspace.privatePreviewAvailable &&
+    account.workspace.status !== "published";
+  const previewAddress = account?.workspace.webAddress || "preview.tasko.local";
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
@@ -281,14 +287,19 @@ export function PhonePreview({
               </span>
 
               {/* Ссылка на витрину — переход активен после валидации менеджером */}
-              {stage === "active" ? (
+              {privatePreview ? (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[12px] font-semibold text-zinc-600">
+                  <Lock size={11} className="shrink-0" />
+                  Приватный предпросмотр
+                </span>
+              ) : stage === "active" ? (
                 <a
-                  href={`https://${webAddress}`}
+                  href={`https://${previewAddress || webAddress}`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-fit text-[13px] text-[#79716b] transition hover:text-blue-600 hover:underline"
                 >
-                  {webAddress}
+                  {previewAddress || webAddress}
                 </a>
               ) : (
                 <span

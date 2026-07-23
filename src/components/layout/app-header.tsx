@@ -70,7 +70,7 @@ export function AppHeaderRight({
 
       {/* ── Right: status + account ── */}
       <div className="flex shrink-0 items-center gap-[15px]">
-        <PublishStatusControl />
+        <PublishStatusControl onNavigate={onNavigate} />
         <UserMenu compact placement="down" onNavigate={onNavigate} />
       </div>
     </header>
