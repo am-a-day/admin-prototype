@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Copy, ExternalLink, Globe2, Loader2, QrCode } from "lucide-react";
+import QRCode from "react-qr-code";
 import { usePublish } from "@/contexts/publish-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePlan } from "@/contexts/plan-context";
 import type { SectionId } from "@/data/mock-data";
+import { copyText, getPublicMenuAddress, getPublicMenuHref } from "@/lib/public-menu-url";
 import { cn } from "@/lib/utils";
 
 function formatLastPublished(ts: number | null): string {
@@ -28,7 +30,7 @@ export function PublishStatusControl({
   onNavigate: (section: SectionId, tab: string) => void;
   catalogHasVisibleItems: boolean;
 }) {
-  const { startPublish, publishPhase, lastPublishedAt } = usePublish();
+  const { startPublish, publishPhase, publishResult, lastPublishedAt } = usePublish();
   const { account, choosePrettyAddress } = useMockAuth();
   const { planId } = usePlan();
   const [open, setOpen] = useState(false);
@@ -60,18 +62,25 @@ export function PublishStatusControl({
       wasPublishing.current = true;
     } else if (wasPublishing.current) {
       wasPublishing.current = false;
-      setOpen(false);
+      if (publishResult === "first-publish" && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setPos({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+        setOpen(true);
+      } else {
+        setOpen(false);
+      }
     }
-  }, [publishPhase]);
+  }, [publishPhase, publishResult]);
 
   const workspace = account?.workspace;
   if (!account || !workspace) return null;
 
   const state = workspace.status;
   const isPublishing = publishPhase === "publishing";
-  const isLiteAddressOffer = planId === "Lite" && !workspace.webAddress;
-  const displayAddress = workspace.webAddress || workspace.technicalAddress;
-  const publicHref = `${window.location.origin}${window.location.pathname}?publicMenu=${encodeURIComponent(account.id)}`;
+  const canCustomizeAddress = planId === "Lite" || planId === "Ultra";
+  const showAddressOffer = !workspace.webAddress;
+  const displayAddress = getPublicMenuAddress(account);
+  const publicHref = getPublicMenuHref(account);
 
   const toggle = () => {
     if (!open && buttonRef.current) {
@@ -110,26 +119,32 @@ export function PublishStatusControl({
   }[state];
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(publicHref);
+    await copyText(publicHref);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
 
   const AddressOffer = () =>
-    isLiteAddressOffer ? (
-      <div className="mt-3 border-t border-zinc-100 pt-3">
-        <div className="text-[12px] font-semibold text-zinc-800">Настройте адрес меню</div>
-        <p className="mt-0.5 text-[12px] leading-[1.45] text-zinc-500">
-          Сделайте ссылку узнаваемой для гостей.
-        </p>
-        <button
-          type="button"
-          onClick={choosePrettyAddress}
-          className="mt-2 h-8 rounded-lg border border-zinc-200 px-2.5 text-[12px] font-semibold text-zinc-700 transition hover:bg-zinc-50"
-        >
-          Выбрать адрес
-        </button>
-      </div>
+    showAddressOffer ? (
+      <button
+        type="button"
+        onClick={() => {
+          if (canCustomizeAddress) {
+            choosePrettyAddress();
+          } else {
+            setOpen(false);
+            onNavigate("management", "billing");
+          }
+        }}
+        className="mt-3 flex w-full items-center gap-2 border-t border-zinc-100 pt-3 text-left text-[12px] text-zinc-500 transition hover:text-zinc-800"
+      >
+        <Globe2 size={13} className="shrink-0" />
+        <span className="min-w-0 flex-1">Настроить красивый адрес</span>
+        {!canCustomizeAddress && (
+          <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-500">LITE</span>
+        )}
+        <ArrowRight size={12} className="shrink-0" />
+      </button>
     ) : null;
 
   return (
@@ -222,30 +237,54 @@ export function PublishStatusControl({
                 Меню опубликовано
               </div>
               <p className="mt-1 text-[12px] leading-[1.5] text-zinc-500">
-                Гости видят последнюю опубликованную версию.
+                Гости уже могут открыть последнюю опубликованную версию.
               </p>
-              <div className="mt-3 rounded-[10px] bg-zinc-50 px-2.5 py-2">
-                <div className="truncate text-[12px] font-medium text-zinc-700">{displayAddress}</div>
-                <div className="mt-2 flex gap-1.5">
+              <div className="mt-3 flex justify-center">
+                <div className="rounded-[8px] border border-zinc-200 bg-white p-2">
+                  <QRCode
+                    value={publicHref}
+                    size={88}
+                    bgColor="#ffffff"
+                    fgColor="#18181b"
+                    level="M"
+                    title={`QR-код меню ${displayAddress}`}
+                  />
+                </div>
+              </div>
+              <div className="mt-2 truncate text-center text-[12px] font-medium text-zinc-700">
+                {displayAddress}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
                   <a
                     href={publicHref}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-2.5 text-[12px] font-semibold text-white transition hover:bg-zinc-700"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-2 text-[11px] font-semibold text-white transition hover:bg-zinc-700"
                   >
                     <ExternalLink size={12} />
-                    Открыть
+                    Открыть меню
                   </a>
                   <button
                     type="button"
                     onClick={copyLink}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[12px] font-semibold text-zinc-700 transition hover:bg-zinc-50"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-50"
                   >
                     {copied ? <Check size={12} /> : <Copy size={12} />}
                     {copied ? "Скопировано" : "Скопировать ссылку"}
                   </button>
-                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onNavigate("qr", "");
+                }}
+                className="mt-2 flex h-7 w-full items-center justify-center gap-1.5 text-[12px] font-medium text-zinc-500 transition hover:text-zinc-800"
+              >
+                <QrCode size={13} />
+                Настроить QR-коды
+                <ArrowRight size={12} />
+              </button>
               <div className="mt-2 text-[11px] text-zinc-400">
                 Последняя публикация: {formatLastPublished(lastPublishedAt)}
               </div>

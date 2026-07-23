@@ -48,6 +48,8 @@ type ToastState = { id: number; text: string } | null;
 
 type ChangeEntry = { page: PageKey; label: string; count: number };
 
+export type PublishResult = "first-publish" | "update" | "error" | null;
+
 type PublishContextValue = {
   status: PublishStatus;
   totalChanges: number;
@@ -68,7 +70,7 @@ type PublishContextValue = {
   /** Идёт ли публикация — фиксированный 3-сек loader поверх preview. */
   publishPhase: "idle" | "publishing";
   /** Результат последней публикации для toast. */
-  publishResult: "success" | "error" | null;
+  publishResult: PublishResult;
   /** Запустить публикацию. opts.fail — смоделировать ошибку ревалидации. */
   startPublish: (opts?: { fail?: boolean; catalogHasVisibleItems?: boolean }) => void;
   /** Скрыть toast результата публикации. */
@@ -118,7 +120,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const [saveMode, setSaveMode] = useState<SaveMode>("toast");
   const [toast, setToast] = useState<ToastState>(null);
   const [publishPhase, setPublishPhase] = useState<"idle" | "publishing">("idle");
-  const [publishResult, setPublishResult] = useState<"success" | "error" | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishResult>(null);
   // Дефолт-мок: «сегодня в 10:42» — для состояния «Всё опубликовано».
   const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(
     () => account?.workspace.publishedSnapshot?.publishedAt ?? null,
@@ -127,6 +129,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const toastIdRef = useRef(0);
   const publishTimers = useRef<number[]>([]);
   const lastCatalogHasVisibleItems = useRef(false);
+  const isFirstPublication = useRef(false);
 
   useEffect(() => {
     setChanges(readStoredChanges(accountId));
@@ -210,6 +213,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
       lastCatalogHasVisibleItems.current = opts.catalogHasVisibleItems;
     }
     if (!lastCatalogHasVisibleItems.current) return;
+    isFirstPublication.current = !account?.workspace.publishedSnapshot;
     publishTimers.current.forEach((t) => window.clearTimeout(t));
     publishTimers.current = [];
     setPublishResult(null);
@@ -228,7 +232,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
             setLastChangeAt(null);
             setPublishVersion((v) => v + 1);
             setPublishPhase("idle");
-            setPublishResult("success");
+            setPublishResult(isFirstPublication.current ? "first-publish" : "update");
             setLastPublishedAt(Date.now());
             publishWorkspace(true);
           }
@@ -236,7 +240,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
         opts?.fail ? 600 : 3000, // ошибку показываем сразу, успех — после 3 сек
       ),
     );
-  }, [accountId, publishWorkspace]);
+  }, [account?.workspace.publishedSnapshot, accountId, publishWorkspace]);
 
   const dismissPublishResult = useCallback(() => setPublishResult(null), []);
 
