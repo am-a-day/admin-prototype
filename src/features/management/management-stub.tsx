@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Database, Headset, RotateCcw, X } from "lucide-react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { SectionCard } from "@/components/workspace/section-card";
@@ -5,6 +6,8 @@ import { managementStubCopy, type ManageTabId, type PlanId } from "@/data/mock-d
 import { usePlan } from "@/contexts/plan-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { cn } from "@/lib/utils";
+import { useMockAuth } from "@/contexts/mock-auth-context";
+import { usePublish } from "@/contexts/publish-context";
 
 // ── Plan features config ───────────────────────────────────────────────────────
 
@@ -319,12 +322,93 @@ function BillingWorkspace() {
 
 // ── Generic stub ──────────────────────────────────────────────────────────────
 
+function AccountWorkspace() {
+  const { account, updateWorkspace } = useMockAuth();
+  const { registerChange } = usePublish();
+  const [name, setName] = useState(account?.workspace.name ?? "Новое меню");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+
+  useEffect(() => {
+    setName(account?.workspace.name ?? "Новое меню");
+  }, [account?.id, account?.workspace.name]);
+
+  const saveName = () => {
+    const nextName = name.trim() || "Новое меню";
+    if (nextName === account?.workspace.name) return;
+    setSaveState("saving");
+    window.setTimeout(() => {
+      updateWorkspace({ name: nextName });
+      registerChange("about");
+      setName(nextName);
+      setSaveState("saved");
+      window.setTimeout(() => setSaveState("idle"), 1800);
+    }, 350);
+  };
+
+  if (!account) return null;
+
+  return (
+    <PageScroll>
+      <PageContent>
+        <SectionCard>
+          <div className="max-w-[560px]">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[16px] font-semibold text-zinc-900">Основные данные</h2>
+                <p className="mt-1 text-[13px] text-zinc-500">Настройки сохраняются автоматически.</p>
+              </div>
+              {saveState !== "idle" && (
+                <span className="text-[12px] font-medium text-zinc-500">
+                  {saveState === "saving" ? "Сохранение…" : "Сохранено"}
+                </span>
+              )}
+            </div>
+
+            <label className="block text-[12px] font-semibold text-zinc-700" htmlFor="workspace-name">
+              Название заведения
+            </label>
+            <input
+              id="workspace-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={saveName}
+              className="mt-1.5 h-10 w-full rounded-[10px] border border-zinc-200 bg-white px-3 text-[14px] text-zinc-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+
+            <div className="mt-5 grid gap-3 border-t border-zinc-100 pt-4 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] font-semibold uppercase text-zinc-400">Технический адрес</div>
+                <div className="mt-1 truncate text-[13px] font-medium text-zinc-700">
+                  {account.workspace.technicalAddress}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase text-zinc-400">Валюта</div>
+                <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.workspace.currency}</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase text-zinc-400">Основной язык</div>
+                <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.workspace.primaryLanguage.toUpperCase()}</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase text-zinc-400">Часовой пояс</div>
+                <div className="mt-1 truncate text-[13px] font-medium text-zinc-700">{account.workspace.timezone}</div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </PageContent>
+    </PageScroll>
+  );
+}
+
 type ManagementStubProps = {
   tabId: Exclude<ManageTabId, "order-settings" | "order-history">;
 };
 
 export function ManagementStub({ tabId }: ManagementStubProps) {
   if (tabId === "billing") return <BillingWorkspace />;
+  if (tabId === "account") return <AccountWorkspace />;
 
   const copy = managementStubCopy[tabId];
 

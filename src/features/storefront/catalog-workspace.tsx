@@ -1937,8 +1937,10 @@ function CatalogContextPanel({
 
 function EmptyCatalog({
   sections,
+  onAddItem,
 }: {
   sections: TreeSection[];
+  onAddItem: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
 
@@ -1961,7 +1963,7 @@ function EmptyCatalog({
         />
         <SectionEmptyState
           sectionName={sections[0]?.name ?? "Раздел"}
-          onAddItem={() => showPlaceholderFeedback("Добавить позицию: placeholder")}
+          onAddItem={onAddItem}
         />
         {feedback && (
           <div className="fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
@@ -10646,6 +10648,7 @@ export function CatalogWorkspace({
     ) : (
       <EmptyCatalog
         sections={sections}
+        onAddItem={() => onAdvancePhase("has-items")}
       />
     );
 

@@ -16,6 +16,7 @@ export type AppHeaderRightProps = {
   sidebarCollapsed?: boolean;
   pageTitle?: string;
   isLaunchPage?: boolean;
+  catalogHasVisibleItems: boolean;
 };
 
 export function AppHeaderRight({
@@ -26,6 +27,7 @@ export function AppHeaderRight({
   onToggleSidebar,
   sidebarCollapsed,
   pageTitle,
+  catalogHasVisibleItems,
 }: AppHeaderRightProps) {
   return (
     <header className="flex h-[59px] shrink-0 items-center gap-1 bg-[#fbf9f6] pr-3">
@@ -70,7 +72,10 @@ export function AppHeaderRight({
 
       {/* ── Right: status + account ── */}
       <div className="flex shrink-0 items-center gap-[15px]">
-        <PublishStatusControl onNavigate={onNavigate} />
+        <PublishStatusControl
+          onNavigate={onNavigate}
+          catalogHasVisibleItems={catalogHasVisibleItems}
+        />
         <UserMenu compact placement="down" onNavigate={onNavigate} />
       </div>
     </header>

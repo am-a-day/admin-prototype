@@ -34,10 +34,15 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId } = usePlan();
-  const { account } = useMockAuth();
+  const { account, choosePrettyAddress } = useMockAuth();
   const vitrine = useVitrineStatus();
   const workspaceName = account?.workspace.name || RESTAURANT_NAME;
-  const workspaceAddress = account?.workspace.webAddress || RESTAURANT_ADDRESS || vitrine.webAddress;
+  const workspaceAddress =
+    account?.workspace.webAddress ||
+    account?.workspace.technicalAddress ||
+    RESTAURANT_ADDRESS ||
+    vitrine.webAddress;
+  const showPrettyAddressOffer = planId === "Lite" && !account?.workspace.webAddress;
 
   const planCtaLabel = planId === "Ultra" ? "Управление тарифом" : "Улучшить тариф";
   const locationsCount = MOCK_VITRINES.length;
@@ -164,6 +169,21 @@ export function OrgMenu({
             <div className="mt-1.5 truncate text-[12px] leading-none text-[#a6a09b]">
               {workspaceAddress || current.address}
             </div>
+            {showPrettyAddressOffer && (
+              <div className="mt-3 rounded-[9px] bg-[#f7f7f5] p-2.5">
+                <div className="text-[12px] font-semibold text-[#44403b]">Настройте адрес меню</div>
+                <p className="mt-0.5 text-[11px] leading-4 text-[#79716b]">
+                  Сделайте ссылку узнаваемой для гостей.
+                </p>
+                <button
+                  type="button"
+                  onClick={choosePrettyAddress}
+                  className="mt-2 text-[12px] font-semibold text-blue-600 transition hover:text-blue-700"
+                >
+                  Выбрать адрес
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="h-px bg-[#e7e5e4]" />

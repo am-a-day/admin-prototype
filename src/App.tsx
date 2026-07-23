@@ -49,6 +49,7 @@ import {
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
+import { PublicMenuPage } from "@/features/storefront/public-menu-page";
 import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
 import { TrainingTabs } from "@/features/training/training-tabs";
 import type { TrainingActiveSession, TrainingTab } from "@/features/training/training-data";
@@ -57,6 +58,7 @@ type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 type SidebarPreference = "expanded" | "collapsed" | null;
 
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
+const CATALOG_PHASE_STORAGE_KEY = "tasko.catalog.phase";
 const TRAINING_PATH = "/training";
 
 function isTrainingPath(pathname: string) {
@@ -131,6 +133,7 @@ function PrototypeToolsFloating({
   const { stage, forceStage } = useVitrineLaunch();
   const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
+  const { account, updateWorkspace } = useMockAuth();
 
   return (
     <div className="fixed bottom-5 right-5 z-[210] flex flex-col items-end gap-2">
@@ -288,25 +291,20 @@ function PrototypeToolsFloating({
               </div>
               <div className="flex gap-1">
                 {([
-                  ["review", "На проверке"],
+                  ["draft", "Черновик"],
                   ["published", "Опубликовано"],
                   ["changes", "Изменения"],
-                ] as ["review" | "published" | "changes", string][]).map(([v, label]) => {
-                  const active =
-                    v === "review" ? stage === "pending" :
-                    v === "published" ? stage === "active" && totalChanges === 0 :
-                    stage === "active" && totalChanges > 0;
+                ] as const).map(([v, label]) => {
+                  const active = account?.workspace.status === v;
                   return (
                     <button
                       key={v}
                       type="button"
                       onClick={() => {
-                        if (v === "review") forceStage("pending");
-                        else if (v === "published") {
-                          forceStage("active");
+                        updateWorkspace({ status: v });
+                        if (v === "published" || v === "draft") {
                           clearChanges();
                         } else {
-                          forceStage("active");
                           injectDemoChanges();
                         }
                       }}
@@ -417,40 +415,9 @@ function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
   );
 }
 
-function FirstEntryChecklist({
-  onNavigate,
-}: {
-  onNavigate: (section: SectionId, tab: string) => void;
-}) {
-  const { account } = useMockAuth();
-  if (!account?.workspace.firstEntry) return null;
-
-  return (
-    <div className="mx-3 mb-3 mt-0 rounded-[14px] border border-[#e7e5e4] bg-white px-4 py-3 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[14px] font-bold text-zinc-950">Подготовьте меню к публикации</div>
-          <div className="mt-1 flex items-center gap-2 text-[13px] text-zinc-600">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-[11px] font-bold text-zinc-400">
-              1
-            </span>
-            <span>Укажите название заведения</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => onNavigate("management", "account")}
-          className="h-8 rounded-[9px] border border-[#e7e5e4] px-3 text-[13px] font-semibold text-[#44403b] transition hover:bg-[#f5f5f4]"
-        >
-          Перейти
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AuthenticatedShell() {
   const { account } = useMockAuth();
+  const { registerChange } = usePublish();
   const { markVisited, stage } = useVitrineLaunch();
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
@@ -470,15 +437,22 @@ function AuthenticatedShell() {
     DEFAULT_RECOMMENDATION_TEXTS,
   );
   const [upsellSurface, setUpsellSurface] = useState<UpsellSurface>("dish");
-  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>(() =>
-    account?.workspace.firstEntry ? "empty" : "has-items",
-  );
+  const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>(() => {
+    const stored = window.localStorage.getItem(CATALOG_PHASE_STORAGE_KEY);
+    if (stored === "empty" || stored === "has-sections" || stored === "has-items") return stored;
+    return account?.workspace.firstEntry ? "empty" : "has-items";
+  });
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
   const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
   const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(null);
   const [catalogResetSignal] = useState(0);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
+  const updateCatalogPhase = (next: CatalogPhase) => {
+    setCatalogPhase(next);
+    window.localStorage.setItem(CATALOG_PHASE_STORAGE_KEY, next);
+    registerChange("catalog");
+  };
 
   // SEO preview data — lifted here so PhonePreview can render the "seoLink" scenario
   const [seoTitle, setSeoTitle] = useState(`${RESTAURANT_NAME} — корейская кухня`);
@@ -756,7 +730,7 @@ function AuthenticatedShell() {
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
           onAdvancePhase={(next) => {
-            setCatalogPhase(next);
+            updateCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");
           }}
         />
@@ -921,13 +895,14 @@ function AuthenticatedShell() {
 
         <AppHeaderRight
           onNavigate={guardedNavigate}
-          onResetCatalog={() => setCatalogPhase("empty")}
+          onResetCatalog={() => updateCatalogPhase("empty")}
           showHamburger={!showInlineSidebar}
           onOpenMobileMenu={() => setNavDrawerOpen(true)}
           onToggleSidebar={wide ? toggleNav : undefined}
           sidebarCollapsed={inlineSidebarMode === "rail"}
           pageTitle={getPageTitle(section, activeTab)}
           isLaunchPage={isLaunchPage}
+          catalogHasVisibleItems={catalogPhase === "has-items"}
         />
 
         {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -991,7 +966,6 @@ function AuthenticatedShell() {
                 description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
-              <FirstEntryChecklist onNavigate={guardedNavigate} />
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
               </div>
@@ -1019,6 +993,7 @@ function AuthenticatedShell() {
                   onNavUpsell={navUpsellPage}
                   onNavAbout={navAbout}
                   onNavCatalogDish={navCatalogDish}
+                  onCreateFirstItem={() => navigate("storefront", "catalog")}
                   seoTitle={seoTitle}
                   seoDescription={seoDescription}
                 />
@@ -1034,7 +1009,7 @@ function AuthenticatedShell() {
       <DraftToast />
       <PublishToast />
       <DevNotesFloating isCatalogPage={isCatalogPage} />
-      <PrototypeToolsFloating catalogPhase={catalogPhase} setCatalogPhase={setCatalogPhase} />
+      <PrototypeToolsFloating catalogPhase={catalogPhase} setCatalogPhase={updateCatalogPhase} />
     </div>
   );
 }
@@ -1062,6 +1037,8 @@ export default function App() {
 }
 
 function AppShell() {
-  const { isAuthenticated } = useMockAuth();
+  const { isAuthenticated, getAccountById } = useMockAuth();
+  const publicMenuId = new URLSearchParams(window.location.search).get("publicMenu");
+  if (publicMenuId) return <PublicMenuPage account={getAccountById(publicMenuId)} />;
   return isAuthenticated ? <AuthenticatedShell /> : <AuthScreen />;
 }

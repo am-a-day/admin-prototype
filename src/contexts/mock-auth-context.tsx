@@ -8,34 +8,37 @@ import {
 } from "react";
 import { MOCK_USER } from "@/data/mock-data";
 
-type MockWorkspaceStatus = "unpublished" | "review" | "published";
+export type MockWorkspaceStatus = "draft" | "published" | "changes";
 
-type MockWorkspace = {
+export type PublishedMenuSnapshot = {
+  version: number;
+  publishedAt: number;
+  name: string;
+  catalogPhase: "empty" | "has-sections" | "has-items";
+  catalogSnapshot: Record<string, string>;
+};
+
+export type MockWorkspace = {
   name: string;
   status: MockWorkspaceStatus;
+  technicalAddress: string;
   webAddress: string;
   privatePreviewAvailable: boolean;
   contactVerified: boolean;
   primaryLanguage: string;
   currency: string;
+  timezone: string;
   firstEntry: boolean;
-  sentForReview: boolean;
+  publishedSnapshot: PublishedMenuSnapshot | null;
 };
 
-type MockAccount = {
+export type MockAccount = {
   id: string;
   contact: string;
   displayName: string;
   role: string;
   workspace: MockWorkspace;
   catalogSnapshot: Record<string, string>;
-};
-
-type PublishRequirement = {
-  id: string;
-  label: string;
-  section: "storefront" | "management";
-  tab: string;
 };
 
 type MockAuthContextValue = {
@@ -46,12 +49,15 @@ type MockAuthContextValue = {
   logout: () => void;
   resetTestAccount: () => void;
   updateWorkspace: (patch: Partial<MockWorkspace>) => void;
-  getPublishRequirements: (catalogHasContent: boolean) => PublishRequirement[];
-  markSentForReview: () => void;
+  markDraftChanged: () => void;
+  publishWorkspace: (catalogHasVisibleItems: boolean) => boolean;
+  choosePrettyAddress: () => void;
+  getAccountById: (accountId: string) => MockAccount | null;
 };
 
 const AUTH_STATE_KEY = "tasko.mockAuth.v1";
 const SESSION_KEY = "tasko.mockAuth.session.v1";
+const LOGGED_OUT_SESSION = "__logged_out__";
 const SEED_ACCOUNT_ID = "seed-owner";
 const GOOGLE_CONTACT = "owner.google@tasko.test";
 const CATALOG_KEY_PREFIX = "tasko.catalog.";
@@ -61,16 +67,40 @@ type StoredAuthState = {
   contactIndex: Record<string, string>;
 };
 
-const createWorkspace = (firstEntry: boolean): MockWorkspace => ({
+function stableMenuId(seed: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0).toString(36).padStart(6, "0").slice(0, 6);
+}
+
+function getBrowserTimezone() {
+  if (typeof Intl === "undefined") return "Asia/Almaty";
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Almaty";
+}
+
+const createWorkspace = (firstEntry: boolean, seed: string): MockWorkspace => ({
   name: firstEntry ? "Новое меню" : "Kimchi Astana",
-  status: firstEntry ? "unpublished" : "published",
+  status: firstEntry ? "draft" : "published",
+  technicalAddress: `tasko.menu/m/${stableMenuId(seed)}`,
   webAddress: firstEntry ? "" : "kimchi.tasko.app",
   privatePreviewAvailable: true,
   contactVerified: !firstEntry,
   primaryLanguage: "ru",
-  currency: firstEntry ? "" : "KZT",
+  currency: "KZT",
+  timezone: getBrowserTimezone(),
   firstEntry,
-  sentForReview: false,
+  publishedSnapshot: firstEntry
+    ? null
+    : {
+        version: 1,
+        publishedAt: Date.now(),
+        name: "Kimchi Astana",
+        catalogPhase: "has-items",
+        catalogSnapshot: {},
+      },
 });
 
 const createSeedAccount = (): MockAccount => ({
@@ -78,7 +108,7 @@ const createSeedAccount = (): MockAccount => ({
   contact: MOCK_USER.email,
   displayName: MOCK_USER.name,
   role: MOCK_USER.role,
-  workspace: createWorkspace(false),
+  workspace: createWorkspace(false, MOCK_USER.email),
   catalogSnapshot: {},
 });
 
@@ -89,7 +119,7 @@ const createAccount = (contact: string): MockAccount => {
     contact,
     displayName: contact.includes("@") ? contact : `Пользователь ${contact.slice(-4)}`,
     role: "Владелец",
-    workspace: createWorkspace(true),
+    workspace: createWorkspace(true, contact),
     catalogSnapshot: {},
   };
 };
@@ -120,7 +150,49 @@ function readAuthState(): StoredAuthState {
     const raw = window.localStorage.getItem(AUTH_STATE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as StoredAuthState;
-      if (parsed.accounts && parsed.contactIndex) return parsed;
+      if (parsed.accounts && parsed.contactIndex) {
+        const accounts = Object.fromEntries(
+          Object.entries(parsed.accounts).map(([id, account]) => {
+            const fallback = createWorkspace(account.workspace.firstEntry ?? false, account.contact || id);
+            const legacyStatus = account.workspace.status as string;
+            const status: MockWorkspaceStatus =
+              legacyStatus === "published"
+                ? "published"
+                : legacyStatus === "changes"
+                  ? "changes"
+                  : "draft";
+            const publishedSnapshot =
+              account.workspace.publishedSnapshot ??
+              (status === "published"
+                ? {
+                    version: 1,
+                    publishedAt: Date.now(),
+                    name: account.workspace.name || fallback.name,
+                    catalogPhase: "has-items" as const,
+                    catalogSnapshot: account.catalogSnapshot ?? {},
+                  }
+                : null);
+            return [
+              id,
+              {
+                ...account,
+                workspace: {
+                  ...fallback,
+                  ...account.workspace,
+                  status,
+                  technicalAddress: account.workspace.technicalAddress || fallback.technicalAddress,
+                  currency: account.workspace.currency || fallback.currency,
+                  timezone: account.workspace.timezone || fallback.timezone,
+                  publishedSnapshot,
+                },
+              },
+            ];
+          }),
+        );
+        const migrated = { ...parsed, accounts };
+        writeAuthState(migrated);
+        return migrated;
+      }
     }
   } catch {
     // Ignore malformed prototype state.
@@ -137,13 +209,15 @@ function writeAuthState(state: StoredAuthState) {
 
 function readSessionId() {
   if (typeof window === "undefined") return SEED_ACCOUNT_ID;
-  return window.localStorage.getItem(SESSION_KEY) ?? SEED_ACCOUNT_ID;
+  const stored = window.localStorage.getItem(SESSION_KEY);
+  if (stored === LOGGED_OUT_SESSION) return null;
+  return stored ?? SEED_ACCOUNT_ID;
 }
 
 function writeSessionId(accountId: string | null) {
   if (typeof window === "undefined") return;
   if (accountId) window.localStorage.setItem(SESSION_KEY, accountId);
-  else window.localStorage.removeItem(SESSION_KEY);
+  else window.localStorage.setItem(SESSION_KEY, LOGGED_OUT_SESSION);
 }
 
 function snapshotCatalog() {
@@ -253,6 +327,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       return next;
     });
     clearCatalogState();
+    window.localStorage.removeItem(`tasko.publish.changes.${account.id}`);
     setSessionId(null);
     writeSessionId(null);
     window.localStorage.removeItem("tasko.firstEntryChecklist.dismissed");
@@ -276,36 +351,48 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     [account],
   );
 
-  const getPublishRequirements = useCallback(
-    (catalogHasContent: boolean): PublishRequirement[] => {
-      if (!account) return [];
-      const missing: PublishRequirement[] = [];
-      if (!account.workspace.name.trim() || account.workspace.name === "Новое меню") {
-        missing.push({ id: "name", label: "Укажите название заведения", section: "management", tab: "account" });
-      }
-      if (!catalogHasContent) {
-        missing.push({ id: "catalog", label: "Добавьте хотя бы один раздел или позицию", section: "storefront", tab: "catalog" });
-      }
-      if (!account.workspace.primaryLanguage) {
-        missing.push({ id: "language", label: "Выберите основной язык", section: "storefront", tab: "about" });
-      }
-      if (!account.workspace.currency) {
-        missing.push({ id: "currency", label: "Укажите валюту", section: "management", tab: "account" });
-      }
-      if (!account.workspace.webAddress.trim()) {
-        missing.push({ id: "address", label: "Выберите веб-адрес", section: "storefront", tab: "launch" });
-      }
-      if (!account.workspace.contactVerified) {
-        missing.push({ id: "contact", label: "Подтвердите контакт", section: "management", tab: "account" });
-      }
-      return missing;
+  const markDraftChanged = useCallback(() => {
+    if (account?.workspace.status === "published") {
+      updateWorkspace({ status: "changes" });
+    }
+  }, [account?.workspace.status, updateWorkspace]);
+
+  const publishWorkspace = useCallback(
+    (catalogHasVisibleItems: boolean) => {
+      if (!account || !catalogHasVisibleItems) return false;
+      const previousVersion = account.workspace.publishedSnapshot?.version ?? 0;
+      updateWorkspace({
+        status: "published",
+        firstEntry: false,
+        publishedSnapshot: {
+          version: previousVersion + 1,
+          publishedAt: Date.now(),
+          name: account.workspace.name || "Новое меню",
+          catalogPhase: "has-items",
+          catalogSnapshot: snapshotCatalog(),
+        },
+      });
+      return true;
     },
-    [account],
+    [account, updateWorkspace],
   );
 
-  const markSentForReview = useCallback(() => {
-    updateWorkspace({ status: "review", sentForReview: true });
-  }, [updateWorkspace]);
+  const choosePrettyAddress = useCallback(() => {
+    if (!account || account.workspace.webAddress) return;
+    const slug = account.workspace.name === "Новое меню"
+      ? `menu-${stableMenuId(account.contact)}`
+      : account.workspace.name
+          .toLowerCase()
+          .replace(/[^a-z0-9а-яё]+/gi, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 28);
+    updateWorkspace({ webAddress: `${slug || `menu-${stableMenuId(account.contact)}`}.tasko.menu` });
+  }, [account, updateWorkspace]);
+
+  const getAccountById = useCallback(
+    (accountId: string) => authState.accounts[accountId] ?? null,
+    [authState.accounts],
+  );
 
   const value = useMemo<MockAuthContextValue>(
     () => ({
@@ -316,8 +403,10 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       logout,
       resetTestAccount,
       updateWorkspace,
-      getPublishRequirements,
-      markSentForReview,
+      markDraftChanged,
+      publishWorkspace,
+      choosePrettyAddress,
+      getAccountById,
     }),
     [
       account,
@@ -326,8 +415,10 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       logout,
       resetTestAccount,
       updateWorkspace,
-      getPublishRequirements,
-      markSentForReview,
+      markDraftChanged,
+      publishWorkspace,
+      choosePrettyAddress,
+      getAccountById,
     ],
   );
 
