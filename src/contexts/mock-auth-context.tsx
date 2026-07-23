@@ -35,17 +35,25 @@ export type MockWorkspace = {
 export type MockAccount = {
   id: string;
   contact: string;
+  password?: string | null;
   displayName: string;
   role: string;
   workspace: MockWorkspace;
   catalogSnapshot: Record<string, string>;
 };
 
+export type AuthContactKind = "phone" | "email";
+
+type AuthError = { ok: false; error: string };
+type ValidatedContact = { ok: true; contact: string };
+type AuthSuccess = { ok: true; account: MockAccount };
+
 type MockAuthContextValue = {
   account: MockAccount | null;
   isAuthenticated: boolean;
-  loginWithContact: (contact: string) => { ok: true; account: MockAccount } | { ok: false; error: string };
-  loginWithGoogle: () => void;
+  validateAuthContact: (contact: string, kind: AuthContactKind) => ValidatedContact | AuthError;
+  verifyCode: (contact: string, kind: AuthContactKind, code: string) => AuthSuccess | AuthError;
+  loginWithPassword: (contact: string, kind: AuthContactKind, password: string) => AuthSuccess | AuthError;
   logout: () => void;
   resetTestAccount: () => void;
   updateWorkspace: (patch: Partial<MockWorkspace>) => void;
@@ -59,7 +67,7 @@ const AUTH_STATE_KEY = "tasko.mockAuth.v1";
 const SESSION_KEY = "tasko.mockAuth.session.v1";
 const LOGGED_OUT_SESSION = "__logged_out__";
 const SEED_ACCOUNT_ID = "seed-owner";
-const GOOGLE_CONTACT = "owner.google@tasko.test";
+const DEFAULT_EXISTING_PASSWORD = "tasko123";
 const CATALOG_KEY_PREFIX = "tasko.catalog.";
 
 type StoredAuthState = {
@@ -106,6 +114,7 @@ const createWorkspace = (firstEntry: boolean, seed: string): MockWorkspace => ({
 const createSeedAccount = (): MockAccount => ({
   id: SEED_ACCOUNT_ID,
   contact: MOCK_USER.email,
+  password: DEFAULT_EXISTING_PASSWORD,
   displayName: MOCK_USER.name,
   role: MOCK_USER.role,
   workspace: createWorkspace(false, MOCK_USER.email),
@@ -117,27 +126,35 @@ const createAccount = (contact: string): MockAccount => {
   return {
     id,
     contact,
+    password: null,
     displayName: contact.includes("@") ? contact : `Пользователь ${contact.slice(-4)}`,
     role: "Владелец",
-    workspace: createWorkspace(true, contact),
+    workspace: {
+      ...createWorkspace(true, contact),
+      contactVerified: true,
+    },
     catalogSnapshot: {},
   };
 };
 
 function normalizeContact(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, "");
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.includes("@")) return trimmed.replace(/\s+/g, "");
+  const digits = trimmed.replace(/\D/g, "");
+  return digits ? `+${digits}` : "";
 }
 
-function validateContact(value: string) {
+function validateContact(value: string, kind: AuthContactKind): ValidatedContact | AuthError {
   const contact = normalizeContact(value);
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
-  const phoneDigits = contact.replace(/[^\d]/g, "");
-  const phoneOk = phoneDigits.length >= 10 && phoneDigits.length <= 15 && /^[+\d() -]+$/.test(value.trim());
-  if (emailOk || phoneOk) return { ok: true as const, contact };
-  return {
-    ok: false as const,
-    error: "Введите email или телефон: минимум 10 цифр, можно с +, пробелами и скобками.",
-  };
+  if (kind === "email") {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)
+      ? { ok: true, contact }
+      : { ok: false, error: "Введите корректный email." };
+  }
+  const phoneDigits = contact.replace(/\D/g, "");
+  return phoneDigits.length >= 10 && phoneDigits.length <= 15
+    ? { ok: true, contact }
+    : { ok: false, error: "Введите номер телефона: от 10 до 15 цифр." };
 }
 
 function readAuthState(): StoredAuthState {
@@ -176,6 +193,11 @@ function readAuthState(): StoredAuthState {
               id,
               {
                 ...account,
+                password: Object.prototype.hasOwnProperty.call(account, "password")
+                  ? account.password
+                  : account.workspace.contactVerified
+                    ? DEFAULT_EXISTING_PASSWORD
+                    : null,
                 workspace: {
                   ...fallback,
                   ...account.workspace,
@@ -189,7 +211,10 @@ function readAuthState(): StoredAuthState {
             ];
           }),
         );
-        const migrated = { ...parsed, accounts };
+        const contactIndex = Object.fromEntries(
+          Object.values(accounts).map((account) => [normalizeContact(account.contact), account.id]),
+        );
+        const migrated = { ...parsed, accounts, contactIndex };
         writeAuthState(migrated);
         return migrated;
       }
@@ -208,10 +233,10 @@ function writeAuthState(state: StoredAuthState) {
 }
 
 function readSessionId() {
-  if (typeof window === "undefined") return SEED_ACCOUNT_ID;
+  if (typeof window === "undefined") return null;
   const stored = window.localStorage.getItem(SESSION_KEY);
   if (stored === LOGGED_OUT_SESSION) return null;
-  return stored ?? SEED_ACCOUNT_ID;
+  return stored;
 }
 
 function writeSessionId(accountId: string | null) {
@@ -282,32 +307,62 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     writeSessionId(nextAccount.id);
   }, []);
 
-  const loginWithContact = useCallback(
-    (rawContact: string) => {
-      const validation = validateContact(rawContact);
+  const validateAuthContact = useCallback(
+    (rawContact: string, kind: AuthContactKind) => validateContact(rawContact, kind),
+    [],
+  );
+
+  const verifyCode = useCallback(
+    (rawContact: string, kind: AuthContactKind, code: string) => {
+      const validation = validateContact(rawContact, kind);
       if (!validation.ok) return validation;
+      if (!/^\d{6}$/.test(code)) {
+        return { ok: false as const, error: "Введите полный шестизначный код." };
+      }
 
       const currentState = upsertAccountWithSnapshot(authState, account);
       const existingId = currentState.contactIndex[validation.contact];
-      const nextAccount = existingId ? currentState.accounts[existingId] : createAccount(validation.contact);
+      const nextAccount = existingId
+        ? currentState.accounts[existingId]
+        : createAccount(validation.contact);
       setAuthState(currentState);
-      setActiveAccount(nextAccount);
-      return { ok: true as const, account: nextAccount };
+      const verifiedAccount = {
+        ...nextAccount,
+        workspace: { ...nextAccount.workspace, contactVerified: true },
+      };
+      setActiveAccount(verifiedAccount);
+      return { ok: true as const, account: verifiedAccount };
     },
     [account, authState, setActiveAccount],
   );
 
-  const loginWithGoogle = useCallback(() => {
-    const currentState = upsertAccountWithSnapshot(authState, account);
-    const existingId = currentState.contactIndex[GOOGLE_CONTACT];
-    const nextAccount = existingId ? currentState.accounts[existingId] : createAccount(GOOGLE_CONTACT);
-    setAuthState(currentState);
-    setActiveAccount({
-      ...nextAccount,
-      displayName: "Google Tasko Owner",
-      contact: GOOGLE_CONTACT,
-    });
-  }, [account, authState, setActiveAccount]);
+  const loginWithPassword = useCallback(
+    (rawContact: string, kind: AuthContactKind, password: string) => {
+      const validation = validateContact(rawContact, kind);
+      if (!validation.ok) return validation;
+
+      const currentState = upsertAccountWithSnapshot(authState, account);
+      const existingId = currentState.contactIndex[validation.contact];
+      const existingAccount = existingId ? currentState.accounts[existingId] : null;
+      if (!existingAccount) {
+        return { ok: false as const, error: "Аккаунт не найден. Войдите по коду, чтобы создать его." };
+      }
+      if (!existingAccount.workspace.contactVerified) {
+        return { ok: false as const, error: "Сначала подтвердите контакт кодом." };
+      }
+      if (!existingAccount.password) {
+        return { ok: false as const, error: "Для этого аккаунта пароль не настроен. Войдите по коду." };
+      }
+      if (existingAccount.password !== password) {
+        return { ok: false as const, error: "Неверный пароль." };
+      }
+
+      setAuthState(currentState);
+      setActiveAccount(existingAccount);
+      return { ok: true as const, account: existingAccount };
+    },
+    [account, authState, setActiveAccount],
+  );
 
   const logout = useCallback(() => {
     setAuthState((prev) => upsertAccountWithSnapshot(prev, account));
@@ -398,8 +453,9 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     () => ({
       account,
       isAuthenticated: Boolean(account),
-      loginWithContact,
-      loginWithGoogle,
+      validateAuthContact,
+      verifyCode,
+      loginWithPassword,
       logout,
       resetTestAccount,
       updateWorkspace,
@@ -410,8 +466,9 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       account,
-      loginWithContact,
-      loginWithGoogle,
+      validateAuthContact,
+      verifyCode,
+      loginWithPassword,
       logout,
       resetTestAccount,
       updateWorkspace,
