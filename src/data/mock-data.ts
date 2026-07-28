@@ -107,11 +107,11 @@ export const notificationChannel = {
 };
 
 export const storeTabs: { id: StoreTabId; label: string; icon: LucideIcon }[] = [
-  { id: "catalog", label: "Каталог", icon: LayoutGrid },
   { id: "home", label: "Главная", icon: Home },
-  { id: "upsell", label: "Рекомендации", icon: Sparkles },
+  { id: "about", label: "Заведение", icon: Building2 },
+  { id: "catalog", label: "Каталог", icon: LayoutGrid },
   { id: "appearance", label: "Оформление", icon: Palette },
-  { id: "about", label: "О заведении", icon: Building2 },
+  { id: "upsell", label: "Рекомендации", icon: Sparkles },
 ];
 
 export const manageTabs: { id: ManageTabId; label: string; icon: LucideIcon }[] = [

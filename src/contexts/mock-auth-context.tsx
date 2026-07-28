@@ -12,6 +12,17 @@ import { getRegistrationMarket } from "@/lib/registration-market";
 
 export type MockWorkspaceStatus = "draft" | "published" | "changes";
 export type OrganizationType = "restaurant" | "store" | "services" | "other";
+export type VenueType =
+  | "restaurant"
+  | "coffee-shop"
+  | "bar"
+  | "fast-food"
+  | "confectionery"
+  | "hotel"
+  | "online-store"
+  | "services"
+  | "beauty-salon"
+  | "other";
 export type WorkspaceLanguageStatus = "empty" | "partial" | "ready";
 
 export type WorkspaceLanguage = {
@@ -39,6 +50,7 @@ export type MockWorkspace = {
   contactVerified: boolean;
   setupCompleted: boolean;
   organizationType: OrganizationType;
+  venueType: VenueType;
   primaryLanguage: LanguageCode;
   languages: WorkspaceLanguage[];
   localizedNames: Partial<Record<LanguageCode, string>>;
@@ -136,6 +148,7 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   contactVerified: !firstEntry,
   setupCompleted,
   organizationType: "restaurant",
+  venueType: "restaurant",
   primaryLanguage: "ru",
   languages: setupCompleted
     ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }))
@@ -209,6 +222,7 @@ const createAccount = (
       contactVerified: true,
       setupCompleted: true,
       organizationType: "restaurant",
+      venueType: "restaurant",
       primaryLanguage: registrationLanguage,
       languages: [{ code: registrationLanguage, status: "ready", visible: true }],
       localizedNames: { [registrationLanguage]: workspaceName },

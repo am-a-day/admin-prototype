@@ -40,10 +40,10 @@ export const WORK_AREAS: WorkArea[] = [
     icon: LayoutGrid,
     pages: [
       { label: "Главная", section: "storefront", tab: "home" },
+      { label: "Заведение", section: "storefront", tab: "about" },
       { label: "Каталог", section: "storefront", tab: "catalog" },
       { label: "Рекомендации", section: "storefront", tab: "upsell" },
       { label: "Оформление", section: "storefront", tab: "appearance" },
-      { label: "О заведении", section: "storefront", tab: "about" },
     ],
   },
   {

@@ -12,13 +12,14 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Globe2,
   KeyRound,
   LoaderCircle,
   Pencil,
   Search,
   X,
 } from "lucide-react";
-import { ChatCircle, TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
+import { ChatTeardropDots, TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
@@ -57,6 +58,8 @@ type AuthCopy = {
   deliveryError: string;
   otherMethods: string;
   methodLabels: Record<AuthMethod, string>;
+  channelNames: Record<PhoneChannel, string>;
+  retryIn: string;
   legalPrefix: string;
   agreement: string;
   legalJoin: string;
@@ -160,6 +163,12 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       sms: "Продолжить по SMS",
       password: "Войти по паролю",
     },
+    channelNames: {
+      whatsapp: "WhatsApp",
+      telegram: "Telegram",
+      sms: "SMS",
+    },
+    retryIn: "повторно через",
     legalPrefix: "Продолжая, вы принимаете",
     agreement: "пользовательское соглашение",
     legalJoin: "и",
@@ -181,7 +190,7 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       telegram: "Отправили код в Telegram на",
       sms: "Отправили код по SMS на",
     },
-    editNumber: "Изменить номер",
+    editNumber: "Изменить номер телефона",
     codeLabel: "Одноразовый код",
     codeIncomplete: "Введите полный шестизначный код",
     codeNotSent: "Код не был отправлен. Выберите другой способ входа",
@@ -211,6 +220,12 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       sms: "SMS арқылы жалғастыру",
       password: "Құпиясөзбен кіру",
     },
+    channelNames: {
+      whatsapp: "WhatsApp",
+      telegram: "Telegram",
+      sms: "SMS",
+    },
+    retryIn: "қайта жіберу",
     legalPrefix: "Жалғастыра отырып, сіз",
     agreement: "пайдаланушы келісімін",
     legalJoin: "және",
@@ -232,7 +247,7 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       telegram: "Telegram арқылы код жіберілді:",
       sms: "SMS арқылы код жіберілді:",
     },
-    editNumber: "Нөмірді өзгерту",
+    editNumber: "Телефон нөмірін өзгерту",
     codeLabel: "Бір реттік код",
     codeIncomplete: "Алты таңбалы кодты толық енгізіңіз",
     codeNotSent: "Код жіберілмеді. Басқа кіру тәсілін таңдаңыз",
@@ -262,6 +277,12 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       sms: "Continue via SMS",
       password: "Sign in with password",
     },
+    channelNames: {
+      whatsapp: "WhatsApp",
+      telegram: "Telegram",
+      sms: "SMS",
+    },
+    retryIn: "retry in",
     legalPrefix: "By continuing, you accept the",
     agreement: "user agreement",
     legalJoin: "and",
@@ -283,7 +304,7 @@ const AUTH_COPY: Record<AuthLocale, AuthCopy> = {
       telegram: "We sent a code via Telegram to",
       sms: "We sent a code via SMS to",
     },
-    editNumber: "Edit number",
+    editNumber: "Edit phone number",
     codeLabel: "One-time code",
     codeIncomplete: "Enter the complete six-digit code",
     codeNotSent: "The code wasn't sent. Choose another sign-in method",
@@ -358,9 +379,13 @@ function caretPositionForDigitCount(formatted: string, digitCount: number) {
   return formatted.length;
 }
 
+function formatCooldown(seconds: number) {
+  return `0:${String(seconds).padStart(2, "0")}`;
+}
+
 function detectCountryFromInternationalDigits(
   rawDigits: string,
-  currentCountry: CountryOption,
+  currentCountry?: CountryOption,
 ): CountryOption | null {
   const candidates = COUNTRIES.filter((item) =>
     rawDigits.startsWith(item.dialCode.replace(/\D/g, "")),
@@ -383,7 +408,7 @@ function detectCountryFromInternationalDigits(
     if (nationalFirstDigit) {
       return COUNTRIES.find(({ code }) => code === "RU") ?? null;
     }
-    return currentCountry.dialCode === "+7" ? currentCountry : null;
+    return currentCountry?.dialCode === "+7" ? currentCountry : null;
   }
 
   return null;
@@ -415,7 +440,7 @@ function MethodIcon({ method, size = 22 }: { method: AuthMethod; size?: number }
     return <TelegramLogo size={size} weight="fill" aria-hidden="true" />;
   }
   if (method === "sms") {
-    return <ChatCircle size={size} weight="fill" aria-hidden="true" />;
+    return <ChatTeardropDots size={size} weight="fill" aria-hidden="true" />;
   }
   return <KeyRound size={size} aria-hidden="true" />;
 }
@@ -497,7 +522,12 @@ export function AuthScreen() {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
-  const [resendSeconds, setResendSeconds] = useState(RESEND_SECONDS);
+  const [cooldownEnds, setCooldownEnds] = useState<Record<PhoneChannel, number>>({
+    whatsapp: 0,
+    telegram: 0,
+    sms: 0,
+  });
+  const [clock, setClock] = useState(Date.now);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
   const [sendingChannel, setSendingChannel] = useState<PhoneChannel | null>(null);
@@ -506,18 +536,28 @@ export function AuthScreen() {
   const codeInputRef = useRef<HTMLInputElement>(null);
   const countryPopoverRef = useRef<HTMLDivElement>(null);
   const pendingCaretDigitsRef = useRef<number | null>(null);
+  const pendingCaretPositionRef = useRef<number | null>(null);
   const focusPhoneOnReturnRef = useRef(false);
 
   const country = COUNTRIES.find((item) => item.code === countryCode) ?? COUNTRIES[0];
   const authLocale: AuthLocale =
     uiLanguage === "kk" || uiLanguage === "en" ? uiLanguage : "ru";
   const copy = AUTH_COPY[authLocale];
-  const normalizedPhone = `${country.dialCode}${nationalNumber}`;
+  const normalizedPhone =
+    internationalDraft === null ? `${country.dialCode}${nationalNumber}` : "";
   const formattedPhone = formatNationalNumber(nationalNumber, country.groups);
   const phoneMask = fillPhoneMask(nationalNumber, country.mask);
-  const phoneVisual = internationalDraft
+  const editablePhone =
+    internationalDraft ??
+    `${country.dialCode}${formattedPhone ? ` ${formattedPhone}` : ""}`;
+  const phoneVisual = internationalDraft !== null
     ? { filled: internationalDraft, remaining: "" }
-    : phoneMask;
+    : {
+        filled: `${country.dialCode}${phoneMask.filled ? ` ${phoneMask.filled}` : " "}`,
+        remaining: phoneMask.remaining,
+      };
+  const channelCooldown = (method: PhoneChannel) =>
+    Math.max(0, Math.ceil((cooldownEnds[method] - clock) / 1000));
   const orderedMethods = useMemo(
     () => [
       primaryMethod,
@@ -539,13 +579,10 @@ export function AuthScreen() {
   }, []);
 
   useEffect(() => {
-    if (step !== "code" || resendSeconds <= 0) return;
-    const timer = window.setTimeout(
-      () => setResendSeconds((seconds) => seconds - 1),
-      1000,
-    );
+    if (!PHONE_CHANNELS.some((method) => cooldownEnds[method] > Date.now())) return;
+    const timer = window.setTimeout(() => setClock(Date.now()), 250);
     return () => window.clearTimeout(timer);
-  }, [resendSeconds, step]);
+  }, [clock, cooldownEnds]);
 
   useEffect(() => {
     if (!countryOpen) return;
@@ -566,14 +603,21 @@ export function AuthScreen() {
   }, [countryOpen]);
 
   useEffect(() => {
+    const rawPosition = pendingCaretPositionRef.current;
+    if (rawPosition != null) {
+      pendingCaretPositionRef.current = null;
+      const input = phoneInputRef.current;
+      input?.setSelectionRange(rawPosition, rawPosition);
+      return;
+    }
     const digitCount = pendingCaretDigitsRef.current;
     if (digitCount == null) return;
     pendingCaretDigitsRef.current = null;
     const input = phoneInputRef.current;
     if (!input) return;
-    const position = caretPositionForDigitCount(formattedPhone, digitCount);
+    const position = caretPositionForDigitCount(editablePhone, digitCount);
     input.setSelectionRange(position, position);
-  }, [formattedPhone]);
+  }, [editablePhone]);
 
   useEffect(() => {
     if (step !== "phone" || !focusPhoneOnReturnRef.current) return;
@@ -593,51 +637,96 @@ export function AuthScreen() {
     caretDigits?: number,
   ) => {
     setInternationalDraft(null);
+    pendingCaretPositionRef.current = null;
     setCountryCode(nextCountry.code);
     setNationalNumber(digits.slice(0, nextCountry.digits));
+    const dialLength = nextCountry.dialCode.replace(/\D/g, "").length;
     pendingCaretDigitsRef.current = Math.min(
-      caretDigits ?? digits.length,
-      nextCountry.digits,
+      caretDigits ?? dialLength + digits.length,
+      dialLength + nextCountry.digits,
     );
     resetMessages();
   };
 
-  const applyInternationalNumber = (rawValue: string) => {
+  const applyInternationalNumber = (
+    rawValue: string,
+    caretPosition = rawValue.length,
+  ) => {
     const rawDigits = rawValue.replace(/\D/g, "");
-    const detectedCountry = detectCountryFromInternationalDigits(rawDigits, country);
+    const detectedCountry = detectCountryFromInternationalDigits(
+      rawDigits,
+      internationalDraft === null ? country : undefined,
+    );
     if (!detectedCountry) return false;
     const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
     const national = rawDigits.slice(dialDigits.length);
-    setPhoneDigits(national, detectedCountry);
+    const digitsBeforeCaret = rawValue
+      .slice(0, caretPosition)
+      .replace(/\D/g, "").length;
+    setPhoneDigits(national, detectedCountry, digitsBeforeCaret);
     return true;
   };
 
   const handlePhoneInput = (rawValue: string, selectionStart: number | null) => {
-    if (rawValue.trim().startsWith("+")) {
-      if (applyInternationalNumber(rawValue)) return;
-      const rawDigits = rawValue.replace(/\D/g, "");
-      setInternationalDraft(`+${rawDigits}`);
+    if (!rawValue) {
+      setInternationalDraft("");
       setNationalNumber("");
+      pendingCaretDigitsRef.current = null;
+      pendingCaretPositionRef.current = 0;
       resetMessages();
       return;
     }
-    const digitsBeforeCaret = rawValue
-      .slice(0, selectionStart ?? rawValue.length)
-      .replace(/\D/g, "").length;
-    setPhoneDigits(rawValue.replace(/\D/g, ""), country, digitsBeforeCaret);
+    if (rawValue.trim().startsWith("+") || internationalDraft === "") {
+      const normalizedDraft = rawValue.trim().startsWith("+")
+        ? `+${rawValue.replace(/\+/g, "").replace(/[^\d\s()-]/g, "")}`
+        : `+${rawValue.replace(/\D/g, "")}`;
+      const normalizedCaret = Math.min(
+        normalizedDraft.length,
+        (selectionStart ?? rawValue.length) + (rawValue.startsWith("+") ? 0 : 1),
+      );
+      if (applyInternationalNumber(normalizedDraft, normalizedCaret)) return;
+      setInternationalDraft(normalizedDraft);
+      setNationalNumber("");
+      pendingCaretPositionRef.current = normalizedCaret;
+      resetMessages();
+      return;
+    }
+    setInternationalDraft(rawValue.replace(/[^\d\s()-]/g, ""));
+    setNationalNumber("");
+    pendingCaretDigitsRef.current = null;
+    pendingCaretPositionRef.current = selectionStart;
+    resetMessages();
   };
 
   const handlePhonePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     const pasted = event.clipboardData.getData("text");
     const pastedDigits = pasted.replace(/\D/g, "");
     const looksInternational =
-      pasted.trim().startsWith("+") || pastedDigits.length > country.digits;
-    if (!looksInternational || !applyInternationalNumber(pasted)) return;
+      pasted.trim().startsWith("+") ||
+      internationalDraft !== null ||
+      pastedDigits.length > country.digits;
+    if (!looksInternational) return;
     event.preventDefault();
+    const internationalValue = `+${pastedDigits}`;
+    if (applyInternationalNumber(internationalValue, internationalValue.length)) {
+      return;
+    }
+    setInternationalDraft(internationalValue);
+    setNationalNumber("");
+    pendingCaretPositionRef.current = internationalValue.length;
+    resetMessages();
   };
 
   const selectCountry = (nextCountry: CountryOption) => {
-    setPhoneDigits(nationalNumber, nextCountry);
+    const draftDigits = internationalDraft?.replace(/\D/g, "") ?? "";
+    const nextDialDigits = nextCountry.dialCode.replace(/\D/g, "");
+    const preservedNational =
+      internationalDraft === null
+        ? nationalNumber
+        : draftDigits.startsWith(nextDialDigits)
+          ? draftDigits.slice(nextDialDigits.length)
+          : draftDigits;
+    setPhoneDigits(preservedNational, nextCountry);
     setCountryOpen(false);
     setCountrySearch("");
     window.requestAnimationFrame(() => phoneInputRef.current?.focus());
@@ -668,14 +757,19 @@ export function AuthScreen() {
     setCode("");
     setCodeState("idle");
     setCodeSentAt(Date.now());
-    setResendSeconds(RESEND_SECONDS);
+    const cooldownEnd = Date.now() + RESEND_SECONDS * 1000;
+    setCooldownEnds((current) => ({
+      ...current,
+      [nextChannel]: cooldownEnd,
+    }));
+    setClock(Date.now());
     setStep("code");
     setError("");
     return true;
   };
 
   const startPhoneCode = async (nextChannel: PhoneChannel) => {
-    if (sendingChannel || passwordLoading) return;
+    if (sendingChannel || passwordLoading || channelCooldown(nextChannel) > 0) return;
     const validation = validateAuthContact(normalizedPhone, "phone");
     if (!validation.ok || nationalNumber.length !== country.digits) {
       setError(copy.phoneError);
@@ -773,7 +867,7 @@ export function AuthScreen() {
   }, [code, codeState, step, verifyCurrentCode]);
 
   const resendCode = async () => {
-    if (resendSeconds > 0 || resending) return;
+    if (channelCooldown(channel) > 0 || resending) return;
     setResending(true);
     setCode("");
     resetMessages();
@@ -807,7 +901,7 @@ export function AuthScreen() {
     return (
       <AuthLayout locale={authLocale} setLanguage={setUiLanguage}>
         <section className="w-full max-w-[420px]" aria-labelledby="auth-title">
-          <div className="text-center">
+          <div className="relative left-1/2 w-[min(calc(100vw-2rem),600px)] -translate-x-1/2 text-center">
             <h1
               id="auth-title"
               className="text-[18px] font-extrabold leading-normal text-black"
@@ -842,7 +936,11 @@ export function AuthScreen() {
             >
               <button
                 type="button"
-                aria-label={`${copy.countryLabel}: ${country.names[authLocale]} ${country.dialCode}`}
+                aria-label={
+                  internationalDraft === null
+                    ? `${copy.countryLabel}: ${country.names[authLocale]} ${country.dialCode}`
+                    : copy.countryLabel
+                }
                 aria-expanded={countryOpen}
                 aria-haspopup="dialog"
                 disabled={Boolean(sendingChannel)}
@@ -852,19 +950,18 @@ export function AuthScreen() {
                 }}
                 className="flex h-10 w-[58px] shrink-0 items-center justify-center gap-1 rounded-[7px] bg-[#e7e5e4] transition hover:bg-[#ddd9d7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
               >
-                <img
-                  src={country.flag}
-                  alt=""
-                  className="size-7 rounded-full object-cover"
-                />
+                {internationalDraft === null ? (
+                  <img
+                    src={country.flag}
+                    alt=""
+                    className="size-7 rounded-full object-cover"
+                  />
+                ) : (
+                  <Globe2 size={22} className="text-[#79716b]" aria-hidden="true" />
+                )}
                 <ChevronDown size={13} className="text-[#79716b]" aria-hidden="true" />
               </button>
-              {!internationalDraft && (
-                <span className="ml-[7px] shrink-0 text-[16px] font-semibold leading-6 text-[#292524]">
-                  {country.dialCode}
-                </span>
-              )}
-              <div className="relative h-10 min-w-0 flex-1">
+              <div className="relative ml-[7px] h-10 min-w-0 flex-1">
                 <div
                   className="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-1.5 text-[16px] font-semibold leading-6"
                   aria-hidden="true"
@@ -879,25 +976,29 @@ export function AuthScreen() {
                   inputMode="tel"
                   autoComplete="tel"
                   disabled={Boolean(sendingChannel)}
-                  value={internationalDraft ?? formattedPhone}
+                  value={editablePhone}
                   onChange={(event) =>
                     handlePhoneInput(event.target.value, event.target.selectionStart)
                   }
                   onPaste={handlePhonePaste}
                   className={cn(
                     "h-10 min-w-0 border-0 bg-transparent px-1.5 text-[16px] font-semibold text-transparent shadow-none caret-[#4f39f6] focus-visible:ring-0 disabled:cursor-wait",
-                    (nationalNumber || internationalDraft) && "pr-10",
+                    editablePhone && "pr-10",
                   )}
                   aria-invalid={Boolean(error)}
                   aria-describedby={error ? "auth-phone-error" : undefined}
                 />
-                {(nationalNumber || internationalDraft) && (
+                {editablePhone && (
                   <button
                     type="button"
                     aria-label={copy.clearNumber}
                     disabled={Boolean(sendingChannel)}
                     onClick={() => {
-                      setPhoneDigits("", country, 0);
+                      setInternationalDraft("");
+                      setNationalNumber("");
+                      pendingCaretDigitsRef.current = null;
+                      pendingCaretPositionRef.current = 0;
+                      resetMessages();
                       window.requestAnimationFrame(() => phoneInputRef.current?.focus());
                     }}
                     className="absolute right-0 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#e7e5e4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
@@ -932,7 +1033,9 @@ export function AuthScreen() {
                         onClick={() => selectCountry(item)}
                         className={cn(
                           "flex min-h-11 w-full items-center gap-3 rounded-[8px] px-2 text-left transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]",
-                          item.code === country.code && "bg-[#f5f5f4]",
+                          internationalDraft === null &&
+                            item.code === country.code &&
+                            "bg-[#f5f5f4]",
                         )}
                       >
                         <img
@@ -970,12 +1073,14 @@ export function AuthScreen() {
               {visibleMethods.map((method, index) => {
                 const isPrimary = index === 0;
                 const isLoading = method === sendingChannel;
+                const cooldown =
+                  method === "password" ? 0 : channelCooldown(method);
                 return (
                   <Button
                     key={method}
                     type={isPrimary ? "submit" : "button"}
                     variant={isPrimary ? "default" : "outline"}
-                    disabled={Boolean(sendingChannel)}
+                    disabled={Boolean(sendingChannel) || cooldown > 0}
                     aria-busy={isLoading}
                     onClick={isPrimary ? undefined : () => runMethod(method)}
                     className={cn(
@@ -989,7 +1094,13 @@ export function AuthScreen() {
                     ) : (
                       <MethodIcon method={method} />
                     )}
-                    <span>{isLoading ? copy.sending : copy.methodLabels[method]}</span>
+                    <span>
+                      {isLoading
+                        ? copy.sending
+                        : cooldown > 0 && method !== "password"
+                          ? `${copy.channelNames[method]} · ${copy.retryIn} ${formatCooldown(cooldown)}`
+                          : copy.methodLabels[method]}
+                    </span>
                   </Button>
                 );
               })}
@@ -1009,8 +1120,9 @@ export function AuthScreen() {
             </span>
           </form>
 
-          <p className="mt-3 text-center text-[14px] leading-5 text-[#818181]">
-            {copy.legalPrefix}{" "}
+          <p className="relative left-1/2 mt-3 w-[min(calc(100vw-2rem),560px)] -translate-x-1/2 text-center text-[14px] leading-5 text-[#818181]">
+            {copy.legalPrefix}
+            <br className="hidden sm:block" />{" "}
             <a
               href="https://tasko.group/public-offer"
               target="_blank"
@@ -1155,27 +1267,30 @@ export function AuthScreen() {
   }
 
   const phone = displayPhone(pendingContact, country);
+  const activeCooldown = channelCooldown(channel);
   return (
     <AuthLayout locale={authLocale} setLanguage={setUiLanguage}>
       <section className="w-full max-w-[430px]" aria-labelledby="code-title">
-        <div className="text-center">
+        <div className="relative left-1/2 w-[min(calc(100vw-2rem),600px)] -translate-x-1/2 text-center">
           <h1
             id="code-title"
             className="text-[18px] font-extrabold leading-normal text-black"
           >
             {copy.codeTitle}
           </h1>
-          <div className="mt-1 flex flex-wrap items-center justify-center gap-1 text-[16px] text-[#79716b]">
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-x-1 text-[16px] text-[#79716b]">
             <span>{copy.sentVia[channel]}</span>
-            <span className="font-medium">{phone}</span>
-            <button
-              type="button"
-              aria-label={copy.editNumber}
-              onClick={() => returnToPhone()}
-              className="flex size-7 items-center justify-center rounded-[7px] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
-            >
-              <Pencil size={16} aria-hidden="true" />
-            </button>
+            <span className="inline-flex items-center whitespace-nowrap">
+              <span className="font-medium">{phone}</span>
+              <button
+                type="button"
+                aria-label={copy.editNumber}
+                onClick={() => returnToPhone()}
+                className="ml-0.5 flex size-8 items-center justify-center rounded-[7px] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
+              >
+                <Pencil size={16} aria-hidden="true" />
+              </button>
+            </span>
           </div>
         </div>
 
@@ -1255,9 +1370,9 @@ export function AuthScreen() {
 
           <div className="mt-3 flex min-h-8 flex-wrap items-center justify-center gap-x-1 text-[13px] text-[#292524]">
             <span>{copy.resendQuestion}</span>
-            {resendSeconds > 0 ? (
+            {activeCooldown > 0 ? (
               <span className="font-medium text-[#79716b]">
-                {copy.resendIn} 0:{String(resendSeconds).padStart(2, "0")}
+                {copy.resendIn} {formatCooldown(activeCooldown)}
               </span>
             ) : (
               <button

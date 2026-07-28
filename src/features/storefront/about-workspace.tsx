@@ -1,18 +1,36 @@
-import { useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ChevronDown, CirclePlus, Eye, EyeOff, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreHorizontal, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Star, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/components/workspace/description-rich-text-editor";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import {
+  useMockAuth,
+  type VenueType,
+  type WorkspaceLanguageStatus,
+} from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
+import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { CURRENT_VITRINE_ID, MOCK_VITRINES, type PreviewScenario } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
-export type AboutTab = "info" | "guest-rules" | "public-display" | "rec-titles";
+export type AboutTab =
+  | "info"
+  | "language-region"
+  | "guest-rules"
+  | "public-display"
+  | "rec-titles";
 
 type AboutWorkspaceProps = {
   setPreviewScenario: (scenario: PreviewScenario) => void;
@@ -25,7 +43,8 @@ type AboutWorkspaceProps = {
 };
 
 const TAB_LABELS: Record<AboutTab, string> = {
-  "info": "Основное",
+  "info": "Профиль",
+  "language-region": "Язык и регион",
   "guest-rules": "Предупреждения",
   "public-display": "Мой ресторан в сети",
   "rec-titles": "Заголовки и кнопки",
@@ -33,7 +52,11 @@ const TAB_LABELS: Record<AboutTab, string> = {
 
 // Один источник для заголовка/подзаголовка рабочей области по активной вкладке.
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
-  "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас." },
+  "info": { title: TAB_LABELS.info, subtitle: "Информация, которая поможет гостям лучше узнать о вас." },
+  "language-region": {
+    title: "Язык и регион",
+    subtitle: "Управляйте языками витрины и региональными настройками заведения.",
+  },
   "guest-rules": { title: "Предупреждения", subtitle: "Настройте подтверждения, которые гости увидят перед открытием меню." },
   "public-display": { title: "Мой ресторан в сети", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
   "rec-titles": { title: "Заголовки и кнопки", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
@@ -41,6 +64,7 @@ const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
 
 const ABOUT_TABS: { id: AboutTab; label: string }[] = [
   { id: "info", label: TAB_LABELS.info },
+  { id: "language-region", label: TAB_LABELS["language-region"] },
   { id: "guest-rules", label: TAB_LABELS["guest-rules"] },
   { id: "rec-titles", label: TAB_LABELS["rec-titles"] },
   { id: "public-display", label: TAB_LABELS["public-display"] },
@@ -48,25 +72,27 @@ const ABOUT_TABS: { id: AboutTab; label: string }[] = [
 
 export function AboutTabs({ value, onChange }: { value: AboutTab; onChange: (t: AboutTab) => void }) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-      {ABOUT_TABS.map((t) => {
-        const active = value === t.id;
-        return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onChange(t.id)}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-[12px] transition",
-              active
-                ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                : "text-[#79716b] hover:text-zinc-700",
-            )}
-          >
-            {t.label}
-          </button>
-        );
-      })}
+    <div className="w-full max-w-full overflow-x-auto rounded-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="inline-flex min-w-max items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+        {ABOUT_TABS.map((t) => {
+          const active = value === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onChange(t.id)}
+              className={cn(
+                "whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] transition",
+                active
+                  ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+                  : "text-[#79716b] hover:text-zinc-700",
+              )}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -92,20 +118,48 @@ const PUBLIC_FIELD_TOOLTIPS = {
     "Город используется для отображения заведения в Tasko Get. Выберите город, чтобы гости могли найти вас в нужном каталоге.",
 } as const;
 
-function DottedLabelWithTooltip({ label, tooltip }: { label: string; tooltip: string }) {
+function DottedLabelWithTooltip({
+  id,
+  label,
+  tooltip,
+}: {
+  id?: string;
+  label: string;
+  tooltip: string;
+}) {
+  const tooltipId = useId();
+  const [open, setOpen] = useState(false);
+
   return (
-    <Tooltip
-      label={tooltip}
-      side="top"
-      contentClassName="max-w-[340px] whitespace-pre-line px-3 py-2 text-left leading-5"
-    >
-      <button
-        type="button"
-        className="mb-2 inline-block border-b border-dotted border-[#a8a29e] bg-transparent p-0 text-left text-[13px] font-medium leading-[20px] text-[#292524] outline-none transition focus-visible:border-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+    <TooltipRoot open={open} onOpenChange={setOpen} delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          aria-describedby={open ? tooltipId : undefined}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch") setOpen((current) => !current);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          className="mb-2 inline-block cursor-help border-b border-dotted border-[#a8a29e] bg-transparent p-0 text-left text-[13px] font-medium leading-[20px] text-[#292524] outline-none transition hover:border-[#79716b] focus-visible:border-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          {label}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        id={tooltipId}
+        side="top"
+        className="max-w-[340px] whitespace-pre-line px-3 py-2 text-left leading-5"
       >
-        {label}
-      </button>
-    </Tooltip>
+        {tooltip}
+      </TooltipContent>
+    </TooltipRoot>
   );
 }
 
@@ -691,6 +745,64 @@ function BasicField({
         {error ?? helperText}
       </div>
     </label>
+  );
+}
+
+function BasicSelectField<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  helperText,
+  tooltip,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  helperText?: string;
+  tooltip?: string;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="block">
+      {tooltip ? (
+        <DottedLabelWithTooltip id={`${id}-label`} label={label} tooltip={tooltip} />
+      ) : (
+        <label
+          htmlFor={id}
+          className="mb-1.5 block text-[13px] font-medium leading-[18px] text-[#292524]"
+        >
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        <select
+          id={id}
+          aria-labelledby={tooltip ? `${id}-label` : undefined}
+          value={value}
+          onChange={(event) => onChange(event.target.value as T)}
+          className="h-10 w-full appearance-none rounded-[12px] border border-[#e7e5e4] bg-white px-3.5 pr-10 text-[14px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition focus:border-[#c7c2bd]"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={16}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#79716b]"
+          aria-hidden="true"
+        />
+      </div>
+      {helperText && (
+        <div className="mt-1 text-[12px] leading-4 text-[#a8a29e]">
+          {helperText}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1705,6 +1817,135 @@ function WifiCard({ onChange, onRemove }: { onChange: () => void; onRemove: () =
   );
 }
 
+const VENUE_TYPE_OPTIONS: Array<{ value: VenueType; label: string }> = [
+  { value: "hotel", label: "Отель" },
+  { value: "restaurant", label: "Ресторан или кафе" },
+  { value: "online-store", label: "Онлайн-магазин" },
+  { value: "services", label: "Услуги" },
+];
+
+const VENUE_TYPE_TOOLTIP =
+  "Помогает нам лучше понимать формат вашего заведения.";
+
+function normalizeVenueTypeForChips(venueType: VenueType): VenueType {
+  if (venueType === "hotel" || venueType === "online-store" || venueType === "services") {
+    return venueType;
+  }
+  if (venueType === "beauty-salon" || venueType === "other") return "services";
+  return "restaurant";
+}
+
+function VenueTypeChipGroup({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: VenueType;
+  onChange: (value: VenueType) => void;
+  disabled?: boolean;
+}) {
+  const groupId = useId();
+  const selectedValue = normalizeVenueTypeForChips(value);
+
+  return (
+    <div>
+      <DottedLabelWithTooltip
+        id={`${groupId}-label`}
+        label="Тип заведения"
+        tooltip={VENUE_TYPE_TOOLTIP}
+      />
+      <div
+        role="radiogroup"
+        aria-labelledby={`${groupId}-label`}
+        className="flex flex-wrap gap-2"
+      >
+        {VENUE_TYPE_OPTIONS.map((option) => (
+          <label key={option.value} className="relative">
+            <input
+              type="radio"
+              name={groupId}
+              value={option.value}
+              checked={selectedValue === option.value}
+              disabled={disabled}
+              onChange={() => onChange(option.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onChange(option.value);
+                  return;
+                }
+
+                const direction =
+                  event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ? 1
+                    : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ? -1
+                      : 0;
+                if (!direction && event.key !== "Home" && event.key !== "End") return;
+
+                const radios = Array.from(
+                  event.currentTarget
+                    .closest('[role="radiogroup"]')
+                    ?.querySelectorAll<HTMLInputElement>(
+                      'input[type="radio"]:not(:disabled)',
+                    ) ?? [],
+                );
+                if (!radios.length) return;
+
+                event.preventDefault();
+                const currentIndex = radios.indexOf(event.currentTarget);
+                const nextIndex =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? radios.length - 1
+                      : (currentIndex + direction + radios.length) % radios.length;
+                const nextRadio = radios[nextIndex];
+                nextRadio.focus();
+                onChange(nextRadio.value as VenueType);
+              }}
+              className="peer sr-only"
+            />
+            <span
+              className={cn(
+                "flex h-9 cursor-pointer items-center whitespace-nowrap rounded-[8px] border border-[#d6d3d1] bg-white px-3 text-[13px] font-medium text-[#57534d] transition",
+                "hover:border-[#a8a29e] hover:bg-[#fafaf9]",
+                "peer-checked:border-[#292524] peer-checked:bg-[#292524] peer-checked:text-white peer-checked:hover:bg-[#292524]",
+                "peer-focus-visible:ring-2 peer-focus-visible:ring-[#292524]/20 peer-focus-visible:ring-offset-2",
+                "peer-disabled:cursor-not-allowed peer-disabled:border-[#e7e5e4] peer-disabled:bg-[#f5f5f4] peer-disabled:text-[#a8a29e]",
+              )}
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const LANGUAGE_STATUS_LABELS: Record<WorkspaceLanguageStatus, string> = {
+  empty: "Не заполнен",
+  partial: "Частично заполнен",
+  ready: "Готов к публикации",
+};
+
+const CURRENCY_OPTIONS = [
+  { value: "KZT", label: "Казахстанский тенге — KZT" },
+  { value: "RSD", label: "Сербский динар — RSD" },
+  { value: "RUB", label: "Российский рубль — RUB" },
+  { value: "USD", label: "Доллар США — USD" },
+  { value: "EUR", label: "Евро — EUR" },
+];
+
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Almaty", label: "Казахстан, UTC+5" },
+  { value: "Europe/Belgrade", label: "Белград, Центральная Европа" },
+  { value: "Europe/Moscow", label: "Москва, UTC+3" },
+  { value: "Europe/London", label: "Лондон" },
+  { value: "Europe/Berlin", label: "Берлин, Центральная Европа" },
+];
+
 function BasicInfoWorkspace({
   onChange,
   setPreviewScenario,
@@ -1713,9 +1954,10 @@ function BasicInfoWorkspace({
   setPreviewScenario: (scenario: PreviewScenario) => void;
 }) {
   const { ageConfirmationEnabled, setAgeConfirmationEnabled } = useAppSettings();
+  const { account, updateWorkspace } = useMockAuth();
   const currentVitrine = MOCK_VITRINES.find((vitrine) => vitrine.id === CURRENT_VITRINE_ID) ?? MOCK_VITRINES[0];
   const registrationCountryCode = currentVitrine?.registrationCountryCode;
-  const [name, setName] = useState("Sweet affair");
+  const [name, setName] = useState(account?.workspace.name ?? "Sweet affair");
   const [address, setAddress] = useState("Астана, Абылай-хана 34, д 18");
   const [description, setDescription] = useState("");
   const [wifiAdded, setWifiAdded] = useState(false);
@@ -1729,6 +1971,10 @@ function BasicInfoWorkspace({
   // Пустые ряды инертны — на витрину не попадают и нигде не считаются «незаполненными».
   const [socialEntries, setSocialEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("instagram")]);
   const [contactEntries, setContactEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("phone")]);
+
+  useEffect(() => {
+    if (account?.workspace.name) setName(account.workspace.name);
+  }, [account?.workspace.name]);
 
   const basicErrors = useMemo(
     () => ({
@@ -1810,6 +2056,22 @@ function BasicInfoWorkspace({
         />
       </div>
 
+      <VenueTypeChipGroup
+        value={account?.workspace.venueType ?? "restaurant"}
+        onChange={(venueType) => {
+          const organizationType =
+            venueType === "restaurant"
+              ? "restaurant"
+              : venueType === "online-store"
+                ? "store"
+                : venueType === "services"
+                  ? "services"
+                  : "other";
+          updateWorkspace({ venueType, organizationType });
+          onChange();
+        }}
+      />
+
       <BasicField
         id="about-address"
         label="Адрес"
@@ -1874,6 +2136,392 @@ function BasicInfoWorkspace({
   );
 }
 
+function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
+  const {
+    account,
+    updateWorkspace,
+    addWorkspaceLanguage,
+    removeWorkspaceLanguage,
+    setWorkspaceLanguageVisibility,
+  } = useMockAuth();
+  const { contentLanguage, setContentLanguage } = useAppSettings();
+  const [openMenu, setOpenMenu] = useState<LanguageCode | null>(null);
+  const [languageToDelete, setLanguageToDelete] = useState<LanguageCode | null>(null);
+
+  if (!account) return null;
+
+  const workspace = account.workspace;
+  const availableLanguages = LANGUAGES.filter(
+    ({ code }) => !workspace.languages.some((language) => language.code === code),
+  );
+  const deleteLanguage = LANGUAGES.find(({ code }) => code === languageToDelete);
+
+  const makePrimary = (primaryLanguage: LanguageCode) => {
+    if (primaryLanguage === workspace.primaryLanguage) return;
+    updateWorkspace({
+      primaryLanguage,
+      languages: workspace.languages.map((language) =>
+        language.code === primaryLanguage ? { ...language, visible: true } : language,
+      ),
+      localizedNames: {
+        ...workspace.localizedNames,
+        [primaryLanguage]:
+          workspace.localizedNames[primaryLanguage] ?? workspace.name,
+      },
+    });
+    setContentLanguage(primaryLanguage);
+    setOpenMenu(null);
+    onChange();
+  };
+
+  const addLanguage = (language: LanguageCode) => {
+    addWorkspaceLanguage(language);
+    setContentLanguage(language);
+    onChange();
+  };
+
+  const toggleLanguageVisibility = (language: LanguageCode, visible: boolean) => {
+    setWorkspaceLanguageVisibility(language, visible);
+    setOpenMenu(null);
+    onChange();
+  };
+
+  const confirmDeleteLanguage = () => {
+    if (!languageToDelete || languageToDelete === workspace.primaryLanguage) return;
+    removeWorkspaceLanguage(languageToDelete);
+    if (contentLanguage === languageToDelete) {
+      setContentLanguage(workspace.primaryLanguage);
+    }
+    setLanguageToDelete(null);
+    setOpenMenu(null);
+    onChange();
+  };
+
+  const applyRegionScenario = (region: "KZ" | "RS") => {
+    const serbia = region === "RS";
+    const primaryLanguage: LanguageCode = serbia ? "sr" : "ru";
+    const languages = workspace.languages.some(({ code }) => code === primaryLanguage)
+      ? workspace.languages.map((language) =>
+          language.code === primaryLanguage ? { ...language, visible: true } : language,
+        )
+      : [
+          ...workspace.languages,
+          { code: primaryLanguage, status: "ready" as const, visible: true },
+        ];
+    updateWorkspace({
+      name: "Мой ресторан 5260",
+      organizationType: "restaurant",
+      venueType: "restaurant",
+      primaryLanguage,
+      languages,
+      localizedNames: {
+        ...workspace.localizedNames,
+        [primaryLanguage]: "Мой ресторан 5260",
+      },
+      currency: serbia ? "RSD" : "KZT",
+      timezone: serbia ? "Europe/Belgrade" : "Asia/Almaty",
+      market: serbia ? "Serbia" : "Kazakhstan",
+      marketCode: region,
+      technicalAddress: `${serbia ? "tsqr.app" : "tsqr.me"}/m/5260`,
+      webAddress: "",
+    });
+    setContentLanguage(primaryLanguage);
+    onChange();
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <>
+      <div className="w-full space-y-6">
+        <section aria-labelledby="storefront-languages-title">
+          <div>
+            <h2
+              id="storefront-languages-title"
+              className="text-[13px] font-semibold text-[#292524]"
+            >
+              Языки витрины
+            </h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">
+              Управляйте языковыми версиями контента и их доступностью для гостей.
+            </p>
+          </div>
+
+          <div className="mt-3 rounded-[8px] border border-[#e7e5e4] bg-white">
+            <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase text-[#a8a29e]">
+              Добавлены
+            </div>
+            <div className="divide-y divide-[#f0eeec]">
+              {workspace.languages.map((workspaceLanguage) => {
+                const language = LANGUAGES.find(
+                  ({ code }) => code === workspaceLanguage.code,
+                );
+                if (!language) return null;
+                const primary = workspace.primaryLanguage === language.code;
+                const active = contentLanguage === language.code;
+                const menuOpened = openMenu === language.code;
+                const statusText = primary
+                  ? "Всегда доступен"
+                  : `${LANGUAGE_STATUS_LABELS[workspaceLanguage.status]}${workspaceLanguage.visible ? "" : " · Скрыт с витрины"}`;
+
+                return (
+                  <div
+                    key={language.code}
+                    data-language-row={language.code}
+                    className={cn(
+                      "relative flex min-h-14 items-center gap-3 px-3 py-2.5 transition",
+                      active && "bg-[#fafaf9]",
+                      menuOpened && "z-20",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setContentLanguage(language.code)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[13px] font-medium text-[#292524]">
+                          {language.label}
+                        </span>
+                        {primary && (
+                          <span className="rounded bg-[#f0fdf4] px-1.5 py-0.5 text-[10px] font-semibold text-[#15803d]">
+                            Основной
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-[#79716b]">
+                        {statusText}
+                      </span>
+                    </button>
+
+                    <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-[#79716b]">
+                      {language.short}
+                    </span>
+
+                    {primary ? (
+                      <span className="h-8 w-8 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          aria-label={`Действия для языка ${language.label}`}
+                          aria-expanded={menuOpened}
+                          onClick={() =>
+                            setOpenMenu((current) =>
+                              current === language.code ? null : language.code,
+                            )
+                          }
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+                        >
+                          <MoreHorizontal size={17} />
+                        </button>
+                        {menuOpened && (
+                          <div className="absolute right-0 top-9 z-30 w-52 rounded-[8px] border border-[#e7e5e4] bg-white p-1 shadow-lg">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleLanguageVisibility(
+                                  language.code,
+                                  !workspaceLanguage.visible,
+                                )
+                              }
+                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#44403b] hover:bg-[#f5f5f4]"
+                            >
+                              {workspaceLanguage.visible ? (
+                                <EyeOff size={15} />
+                              ) : (
+                                <Eye size={15} />
+                              )}
+                              {workspaceLanguage.visible
+                                ? "Скрыть с витрины"
+                                : "Показать на витрине"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => makePrimary(language.code)}
+                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#44403b] hover:bg-[#f5f5f4]"
+                            >
+                              <Star size={15} />
+                              Сделать основным
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLanguageToDelete(language.code);
+                                setOpenMenu(null);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#dc2626] hover:bg-[#fef2f2]"
+                            >
+                              <Trash2 size={15} />
+                              Удалить язык
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-[#e7e5e4]">
+              <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase text-[#a8a29e]">
+                Доступные языки
+              </div>
+              {availableLanguages.length > 0 ? (
+                <div className="divide-y divide-[#f0eeec]">
+                  {availableLanguages.map((language) => (
+                    <button
+                      key={language.code}
+                      type="button"
+                      onClick={() => addLanguage(language.code)}
+                      className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-[#fafaf9]"
+                    >
+                      <span className="min-w-0 flex-1 text-[13px] font-medium text-[#292524]">
+                        {language.label}
+                      </span>
+                      <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-[#79716b]">
+                        {language.short}
+                      </span>
+                      <CirclePlus size={17} className="mx-1.5 shrink-0 text-[#79716b]" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-3 pb-3 pt-1 text-[12px] text-[#a8a29e]">
+                  Все доступные языки уже добавлены.
+                </p>
+              )}
+              <p className="border-t border-[#f0eeec] px-3 py-2.5 text-[11px] leading-4 text-[#79716b]">
+                Язык появится на витрине после заполнения и публикации.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="regional-settings-title"
+          className="border-t border-[#e7e5e4] pt-6"
+        >
+          <div>
+            <h2
+              id="regional-settings-title"
+              className="text-[13px] font-semibold text-[#292524]"
+            >
+              Региональные настройки
+            </h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">
+              Определяют отображение цен и время работы функций заведения.
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <BasicSelectField
+              id="about-currency"
+              label="Валюта"
+              tooltip="Используется для отображения цен в онлайн-меню."
+              value={workspace.currency}
+              options={CURRENCY_OPTIONS}
+              onChange={(currency) => {
+                updateWorkspace({ currency });
+                onChange();
+              }}
+            />
+
+            <BasicSelectField
+              id="about-timezone"
+              label="Часовой пояс"
+              tooltip="Используется для расписаний, заказов, уведомлений и аналитики."
+              value={workspace.timezone}
+              options={TIMEZONE_OPTIONS}
+              onChange={(timezone) => {
+                updateWorkspace({ timezone });
+                onChange();
+              }}
+            />
+          </div>
+
+          <div
+            data-dev-only="region-scenario"
+            className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#d6d3d1] pt-3"
+          >
+            <span className="text-[11px] font-medium uppercase text-[#a8a29e]">
+              Dev-сценарий регистрации
+            </span>
+            <div className="inline-flex rounded-[8px] bg-[#f5f5f4] p-0.5">
+              {([
+                ["KZ", "tsqr.me · Казахстан"],
+                ["RS", "tsqr.app · Сербия"],
+              ] as const).map(([region, label]) => (
+                <button
+                  key={region}
+                  type="button"
+                  onClick={() => applyRegionScenario(region)}
+                  className={cn(
+                    "rounded-[7px] px-2.5 py-1 text-[11px] transition",
+                    workspace.marketCode === region
+                      ? "bg-white text-[#292524] shadow-sm"
+                      : "text-[#79716b] hover:text-[#44403b]",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {languageToDelete &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-language-title"
+            aria-describedby="delete-language-description"
+          >
+            <div className="w-full max-w-sm rounded-[8px] bg-white p-5 shadow-xl">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#fef2f2] text-[#dc2626]">
+                <AlertTriangle size={18} />
+              </div>
+              <h2
+                id="delete-language-title"
+                className="mt-4 text-[15px] font-semibold text-[#292524]"
+              >
+                Удалить язык?
+              </h2>
+              <p
+                id="delete-language-description"
+                className="mt-2 text-[13px] leading-5 text-[#79716b]"
+              >
+                Язык {deleteLanguage?.label} и сохранённые переводы будут удалены.
+                Это действие нельзя отменить.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLanguageToDelete(null)}
+                  className="h-9 rounded-md border border-[#d6d3d1] px-3 text-[13px] font-medium text-[#44403b] hover:bg-[#f5f5f4]"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteLanguage}
+                  className="h-9 rounded-md bg-[#dc2626] px-3 text-[13px] font-medium text-white hover:bg-[#b91c1c]"
+                >
+                  Удалить язык
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+      </>
+    </TooltipProvider>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AboutWorkspace({
@@ -1891,22 +2539,28 @@ export function AboutWorkspace({
     <PageScroll>
       <PageContent>
         <CompactContent className="space-y-6">
-          <div>
+          <div id={tab === "language-region" ? "about-language-region-top" : undefined}>
             <h1 className="text-[14px] font-medium leading-tight text-stone-950">{TAB_HEADERS[tab].title}</h1>
             <p className="mt-1 text-sm text-zinc-500">{TAB_HEADERS[tab].subtitle}</p>
           </div>
 
-          <LaunchPageHint
-            checkId="about"
-            title="Заполните информацию о заведении"
-            description="Добавьте описание, контакты и график работы — всё, что поможет гостям узнать о вас больше."
-          />
+          {tab !== "language-region" && (
+            <LaunchPageHint
+              checkId="about"
+              title="Заполните информацию о заведении"
+              description="Добавьте описание, контакты и график работы — всё, что поможет гостям узнать о вас больше."
+            />
+          )}
 
           {/* ── Основное ── */}
           {tab === "info" && (
             <div onMouseEnter={() => setPreviewScenario("about")}>
               <BasicInfoWorkspace onChange={() => registerChange("about")} setPreviewScenario={setPreviewScenario} />
             </div>
+          )}
+
+          {tab === "language-region" && (
+            <LanguageRegionWorkspace onChange={() => registerChange("about")} />
           )}
 
           {/* ── Правила для гостей ── */}

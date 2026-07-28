@@ -26,6 +26,7 @@ import {
   type Dish,
 } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 /** Стиль наведения для кликабельных навигационных сущностей в превью. */
 const NAV_HOVER = "cursor-pointer transition hover:ring-2 hover:ring-blue-400/60";
@@ -109,6 +110,20 @@ function AdminSlot({ title, className }: { title: string; className?: string }) 
   );
 }
 
+const CURRENCY_MARKS: Record<string, string> = {
+  KZT: "₸",
+  RSD: "RSD",
+  RUB: "₽",
+  USD: "$",
+  EUR: "€",
+};
+
+function CurrencyPrice({ value }: { value: string }) {
+  const { account } = useMockAuth();
+  const mark = CURRENCY_MARKS[account?.workspace.currency ?? "KZT"] ?? "KZT";
+  return <>{value.replace(/\s*(?:₸|KZT|RSD|RUB|USD|EUR|₽|\$|€)\s*$/, ` ${mark}`)}</>;
+}
+
 function MiniDishCard({ dish }: { dish: Dish }) {
   return (
     <div className="w-28 shrink-0 rounded-2xl bg-zinc-50 p-2">
@@ -121,7 +136,9 @@ function MiniDishCard({ dish }: { dish: Dish }) {
         {dish.emoji}
       </div>
       <div className="line-clamp-2 text-xs font-black leading-tight">{dish.name}</div>
-      <div className="mt-1 text-xs text-zinc-500">{dish.price}</div>
+      <div className="mt-1 text-xs text-zinc-500">
+        <CurrencyPrice value={dish.price} />
+      </div>
     </div>
   );
 }
@@ -354,7 +371,9 @@ export function PhoneDish({
         <h2 className="text-xl font-black leading-tight">{dish.name}</h2>
         <RichDescriptionPreview value={dish.description} />
         <div className="mt-5 flex items-center justify-between">
-          <div className="text-xl font-black">{dish.price}</div>
+          <div className="text-xl font-black">
+            <CurrencyPrice value={dish.price} />
+          </div>
           <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">
             В корзину
           </button>
@@ -486,7 +505,9 @@ export function PhoneCart({
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-black">{dish.name}</div>
-          <div className="text-xs text-zinc-500">{dish.price}</div>
+          <div className="text-xs text-zinc-500">
+            <CurrencyPrice value={dish.price} />
+          </div>
         </div>
         <div className="flex items-center gap-2 text-sm font-bold">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-zinc-500">−</span>

@@ -66,6 +66,54 @@ type SidebarPreference = "expanded" | "collapsed" | null;
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
 const CATALOG_PHASE_STORAGE_KEY = "tasko.catalog.phase";
 const TRAINING_PATH = "/training";
+const STOREFRONT_PATH = "/storefront";
+const ABOUT_PATH = `${STOREFRONT_PATH}/about`;
+
+const ABOUT_PATH_SEGMENTS: Record<AboutTab, string> = {
+  info: "profile",
+  "language-region": "language-region",
+  "guest-rules": "guest-rules",
+  "rec-titles": "rec-titles",
+  "public-display": "public-display",
+};
+
+function normalizeAboutTab(tab: string | null | undefined): AboutTab {
+  if (tab === "profile" || tab === "info") return "info";
+  if (
+    tab === "language-region" ||
+    tab === "guest-rules" ||
+    tab === "rec-titles" ||
+    tab === "public-display"
+  ) {
+    return tab;
+  }
+  return "info";
+}
+
+function getAboutPath(tab: AboutTab) {
+  return `${ABOUT_PATH}/${ABOUT_PATH_SEGMENTS[tab]}`;
+}
+
+function getInitialStorefrontRoute() {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const [, sectionSegment, storeTabSegment, aboutTabSegment] = path.split("/");
+  if (sectionSegment !== "storefront") {
+    return { storeTab: "catalog" as StoreTabId, aboutTab: "info" as AboutTab };
+  }
+  const storeTab: StoreTabId =
+    storeTabSegment === "home" ||
+    storeTabSegment === "catalog" ||
+    storeTabSegment === "upsell" ||
+    storeTabSegment === "appearance" ||
+    storeTabSegment === "about" ||
+    storeTabSegment === "launch"
+      ? storeTabSegment
+      : "catalog";
+  return {
+    storeTab,
+    aboutTab: storeTab === "about" ? normalizeAboutTab(aboutTabSegment) : "info",
+  };
+}
 
 function isTrainingPath(pathname: string) {
   const path = pathname.replace(/\/+$/, "");
@@ -104,7 +152,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
   "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
-  "storefront:about":      { title: "О заведении",        description: "Информация о заведении и публичное представление.", showLanguage: true },
+  "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
   "management:order-settings": { title: "Настройка заказов", description: "Доставка, самовывоз и способы оплаты.", showLanguage: true },
   "management:order-history":  { title: "История заказов",   description: "Все входящие заказы — доставка и самовывоз." },
   "management:billing":    { title: "Тарифы",             description: "Текущий план, ограничения и возможности следующего." },
@@ -426,10 +474,11 @@ function AuthenticatedShell() {
   const { registerChange } = usePublish();
   const { markVisited, stage } = useVitrineLaunch();
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
+  const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
   const [section, setSection] = useState<SectionId>(isInitialTrainingRoute ? "training" : "storefront");
-  const [storeTab, setStoreTab] = useState<StoreTabId>("catalog");
-  const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>("info");
+  const [storeTab, setStoreTab] = useState<StoreTabId>(initialStorefrontRoute.storeTab);
+  const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>(initialStorefrontRoute.aboutTab);
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
@@ -582,6 +631,10 @@ function AuthenticatedShell() {
     } else {
       setPreviewScenario(null);
     }
+    const nextPath = tab === "about" ? getAboutPath("info") : `${STOREFRONT_PATH}/${tab}`;
+    if (window.location.pathname !== nextPath || window.location.search) {
+      window.history.pushState(null, "", nextPath);
+    }
   };
   const navHomeHero = () => {
     openStoreTab("home");
@@ -646,21 +699,42 @@ function AuthenticatedShell() {
       if (window.location.pathname !== nextPath || window.location.search) {
         window.history.pushState(null, "", nextPath);
       }
-    } else if (isTrainingPath(window.location.pathname)) {
+    } else if (next !== "storefront" && (
+      isTrainingPath(window.location.pathname) ||
+      window.location.pathname.startsWith(`${STOREFRONT_PATH}/`)
+    )) {
       setTrainingQuizActive(false);
       window.history.pushState(null, "", "/");
     }
     if (next === "storefront") {
-      setStoreTab(tab as StoreTabId);
-      if (tab === "about") {
-        setStoreAboutTab("info");
-        setPreviewScenario("about");
+      const [storefrontTab, nestedTab] = tab.split(":");
+      setStoreTab(storefrontTab as StoreTabId);
+      if (storefrontTab === "about") {
+        const aboutTab = normalizeAboutTab(nestedTab);
+        setStoreAboutTab(aboutTab);
+        setPreviewScenario(aboutTab === "info" ? "about" : null);
+        if (aboutTab === "language-region") {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              document
+                .getElementById("about-language-region-top")
+                ?.scrollIntoView({ block: "start" });
+            });
+          });
+        }
       }
       // Mark launch checklist steps as visited
       // (catalog is marked only when user adds first item — see CatalogWorkspace onAdvancePhase)
-      if (tab === "home") markVisited("home");
-      if (tab === "appearance") markVisited("appearance");
-      if (tab === "about") markVisited("about");
+      if (storefrontTab === "home") markVisited("home");
+      if (storefrontTab === "appearance") markVisited("appearance");
+      if (storefrontTab === "about") markVisited("about");
+      const nextPath =
+        storefrontTab === "about"
+          ? getAboutPath(normalizeAboutTab(nestedTab))
+          : `${STOREFRONT_PATH}/${storefrontTab}`;
+      if (window.location.pathname !== nextPath || window.location.search) {
+        window.history.pushState(null, "", nextPath);
+      }
     }
     if (next === "management") {
       setManageTab(tab as ManageTabId);
@@ -676,6 +750,28 @@ function AuthenticatedShell() {
   };
 
   const guardedNavigate = (next: SectionId, tab: string) => navigate(next, tab);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (isTrainingPath(window.location.pathname)) {
+        setSection("training");
+        setTrainingTab(getInitialTrainingTab());
+        setPreviewScenario(null);
+        return;
+      }
+
+      const route = getInitialStorefrontRoute();
+      setSection("storefront");
+      setStoreTab(route.storeTab);
+      setStoreAboutTab(route.aboutTab);
+      setPreviewScenario(
+        route.storeTab === "about" && route.aboutTab === "info" ? "about" : null,
+      );
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const changeTrainingTab = (tab: TrainingTab) => {
     if (trainingQuizActive && tab !== trainingTab) {
@@ -934,7 +1030,7 @@ function AuthenticatedShell() {
               <div className={cn(
                 "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
               )}>
-                <div className="shrink-0">
+                <div className={cn(isAboutPage ? "min-w-0 flex-1" : "shrink-0")}>
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && catalogPhase !== "empty" && (
                     <CatalogTabs value={catalogTab} onChange={changeCatalogTab} />
@@ -943,8 +1039,7 @@ function AuthenticatedShell() {
                     <AboutTabs
                       value={storeAboutTab}
                       onChange={(t) => {
-                        setStoreAboutTab(t);
-                        setPreviewScenario(t === "info" ? "about" : null);
+                        navigate("storefront", `about:${t}`);
                       }}
                     />
                   )}
@@ -953,7 +1048,13 @@ function AuthenticatedShell() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {pageMeta.showLanguage && <PageLangSwitcher />}
+                  {pageMeta.showLanguage && (
+                    <PageLangSwitcher
+                      onManageLanguages={() =>
+                        navigate("storefront", "about:language-region")
+                      }
+                    />
+                  )}
                 </div>
               </div>
             )}

@@ -11,6 +11,7 @@ const GENITIVE: Record<LanguageCode, string> = {
   ru: "русском",
   kk: "казахском",
   en: "английском",
+  sr: "сербском",
 };
 
 /**

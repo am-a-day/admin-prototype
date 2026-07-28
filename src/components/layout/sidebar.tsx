@@ -59,9 +59,9 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Мой ресторан",
     items: [
       { label: "Главная", section: "storefront", tab: "home", icon: House },
+      { label: "Заведение", section: "storefront", tab: "about", icon: ClipboardText },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
-      { label: "О заведении", section: "storefront", tab: "about", icon: ClipboardText },
     ],
     trailingCta: { label: "Улучшить тариф", section: "management", tab: "billing" },
   },
@@ -90,12 +90,12 @@ const NAV_GROUPS: NavGroup[] = [
 
 function getOrganizationLabels(type: OrganizationType) {
   if (type === "restaurant") {
-    return { group: "Мой ресторан", about: "О заведении" };
+    return { group: "Мой ресторан", about: "Заведение" };
   }
   if (type === "store") {
-    return { group: "Мой магазин", about: "О магазине" };
+    return { group: "Мой магазин", about: "Заведение" };
   }
-  return { group: "Мой бизнес", about: "О компании" };
+  return { group: "Мой бизнес", about: "Заведение" };
 }
 
 function getNavGroups(type: OrganizationType) {

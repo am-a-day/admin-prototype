@@ -15,6 +15,7 @@ import { usePublish } from "@/contexts/publish-context";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
+import { getLanguage } from "@/data/languages";
 
 /** Gated-feature pill: open-lock icon + plan label */
 function LockBadge({ label }: { label: string }) {
@@ -355,6 +356,25 @@ export function OrgMenu({
                 </div>
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                onNavigate("storefront", "about:language-region");
+              }}
+              className="flex h-9 w-full items-center gap-1.5 rounded-lg px-2 text-left transition hover:bg-[#f5f5f4]"
+            >
+              <Globe2 size={14} className="shrink-0 text-[#57534d]" />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-[#44403b]">
+                Язык и регион
+              </span>
+              <span className="max-w-[92px] shrink truncate whitespace-nowrap text-[12px] text-[#a6a09b]">
+                {getLanguage(account?.workspace.primaryLanguage ?? "ru").label} ·{" "}
+                {account?.workspace.currency ?? "KZT"}
+              </span>
+              <CaretRight size={14} className="shrink-0 text-[#a6a09b]" />
+            </button>
 
             <button
               type="button"

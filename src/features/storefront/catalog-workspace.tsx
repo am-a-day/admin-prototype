@@ -1998,6 +1998,7 @@ type LocalizedValue = {
   ru: string;
   kk?: string;
   en?: string;
+  sr?: string;
 };
 type CatalogItemUpsellState = {
   recommendationIds?: string[];
@@ -2051,6 +2052,7 @@ const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
   kk: "Мысалы, Хит",
   en: "For example, Hit",
+  sr: "Na primer, Hit",
 };
 
 type MediaKind = "photo" | "video";

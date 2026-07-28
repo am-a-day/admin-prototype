@@ -23,7 +23,7 @@ export const PAGE_LABELS: Record<PageKey, string> = {
   catalog: "Каталог",
   upsell: "Рекомендации",
   appearance: "Оформление",
-  about: "О заведении",
+  about: "Заведение",
   "order-settings": "Настройка заказов",
 };
 
