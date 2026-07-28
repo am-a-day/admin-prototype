@@ -103,6 +103,8 @@ const AUTH_STATE_KEY = "tasko.mockAuth.v1";
 const SESSION_KEY = "tasko.mockAuth.session.v1";
 const LOGGED_OUT_SESSION = "__logged_out__";
 const SEED_ACCOUNT_ID = "seed-owner";
+const SEED_PHONE_ACCOUNT_ID = "seed-phone-owner";
+const SEED_PHONE_CONTACT = "+79950876356";
 const DEFAULT_EXISTING_PASSWORD = "tasko123";
 const CATALOG_KEY_PREFIX = "tasko.catalog.";
 
@@ -164,6 +166,16 @@ const createSeedAccount = (): MockAccount => ({
   displayName: MOCK_USER.name,
   role: MOCK_USER.role,
   workspace: createWorkspace(false, MOCK_USER.email),
+  catalogSnapshot: {},
+});
+
+const createSeedPhoneAccount = (): MockAccount => ({
+  id: SEED_PHONE_ACCOUNT_ID,
+  contact: SEED_PHONE_CONTACT,
+  password: DEFAULT_EXISTING_PASSWORD,
+  displayName: "Тестовый владелец",
+  role: "Владелец",
+  workspace: createWorkspace(false, SEED_PHONE_CONTACT),
   catalogSnapshot: {},
 });
 
@@ -232,7 +244,14 @@ function validateContact(value: string, kind: AuthContactKind): ValidatedContact
 function readAuthState(): StoredAuthState {
   if (typeof window === "undefined") {
     const seed = createSeedAccount();
-    return { accounts: { [seed.id]: seed }, contactIndex: { [normalizeContact(seed.contact)]: seed.id } };
+    const phoneSeed = createSeedPhoneAccount();
+    return {
+      accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
+      contactIndex: {
+        [normalizeContact(seed.contact)]: seed.id,
+        [normalizeContact(phoneSeed.contact)]: phoneSeed.id,
+      },
+    };
   }
 
   try {
@@ -240,7 +259,7 @@ function readAuthState(): StoredAuthState {
     if (raw) {
       const parsed = JSON.parse(raw) as StoredAuthState;
       if (parsed.accounts && parsed.contactIndex) {
-        const accounts = Object.fromEntries(
+        const accounts: Record<string, MockAccount> = Object.fromEntries(
           Object.entries(parsed.accounts).map(([id, account]) => {
             const fallback = createWorkspace(account.workspace.firstEntry ?? false, account.contact || id);
             const legacyStatus = account.workspace.status as string;
@@ -316,6 +335,8 @@ function readAuthState(): StoredAuthState {
             ];
           }),
         );
+        const phoneSeed = createSeedPhoneAccount();
+        if (!accounts[phoneSeed.id]) accounts[phoneSeed.id] = phoneSeed;
         const contactIndex = Object.fromEntries(
           Object.values(accounts).map((account) => [normalizeContact(account.contact), account.id]),
         );
@@ -329,7 +350,14 @@ function readAuthState(): StoredAuthState {
   }
 
   const seed = createSeedAccount();
-  return { accounts: { [seed.id]: seed }, contactIndex: { [normalizeContact(seed.contact)]: seed.id } };
+  const phoneSeed = createSeedPhoneAccount();
+  return {
+    accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
+    contactIndex: {
+      [normalizeContact(seed.contact)]: seed.id,
+      [normalizeContact(phoneSeed.contact)]: phoneSeed.id,
+    },
+  };
 }
 
 function writeAuthState(state: StoredAuthState) {
