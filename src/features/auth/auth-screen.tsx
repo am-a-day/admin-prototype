@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
+  ChevronDown,
   Eye,
   EyeOff,
   KeyRound,
+  LoaderCircle,
   Mail,
-  MessageCircle,
-  MessageSquareText,
-  Send,
 } from "lucide-react";
+import { ChatCircle, TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth, type AuthContactKind } from "@/contexts/mock-auth-context";
+import type { LanguageCode } from "@/data/languages";
 import { trackAuthEvent } from "@/lib/auth-analytics";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ type AuthStep = "phone" | "email" | "code" | "password";
 type PhoneChannel = "whatsapp" | "telegram" | "sms";
 type DeliveryChannel = PhoneChannel | "email";
 type CodeState = "idle" | "verifying" | "incorrect" | "expired" | "not-sent";
+type AuthLocale = Extract<LanguageCode, "ru" | "kk" | "en">;
 
 type CountryOption = {
   code: "KZ" | "RS" | "RU" | "KG" | "UZ";
@@ -29,26 +31,88 @@ type CountryOption = {
   digits: number;
   groups: number[];
   placeholder: string;
+  flag: string;
 };
 
 const COUNTRIES: CountryOption[] = [
-  { code: "KZ", label: "Казахстан", dialCode: "+7", digits: 10, groups: [3, 3, 2, 2], placeholder: "777 123 38 50" },
-  { code: "RS", label: "Сербия", dialCode: "+381", digits: 9, groups: [2, 3, 2, 2], placeholder: "64 123 45 67" },
-  { code: "RU", label: "Россия", dialCode: "+7", digits: 10, groups: [3, 3, 2, 2], placeholder: "999 123 45 67" },
-  { code: "KG", label: "Кыргызстан", dialCode: "+996", digits: 9, groups: [3, 3, 3], placeholder: "555 123 456" },
-  { code: "UZ", label: "Узбекистан", dialCode: "+998", digits: 9, groups: [2, 3, 2, 2], placeholder: "90 123 45 67" },
+  { code: "KZ", label: "Казахстан", dialCode: "+7", digits: 10, groups: [3, 3, 2, 2], placeholder: "(000) 000-00-00", flag: "/flags/kz.png" },
+  { code: "RS", label: "Сербия", dialCode: "+381", digits: 9, groups: [2, 3, 2, 2], placeholder: "(00) 000-00-00", flag: "/flags/rs.png" },
+  { code: "RU", label: "Россия", dialCode: "+7", digits: 10, groups: [3, 3, 2, 2], placeholder: "(000) 000-00-00", flag: "/flags/ru.png" },
+  { code: "KG", label: "Кыргызстан", dialCode: "+996", digits: 9, groups: [3, 3, 3], placeholder: "(000) 000-000", flag: "/flags/kg.png" },
+  { code: "UZ", label: "Узбекистан", dialCode: "+998", digits: 9, groups: [2, 3, 2, 2], placeholder: "(00) 000-00-00", flag: "/flags/uz.png" },
 ];
 
-const PHONE_CHANNELS: Array<{
-  id: PhoneChannel;
-  label: string;
-  shortLabel: string;
-  icon: typeof MessageCircle;
-}> = [
-  { id: "whatsapp", label: "Получить код в WhatsApp", shortLabel: "WhatsApp", icon: MessageCircle },
-  { id: "telegram", label: "Получить код в Telegram", shortLabel: "Telegram", icon: Send },
-  { id: "sms", label: "Получить код по SMS", shortLabel: "SMS", icon: MessageSquareText },
-];
+const PHONE_CHANNELS: PhoneChannel[] = ["whatsapp", "telegram", "sms"];
+
+const AUTH_COPY: Record<AuthLocale, {
+  title: string;
+  subtitle: string;
+  phoneLabel: string;
+  countryLabel: string;
+  sending: string;
+  phoneError: string;
+  deliveryError: string;
+  channelLabels: Record<PhoneChannel, string>;
+  legalPrefix: string;
+  agreement: string;
+  legalJoin: string;
+  privacy: string;
+}> = {
+  ru: {
+    title: "Войти или создать аккаунт",
+    subtitle: "Если аккаунта ещё нет, создадим его автоматически",
+    phoneLabel: "Номер телефона",
+    countryLabel: "Выбрать страну",
+    sending: "Отправляем код",
+    phoneError: "Введите полный номер телефона",
+    deliveryError: "Не удалось отправить код по SMS. Выберите другой способ",
+    channelLabels: {
+      whatsapp: "Продолжить с WhatsApp",
+      telegram: "Продолжить с Telegram",
+      sms: "Продолжить по SMS",
+    },
+    legalPrefix: "Продолжая, вы принимаете",
+    agreement: "пользовательское соглашение",
+    legalJoin: "и",
+    privacy: "политику конфиденциальности",
+  },
+  kk: {
+    title: "Кіру немесе аккаунт жасау",
+    subtitle: "Егер аккаунт әлі жоқ болса, оны автоматты түрде жасаймыз",
+    phoneLabel: "Телефон нөмірі",
+    countryLabel: "Елді таңдау",
+    sending: "Код жіберілуде",
+    phoneError: "Телефон нөмірін толық енгізіңіз",
+    deliveryError: "SMS арқылы код жіберілмеді. Басқа тәсілді таңдаңыз",
+    channelLabels: {
+      whatsapp: "WhatsApp арқылы жалғастыру",
+      telegram: "Telegram арқылы жалғастыру",
+      sms: "SMS арқылы жалғастыру",
+    },
+    legalPrefix: "Жалғастыра отырып, сіз",
+    agreement: "пайдаланушы келісімін",
+    legalJoin: "және",
+    privacy: "құпиялылық саясатын қабылдайсыз",
+  },
+  en: {
+    title: "Sign in or create an account",
+    subtitle: "If you don't have an account yet, we'll create one automatically",
+    phoneLabel: "Phone number",
+    countryLabel: "Choose country",
+    sending: "Sending code",
+    phoneError: "Enter a complete phone number",
+    deliveryError: "We couldn't send the code via SMS. Choose another method",
+    channelLabels: {
+      whatsapp: "Continue with WhatsApp",
+      telegram: "Continue with Telegram",
+      sms: "Continue via SMS",
+    },
+    legalPrefix: "By continuing, you accept the",
+    agreement: "user agreement",
+    legalJoin: "and",
+    privacy: "privacy policy",
+  },
+};
 
 const RESEND_SECONDS = 30;
 const CODE_EXPIRES_MS = 5 * 60 * 1000;
@@ -67,15 +131,20 @@ function readLastSuccessfulChannel(): PhoneChannel {
 }
 
 function formatNationalNumber(digits: string, groups: number[]) {
-  const parts: string[] = [];
-  let offset = 0;
-  for (const size of groups) {
+  if (!digits) return "";
+
+  const first = digits.slice(0, groups[0]);
+  let result = `(${first}`;
+  if (first.length === groups[0]) result += ")";
+
+  let offset = groups[0];
+  groups.slice(1).forEach((size, index) => {
     const part = digits.slice(offset, offset + size);
-    if (!part) break;
-    parts.push(part);
+    if (!part) return;
+    result += `${index === 0 ? " " : "-"}${part}`;
     offset += size;
-  }
-  return parts.join(" ");
+  });
+  return result;
 }
 
 function maskPhone(value: string, country: CountryOption) {
@@ -106,7 +175,7 @@ function deliveryDescription(
 }
 
 export function AuthScreen() {
-  const { uiLanguage } = useAppSettings();
+  const { uiLanguage, setUiLanguage } = useAppSettings();
   const { validateAuthContact, verifyCode, loginWithPassword } = useMockAuth();
   const [step, setStep] = useState<AuthStep>("phone");
   const [countryCode, setCountryCode] = useState<CountryOption["code"]>(defaultCountry);
@@ -124,15 +193,19 @@ export function AuthScreen() {
   const [resendSeconds, setResendSeconds] = useState(RESEND_SECONDS);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [sendingChannel, setSendingChannel] = useState<PhoneChannel | null>(null);
   const completedPhoneRef = useRef("");
 
   const country = COUNTRIES.find((item) => item.code === countryCode) ?? COUNTRIES[0];
+  const authLocale: AuthLocale =
+    uiLanguage === "kk" || uiLanguage === "en" ? uiLanguage : "ru";
+  const authCopy = AUTH_COPY[authLocale];
   const normalizedPhone = `${country.dialCode}${nationalNumber}`;
   const formattedPhone = formatNationalNumber(nationalNumber, country.groups);
   const orderedChannels = useMemo(
     () => [
-      PHONE_CHANNELS.find(({ id }) => id === primaryChannel)!,
-      ...PHONE_CHANNELS.filter(({ id }) => id !== primaryChannel),
+      primaryChannel,
+      ...PHONE_CHANNELS.filter((id) => id !== primaryChannel),
     ],
     [primaryChannel],
   );
@@ -194,7 +267,7 @@ export function AuthScreen() {
     if (deliveryFails) {
       trackAuthEvent("code_send_error", { channel: nextChannel, reason: "mock_delivery_error" });
       setCodeState("not-sent");
-      setError("Не удалось отправить код по SMS. Выберите другой способ.");
+      setError(authCopy.deliveryError);
       return false;
     }
 
@@ -211,13 +284,18 @@ export function AuthScreen() {
     return true;
   };
 
-  const startPhoneCode = (nextChannel: PhoneChannel) => {
+  const startPhoneCode = async (nextChannel: PhoneChannel) => {
+    if (sendingChannel) return;
     const validation = validateAuthContact(normalizedPhone, "phone");
     if (!validation.ok) {
-      setError(validation.error);
+      setError(authCopy.phoneError);
       return;
     }
+    setSendingChannel(nextChannel);
+    setError("");
+    await new Promise((resolve) => window.setTimeout(resolve, 450));
     sendCode(nextChannel, validation.contact, "phone");
+    setSendingChannel(null);
   };
 
   const startEmailCode = () => {
@@ -317,144 +395,206 @@ export function AuthScreen() {
     resetMessages();
   };
 
+  if (step === "phone") {
+    return (
+      <main className="min-h-[100dvh] overflow-y-auto bg-white text-[#1c1917]">
+        <div className="flex min-h-[100dvh] flex-col px-4">
+          <header className="flex shrink-0 justify-center pt-[34px]">
+            <TaskoLogo className="h-auto w-[95px] text-black" />
+          </header>
+
+          <div className="flex flex-1 items-center justify-center py-10">
+            <section className="w-full max-w-[420px]" aria-labelledby="auth-title">
+              <div className="text-center">
+                <h1 id="auth-title" className="text-[18px] font-extrabold leading-normal text-black">
+                  {authCopy.title}
+                </h1>
+                <p className="mt-1 text-[16px] leading-normal text-[#79716b]">
+                  {authCopy.subtitle}
+                </p>
+              </div>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void startPhoneCode(primaryChannel);
+                }}
+                noValidate
+                className="mt-3"
+              >
+                <label className="sr-only" htmlFor="auth-phone">
+                  {authCopy.phoneLabel}
+                </label>
+                <div
+                  className={cn(
+                    "flex h-[52px] items-center rounded-[12px] border bg-[#f5f5f4] px-[6px] transition",
+                    error
+                      ? "border-rose-500 ring-2 ring-rose-500/15"
+                      : "border-[#d6d3d1] focus-within:border-[#4f39f6] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#4f39f6]/15",
+                    sendingChannel && "cursor-wait opacity-70",
+                  )}
+                >
+                  <div className="relative flex h-10 w-[58px] shrink-0 items-center justify-center rounded-[7px] bg-[#e7e5e4] focus-within:ring-2 focus-within:ring-[#4f39f6]">
+                    <span className="flex items-center gap-1" aria-hidden="true">
+                      <img
+                        src={country.flag}
+                        alt=""
+                        className="size-7 rounded-full object-cover"
+                      />
+                      <ChevronDown size={13} className="text-[#79716b]" />
+                    </span>
+                    <select
+                      aria-label={authCopy.countryLabel}
+                      value={countryCode}
+                      disabled={Boolean(sendingChannel)}
+                      onChange={(event) => {
+                        const next = COUNTRIES.find(({ code }) => code === event.target.value);
+                        if (!next) return;
+                        setCountryCode(next.code);
+                        setNationalNumber((digits) => digits.slice(0, next.digits));
+                        resetMessages();
+                      }}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                    >
+                      {COUNTRIES.map((option) => (
+                        <option key={option.code} value={option.code}>
+                          {option.label} ({option.dialCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="ml-[7px] shrink-0 text-[16px] font-semibold leading-6 text-[#292524]">
+                    {country.dialCode}
+                  </span>
+                  <Input
+                    id="auth-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    disabled={Boolean(sendingChannel)}
+                    value={formattedPhone}
+                    onChange={(event) => handlePhoneInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      void startPhoneCode(primaryChannel);
+                    }}
+                    placeholder={country.placeholder}
+                    className="h-10 min-w-0 border-0 bg-transparent px-1.5 text-[16px] font-semibold text-[#292524] shadow-none placeholder:font-semibold placeholder:text-[#a6a09b] focus-visible:ring-0 disabled:cursor-wait"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? "auth-phone-error" : undefined}
+                  />
+                </div>
+                {error && (
+                  <p
+                    id="auth-phone-error"
+                    role="alert"
+                    className="mt-2 text-[13px] leading-5 text-rose-600"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                <div className="mt-3 space-y-2">
+                  {orderedChannels.map((item, index) => {
+                    const isLoading = sendingChannel === item;
+                    const isPrimary = index === 0;
+                    return (
+                      <Button
+                        key={item}
+                        type={isPrimary ? "submit" : "button"}
+                        variant={isPrimary ? "default" : "outline"}
+                        disabled={Boolean(sendingChannel)}
+                        aria-busy={isLoading}
+                        onClick={isPrimary ? undefined : () => void startPhoneCode(item)}
+                        className={cn(
+                          "h-[52px] w-full rounded-[12px] border-[#d6d3d1] text-[16px] font-medium",
+                          isPrimary &&
+                            "border-[#4f39f6] bg-[#4f39f6] text-white hover:bg-[#4330dc]",
+                        )}
+                      >
+                        {isLoading ? (
+                          <LoaderCircle
+                            size={22}
+                            className="animate-spin"
+                            aria-hidden="true"
+                          />
+                        ) : item === "whatsapp" ? (
+                          <WhatsappLogo size={22} weight="fill" aria-hidden="true" />
+                        ) : item === "telegram" ? (
+                          <TelegramLogo size={22} weight="fill" aria-hidden="true" />
+                        ) : (
+                          <ChatCircle size={22} weight="fill" aria-hidden="true" />
+                        )}
+                        <span>
+                          {isLoading ? authCopy.sending : authCopy.channelLabels[item]}
+                        </span>
+                      </Button>
+                    );
+                  })}
+                </div>
+                <span className="sr-only" aria-live="polite">
+                  {sendingChannel ? authCopy.sending : ""}
+                </span>
+              </form>
+
+              <p className="mt-3 text-center text-[14px] leading-5 text-[#818181]">
+                {authCopy.legalPrefix}{" "}
+                <a
+                  href="https://tasko.group/public-offer"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block min-h-5 text-[#51a2ff] underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
+                >
+                  {authCopy.agreement}
+                </a>{" "}
+                {authCopy.legalJoin}{" "}
+                <a
+                  href="https://tasko.group/privacy-policy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block min-h-5 text-[#51a2ff] underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
+                >
+                  {authCopy.privacy}
+                </a>
+              </p>
+            </section>
+          </div>
+
+          <nav
+            aria-label="Language"
+            className="flex shrink-0 justify-center gap-5 pb-[34px] text-[13px] font-medium"
+          >
+            {([
+              ["kk", "Қазақша"],
+              ["ru", "Русский"],
+              ["en", "English"],
+            ] as const).map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setUiLanguage(code)}
+                aria-current={authLocale === code ? "true" : undefined}
+                className={cn(
+                  "min-h-8 rounded-sm px-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]",
+                  authLocale === code ? "text-black" : "text-[#a6a09b] hover:text-[#79716b]",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#fbf9f6] px-4 py-6 text-zinc-950">
       <section className="w-full max-w-[420px] rounded-[20px] border border-[#e7e5e4] bg-white p-5 shadow-sm">
         <div className="flex justify-center">
           <TaskoLogo className="text-zinc-950" />
         </div>
-
-        {step === "phone" && (
-          <>
-            <div className="mt-6 text-center">
-              <h1 className="text-[20px] font-black text-zinc-950">Войти или создать аккаунт</h1>
-              <p className="mt-1 text-[13px] leading-5 text-zinc-500">
-                Введите номер телефона. Если аккаунта ещё нет, мы создадим его автоматически
-              </p>
-            </div>
-
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                startPhoneCode(primaryChannel);
-              }}
-              noValidate
-              className="mt-5"
-            >
-              <label className="text-[12px] font-semibold text-[#57534d]" htmlFor="auth-phone">
-                Номер телефона
-              </label>
-              <div className="mt-1.5 flex items-center rounded-[10px] border border-[#e7e5e4] bg-[#fbfbf9] focus-within:border-[#c7c2bd] focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
-                <select
-                  aria-label="Страна"
-                  value={countryCode}
-                  onChange={(event) => {
-                    const next = COUNTRIES.find(({ code }) => code === event.target.value);
-                    if (!next) return;
-                    setCountryCode(next.code);
-                    setNationalNumber((digits) => digits.slice(0, next.digits));
-                    resetMessages();
-                  }}
-                  className="ml-2 h-10 max-w-[116px] rounded-[7px] bg-transparent px-2 text-[13px] font-semibold text-zinc-700 outline-none"
-                >
-                  {COUNTRIES.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.code} {option.dialCode}
-                    </option>
-                  ))}
-                </select>
-                <span className="h-5 w-px bg-zinc-200" />
-                <span className="pl-3 text-[14px] text-zinc-500">{country.dialCode}</span>
-                <Input
-                  id="auth-phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  value={formattedPhone}
-                  onChange={(event) => handlePhoneInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    startPhoneCode(primaryChannel);
-                  }}
-                  placeholder={country.placeholder}
-                  className="h-10 border-0 bg-transparent px-2 text-[14px] focus-visible:ring-0"
-                  aria-invalid={Boolean(error)}
-                  aria-describedby={error ? "auth-phone-error" : undefined}
-                />
-              </div>
-              {error && (
-                <p id="auth-phone-error" className="mt-1.5 text-[12px] leading-4 text-rose-600">
-                  {error}
-                </p>
-              )}
-
-              <div className="mt-4 space-y-2">
-                {orderedChannels.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <Button
-                      key={item.id}
-                      type={index === 0 ? "submit" : "button"}
-                      variant={index === 0 ? "default" : "outline"}
-                      onClick={index === 0 ? undefined : () => startPhoneCode(item.id)}
-                      className={cn(
-                        "h-10 w-full rounded-[10px] text-[14px]",
-                        index === 0 && "bg-zinc-950 hover:bg-zinc-800",
-                      )}
-                    >
-                      <Icon size={16} />
-                      {item.label}
-                    </Button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-3 flex items-center justify-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => startPassword("phone")}
-                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-600 hover:text-blue-700"
-                >
-                  <KeyRound size={13} />
-                  Войти по паролю
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep("email");
-                    resetMessages();
-                  }}
-                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-600 hover:text-blue-700"
-                >
-                  <Mail size={13} />
-                  Войти по почте
-                </button>
-              </div>
-            </form>
-
-            <p className="mt-5 text-center text-[11px] leading-4 text-[#a6a09b]">
-              Продолжая, вы принимаете{" "}
-              <a
-                href="https://tasko.group/public-offer"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 hover:text-zinc-600"
-              >
-                пользовательское соглашение
-              </a>{" "}
-              и{" "}
-              <a
-                href="https://tasko.group/privacy-policy"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 hover:text-zinc-600"
-              >
-                политику конфиденциальности
-              </a>.
-            </p>
-          </>
-        )}
 
         {step === "email" && (
           <form
