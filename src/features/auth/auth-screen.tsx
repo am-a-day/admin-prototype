@@ -15,11 +15,13 @@ import { Input } from "@/components/ui/input";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { useMockAuth, type AuthContactKind } from "@/contexts/mock-auth-context";
 import { cn } from "@/lib/utils";
+import { trackAuthEvent } from "@/lib/auth-analytics";
 
 type AuthStep = "methods" | "code" | "password";
 type DeliveryChannel = "whatsapp" | "telegram" | "sms" | "email";
 
 const RESEND_SECONDS = 30;
+const LAST_SUCCESSFUL_CHANNEL_KEY = "tasko.auth.lastSuccessfulChannel.v1";
 
 function maskPhone(value: string) {
   const digits = value.replace(/\D/g, "");
@@ -60,6 +62,10 @@ export function AuthScreen() {
   const currentContact = activeTab === "phone" ? phone : email;
 
   useEffect(() => {
+    trackAuthEvent("auth_view");
+  }, []);
+
+  useEffect(() => {
     if (step !== "code" || resendSeconds <= 0) return;
     const timer = window.setTimeout(() => setResendSeconds((seconds) => seconds - 1), 1000);
     return () => window.clearTimeout(timer);
@@ -72,8 +78,17 @@ export function AuthScreen() {
     if (!result.ok) {
       setError(result.error);
       setVerifying(false);
+      return;
     }
-  }, [activeTab, code, pendingContact, step, verifyCode, verifying]);
+    trackAuthEvent("code_verified", { contact_kind: activeTab, channel });
+    trackAuthEvent(
+      result.resolution === "existing" ? "existing_account_opened" : "account_created",
+      { contact_kind: activeTab, channel },
+    );
+    if (activeTab === "phone") {
+      window.localStorage.setItem(LAST_SUCCESSFUL_CHANNEL_KEY, channel);
+    }
+  }, [activeTab, channel, code, pendingContact, step, verifyCode, verifying]);
 
   const resetMessages = () => {
     setError("");
@@ -96,6 +111,9 @@ export function AuthScreen() {
       return;
     }
     setPendingContact(validation.contact);
+    if (activeTab === "phone") {
+      trackAuthEvent("phone_completed", { channel: nextChannel });
+    }
     setChannel(nextChannel);
     setCode("");
     setResendSeconds(RESEND_SECONDS);
@@ -133,7 +151,14 @@ export function AuthScreen() {
   const submitPassword = (event: FormEvent) => {
     event.preventDefault();
     const result = loginWithPassword(pendingContact, activeTab, password);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    trackAuthEvent("existing_account_opened", {
+      contact_kind: activeTab,
+      channel: "password",
+    });
   };
 
   return (
@@ -148,7 +173,7 @@ export function AuthScreen() {
             <div className="mt-6 text-center">
               <h1 className="text-[20px] font-black text-zinc-950">Войти или создать аккаунт</h1>
               <p className="mt-1 text-[13px] leading-5 text-zinc-500">
-                Подтвердите телефон или почту, чтобы продолжить
+                Введите номер телефона. Если аккаунта ещё нет, мы создадим его автоматически
               </p>
             </div>
 

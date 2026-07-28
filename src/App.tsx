@@ -1042,10 +1042,38 @@ export default function App() {
 }
 
 function AppShell() {
-  const { account, isAuthenticated, getAccountById } = useMockAuth();
+  const {
+    account,
+    authResolution,
+    dismissAuthResolution,
+    isAuthenticated,
+    getAccountById,
+  } = useMockAuth();
   const publicMenuId = new URLSearchParams(window.location.search).get("publicMenu");
   if (publicMenuId) return <PublicMenuPage account={getAccountById(publicMenuId)} />;
   if (!isAuthenticated) return <AuthScreen />;
-  if (account && !account.workspace.setupCompleted) return <WorkspaceSetupScreen />;
-  return <AuthenticatedShell />;
+  return (
+    <>
+      {account && !account.workspace.setupCompleted ? <WorkspaceSetupScreen /> : <AuthenticatedShell />}
+      {authResolution === "created" && (
+        <AccountCreatedToast onDismiss={dismissAuthResolution} />
+      )}
+    </>
+  );
+}
+
+function AccountCreatedToast({ onDismiss }: { onDismiss: () => void }) {
+  useEffect(() => {
+    const timer = window.setTimeout(onDismiss, 2600);
+    return () => window.clearTimeout(timer);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className="fixed right-5 top-5 z-[400] rounded-[8px] border border-emerald-200 bg-white px-4 py-3 text-[13px] font-semibold text-zinc-900 shadow-lg"
+    >
+      Аккаунт создан
+    </div>
+  );
 }

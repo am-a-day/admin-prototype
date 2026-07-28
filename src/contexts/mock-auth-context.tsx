@@ -16,6 +16,7 @@ export type WorkspaceLanguageStatus = "empty" | "partial" | "ready";
 export type WorkspaceLanguage = {
   code: LanguageCode;
   status: WorkspaceLanguageStatus;
+  visible: boolean;
 };
 
 export type PublishedMenuSnapshot = {
@@ -57,19 +58,24 @@ export type MockAccount = {
 };
 
 export type AuthContactKind = "phone" | "email";
+export type AuthResolution = "existing" | "created";
 
 type AuthError = { ok: false; error: string };
 type ValidatedContact = { ok: true; contact: string };
-type AuthSuccess = { ok: true; account: MockAccount };
+type AuthSuccess = { ok: true; account: MockAccount; resolution: AuthResolution };
 
 type MockAuthContextValue = {
   account: MockAccount | null;
   isAuthenticated: boolean;
+  authResolution: AuthResolution | null;
+  dismissAuthResolution: () => void;
   validateAuthContact: (contact: string, kind: AuthContactKind) => ValidatedContact | AuthError;
   verifyCode: (contact: string, kind: AuthContactKind, code: string) => AuthSuccess | AuthError;
   loginWithPassword: (contact: string, kind: AuthContactKind, password: string) => AuthSuccess | AuthError;
   completeWorkspaceSetup: (organizationType: OrganizationType, primaryLanguage: LanguageCode) => void;
   addWorkspaceLanguage: (language: LanguageCode) => void;
+  setWorkspaceLanguageVisibility: (language: LanguageCode, visible: boolean) => void;
+  removeWorkspaceLanguage: (language: LanguageCode) => void;
   setWorkspaceLanguageHasContent: (language: LanguageCode, hasContent: boolean) => void;
   updateWorkspaceNameTranslation: (language: LanguageCode, name: string) => void;
   logout: () => void;
@@ -118,7 +124,7 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   organizationType: "restaurant",
   primaryLanguage: "ru",
   languages: setupCompleted
-    ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const }))
+    ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }))
     : [],
   localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
   currency: "KZT",
@@ -158,6 +164,11 @@ const createAccount = (contact: string): MockAccount => {
     workspace: {
       ...createWorkspace(true, contact, false),
       contactVerified: true,
+      setupCompleted: true,
+      organizationType: "restaurant",
+      primaryLanguage: "ru",
+      languages: [{ code: "ru", status: "ready", visible: true }],
+      localizedNames: { ru: "Новое меню" },
     },
     catalogSnapshot: {},
   };
@@ -223,8 +234,11 @@ function readAuthState(): StoredAuthState {
               ? account.workspace.primaryLanguage as LanguageCode
               : "ru";
             const languages = account.workspace.languages?.length
-              ? account.workspace.languages
-              : LANGUAGES.map(({ code }) => ({ code, status: "ready" as const }));
+              ? account.workspace.languages.map((language) => ({
+                  ...language,
+                  visible: language.visible ?? true,
+                }))
+              : LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }));
             return [
               id,
               {
@@ -345,6 +359,7 @@ const MockAuthContext = createContext<MockAuthContextValue | null>(null);
 export function MockAuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<StoredAuthState>(() => readAuthState());
   const [sessionId, setSessionId] = useState<string | null>(() => readSessionId());
+  const [authResolution, setAuthResolution] = useState<AuthResolution | null>(null);
   const account = sessionId ? authState.accounts[sessionId] ?? null : null;
 
   const setActiveAccount = useCallback((nextAccount: MockAccount) => {
@@ -395,6 +410,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
 
       const currentState = upsertAccountWithSnapshot(authState, account);
       const existingId = currentState.contactIndex[validation.contact];
+      const resolution: AuthResolution = existingId ? "existing" : "created";
       const nextAccount = existingId
         ? currentState.accounts[existingId]
         : createAccount(validation.contact);
@@ -404,7 +420,8 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
         workspace: { ...nextAccount.workspace, contactVerified: true },
       };
       setActiveAccount(verifiedAccount);
-      return { ok: true as const, account: verifiedAccount };
+      setAuthResolution(resolution);
+      return { ok: true as const, account: verifiedAccount, resolution };
     },
     [account, authState, setActiveAccount],
   );
@@ -432,7 +449,8 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
 
       setAuthState(currentState);
       setActiveAccount(existingAccount);
-      return { ok: true as const, account: existingAccount };
+      setAuthResolution("existing");
+      return { ok: true as const, account: existingAccount, resolution: "existing" as const };
     },
     [account, authState, setActiveAccount],
   );
@@ -454,7 +472,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
         setupCompleted: true,
         organizationType,
         primaryLanguage,
-        languages: [{ code: primaryLanguage, status: "ready" }],
+        languages: [{ code: primaryLanguage, status: "ready", visible: true }],
         localizedNames: { [primaryLanguage]: name },
       }));
     },
@@ -468,11 +486,52 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
         if (workspace.languages.some(({ code }) => code === language)) return workspace;
         return {
           ...workspace,
-          languages: [...workspace.languages, { code: language, status: "empty" }],
+          languages: [...workspace.languages, { code: language, status: "empty", visible: true }],
         };
       });
     },
     [account],
+  );
+
+  const setWorkspaceLanguageVisibility = useCallback(
+    (language: LanguageCode, visible: boolean) => {
+      if (!account || language === account.workspace.primaryLanguage) return;
+      updateWorkspaceAccount(account.id, (workspace) => ({
+        ...workspace,
+        languages: workspace.languages.map((item) =>
+          item.code === language ? { ...item, visible } : item,
+        ),
+      }));
+    },
+    [account, updateWorkspaceAccount],
+  );
+
+  const removeWorkspaceLanguage = useCallback(
+    (language: LanguageCode) => {
+      if (!account || language === account.workspace.primaryLanguage) return;
+      const translationPrefix = `tasko.catalog.translations.${account.id}.`;
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith(translationPrefix)) continue;
+        try {
+          const translations = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<string, string>;
+          delete translations[language];
+          window.localStorage.setItem(key, JSON.stringify(translations));
+        } catch {
+          // Ignore malformed prototype translation data.
+        }
+      }
+      updateWorkspaceAccount(account.id, (workspace) => {
+        const localizedNames = { ...workspace.localizedNames };
+        delete localizedNames[language];
+        return {
+          ...workspace,
+          localizedNames,
+          languages: workspace.languages.filter(({ code }) => code !== language),
+        };
+      });
+    },
+    [account, updateWorkspaceAccount],
   );
 
   const updateWorkspaceNameTranslation = useCallback(
@@ -513,6 +572,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setAuthState((prev) => upsertAccountWithSnapshot(prev, account));
+    setAuthResolution(null);
     setSessionId(null);
     writeSessionId(null);
   }, [account]);
@@ -574,8 +634,8 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
           catalogSnapshot: snapshotCatalog(),
           publishedLanguages: account.workspace.languages
             .filter(
-              ({ code, status }) =>
-                code === account.workspace.primaryLanguage || status === "ready",
+              ({ code, status, visible }) =>
+                code === account.workspace.primaryLanguage || (status === "ready" && visible),
             )
             .map(({ code }) => code),
           localizedNames: account.workspace.localizedNames,
@@ -603,15 +663,21 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     [authState.accounts],
   );
 
+  const dismissAuthResolution = useCallback(() => setAuthResolution(null), []);
+
   const value = useMemo<MockAuthContextValue>(
     () => ({
       account,
       isAuthenticated: Boolean(account),
+      authResolution,
+      dismissAuthResolution,
       validateAuthContact,
       verifyCode,
       loginWithPassword,
       completeWorkspaceSetup,
       addWorkspaceLanguage,
+      setWorkspaceLanguageVisibility,
+      removeWorkspaceLanguage,
       setWorkspaceLanguageHasContent,
       updateWorkspaceNameTranslation,
       logout,
@@ -624,11 +690,15 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       account,
+      authResolution,
+      dismissAuthResolution,
       validateAuthContact,
       verifyCode,
       loginWithPassword,
       completeWorkspaceSetup,
       addWorkspaceLanguage,
+      setWorkspaceLanguageVisibility,
+      removeWorkspaceLanguage,
       setWorkspaceLanguageHasContent,
       updateWorkspaceNameTranslation,
       logout,
