@@ -324,7 +324,7 @@ function BillingWorkspace() {
 // ── Generic stub ──────────────────────────────────────────────────────────────
 
 function AccountWorkspace() {
-  const { account, updateWorkspaceNameTranslation } = useMockAuth();
+  const { account, updateWorkspace, updateWorkspaceNameTranslation } = useMockAuth();
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
   const workspaceName =
@@ -385,24 +385,66 @@ function AccountWorkspace() {
             />
 
             <div className="mt-5 grid gap-3 border-t border-zinc-100 pt-4 sm:grid-cols-2">
+              <label>
+                <span className="text-[11px] font-semibold uppercase text-zinc-400">Тип заведения</span>
+                <select
+                  value={account.workspace.organizationType}
+                  onChange={(event) => {
+                    updateWorkspace({
+                      organizationType: event.target.value as typeof account.workspace.organizationType,
+                    });
+                    registerChange("about");
+                  }}
+                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="restaurant">Ресторан / общепит</option>
+                  <option value="store">Магазин</option>
+                  <option value="services">Услуги</option>
+                  <option value="other">Другое</option>
+                </select>
+              </label>
               <div>
                 <div className="text-[11px] font-semibold uppercase text-zinc-400">Технический адрес</div>
                 <div className="mt-1 truncate text-[13px] font-medium text-zinc-700">
                   {account.workspace.technicalAddress}
                 </div>
               </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase text-zinc-400">Валюта</div>
-                <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.workspace.currency}</div>
-              </div>
+              <label>
+                <span className="text-[11px] font-semibold uppercase text-zinc-400">Валюта</span>
+                <select
+                  value={account.workspace.currency}
+                  onChange={(event) => {
+                    updateWorkspace({ currency: event.target.value });
+                    registerChange("about");
+                  }}
+                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="KZT">KZT</option>
+                  <option value="RSD">RSD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
               <div>
                 <div className="text-[11px] font-semibold uppercase text-zinc-400">Основной язык</div>
                 <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.workspace.primaryLanguage.toUpperCase()}</div>
               </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase text-zinc-400">Часовой пояс</div>
-                <div className="mt-1 truncate text-[13px] font-medium text-zinc-700">{account.workspace.timezone}</div>
-              </div>
+              <label>
+                <span className="text-[11px] font-semibold uppercase text-zinc-400">Часовой пояс</span>
+                <select
+                  value={account.workspace.timezone}
+                  onChange={(event) => {
+                    updateWorkspace({ timezone: event.target.value });
+                    registerChange("about");
+                  }}
+                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="Asia/Almaty">Казахстан · Asia/Almaty</option>
+                  <option value="Europe/Belgrade">Сербия · Europe/Belgrade</option>
+                  <option value="Europe/Warsaw">Central European Time</option>
+                  <option value="UTC">UTC</option>
+                </select>
+              </label>
             </div>
           </div>
         </SectionCard>

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { MOCK_USER } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
+import { getRegistrationMarket } from "@/lib/registration-market";
 
 export type MockWorkspaceStatus = "draft" | "published" | "changes";
 export type OrganizationType = "restaurant" | "store" | "services" | "other";
@@ -43,6 +44,8 @@ export type MockWorkspace = {
   localizedNames: Partial<Record<LanguageCode, string>>;
   currency: string;
   timezone: string;
+  market: "Kazakhstan" | "Serbia";
+  marketCode: "KZ" | "RS";
   firstEntry: boolean;
   publishedSnapshot: PublishedMenuSnapshot | null;
 };
@@ -63,6 +66,10 @@ export type AuthResolution = "existing" | "created";
 type AuthError = { ok: false; error: string };
 type ValidatedContact = { ok: true; contact: string };
 type AuthSuccess = { ok: true; account: MockAccount; resolution: AuthResolution };
+type VerifyCodeOptions = {
+  registrationLanguage?: LanguageCode;
+  registrationHostname?: string;
+};
 
 type MockAuthContextValue = {
   account: MockAccount | null;
@@ -70,7 +77,12 @@ type MockAuthContextValue = {
   authResolution: AuthResolution | null;
   dismissAuthResolution: () => void;
   validateAuthContact: (contact: string, kind: AuthContactKind) => ValidatedContact | AuthError;
-  verifyCode: (contact: string, kind: AuthContactKind, code: string) => AuthSuccess | AuthError;
+  verifyCode: (
+    contact: string,
+    kind: AuthContactKind,
+    code: string,
+    options?: VerifyCodeOptions,
+  ) => AuthSuccess | AuthError;
   loginWithPassword: (contact: string, kind: AuthContactKind, password: string) => AuthSuccess | AuthError;
   completeWorkspaceSetup: (organizationType: OrganizationType, primaryLanguage: LanguageCode) => void;
   addWorkspaceLanguage: (language: LanguageCode) => void;
@@ -129,6 +141,8 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
   currency: "KZT",
   timezone: getBrowserTimezone(),
+  market: "Kazakhstan",
+  marketCode: "KZ",
   firstEntry,
   publishedSnapshot: firstEntry
     ? null
@@ -153,8 +167,22 @@ const createSeedAccount = (): MockAccount => ({
   catalogSnapshot: {},
 });
 
-const createAccount = (contact: string): MockAccount => {
+function stableRestaurantSuffix(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (Math.imul(hash, 31) + seed.charCodeAt(index)) >>> 0;
+  }
+  return String(hash % 10000).padStart(4, "0");
+}
+
+const createAccount = (
+  contact: string,
+  registrationLanguage: LanguageCode,
+  registrationHostname: string,
+): MockAccount => {
   const id = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const marketDefaults = getRegistrationMarket(registrationHostname);
+  const workspaceName = `Мой ресторан ${stableRestaurantSuffix(contact)}`;
   return {
     id,
     contact,
@@ -163,12 +191,19 @@ const createAccount = (contact: string): MockAccount => {
     role: "Владелец",
     workspace: {
       ...createWorkspace(true, contact, false),
+      name: workspaceName,
+      status: "draft",
+      technicalAddress: `${marketDefaults.menuDomain}/m/${stableMenuId(contact)}`,
       contactVerified: true,
       setupCompleted: true,
       organizationType: "restaurant",
-      primaryLanguage: "ru",
-      languages: [{ code: "ru", status: "ready", visible: true }],
-      localizedNames: { ru: "Новое меню" },
+      primaryLanguage: registrationLanguage,
+      languages: [{ code: registrationLanguage, status: "ready", visible: true }],
+      localizedNames: { [registrationLanguage]: workspaceName },
+      currency: marketDefaults.currency,
+      timezone: marketDefaults.timezone,
+      market: marketDefaults.market,
+      marketCode: marketDefaults.marketCode,
     },
     catalogSnapshot: {},
   };
@@ -262,6 +297,8 @@ function readAuthState(): StoredAuthState {
                   },
                   currency: account.workspace.currency || fallback.currency,
                   timezone: account.workspace.timezone || fallback.timezone,
+                  market: account.workspace.market ?? fallback.market,
+                  marketCode: account.workspace.marketCode ?? fallback.marketCode,
                   publishedSnapshot: publishedSnapshot
                     ? {
                         ...publishedSnapshot,
@@ -401,7 +438,12 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const verifyCode = useCallback(
-    (rawContact: string, kind: AuthContactKind, code: string) => {
+    (
+      rawContact: string,
+      kind: AuthContactKind,
+      code: string,
+      options: VerifyCodeOptions = {},
+    ) => {
       const validation = validateContact(rawContact, kind);
       if (!validation.ok) return validation;
       if (!/^\d{6}$/.test(code)) {
@@ -410,10 +452,17 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
 
       const currentState = upsertAccountWithSnapshot(authState, account);
       const existingId = currentState.contactIndex[validation.contact];
+      if (kind === "email" && !existingId) {
+        return { ok: false as const, error: "Аккаунт с такой почтой не найден." };
+      }
       const resolution: AuthResolution = existingId ? "existing" : "created";
       const nextAccount = existingId
         ? currentState.accounts[existingId]
-        : createAccount(validation.contact);
+        : createAccount(
+            validation.contact,
+            options.registrationLanguage ?? "ru",
+            options.registrationHostname ?? window.location.hostname,
+          );
       setAuthState(currentState);
       const verifiedAccount = {
         ...nextAccount,

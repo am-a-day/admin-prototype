@@ -12,7 +12,12 @@ import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider, usePlan } from "@/contexts/plan-context";
 import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
 import { PreviewDemoProvider, usePreviewDemo } from "@/contexts/preview-demo-context";
-import { MockAuthProvider, useMockAuth } from "@/contexts/mock-auth-context";
+import {
+  MockAuthProvider,
+  useMockAuth,
+  type AuthResolution,
+} from "@/contexts/mock-auth-context";
+import { trackAuthEvent } from "@/lib/auth-analytics";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -1054,12 +1059,27 @@ function AppShell() {
   if (!isAuthenticated) return <AuthScreen />;
   return (
     <>
-      {account && !account.workspace.setupCompleted ? <WorkspaceSetupScreen /> : <AuthenticatedShell />}
+      {account && !account.workspace.setupCompleted ? (
+        <WorkspaceSetupScreen />
+      ) : (
+        <>
+          <AdminOpenedTracker resolution={authResolution} />
+          <AuthenticatedShell />
+        </>
+      )}
       {authResolution === "created" && (
         <AccountCreatedToast onDismiss={dismissAuthResolution} />
       )}
     </>
   );
+}
+
+function AdminOpenedTracker({ resolution }: { resolution: AuthResolution | null }) {
+  useEffect(() => {
+    if (!resolution) return;
+    trackAuthEvent("admin_opened", { resolution });
+  }, [resolution]);
+  return null;
 }
 
 function AccountCreatedToast({ onDismiss }: { onDismiss: () => void }) {
