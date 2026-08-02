@@ -5,6 +5,7 @@ import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
 import { usePreviewDemo } from "@/contexts/preview-demo-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import {
   categories,
   dishes,
@@ -57,6 +58,7 @@ type PhonePreviewProps = {
   onNavUpsell: () => void;
   onNavAbout: () => void;
   onNavCatalogDish: (id: string) => void;
+  onCreateFirstItem: () => void;
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
@@ -76,6 +78,7 @@ export function PhonePreview({
   onNavUpsell,
   onNavAbout,
   onNavCatalogDish,
+  onCreateFirstItem,
   seoTitle = "",
   seoDescription = "",
 }: PhonePreviewProps) {
@@ -84,12 +87,23 @@ export function PhonePreview({
     deliveryComment,
     pickupComment,
     pickupAddress,
+    contentLanguage,
   } = useAppSettings();
   const { routes } = useOrderRouting();
   const { publishPhase } = usePublish();
   const { emptyVitrine } = usePreviewDemo();
+  const { account } = useMockAuth();
   const { stage } = useVitrineLaunch();
   const { webAddress } = useVitrineStatus();
+  const privatePreview = Boolean(account?.workspace.privatePreviewAvailable);
+  const restaurantName =
+    account?.workspace.localizedNames[contentLanguage] ||
+    (account
+      ? account.workspace.localizedNames[account.workspace.primaryLanguage]
+      : undefined) ||
+    account?.workspace.name ||
+    "Новое меню";
+  const previewAddress = account?.workspace.webAddress || "preview.tasko.local";
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
@@ -117,7 +131,9 @@ export function PhonePreview({
   // Навигация по витрине доступна на админ-вкладке «Главная».
   const browsing = section === "storefront" && activeTab === "home" && previewBanner != null;
 
-  let screen: ReactNode = previewBanner ? <PhoneHome banner={previewBanner} empty={emptyVitrine} /> : null;
+  let screen: ReactNode = previewBanner ? (
+    <PhoneHome banner={previewBanner} restaurantName={restaurantName} empty={emptyVitrine} />
+  ) : null;
   let showBottomNav = false;
   let overlay: ReactNode = null;
 
@@ -153,7 +169,7 @@ export function PhonePreview({
   } else if (scenario === "age") {
     screen = <PhoneAgeGate />;
   } else if (scenario === "about" || activeTab === "about") {
-    screen = <PhoneAboutSheet />;
+    screen = <PhoneAboutSheet restaurantName={restaurantName} />;
   } else if (scenario === "serviceFee") {
     screen = serviceFeeRequireConsent ? (
       <PhoneServiceFeeConsent />
@@ -172,6 +188,7 @@ export function PhonePreview({
       screen = (
         <PhoneHome
           banner={previewBanner}
+          restaurantName={restaurantName}
           empty={emptyVitrine}
           onBanner={onNavHomeHero}
           onSections={onNavHomeSections}
@@ -213,6 +230,7 @@ export function PhonePreview({
     if (aboutOpen) {
       overlay = (
         <PhoneAboutDrawer
+          restaurantName={restaurantName}
           onClose={() => setAboutOpen(false)}
           onEdit={() => {
             setAboutOpen(false);
@@ -222,9 +240,9 @@ export function PhonePreview({
       );
     }
   } else if (scenario === "catalog-empty") {
-    screen = <PhoneCatalogEmpty />;
+    screen = <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />;
   } else if (activeTab === "catalog") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} />;
   } else if (activeTab === "upsell") {
     // Сценарий превью управляется фокусом полей «Тексты рекомендаций».
     if (upsellSurface === "home") {
@@ -255,7 +273,7 @@ export function PhonePreview({
       );
     }
   } else if (activeTab === "appearance") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} themed />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} themed />;
   }
 
   // Overlay публикации (Publish model): аккуратный полупрозрачный слой на 3 сек.
@@ -281,14 +299,19 @@ export function PhonePreview({
               </span>
 
               {/* Ссылка на витрину — переход активен после валидации менеджером */}
-              {stage === "active" ? (
+              {privatePreview ? (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[12px] font-semibold text-zinc-600">
+                  <Lock size={11} className="shrink-0" />
+                  Приватный предпросмотр
+                </span>
+              ) : stage === "active" ? (
                 <a
-                  href={`https://${webAddress}`}
+                  href={`https://${previewAddress || webAddress}`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-fit text-[13px] text-[#79716b] transition hover:text-blue-600 hover:underline"
                 >
-                  {webAddress}
+                  {previewAddress || webAddress}
                 </a>
               ) : (
                 <span

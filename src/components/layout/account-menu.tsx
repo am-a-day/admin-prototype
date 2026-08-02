@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Globe2, Pencil } from "lucide-react";
 import { Buildings, CaretRight, LockKeyOpen, PlusCircle } from "@phosphor-icons/react";
 import {
   RESTAURANT_NAME,
@@ -10,8 +10,12 @@ import {
   type SectionId,
 } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
+import { usePublish } from "@/contexts/publish-context";
+import { useAppSettings } from "@/contexts/app-settings-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { cn } from "@/lib/utils";
+import { getLanguage } from "@/data/languages";
 
 /** Gated-feature pill: open-lock icon + plan label */
 function LockBadge({ label }: { label: string }) {
@@ -25,6 +29,7 @@ function LockBadge({ label }: { label: string }) {
 
 /** Organisation / location context menu - triggered from header or sidebar */
 export function OrgMenu({
+  onNavigate,
   variant = "full",
 }: {
   onNavigate: (section: SectionId, tab: string) => void;
@@ -33,7 +38,21 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId } = usePlan();
+  const { account, updateWorkspace, updateWorkspaceNameTranslation } = useMockAuth();
+  const { contentLanguage } = useAppSettings();
+  const { registerChange } = usePublish();
   const vitrine = useVitrineStatus();
+  const workspaceName =
+    account?.workspace.localizedNames[contentLanguage] ||
+    account?.workspace.localizedNames[account.workspace.primaryLanguage] ||
+    account?.workspace.name ||
+    RESTAURANT_NAME;
+  const workspaceAddress =
+    account?.workspace.webAddress ||
+    account?.workspace.technicalAddress ||
+    RESTAURANT_ADDRESS ||
+    vitrine.webAddress;
+  const canCustomizeAddress = planId === "Lite" || planId === "Ultra";
 
   const planCtaLabel = planId === "Ultra" ? "Управление тарифом" : "Улучшить тариф";
   const locationsCount = MOCK_VITRINES.length;
@@ -49,9 +68,16 @@ export function OrgMenu({
 
   const [open, setOpen] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(workspaceName);
+  const [nameError, setNameError] = useState("");
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressDraft, setAddressDraft] = useState("");
+  const [addressError, setAddressError] = useState("");
   const [selectedVitrineId, setSelectedVitrineId] = useState(CURRENT_VITRINE_ID);
   const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
+  const cancelNameRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +92,7 @@ export function OrgMenu({
       setPointsOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !editingName && !editingAddress) setOpen(false);
     };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
@@ -74,7 +100,7 @@ export function OrgMenu({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [editingAddress, editingName, open]);
 
   const handleToggle = () => {
     if (!open && btnRef.current) {
@@ -92,8 +118,54 @@ export function OrgMenu({
   const close = () => {
     setOpen(false);
     setPointsOpen(false);
+    setEditingName(false);
+    setEditingAddress(false);
+    setNameError("");
+    setAddressError("");
   };
   const current = MOCK_VITRINES.find((v) => v.id === selectedVitrineId) ?? MOCK_VITRINES[0];
+
+  const startEditingName = () => {
+    cancelNameRef.current = false;
+    setDraftName(workspaceName);
+    setNameError("");
+    setEditingName(true);
+  };
+
+  const saveWorkspaceName = (rawName = draftName) => {
+    if (cancelNameRef.current) {
+      cancelNameRef.current = false;
+      return;
+    }
+    const nextName = rawName.trim();
+    if (!nextName) {
+      setNameError("Введите название витрины");
+      return;
+    }
+    if (nextName !== workspaceName) {
+      updateWorkspaceNameTranslation(contentLanguage, nextName);
+      registerChange("about");
+    }
+    setDraftName(nextName);
+    setNameError("");
+    setEditingName(false);
+  };
+
+  const savePrettyAddress = (rawAddress = addressDraft) => {
+    const slug = rawAddress
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9а-яё-]+/gi, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!slug) {
+      setAddressError("Введите адрес");
+      return;
+    }
+    updateWorkspace({ webAddress: `${slug}.tasko.menu` });
+    setAddressDraft(slug);
+    setAddressError("");
+    setEditingAddress(false);
+  };
 
   return (
     <>
@@ -108,14 +180,14 @@ export function OrgMenu({
           )}
           aria-expanded={open}
           aria-haspopup="dialog"
-          title={`${RESTAURANT_NAME} · ${RESTAURANT_ADDRESS || vitrine.webAddress}`}
+          title={`${workspaceName} · ${workspaceAddress}`}
         >
-          <span className="max-w-[140px] truncate text-[13px] font-medium text-zinc-900">{RESTAURANT_NAME}</span>
+          <span className="max-w-[140px] truncate text-[13px] font-medium text-zinc-900">{workspaceName}</span>
           <span className="hidden text-[13px] text-zinc-300 lg:inline" aria-hidden>
             ·
           </span>
           <span className="hidden max-w-[160px] truncate text-[13px] text-zinc-400 lg:inline">
-            {RESTAURANT_ADDRESS || vitrine.webAddress}
+            {workspaceAddress}
           </span>
           <ChevronDown size={11} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
         </button>
@@ -130,7 +202,7 @@ export function OrgMenu({
           )}
           aria-expanded={open}
           aria-haspopup="dialog"
-          title={variant === "rail" ? `${RESTAURANT_NAME} · ${vitrine.label}` : RESTAURANT_NAME}
+          title={variant === "rail" ? `${workspaceName} · ${vitrine.label}` : workspaceName}
         >
           T
           {variant === "rail" && (
@@ -149,16 +221,60 @@ export function OrgMenu({
         >
           {/* Header */}
           <div className="px-3 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-[13px] font-semibold leading-none text-[#292524]">
-                {current.name}
-              </span>
-              <span className="shrink-0 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#57534d]">
-                {planId.toUpperCase()}
-              </span>
-            </div>
+            {editingName ? (
+              <div>
+                <input
+                  autoFocus
+                  value={draftName}
+                  onChange={(event) => {
+                    setDraftName(event.target.value);
+                    if (nameError) setNameError("");
+                  }}
+                  onBlur={(event) => saveWorkspaceName(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      saveWorkspaceName(event.currentTarget.value);
+                    }
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      cancelNameRef.current = true;
+                      setDraftName(workspaceName);
+                      setNameError("");
+                      setEditingName(false);
+                    }
+                  }}
+                  aria-label="Название витрины"
+                  aria-invalid={Boolean(nameError)}
+                  className={cn(
+                    "h-8 w-full rounded-[8px] border bg-white px-2 text-[13px] font-semibold text-[#292524] outline-none",
+                    nameError
+                      ? "border-red-300 focus:ring-2 focus:ring-red-100"
+                      : "border-zinc-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100",
+                  )}
+                />
+                {nameError && <div className="mt-1 text-[11px] text-red-600">{nameError}</div>}
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[13px] font-semibold leading-none text-[#292524]">
+                  {workspaceName}
+                </span>
+                <button
+                  type="button"
+                  onClick={startEditingName}
+                  title="Изменить название витрины"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  <Pencil size={12} />
+                </button>
+                <span className="ml-auto shrink-0 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#57534d]">
+                  {planId.toUpperCase()}
+                </span>
+              </div>
+            )}
             <div className="mt-1.5 truncate text-[12px] leading-none text-[#a6a09b]">
-              {current.address}
+              {workspaceAddress || current.address}
             </div>
           </div>
 
@@ -166,6 +282,100 @@ export function OrgMenu({
 
           {/* Menu */}
           <div className="p-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (canCustomizeAddress) {
+                  if (account?.workspace.webAddress) {
+                    setAddressDraft(account.workspace.webAddress.replace(/\.tasko\.menu$/i, ""));
+                  } else {
+                    const suggestedSlug = workspaceName === "Новое меню"
+                      ? `menu-${account?.workspace.technicalAddress.split("/").pop() || "menu"}`
+                      : workspaceName
+                          .toLowerCase()
+                          .replace(/[^a-z0-9а-яё]+/gi, "-")
+                          .replace(/^-+|-+$/g, "");
+                    setAddressDraft(suggestedSlug);
+                  }
+                  setAddressError("");
+                  setEditingAddress(true);
+                } else {
+                  close();
+                  onNavigate("management", "billing");
+                }
+              }}
+              title={canCustomizeAddress ? "Настроить адрес меню" : "Красивый адрес доступен на тарифе Lite"}
+              className="flex min-h-9 w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-[#f5f5f4]"
+            >
+              <Globe2 size={14} className="shrink-0 text-[#57534d]" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] text-[#44403b]">
+                  {account?.workspace.webAddress || "Настроить адрес меню"}
+                </span>
+                {account?.workspace.webAddress && (
+                  <span className="block text-[10px] leading-3 text-[#a6a09b]">Изменить</span>
+                )}
+              </span>
+              {!canCustomizeAddress && <LockBadge label="LITE" />}
+            </button>
+            {editingAddress && (
+              <div className="mx-2 mb-1 rounded-[8px] bg-zinc-50 p-2">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={addressDraft}
+                    onChange={(event) => {
+                      setAddressDraft(event.target.value);
+                      if (addressError) setAddressError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") savePrettyAddress(event.currentTarget.value);
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        setEditingAddress(false);
+                        setAddressError("");
+                      }
+                    }}
+                    aria-label="Красивый адрес меню"
+                    className={cn(
+                      "h-8 min-w-0 flex-1 rounded-[7px] border bg-white px-2 text-[12px] outline-none",
+                      addressError ? "border-red-300" : "border-zinc-200 focus:border-blue-400",
+                    )}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => savePrettyAddress()}
+                    title="Сохранить адрес"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-zinc-900 text-white transition hover:bg-zinc-700"
+                  >
+                    <Check size={13} />
+                  </button>
+                </div>
+                <div className={cn("mt-1 text-[10px]", addressError ? "text-red-600" : "text-zinc-400")}>
+                  {addressError || ".tasko.menu"}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                onNavigate("storefront", "about:language-region");
+              }}
+              className="flex h-9 w-full items-center gap-1.5 rounded-lg px-2 text-left transition hover:bg-[#f5f5f4]"
+            >
+              <Globe2 size={14} className="shrink-0 text-[#57534d]" />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-[#44403b]">
+                Язык и регион
+              </span>
+              <span className="max-w-[92px] shrink truncate whitespace-nowrap text-[12px] text-[#a6a09b]">
+                {getLanguage(account?.workspace.primaryLanguage ?? "ru").label} ·{" "}
+                {account?.workspace.currency ?? "KZT"}
+              </span>
+              <CaretRight size={14} className="shrink-0 text-[#a6a09b]" />
+            </button>
+
             <button
               type="button"
               onClick={() => setPointsOpen((v) => !v)}
@@ -213,7 +423,10 @@ export function OrgMenu({
           <div className="px-3 pb-3 pt-0.5">
             <button
               type="button"
-              onClick={close}
+              onClick={() => {
+                close();
+                onNavigate("management", "billing");
+              }}
               className="flex h-8 w-full items-center justify-center rounded-[8px] border border-[#e7e5e4] text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4]"
             >
               {planCtaLabel}

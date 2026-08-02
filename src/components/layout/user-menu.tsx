@@ -4,6 +4,7 @@ import { CaretRight, Check, Globe, Lifebuoy, LockKeyOpen, SignOut, User } from "
 import { MOCK_USER, type SectionId } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { cn } from "@/lib/utils";
 
 function ProfileThumb({ className }: { className?: string }) {
@@ -19,7 +20,7 @@ function ProfileThumb({ className }: { className?: string }) {
   );
 }
 
-/** User account menu — bottom of sidebar or in app header */
+/** User account menu - bottom of sidebar or in app header */
 export function UserMenu({
   compact = false,
   placement = "up",
@@ -31,8 +32,13 @@ export function UserMenu({
   onNavigate: (section: SectionId, tab: string) => void;
 }) {
   const { uiLanguage, setUiLanguage } = useAppSettings();
+  const { account, logout, resetTestAccount } = useMockAuth();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const userName = account?.displayName ?? MOCK_USER.name;
+  const shortName = userName.split(" ")[0] || MOCK_USER.shortName;
+  const userContact = account?.contact ?? MOCK_USER.phone;
+  const userRole = account?.role ?? MOCK_USER.role;
 
   const close = () => {
     setOpen(false);
@@ -47,10 +53,9 @@ export function UserMenu({
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
         {compact ? (
-          /* Rail mode: just the avatar circle */
           <button
             type="button"
-            title={MOCK_USER.name}
+            title={userName}
             className={cn(
               "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full transition",
               open && "ring-2 ring-blue-500/30 ring-offset-1",
@@ -59,7 +64,6 @@ export function UserMenu({
             <ProfileThumb />
           </button>
         ) : (
-          /* Full sidebar mode: avatar + name row */
           <button
             type="button"
             className={cn(
@@ -69,7 +73,7 @@ export function UserMenu({
           >
             <ProfileThumb />
             <span className="flex-1 truncate text-[13px] font-medium text-zinc-700">
-              {MOCK_USER.shortName}
+              {shortName}
             </span>
           </button>
         )}
@@ -83,26 +87,23 @@ export function UserMenu({
           sideOffset={6}
           className="z-[200] w-[260px] overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white p-0 shadow-xl shadow-zinc-300/40"
         >
-          {/* Header */}
           <div className="px-3 py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-[13px] font-semibold leading-none text-[#292524]">
-                {MOCK_USER.name}
+                {userName}
               </span>
               <span className="shrink-0 rounded-full bg-[#f5f5f4] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#57534d]">
-                {MOCK_USER.role}
+                {userRole}
               </span>
             </div>
             <div className="mt-1.5 truncate text-[12px] leading-none text-[#a6a09b]">
-              {MOCK_USER.phone}
+              {userContact}
             </div>
           </div>
 
           <div className="h-px bg-[#e7e5e4]" />
 
-          {/* Menu */}
           <div className="p-1">
-            {/* UI language */}
             <DropdownMenu.Sub open={langOpen} onOpenChange={setLangOpen}>
               <DropdownMenu.SubTrigger
                 onPointerEnter={() => setLangOpen(true)}
@@ -173,11 +174,32 @@ export function UserMenu({
               type="button"
               onPointerEnter={() => setLangOpen(false)}
               onFocus={() => setLangOpen(false)}
-              onClick={close}
+              onClick={() => {
+                close();
+                logout();
+              }}
               className="flex h-9 w-full items-center gap-1.5 rounded-lg px-2 text-left transition hover:bg-[#f5f5f4]"
             >
               <SignOut size={14} className="shrink-0 text-[#57534d]" />
               <span className="flex-1 text-[13px] text-[#44403b]">Выйти</span>
+            </button>
+          </div>
+
+          <div className="border-t border-[#e7e5e4] px-3 py-2">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#a6a09b]">
+              Dev
+            </div>
+            <button
+              type="button"
+              onPointerEnter={() => setLangOpen(false)}
+              onFocus={() => setLangOpen(false)}
+              onClick={() => {
+                close();
+                resetTestAccount();
+              }}
+              className="flex h-8 w-full items-center rounded-lg px-2 text-left text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+            >
+              Сбросить тестовый аккаунт
             </button>
           </div>
         </DropdownMenu.Content>

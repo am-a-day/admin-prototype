@@ -26,6 +26,7 @@ import {
   type Dish,
 } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 /** Стиль наведения для кликабельных навигационных сущностей в превью. */
 const NAV_HOVER = "cursor-pointer transition hover:ring-2 hover:ring-blue-400/60";
@@ -109,6 +110,20 @@ function AdminSlot({ title, className }: { title: string; className?: string }) 
   );
 }
 
+const CURRENCY_MARKS: Record<string, string> = {
+  KZT: "₸",
+  RSD: "RSD",
+  RUB: "₽",
+  USD: "$",
+  EUR: "€",
+};
+
+function CurrencyPrice({ value }: { value: string }) {
+  const { account } = useMockAuth();
+  const mark = CURRENCY_MARKS[account?.workspace.currency ?? "KZT"] ?? "KZT";
+  return <>{value.replace(/\s*(?:₸|KZT|RSD|RUB|USD|EUR|₽|\$|€)\s*$/, ` ${mark}`)}</>;
+}
+
 function MiniDishCard({ dish }: { dish: Dish }) {
   return (
     <div className="w-28 shrink-0 rounded-2xl bg-zinc-50 p-2">
@@ -121,7 +136,9 @@ function MiniDishCard({ dish }: { dish: Dish }) {
         {dish.emoji}
       </div>
       <div className="line-clamp-2 text-xs font-black leading-tight">{dish.name}</div>
-      <div className="mt-1 text-xs text-zinc-500">{dish.price}</div>
+      <div className="mt-1 text-xs text-zinc-500">
+        <CurrencyPrice value={dish.price} />
+      </div>
     </div>
   );
 }
@@ -137,6 +154,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export function PhoneHome({
   banner,
+  restaurantName = RESTAURANT_NAME,
   theme,
   empty = false,
   onBanner,
@@ -145,6 +163,7 @@ export function PhoneHome({
   onAbout,
 }: {
   banner: Banner;
+  restaurantName?: string;
   theme?: boolean;
   /** Витрина «пустая» — показываем админ-плейсхолдеры незаполненных слотов. */
   empty?: boolean;
@@ -160,7 +179,7 @@ export function PhoneHome({
         <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-5">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-xs font-black text-white">K</div>
-            <div className="text-sm font-bold text-zinc-900">Kimchi</div>
+            <div className="max-w-[190px] truncate text-sm font-bold text-zinc-900">{restaurantName}</div>
           </div>
           {onAbout && (
             <button type="button" onClick={onAbout} className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-200">
@@ -184,7 +203,7 @@ export function PhoneHome({
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-center text-xs font-black leading-8 text-zinc-950">
                 K
               </div>
-              <div className="text-sm font-bold">Kimchi</div>
+              <div className="max-w-[170px] truncate text-sm font-bold">{restaurantName}</div>
             </div>
             {onAbout ? (
               <button
@@ -298,15 +317,20 @@ export function PhoneHome({
 
 export function PhoneCatalog({
   selectedDishId,
+  restaurantName = RESTAURANT_NAME,
   themed,
 }: {
   selectedDishId: string;
+  restaurantName?: string;
   themed?: boolean;
 }) {
   const selected = dishes.find((d) => d.id === selectedDishId);
   return (
     <div className={cn("p-4 pt-10", themed && "bg-amber-50")}>
-      <div className="mb-4 text-xl font-black">Меню</div>
+      <div className="mb-4">
+        <div className="truncate text-xl font-black">{restaurantName}</div>
+        <div className="mt-0.5 text-xs text-zinc-400">Меню</div>
+      </div>
       <div className="mb-4 flex h-11 items-center rounded-2xl bg-zinc-100 px-3 text-sm text-zinc-400">
         <Search size={17} className="mr-2" />
         Найти блюдо
@@ -347,7 +371,9 @@ export function PhoneDish({
         <h2 className="text-xl font-black leading-tight">{dish.name}</h2>
         <RichDescriptionPreview value={dish.description} />
         <div className="mt-5 flex items-center justify-between">
-          <div className="text-xl font-black">{dish.price}</div>
+          <div className="text-xl font-black">
+            <CurrencyPrice value={dish.price} />
+          </div>
           <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">
             В корзину
           </button>
@@ -479,7 +505,9 @@ export function PhoneCart({
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-black">{dish.name}</div>
-          <div className="text-xs text-zinc-500">{dish.price}</div>
+          <div className="text-xs text-zinc-500">
+            <CurrencyPrice value={dish.price} />
+          </div>
         </div>
         <div className="flex items-center gap-2 text-sm font-bold">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-zinc-500">−</span>
@@ -530,10 +558,10 @@ export function PhoneCart({
   );
 }
 
-export function PhoneAboutSheet() {
+export function PhoneAboutSheet({ restaurantName = RESTAURANT_NAME }: { restaurantName?: string }) {
   return (
     <div className="relative min-h-full bg-zinc-100 pt-10">
-      {banners[0] && <PhoneHome banner={banners[0]} />}
+      {banners[0] && <PhoneHome banner={banners[0]} restaurantName={restaurantName} />}
       <div className="absolute inset-x-0 bottom-0 rounded-t-[32px] bg-white p-5 shadow-2xl">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-200" />
         <div className="flex items-center gap-3">
@@ -541,7 +569,7 @@ export function PhoneAboutSheet() {
             K
           </div>
           <div>
-            <h3 className="font-black">{RESTAURANT_NAME}</h3>
+            <h3 className="font-black">{restaurantName}</h3>
             <p className="text-xs text-zinc-500">Корейская кухня и авторские блюда</p>
           </div>
         </div>
@@ -866,9 +894,11 @@ export function PhoneWaiterScreen() {
 export function PhoneAboutDrawer({
   onClose,
   onEdit,
+  restaurantName = RESTAURANT_NAME,
 }: {
   onClose: () => void;
   onEdit: () => void;
+  restaurantName?: string;
 }) {
   return (
     <div className="absolute inset-0 z-30 flex flex-col justify-end">
@@ -880,7 +910,7 @@ export function PhoneAboutDrawer({
             K
           </div>
           <div>
-            <h3 className="font-black">{RESTAURANT_NAME}</h3>
+            <h3 className="font-black">{restaurantName}</h3>
             <p className="text-xs text-zinc-500">Корейская кухня и авторские блюда</p>
           </div>
         </div>
@@ -1084,12 +1114,18 @@ export function PhoneNotification({
 
 // ── Empty catalog preview ─────────────────────────────────────────────────────
 
-export function PhoneCatalogEmpty() {
+export function PhoneCatalogEmpty({
+  onAddItem,
+  restaurantName = RESTAURANT_NAME,
+}: {
+  onAddItem?: () => void;
+  restaurantName?: string;
+}) {
   return (
     <div className="flex h-full flex-col bg-white">
       {/* Restaurant header */}
       <div className="px-4 pb-3 pt-8">
-        <div className="text-[15px] font-black text-zinc-900">{RESTAURANT_NAME}</div>
+        <div className="truncate text-[15px] font-black text-zinc-900">{restaurantName}</div>
         <div className="text-[11px] text-zinc-400">Корейская кухня</div>
       </div>
       {/* Search bar */}
@@ -1108,10 +1144,19 @@ export function PhoneCatalogEmpty() {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100">
           <LayoutGrid size={22} className="text-zinc-300" />
         </div>
-        <div className="text-[13px] font-bold text-zinc-500">Меню пока пустое</div>
+        <div className="text-[13px] font-bold text-zinc-600">Добавьте первую позицию</div>
         <p className="text-[11px] leading-4 text-zinc-400">
-          Создайте раздел и добавьте позиции, чтобы гости увидели меню
+          Здесь вы увидите, как меню будет выглядеть для гостей
         </p>
+        {onAddItem && (
+          <button
+            type="button"
+            onClick={onAddItem}
+            className="mt-1 h-8 rounded-[8px] bg-zinc-900 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700"
+          >
+            Добавить позицию
+          </button>
+        )}
       </div>
     </div>
   );

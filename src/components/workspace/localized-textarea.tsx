@@ -7,6 +7,7 @@ const LANGUAGE_GENITIVE: Record<LanguageCode, string> = {
   ru: "русского",
   kk: "казахского",
   en: "английского",
+  sr: "сербского",
 };
 
 type Translations = Partial<Record<LanguageCode, string>>;

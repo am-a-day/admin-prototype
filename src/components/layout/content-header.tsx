@@ -1,11 +1,10 @@
 import { type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth, type WorkspaceLanguageStatus } from "@/contexts/mock-auth-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { LANGUAGES } from "@/data/languages";
 import { cn } from "@/lib/utils";
-
-// ── Plan warning strip ────────────────────────────────────────────────────────
 
 function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   const status = usePlanStatus();
@@ -30,7 +29,12 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
         className={cn("shrink-0", expired ? "text-orange-500" : "text-amber-500")}
         strokeWidth={2.5}
       />
-      <span className={cn("min-w-0 flex-1 truncate text-[12px] font-semibold", expired ? "text-orange-800" : "text-amber-800")}>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-[12px] font-semibold",
+          expired ? "text-orange-800" : "text-amber-800",
+        )}
+      >
         {text}
       </span>
       <button
@@ -47,49 +51,79 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   );
 }
 
-// ── Content language switcher ─────────────────────────────────────────────────
+const STATUS_LABELS: Record<WorkspaceLanguageStatus, string> = {
+  empty: "Не заполнен",
+  partial: "Частично заполнен",
+  ready: "Готов к публикации",
+};
 
-export function PageLangSwitcher() {
+export function PageLangSwitcher({
+  onManageLanguages,
+}: {
+  onManageLanguages?: () => void;
+}) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
+  const { account } = useMockAuth();
+  const workspaceLanguages = account?.workspace.languages ?? [];
 
   return (
     <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-transparent px-1 text-[12px] text-[#57534d]">
-      <span className="px-1.5 text-[13px] font-normal text-[#79716b]">Языковая версия:</span>
+      <span className="px-1.5 text-[13px] font-normal text-[#79716b]">
+        Языковая версия:
+      </span>
       <div className="flex items-center gap-0.5">
-        {LANGUAGES.map((lang) => {
-          const active = contentLanguage === lang.code;
+        {workspaceLanguages.map((workspaceLanguage) => {
+          const language = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
+          if (!language) return null;
+          const active = contentLanguage === language.code;
+          const primary = account?.workspace.primaryLanguage === language.code;
           return (
             <button
-              key={lang.code}
+              key={language.code}
               type="button"
-              onClick={() => setContentLanguage(lang.code)}
+              onClick={() => setContentLanguage(language.code)}
+              title={`${language.label}${primary ? " · Основной язык" : ` · ${STATUS_LABELS[workspaceLanguage.status]}`}`}
               className={cn(
-                "flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
+                "relative flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
                 active
                   ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
                   : "text-[#79716b] hover:bg-white/70 hover:text-[#292524]",
               )}
             >
-              {lang.short}
+              {language.short}
+              {!primary && (
+                <span
+                  className={cn(
+                    "absolute right-1 top-1 h-1.5 w-1.5 rounded-full ring-1 ring-white",
+                    workspaceLanguage.status === "empty" && "bg-zinc-300",
+                    workspaceLanguage.status === "partial" && "bg-amber-400",
+                    workspaceLanguage.status === "ready" && "bg-emerald-500",
+                  )}
+                />
+              )}
             </button>
           );
         })}
+        {onManageLanguages && (
+          <button
+            type="button"
+            onClick={onManageLanguages}
+            className="ml-1 h-6 whitespace-nowrap rounded-md px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-white hover:text-[#292524]"
+          >
+            Управлять языками
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Content header (page header) ──────────────────────────────────────────────
-
 type ContentHeaderProps = {
   title?: string;
   description?: string;
   showLanguage?: boolean;
-  /** Second-level sub-page tabs */
   tabs?: ReactNode;
-  /** Navigate to billing on plan warning CTA */
   onRenewPlan?: () => void;
-  /** Действие в правом верхнем углу рабочей области (например, toggle предпросмотра) */
   rightSlot?: ReactNode;
 };
 
@@ -101,32 +135,36 @@ export function ContentHeader({
   onRenewPlan,
   rightSlot,
 }: ContentHeaderProps) {
-  const hasHeader = !!(title || description || showLanguage || tabs || rightSlot);
+  const hasHeader = Boolean(title || description || showLanguage || tabs || rightSlot);
 
   return (
     <div className="shrink-0">
       <PlanWarningStrip onRenew={onRenewPlan} />
       {hasHeader && (
         <div className="bg-white">
-          <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-3 px-8  pt-4">
-          <div className="min-w-0 flex-1">
-            {/* Title row */}
-            {(title || showLanguage) && (
-              <div className="flex items-center gap-2">
-                {title && (
-                  <h1 className="text-[14px] leading-tight text-stone-950 font-medium">{title}</h1>
-                )}
-                
-              </div>
-            )}
-            {/* Description */}
-            {description && (
-              <p className={cn("text-sm text-zinc-500", title && "mt-1")}>{description}</p>
-            )}
-            {/* Tabs (rail layout) */}
-            {tabs && <div className={cn("-mx-1", (title || description) && "mt-3")}>{tabs}</div>}
-          </div>
-          {rightSlot && <div className="absolute top-4 right-4">{rightSlot}</div>}
+          <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-3 px-8 pt-4">
+            <div className="min-w-0 flex-1">
+              {(title || showLanguage) && (
+                <div className="flex items-center gap-2">
+                  {title && (
+                    <h1 className="text-[14px] font-medium leading-tight text-stone-950">
+                      {title}
+                    </h1>
+                  )}
+                </div>
+              )}
+              {description && (
+                <p className={cn("text-sm text-zinc-500", title && "mt-1")}>
+                  {description}
+                </p>
+              )}
+              {tabs && (
+                <div className={cn("-mx-1", (title || description) && "mt-3")}>
+                  {tabs}
+                </div>
+              )}
+            </div>
+            {rightSlot && <div className="absolute right-4 top-4">{rightSlot}</div>}
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { TranslationIndicator } from "@/components/workspace/translation-indicat
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 type Translations = Partial<Record<LanguageCode, string>>;
 
@@ -10,6 +11,7 @@ const GENITIVE: Record<LanguageCode, string> = {
   ru: "русском",
   kk: "казахском",
   en: "английском",
+  sr: "сербском",
 };
 
 /**
@@ -27,6 +29,7 @@ export function TranslatableField({
   showTranslationMeta = true,
   compact = false,
   plain = false,
+  storageKey,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -38,9 +41,22 @@ export function TranslatableField({
   compact?: boolean;
   /** Стиль макета редактора позиции: подпись над полем, поле в собственной рамке. */
   plain?: boolean;
+  storageKey?: string;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
-  const [translations, setTranslations] = useState<Translations>(initialTranslations);
+  const { account, setWorkspaceLanguageHasContent } = useMockAuth();
+  const persistedKey = account
+    ? `tasko.catalog.translations.${account.id}.${storageKey ?? label}`
+    : null;
+  const [translations, setTranslations] = useState<Translations>(() => {
+    if (!persistedKey) return initialTranslations;
+    try {
+      const stored = window.localStorage.getItem(persistedKey);
+      return stored ? { ...initialTranslations, ...JSON.parse(stored) } : initialTranslations;
+    } catch {
+      return initialTranslations;
+    }
+  });
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const pendingFocus = useRef(false);
 
@@ -70,11 +86,16 @@ export function TranslatableField({
     }
   };
 
-  const handleChange = (value: string) =>
-    setTranslations((prev) => ({ ...prev, [contentLanguage]: value }));
+  const saveTranslation = (value: string) => {
+    setTranslations((prev) => {
+      const next = { ...prev, [contentLanguage]: value };
+      if (persistedKey) window.localStorage.setItem(persistedKey, JSON.stringify(next));
+      return next;
+    });
+    setWorkspaceLanguageHasContent(contentLanguage, value.trim() !== "");
+  };
 
-  const copyFromFallback = () =>
-    setTranslations((prev) => ({ ...prev, [contentLanguage]: fallbackValue }));
+  const copyFromFallback = () => saveTranslation(fallbackValue);
 
   const plainInputClass =
     "w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.1)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd]";
@@ -97,7 +118,7 @@ export function TranslatableField({
           ref={(el) => { inputRef.current = el; }}
           rows={rows}
           value={currentValue}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => saveTranslation(e.target.value)}
           placeholder={placeholder}
           className={
             plain
@@ -109,7 +130,7 @@ export function TranslatableField({
         <input
           ref={(el) => { inputRef.current = el; }}
           value={currentValue}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => saveTranslation(e.target.value)}
           placeholder={placeholder}
           className={
             plain

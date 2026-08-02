@@ -2,11 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 export type PageKey =
   | "home"
@@ -21,7 +23,7 @@ export const PAGE_LABELS: Record<PageKey, string> = {
   catalog: "Каталог",
   upsell: "Рекомендации",
   appearance: "Оформление",
-  about: "О заведении",
+  about: "Заведение",
   "order-settings": "Настройка заказов",
 };
 
@@ -46,6 +48,8 @@ type ToastState = { id: number; text: string } | null;
 
 type ChangeEntry = { page: PageKey; label: string; count: number };
 
+export type PublishResult = "first-publish" | "update" | "error" | null;
+
 type PublishContextValue = {
   status: PublishStatus;
   totalChanges: number;
@@ -66,9 +70,9 @@ type PublishContextValue = {
   /** Идёт ли публикация — фиксированный 3-сек loader поверх preview. */
   publishPhase: "idle" | "publishing";
   /** Результат последней публикации для toast. */
-  publishResult: "success" | "error" | null;
+  publishResult: PublishResult;
   /** Запустить публикацию. opts.fail — смоделировать ошибку ревалидации. */
-  startPublish: (opts?: { fail?: boolean }) => void;
+  startPublish: (opts?: { fail?: boolean; catalogHasVisibleItems?: boolean }) => void;
   /** Скрыть toast результата публикации. */
   dismissPublishResult: () => void;
   // UX-эксперимент
@@ -86,10 +90,33 @@ const emptyChanges = (): Record<PageKey, number> => ({
   "order-settings": 0,
 });
 
+const publishChangesKey = (accountId: string) => `tasko.publish.changes.${accountId}`;
+
+function readStoredChanges(accountId: string | undefined) {
+  if (!accountId || typeof window === "undefined") return emptyChanges();
+  try {
+    const raw = window.localStorage.getItem(publishChangesKey(accountId));
+    return raw ? { ...emptyChanges(), ...JSON.parse(raw) } : emptyChanges();
+  } catch {
+    return emptyChanges();
+  }
+}
+
+function writeStoredChanges(accountId: string | undefined, changes: Record<PageKey, number>) {
+  if (!accountId || typeof window === "undefined") return;
+  window.localStorage.setItem(publishChangesKey(accountId), JSON.stringify(changes));
+}
+
 const PublishContext = createContext<PublishContextValue | null>(null);
 
 export function PublishProvider({ children }: { children: ReactNode }) {
-  const [changes, setChanges] = useState<Record<PageKey, number>>(emptyChanges);
+  const {
+    account,
+    markDraftChanged,
+    publishWorkspace,
+  } = useMockAuth();
+  const accountId = account?.id;
+  const [changes, setChanges] = useState<Record<PageKey, number>>(() => readStoredChanges(accountId));
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishVersion, setPublishVersion] = useState(0);
@@ -97,21 +124,31 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const [saveMode, setSaveMode] = useState<SaveMode>("toast");
   const [toast, setToast] = useState<ToastState>(null);
   const [publishPhase, setPublishPhase] = useState<"idle" | "publishing">("idle");
-  const [publishResult, setPublishResult] = useState<"success" | "error" | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishResult>(null);
   // Дефолт-мок: «сегодня в 10:42» — для состояния «Всё опубликовано».
-  const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(() => {
-    const d = new Date();
-    d.setHours(10, 42, 0, 0);
-    return d.getTime();
-  });
+  const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(
+    () => account?.workspace.publishedSnapshot?.publishedAt ?? null,
+  );
   const savingTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const publishTimers = useRef<number[]>([]);
+  const lastCatalogHasVisibleItems = useRef(false);
+  const isFirstPublication = useRef(false);
+
+  useEffect(() => {
+    setChanges(readStoredChanges(accountId));
+    setLastPublishedAt(account?.workspace.publishedSnapshot?.publishedAt ?? null);
+  }, [accountId, account?.workspace.publishedSnapshot?.publishedAt]);
 
   const registerChange = useCallback(
     (page: PageKey) => {
-      setChanges((prev) => ({ ...prev, [page]: prev[page] + 1 }));
+      setChanges((prev) => {
+        const next = { ...prev, [page]: prev[page] + 1 };
+        writeStoredChanges(accountId, next);
+        return next;
+      });
       setLastChangeAt(Date.now());
+      markDraftChanged();
 
       if (saveMode === "toast") {
         // Режим 1 — toast после автосохранения.
@@ -124,7 +161,11 @@ export function PublishProvider({ children }: { children: ReactNode }) {
         savingTimerRef.current = window.setTimeout(() => setSaving(false), SAVING_DURATION_MS);
       }
     },
-    [saveMode],
+    [
+      accountId,
+      markDraftChanged,
+      saveMode,
+    ],
   );
 
   const totalChanges = useMemo(
@@ -166,14 +207,21 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearChanges = useCallback(() => {
-    setChanges(emptyChanges());
+    const next = emptyChanges();
+    setChanges(next);
+    writeStoredChanges(accountId, next);
     setLastChangeAt(null);
-  }, []);
+  }, [accountId]);
 
   // ── Публикация витрины ──────────────────────────────────────────────────────
   // Ревалидация Next/cache почти мгновенна, но момент готовности неизвестен —
   // поэтому показываем фиксированный 3-сек loader, затем success toast.
-  const startPublish = useCallback((opts?: { fail?: boolean }) => {
+  const startPublish = useCallback((opts?: { fail?: boolean; catalogHasVisibleItems?: boolean }) => {
+    if (typeof opts?.catalogHasVisibleItems === "boolean") {
+      lastCatalogHasVisibleItems.current = opts.catalogHasVisibleItems;
+    }
+    if (!lastCatalogHasVisibleItems.current) return;
+    isFirstPublication.current = !account?.workspace.publishedSnapshot;
     publishTimers.current.forEach((t) => window.clearTimeout(t));
     publishTimers.current = [];
     setPublishResult(null);
@@ -186,18 +234,21 @@ export function PublishProvider({ children }: { children: ReactNode }) {
             setPublishPhase("idle");
             setPublishResult("error");
           } else {
-            setChanges(emptyChanges());
+            const next = emptyChanges();
+            setChanges(next);
+            writeStoredChanges(accountId, next);
             setLastChangeAt(null);
             setPublishVersion((v) => v + 1);
             setPublishPhase("idle");
-            setPublishResult("success");
+            setPublishResult(isFirstPublication.current ? "first-publish" : "update");
             setLastPublishedAt(Date.now());
+            publishWorkspace(true);
           }
         },
         opts?.fail ? 600 : 3000, // ошибку показываем сразу, успех — после 3 сек
       ),
     );
-  }, []);
+  }, [account?.workspace.publishedSnapshot, accountId, publishWorkspace]);
 
   const dismissPublishResult = useCallback(() => setPublishResult(null), []);
 

@@ -1937,8 +1937,10 @@ function CatalogContextPanel({
 
 function EmptyCatalog({
   sections,
+  onAddItem,
 }: {
   sections: TreeSection[];
+  onAddItem: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
 
@@ -1961,7 +1963,7 @@ function EmptyCatalog({
         />
         <SectionEmptyState
           sectionName={sections[0]?.name ?? "Раздел"}
-          onAddItem={() => showPlaceholderFeedback("Добавить позицию: placeholder")}
+          onAddItem={onAddItem}
         />
         {feedback && (
           <div className="fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
@@ -1996,6 +1998,7 @@ type LocalizedValue = {
   ru: string;
   kk?: string;
   en?: string;
+  sr?: string;
 };
 type CatalogItemUpsellState = {
   recommendationIds?: string[];
@@ -2049,6 +2052,7 @@ const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
   kk: "Мысалы, Хит",
   en: "For example, Hit",
+  sr: "Na primer, Hit",
 };
 
 type MediaKind = "photo" | "video";
@@ -2553,6 +2557,7 @@ function BasicTab({
         key={`name-${item.id}`}
         label="Название"
         initialTranslations={{ ru: item.title }}
+        storageKey={`item-name-${item.id}`}
         showTranslationMeta={false}
         plain
       />
@@ -10646,6 +10651,7 @@ export function CatalogWorkspace({
     ) : (
       <EmptyCatalog
         sections={sections}
+        onAddItem={() => onAdvancePhase("has-items")}
       />
     );
 
