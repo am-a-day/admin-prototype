@@ -283,7 +283,7 @@ type PragmaticTreeInvalidFeedback = {
 
 const PRAGMATIC_TREE_INVALID_TOOLTIP_DELAY_MS = 700;
 const PRAGMATIC_TREE_INVALID_DROP_HOLD_MS = 1500;
-const PRAGMATIC_TREE_INVALID_INDICATOR_DELAY_MS = 225;
+const PRAGMATIC_TREE_INDICATOR_DELAY_MS = 225;
 const PRAGMATIC_TREE_AUTO_EXPAND_DELAY_MS = 650;
 
 type PragmaticTreeDndModel = { sections: TreeSection[]; items: CatalogItem[] };
@@ -413,16 +413,9 @@ function getPragmaticTreeDropIdentity(target: NonNullable<PragmaticTreeDropState
 
 function PragmaticTreeDragPreview({ data }: { data: PragmaticTreeDragData }) {
   return (
-    <div className="flex h-11 w-[235px] items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 shadow-[0_8px_24px_rgba(41,37,36,0.14)]">
-      <CatalogThumbnail src={data.imageUrl} kind={data.kind} className="h-7 w-7" />
-      <span className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="truncate text-[13px] font-medium leading-4 text-[#44403b]">{data.title}</span>
-        <span className="truncate text-[11px] leading-4 text-[#a8a29e]">
-          {data.kind === "section"
-            ? `${data.count ?? 0} ${plural(data.count ?? 0, "элемент", "элемента", "элементов")}`
-            : "Позиция"}
-        </span>
-      </span>
+    <div className="pointer-events-none flex max-w-[180px] items-center gap-1.5 opacity-80">
+      <CatalogThumbnail src={data.imageUrl} kind={data.kind} className="h-6 w-6 shrink-0" />
+      <span className="min-w-0 truncate text-[13px] font-medium leading-4 text-[#57534d]">{data.title}</span>
     </div>
   );
 }
@@ -5144,12 +5137,15 @@ function UnifiedCatalogTreePanel({
   const [treeDropState, setTreeDropState] = useState<PragmaticTreeDropState>(null);
   const [invalidTreeFeedback, setInvalidTreeFeedback] = useState<PragmaticTreeInvalidFeedback>(null);
   const [visibleInvalidIndicatorIdentity, setVisibleInvalidIndicatorIdentity] = useState<string | null>(null);
+  const [visibleFutureParentIdentity, setVisibleFutureParentIdentity] = useState<string | null>(null);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const invalidTargetIdentityRef = useRef<string | null>(null);
   const invalidIndicatorTargetIdentityRef = useRef<string | null>(null);
+  const futureParentTargetIdentityRef = useRef<string | null>(null);
   const invalidTooltipDelayTimerRef = useRef<number | null>(null);
   const invalidIndicatorDelayTimerRef = useRef<number | null>(null);
+  const futureParentDelayTimerRef = useRef<number | null>(null);
   const invalidDropHoldTimerRef = useRef<number | null>(null);
   const shownInvalidReasonsRef = useRef(new Set<string>());
   const autoExpandTargetIdentityRef = useRef<string | null>(null);
@@ -5331,6 +5327,13 @@ function UnifiedCatalogTreePanel({
     }
   }, []);
 
+  const clearFutureParentDelay = useCallback(() => {
+    if (futureParentDelayTimerRef.current !== null) {
+      window.clearTimeout(futureParentDelayTimerRef.current);
+      futureParentDelayTimerRef.current = null;
+    }
+  }, []);
+
   const clearAutoExpandDelay = useCallback(() => {
     if (autoExpandDelayTimerRef.current !== null) {
       window.clearTimeout(autoExpandDelayTimerRef.current);
@@ -5356,8 +5359,28 @@ function UnifiedCatalogTreePanel({
       invalidIndicatorDelayTimerRef.current = null;
       if (!dragActiveRef.current || invalidIndicatorTargetIdentityRef.current !== identity) return;
       setVisibleInvalidIndicatorIdentity(identity);
-    }, PRAGMATIC_TREE_INVALID_INDICATOR_DELAY_MS);
+    }, PRAGMATIC_TREE_INDICATOR_DELAY_MS);
   }, [clearInvalidIndicatorDelay, dragActiveRef]);
+
+  const syncFutureParentIndicator = useCallback((next: PragmaticTreeDropState) => {
+    if (!next?.valid || next.intent.type !== "inside") {
+      clearFutureParentDelay();
+      futureParentTargetIdentityRef.current = null;
+      setVisibleFutureParentIdentity(null);
+      return;
+    }
+
+    const identity = getPragmaticTreeDropIdentity(next);
+    if (futureParentTargetIdentityRef.current === identity) return;
+    clearFutureParentDelay();
+    futureParentTargetIdentityRef.current = identity;
+    setVisibleFutureParentIdentity(null);
+    futureParentDelayTimerRef.current = window.setTimeout(() => {
+      futureParentDelayTimerRef.current = null;
+      if (!dragActiveRef.current || futureParentTargetIdentityRef.current !== identity) return;
+      setVisibleFutureParentIdentity(identity);
+    }, PRAGMATIC_TREE_INDICATOR_DELAY_MS);
+  }, [clearFutureParentDelay, dragActiveRef]);
 
   const syncTreeAutoExpand = useCallback((next: PragmaticTreeDropState) => {
     const sectionId = next?.intent.type === "inside" ? next.intent.parentId : null;
@@ -5472,13 +5495,16 @@ function UnifiedCatalogTreePanel({
       clearInvalidTooltipDelay();
       clearInvalidIndicatorDelay();
       clearInvalidDropHold();
+      clearFutureParentDelay();
       clearAutoExpandDelay();
       invalidTargetIdentityRef.current = null;
       invalidIndicatorTargetIdentityRef.current = null;
+      futureParentTargetIdentityRef.current = null;
       shownInvalidReasonsRef.current.clear();
       autoExpandedSectionIdsRef.current.clear();
       setInvalidTreeFeedback(null);
       setVisibleInvalidIndicatorIdentity(null);
+      setVisibleFutureParentIdentity(null);
       dragActiveRef.current = true;
     },
     onDropTargetChange({ location }) {
@@ -5486,6 +5512,7 @@ function UnifiedCatalogTreePanel({
       updateTreeDropState(next);
       syncInvalidTreeFeedback(next);
       syncInvalidIndicator(next);
+      syncFutureParentIndicator(next);
       syncTreeAutoExpand(next);
     },
     onDrag({ location }) {
@@ -5493,6 +5520,7 @@ function UnifiedCatalogTreePanel({
       updateTreeDropState(next);
       syncInvalidTreeFeedback(next);
       syncInvalidIndicator(next);
+      syncFutureParentIndicator(next);
       syncTreeAutoExpand(next);
     },
     onDrop({ source, location }) {
@@ -5511,23 +5539,32 @@ function UnifiedCatalogTreePanel({
         clearInvalidTooltipDelay();
         clearInvalidIndicatorDelay();
         clearInvalidDropHold();
+        clearFutureParentDelay();
         clearAutoExpandDelay();
         invalidTargetIdentityRef.current = null;
         invalidIndicatorTargetIdentityRef.current = null;
+        futureParentTargetIdentityRef.current = null;
         setInvalidTreeFeedback(null);
         setVisibleInvalidIndicatorIdentity(null);
+        setVisibleFutureParentIdentity(null);
       } else if (finalTarget && !finalTarget.valid) {
+        clearFutureParentDelay();
+        futureParentTargetIdentityRef.current = null;
+        setVisibleFutureParentIdentity(null);
         clearAutoExpandDelay();
         retainInvalidDropFeedback(finalTarget);
       } else {
         clearInvalidTooltipDelay();
         clearInvalidIndicatorDelay();
         clearInvalidDropHold();
+        clearFutureParentDelay();
         clearAutoExpandDelay();
         invalidTargetIdentityRef.current = null;
         invalidIndicatorTargetIdentityRef.current = null;
+        futureParentTargetIdentityRef.current = null;
         setInvalidTreeFeedback(null);
         setVisibleInvalidIndicatorIdentity(null);
+        setVisibleFutureParentIdentity(null);
       }
       dragActiveRef.current = false;
       updateTreeDropState(null);
@@ -5538,11 +5575,13 @@ function UnifiedCatalogTreePanel({
     clearInvalidDropHold,
     clearInvalidIndicatorDelay,
     clearInvalidTooltipDelay,
+    clearFutureParentDelay,
     clearAutoExpandDelay,
     dragActiveRef,
     retainInvalidDropFeedback,
     syncInvalidIndicator,
     syncInvalidTreeFeedback,
+    syncFutureParentIndicator,
     syncTreeAutoExpand,
     updateTreeDropState,
   ]);
@@ -5551,12 +5590,14 @@ function UnifiedCatalogTreePanel({
     clearInvalidTooltipDelay();
     clearInvalidIndicatorDelay();
     clearInvalidDropHold();
+    clearFutureParentDelay();
     clearAutoExpandDelay();
     invalidTargetIdentityRef.current = null;
     invalidIndicatorTargetIdentityRef.current = null;
+    futureParentTargetIdentityRef.current = null;
     shownInvalidReasonsRef.current.clear();
     autoExpandedSectionIdsRef.current.clear();
-  }, [clearAutoExpandDelay, clearInvalidDropHold, clearInvalidIndicatorDelay, clearInvalidTooltipDelay]);
+  }, [clearAutoExpandDelay, clearFutureParentDelay, clearInvalidDropHold, clearInvalidIndicatorDelay, clearInvalidTooltipDelay]);
 
   const visibleSectionIds = new Set<string>();
   const visibleItemIds = new Set<string>();
@@ -5839,6 +5880,11 @@ function UnifiedCatalogTreePanel({
     const parentDropState = renderedTreeDropState?.intent.type === "inside" && renderedTreeDropState.intent.parentId === section.id
       ? renderedTreeDropState
       : null;
+    const futureParentIndicatorVisible = Boolean(
+      parentDropState?.valid
+      && visibleFutureParentIdentity === getPragmaticTreeDropIdentity(parentDropState),
+    );
+    const invalidParentIndicatorVisible = Boolean(parentDropState && !parentDropState.valid);
     const showParentInvalidTooltip = Boolean(
       parentDropState
       && !parentDropState.valid
@@ -5915,41 +5961,66 @@ function UnifiedCatalogTreePanel({
             active ? "rounded-[8px] bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
             highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18),0_0_0_3px_rgba(250,204,21,0.16)]",
             isDragging && "opacity-[0.38]",
-            parentDropState?.valid && "bg-[#f3f1ff] shadow-[inset_0_2px_0_#6d5dfc,inset_0_-2px_0_#6d5dfc]",
-            parentDropState && !parentDropState.valid && "cursor-not-allowed bg-[#fff1f2] shadow-[inset_0_2px_0_#dc2626,inset_0_-2px_0_#dc2626]",
+            parentDropState && !parentDropState.valid && "cursor-not-allowed",
           )}
         >
+          {parentDropState && (
+            <span
+              className={cn(
+                "pointer-events-none absolute inset-0 border-y-2",
+                parentDropState.valid ? "border-[#6d5dfc]" : "border-[#dc2626]",
+              )}
+              aria-hidden="true"
+            />
+          )}
           {showParentInvalidTooltip && parentDropState?.reason && (
             <span className="pointer-events-none absolute bottom-full left-1 z-30 mb-1 max-w-[220px] rounded-[6px] bg-[#991b1b] px-2 py-1 text-[10px] font-medium leading-3 text-white shadow-[0_4px_12px_rgba(127,29,29,0.24)]">
               {parentDropState.reason}
             </span>
           )}
-          {hasTreeChildren ? (
-            <button
-              type="button"
-              data-no-tree-drag
-              data-no-dnd
-              draggable={false}
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleSection(section.id);
-              }}
-              aria-expanded={isExpanded}
-              aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-              className="-m-[4.5px] grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-[#a6a09b] transition hover:bg-[#e6e6db] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <CaretRight
-                size={11}
-                weight="fill"
-                className={cn(
-                  "col-start-1 row-start-1 opacity-100 transition-transform",
-                  isExpanded && "rotate-90",
-                )}
-              />
-            </button>
-          ) : (
-            <span className="flex h-[11px] w-[11px] shrink-0 items-center justify-center" aria-hidden="true" />
-          )}
+          <span
+            data-tree-parent-indicator={hasTreeChildren
+              ? "existing"
+              : futureParentIndicatorVisible
+                ? "future"
+                : invalidParentIndicatorVisible
+                  ? "invalid"
+                  : "empty"}
+            className="flex h-[11px] w-[11px] shrink-0 items-center justify-center"
+          >
+            {hasTreeChildren ? (
+              <button
+                type="button"
+                data-no-tree-drag
+                data-no-dnd
+                draggable={false}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSection(section.id);
+                }}
+                aria-expanded={isExpanded}
+                aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
+                className="-m-[4.5px] grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-[#a6a09b] transition hover:bg-[#e6e6db] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <CaretRight
+                  size={11}
+                  weight="fill"
+                  className={cn(
+                    "col-start-1 row-start-1 opacity-100 transition-transform",
+                    isExpanded && "rotate-90",
+                  )}
+                />
+              </button>
+            ) : futureParentIndicatorVisible ? (
+              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#a6a09b]" aria-hidden="true">
+                <CaretRight size={11} weight="fill" />
+              </span>
+            ) : invalidParentIndicatorVisible ? (
+              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#dc2626]" aria-hidden="true">
+                <Prohibit size={12} weight="bold" />
+              </span>
+            ) : null}
+          </span>
           <div className="ml-1 flex min-w-0 flex-1 items-center gap-2">
             <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
             <TruncatedText className={cn("h-4 text-left text-[13px] font-medium leading-[18px] transition-[padding] group-hover:pr-11 group-has-[:focus-visible]:pr-11", active ? "text-[#292524]" : "text-[#79716b]")}>
