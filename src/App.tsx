@@ -18,6 +18,11 @@ import {
   type AuthResolution,
 } from "@/contexts/mock-auth-context";
 import { trackAuthEvent } from "@/lib/auth-analytics";
+import {
+  catalogStorageKey,
+  IS_PRAGMATIC_CATALOG_PREVIEW,
+  resetPragmaticCatalogPreview,
+} from "@/lib/catalog-preview";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -64,7 +69,7 @@ type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 type SidebarPreference = "expanded" | "collapsed" | null;
 
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
-const CATALOG_PHASE_STORAGE_KEY = "tasko.catalog.phase";
+const CATALOG_PHASE_STORAGE_KEY = catalogStorageKey("phase");
 const TRAINING_PATH = "/training";
 const STOREFRONT_PATH = "/storefront";
 const ABOUT_PATH = `${STOREFRONT_PATH}/about`;
@@ -375,6 +380,21 @@ function PrototypeToolsFloating({
                 })}
               </div>
             </div>
+
+            {IS_PRAGMATIC_CATALOG_PREVIEW && (
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                  Pragmatic preview
+                </div>
+                <button
+                  type="button"
+                  onClick={resetPragmaticCatalogPreview}
+                  className="w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                >
+                  Сбросить дерево к исходным данным
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1126,6 +1146,15 @@ function AuthenticatedShell() {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (!IS_PRAGMATIC_CATALOG_PREVIEW) return;
+    const previousTitle = document.title;
+    document.title = "TASKO Catalog — Pragmatic DnD Preview";
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+
   return (
     <MockAuthProvider>
       <AppSettingsProvider>

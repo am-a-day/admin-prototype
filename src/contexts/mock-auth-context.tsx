@@ -9,6 +9,11 @@ import {
 import { MOCK_USER } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { getRegistrationMarket } from "@/lib/registration-market";
+import {
+  CATALOG_STORAGE_PREFIX,
+  IS_PRAGMATIC_CATALOG_PREVIEW,
+  previewScopedStorageKey,
+} from "@/lib/catalog-preview";
 
 export type MockWorkspaceStatus = "draft" | "published" | "changes";
 export type OrganizationType = "restaurant" | "store" | "services" | "other";
@@ -111,14 +116,14 @@ type MockAuthContextValue = {
   getAccountById: (accountId: string) => MockAccount | null;
 };
 
-const AUTH_STATE_KEY = "tasko.mockAuth.v1";
-const SESSION_KEY = "tasko.mockAuth.session.v1";
+const AUTH_STATE_KEY = previewScopedStorageKey("tasko.mockAuth.v1");
+const SESSION_KEY = previewScopedStorageKey("tasko.mockAuth.session.v1");
 const LOGGED_OUT_SESSION = "__logged_out__";
 const SEED_ACCOUNT_ID = "seed-owner";
 const SEED_PHONE_ACCOUNT_ID = "seed-phone-owner";
 const SEED_PHONE_CONTACT = "+79950876356";
 const DEFAULT_EXISTING_PASSWORD = "tasko123";
-const CATALOG_KEY_PREFIX = "tasko.catalog.";
+const CATALOG_KEY_PREFIX = CATALOG_STORAGE_PREFIX;
 
 type StoredAuthState = {
   accounts: Record<string, MockAccount>;
@@ -382,6 +387,7 @@ function writeAuthState(state: StoredAuthState) {
 function readSessionId() {
   if (typeof window === "undefined") return null;
   const stored = window.localStorage.getItem(SESSION_KEY);
+  if (IS_PRAGMATIC_CATALOG_PREVIEW && stored === null) return SEED_ACCOUNT_ID;
   if (stored === LOGGED_OUT_SESSION) return null;
   return stored;
 }
