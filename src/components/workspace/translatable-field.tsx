@@ -33,6 +33,7 @@ export function TranslatableField({
   autoFocus = false,
   onValueChange,
   persist = true,
+  onChange,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -48,6 +49,7 @@ export function TranslatableField({
   autoFocus?: boolean;
   onValueChange?: (value: string) => void;
   persist?: boolean;
+  onChange?: (translations: Translations) => void;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const { account, setWorkspaceLanguageHasContent } = useMockAuth();
@@ -96,6 +98,7 @@ export function TranslatableField({
     setTranslations((prev) => {
       const next = { ...prev, [contentLanguage]: value };
       if (persistedKey) window.localStorage.setItem(persistedKey, JSON.stringify(next));
+      onChange?.(next);
       return next;
     });
     setWorkspaceLanguageHasContent(contentLanguage, value.trim() !== "");

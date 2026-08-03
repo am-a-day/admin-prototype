@@ -1298,8 +1298,15 @@ type DescriptionAuditQueueState = {
   snapshot: DescriptionAuditQueueSnapshot;
   currentId: string | null;
 };
-type DescriptionSaveStatus = "idle" | "saving" | "saved";
-
+type OpenPositionIntent = {
+  origin: "structure" | "positions";
+  currentId: string;
+  orderedIds: string[];
+  sectionId?: string;
+  snapshot?: DescriptionAuditQueueSnapshot;
+  returnContext: { label: string };
+  revision: number;
+};
 /** Запрос на открытие позиции во вкладке «Позиции» из вкладки «Разделы». */
 type PendingOpen = {
   id: string;
@@ -2927,6 +2934,7 @@ function BasicTab({
   namePlaceholder = "Введите перевод…",
   onNameChange,
   onWeightChange,
+  onTitleChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -2949,6 +2957,7 @@ function BasicTab({
   namePlaceholder?: string;
   onNameChange?: (value: string) => void;
   onWeightChange?: (value: string, unit: string) => void;
+  onTitleChange?: (value: string) => void;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -2986,6 +2995,7 @@ function BasicTab({
         persist={!autoFocusName}
         placeholder={namePlaceholder}
         onValueChange={onNameChange}
+        onChange={(translations) => onTitleChange?.(translations.ru ?? item.title)}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4733,6 +4743,7 @@ function PositionEditor({
   createDisabled = false,
   createSubmitting = false,
   draftDirty = false,
+  onItemChange,
   forcedEditorTab,
   focusAnchor,
   forceBasicTabOnItemChange = false,
@@ -4766,6 +4777,7 @@ function PositionEditor({
   createDisabled?: boolean;
   createSubmitting?: boolean;
   draftDirty?: boolean;
+  onItemChange?: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   forcedEditorTab?: EditorTab;
   focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
@@ -4850,7 +4862,10 @@ function PositionEditor({
   };
   const formatBasePrice = () => {
     const value = parseMoneyInput(basePriceText);
-    if (value != null) setBasePriceText(formatMoneyInput(value));
+    if (value != null) {
+      setBasePriceText(formatMoneyInput(value));
+      onItemChange?.(item, { price: value });
+    }
   };
   const addDiscount = () => {
     setDiscountOpen(true);
@@ -5004,6 +5019,7 @@ function PositionEditor({
                       const parsed = parseMoneyInput(value);
                       onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
                     }}
+                    onTitleChange={(value) => onItemChange?.(item, { title: value })}
                   />
                 </div>
               )}
@@ -5085,6 +5101,148 @@ function PositionEditor({
         </div>
       )}
     </div>
+  );
+}
+
+function PositionEditorHost({
+  intent,
+  onCurrentIdChange,
+  onClose,
+  onFeedback,
+}: {
+  intent: OpenPositionIntent;
+  onCurrentIdChange: (id: string) => void;
+  onClose: () => void;
+  onFeedback?: (message: string) => void;
+}) {
+  const {
+    items,
+    itemsById,
+    updateItem,
+    deleteItem,
+    setItemStatus,
+    setAutosaveStatus,
+  } = useCatalogStore();
+  const { registerChange } = usePublish();
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
+    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
+  );
+  const saveTimersRef = useRef<Record<string, number>>({});
+  const item = itemsById[intent.currentId] ?? null;
+  const currentIndex = intent.orderedIds.indexOf(intent.currentId);
+  const previousId = currentIndex > 0 ? intent.orderedIds[currentIndex - 1] : null;
+  const nextId = currentIndex >= 0 && currentIndex < intent.orderedIds.length - 1
+    ? intent.orderedIds[currentIndex + 1]
+    : null;
+  const editorContext = intent.origin === "positions" && intent.snapshot
+    ? getQueueEditorContext(intent.snapshot.entryFilterId)
+    : { tab: "basic" as EditorTab, anchor: undefined };
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
+  }, [upsellByItem]);
+
+  useEffect(() => () => {
+    Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  if (!item) {
+    return <DescriptionQueueComplete filterId={intent.snapshot?.filterId ?? "quick:all"} onBack={onClose} />;
+  }
+
+  const saveDescription = (target: CatalogItem, value: string) => {
+    window.clearTimeout(saveTimersRef.current[target.id]);
+    updateItem(target.id, { description: value });
+    saveTimersRef.current[target.id] = window.setTimeout(() => {
+      updateItem(target.id, { description: value, hasDescription: descriptionHasContent(value) }, { autosave: false });
+      setAutosaveStatus(target.id, "saved");
+      registerChange("catalog");
+    }, 450);
+  };
+
+  const setAvailability = (target: CatalogItem, mode: AvailabilityMode) => {
+    if (target.status === "archive") return;
+    setItemStatus(target.id, mode === "unavailable" ? "stopped" : "active", mode === "schedule");
+    registerChange("catalog");
+  };
+
+  return (
+    <PositionEditor
+      item={item}
+      allItems={items}
+      upsell={upsellByItem[item.id] ?? {}}
+      onUpsellChange={(next) => {
+        setUpsellByItem((current) => ({ ...current, [item.id]: next }));
+        registerChange("catalog");
+      }}
+      stopBusy={false}
+      onArchiveItem={(target) => {
+        setItemStatus(target.id, "archive");
+        onFeedback?.("Позиция перенесена в архив");
+      }}
+      onRestoreItem={(target) => {
+        setItemStatus(target.id, "active");
+        onFeedback?.("Позиция восстановлена");
+      }}
+      onMoveItem={(target) => onFeedback?.(`Переместить «${target.title}»: placeholder`)}
+      onToggleStop={(target) => setItemStatus(target.id, target.status === "stopped" ? "active" : "stopped")}
+      onSetAvailabilityMode={setAvailability}
+      unavailableDisplayMode="hidden"
+      outsideScheduleMode="hidden"
+      weeklySchedule={createDefaultWeeklySchedule()}
+      onUnavailableDisplayModeChange={() => {}}
+      onOutsideScheduleModeChange={() => {}}
+      onWeeklyScheduleChange={() => {}}
+      onRequestPermanentDelete={(target) => {
+        deleteItem(target.id);
+        onClose();
+      }}
+      onDescriptionChange={saveDescription}
+      onMediaAdded={(target, previewUrl) => {
+        updateItem(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
+        registerChange("catalog");
+      }}
+      onItemChange={(target, patch) => {
+        updateItem(target.id, patch);
+        registerChange("catalog");
+      }}
+      forcedEditorTab={editorContext.tab}
+      focusAnchor={editorContext.anchor}
+      showStopQuickAction={!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId)}
+      breadcrumb={
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
+        >
+          <ArrowLeft size={14} />
+          <span className="truncate">{intent.returnContext.label}</span>
+        </button>
+      }
+      headerMeta={
+        <div className="flex items-center gap-1 text-[12px] text-[#a6a09b]">
+          <span className="px-1 tabular-nums">{currentIndex >= 0 ? currentIndex + 1 : 1}/{intent.orderedIds.length}</span>
+          <button
+            type="button"
+            aria-label="Предыдущая позиция"
+            disabled={!previousId}
+            onClick={() => previousId && onCurrentIdChange(previousId)}
+            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
+          >
+            <CaretUp size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="Следующая позиция"
+            disabled={!nextId}
+            onClick={() => nextId && onCurrentIdChange(nextId)}
+            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
+          >
+            <CaretDown size={14} />
+          </button>
+        </div>
+      }
+    />
   );
 }
 
@@ -10965,9 +11123,6 @@ function UnifiedFlatCatalogPanel({
   );
 }
 
-/** Breadcrumb над редактором: <раздел> / <фильтр — только если активен> / <название позиции>.
- * «Раздел» открывает таблицу всех позиций раздела (фильтр снимается); «Фильтр» —
- * таблицу текущей отфильтрованной выборки. Название позиции не кликабельно. */
 function PositionEditorBreadcrumb({
   filterId,
   sectionName,
@@ -10996,7 +11151,6 @@ function PositionEditorBreadcrumb({
     </nav>
   );
 }
-
 
 function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFilterId; onBack: () => void }) {
   return (
@@ -11084,6 +11238,7 @@ function OverviewWorkspace({
     deleteItem,
     setItemStatus,
     setAutosaveStatus,
+    revision: catalogRevision,
   } = useCatalogStore();
   // Открытие из «Разделов» обрабатывается атомарно на маунте: сразу строим items и
   // очередь-редактор из pendingOpen — без гонок setState, чтобы повторный переход
@@ -11102,7 +11257,7 @@ function OverviewWorkspace({
   const [panelQuery, setPanelQuery] = useState("");
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
-  const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
+  const [, setDescriptionSaveStateById] = useState<Record<string, "idle" | "saving" | "saved">>({});
   const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
@@ -11523,7 +11678,6 @@ function OverviewWorkspace({
     setItemStatus(item.id, "active");
     showFeedback("Позиция восстановлена");
   };
-
   useEffect(() => {
     clearSelection();
   }, [filterId]);
@@ -11572,12 +11726,6 @@ function OverviewWorkspace({
   }, [feedback]);
 
   useEffect(() => {
-    return () => {
-      Object.values(descriptionSaveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
-    };
-  }, []);
-
-  useEffect(() => {
     setRecentPositionIds((current) => {
       const next = normalizeRecentPositionIds(current, items);
       return next.join("|") === current.join("|") ? current : next;
@@ -11605,7 +11753,6 @@ function OverviewWorkspace({
         : items.find((item) => item.id === queue.currentId) ?? null
       : null;
     const isCreating = Boolean(currentItem && creationItemId === currentItem.id && draftItem);
-    const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
     const editorContext = getQueueEditorContext(queue.snapshot.entryFilterId);
     const byId = new Map(items.map((item) => [item.id, item]));
     // Список всегда вычисляется заново из живых данных. Исправленная позиция сразу
@@ -11626,6 +11773,15 @@ function OverviewWorkspace({
     const breadcrumbSectionName = queue.snapshot.sectionScopeId
       ? catalogSections.find((section) => section.id === queue.snapshot.sectionScopeId)?.name ?? "Все разделы"
       : currentItem?.sectionName ?? "Все разделы";
+    const editorIntent: OpenPositionIntent | null = currentItem && !isCreating ? {
+      origin: "positions",
+      currentId: currentItem.id,
+      orderedIds: queue.snapshot.itemIds,
+      sectionId: queue.snapshot.sectionScopeId ?? undefined,
+      snapshot: queue.snapshot,
+      returnContext: { label: `Назад к выборке «${getFilterPanelTitle(queue.snapshot.filterId)}»` },
+      revision: catalogRevision,
+    } : null;
     return (
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
         <div className="flex min-h-0 flex-1">
@@ -11643,7 +11799,7 @@ function OverviewWorkspace({
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item) => requestCreateNavigation(() => selectQueueItem(item.id))}
           />
-          {currentItem ? (
+          {isCreating && currentItem ? (
             <PositionEditor
               item={currentItem}
               mode={isCreating ? "create" : "edit"}
@@ -11687,13 +11843,15 @@ function OverviewWorkspace({
                 />
               }
             />
+          ) : editorIntent ? (
+            <PositionEditorHost
+              intent={editorIntent}
+              onCurrentIdChange={selectQueueItem}
+              onClose={returnToOverview}
+              onFeedback={showFeedback}
+            />
           ) : (
             <DescriptionQueueComplete filterId={queue.snapshot.filterId} onBack={returnToOverview} />
-          )}
-          {saveStatus === "saving" && (
-            <div className="pointer-events-none fixed bottom-5 left-1/2 z-[100003] -translate-x-1/2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
-              Сохраняется
-            </div>
           )}
           {feedback && <SelectionFeedback message={feedback} />}
           {discardDialogOpen && (
