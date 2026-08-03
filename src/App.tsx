@@ -522,6 +522,7 @@ function AuthenticatedShell() {
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
   const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(null);
   const [catalogResetSignal] = useState(0);
+  const catalogCreateNavigationGuardRef = useRef<((next: CatalogTab, continueNavigation: () => void) => boolean) | null>(null);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
   const updateCatalogPhase = (next: CatalogPhase) => {
     setCatalogPhase(next);
@@ -548,6 +549,18 @@ function AuthenticatedShell() {
     }
   };
   const changeCatalogTab = (next: CatalogTab) => {
+    const continueNavigation = () => {
+      setCatalogTab(next);
+      if (next === "overview") {
+        if (catalogViewMode === "sections") {
+          setCatalogViewMode("quick:all");
+          setCatalogOverviewFilterId("quick:all");
+        } else {
+          setCatalogOverviewFilterId(catalogViewMode);
+        }
+      }
+    };
+    if (catalogCreateNavigationGuardRef.current && !catalogCreateNavigationGuardRef.current(next, continueNavigation)) return;
     setCatalogTab(next);
     if (next === "overview") {
       if (catalogViewMode === "sections") {
@@ -851,6 +864,9 @@ function AuthenticatedShell() {
           onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
+          onRegisterCreateNavigationGuard={(guard) => {
+            catalogCreateNavigationGuardRef.current = guard;
+          }}
           onAdvancePhase={(next) => {
             updateCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");

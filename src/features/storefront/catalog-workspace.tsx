@@ -622,6 +622,25 @@ const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
   { id: "upsell", label: "Рекомендации" },
 ];
 
+const CATALOG_CREATED_ITEMS_STORAGE_KEY = catalogStorageKey("createdItems");
+const CATALOG_CREATED_ITEMS_EVENT = "tasko-catalog-created-items-change";
+
+function readCreatedCatalogItems(): CatalogItem[] {
+  const stored = readJsonRecord<unknown>(CATALOG_CREATED_ITEMS_STORAGE_KEY, []);
+  return Array.isArray(stored) ? stored as CatalogItem[] : [];
+}
+
+function writeCreatedCatalogItems(items: CatalogItem[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CATALOG_CREATED_ITEMS_STORAGE_KEY, JSON.stringify(items));
+  window.dispatchEvent(new Event(CATALOG_CREATED_ITEMS_EVENT));
+}
+
+function createRealPositionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `position-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const CREATED_SECTION: Category = {
   id: "created-section",
   name: "Мой раздел",
@@ -635,6 +654,14 @@ export function CatalogTabs({
   value: CatalogTab;
   onChange: (t: CatalogTab) => void;
 }) {
+  const [createdItemsVersion, setCreatedItemsVersion] = useState(0);
+  useEffect(() => {
+    const onCreatedItemsChange = () => setCreatedItemsVersion((version) => version + 1);
+    window.addEventListener(CATALOG_CREATED_ITEMS_EVENT, onCreatedItemsChange);
+    return () => window.removeEventListener(CATALOG_CREATED_ITEMS_EVENT, onCreatedItemsChange);
+  }, []);
+  void createdItemsVersion;
+  const itemCount = catalogItems.length + readCreatedCatalogItems().length;
   return (
     <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
       {CATALOG_TABS.map((t) => (
@@ -650,12 +677,12 @@ export function CatalogTabs({
           )}
         >
           <span>{t.label}</span>
-          {typeof t.count === "number" && (
+          {t.id === "overview" && (
             <span className={cn(
               "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
               value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
             )}>
-              {t.count}
+              {itemCount}
             </span>
           )}
         </button>
@@ -717,6 +744,7 @@ type CatalogWorkspaceProps = {
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
+  onRegisterCreateNavigationGuard: (guard: ((next: CatalogTab, continueNavigation: () => void) => boolean) | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
@@ -1123,7 +1151,7 @@ function getFilterPanelTitle(filterId: OverviewFilterId) {
 }
 
 function getCatalogViewModeCount(mode: CatalogViewMode) {
-  return mode === "sections" ? null : getOverviewItems(mode).length;
+  return mode === "sections" ? null : getOverviewItems(mode, [...catalogItems, ...readCreatedCatalogItems()]).length;
 }
 
 function CatalogViewModeSelect({
@@ -1371,7 +1399,7 @@ function getQueueItemIds(
     .filter((item) =>
       !normalizedQuery || [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
     );
-  return sortItemsByPrice(filtered, priceSort).map((item) => item.id);
+  return sortItemsByPrice(orderItemsByStoredPositionOrder(filtered), priceSort).map((item) => item.id);
 }
 
 function CatalogSidePanel({
@@ -2877,6 +2905,9 @@ function BasicTab({
   onRemoveMedia,
   onDescriptionChange,
   autoFocusName = false,
+  namePlaceholder = "Введите перевод…",
+  onNameChange,
+  onWeightChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -2896,6 +2927,9 @@ function BasicTab({
   onRemoveMedia: (id: string) => void;
   onDescriptionChange?: (value: string) => void;
   autoFocusName?: boolean;
+  namePlaceholder?: string;
+  onNameChange?: (value: string) => void;
+  onWeightChange?: (value: string, unit: string) => void;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -2926,10 +2960,13 @@ function BasicTab({
         key={`name-${item.id}`}
         label="Название"
         initialTranslations={{ ru: item.title }}
-        storageKey={`item-name-${item.id}`}
+        storageKey={autoFocusName ? undefined : `item-name-${item.id}`}
         showTranslationMeta={false}
         plain
         autoFocus={autoFocusName}
+        persist={!autoFocusName}
+        placeholder={namePlaceholder}
+        onValueChange={onNameChange}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2955,11 +2992,15 @@ function BasicTab({
             <input
               value={weightText}
               onChange={(event) => {
-                if (isFormattedNumericDraft(event.target.value)) setWeightText(event.target.value);
+                if (isFormattedNumericDraft(event.target.value)) {
+                  setWeightText(event.target.value);
+                  onWeightChange?.(event.target.value, weightUnit);
+                }
               }}
               onBlur={() => {
                 const value = parseMoneyInput(weightText);
                 if (value != null) setWeightText(formatPlainNumber(value));
+                onWeightChange?.(weightText, weightUnit);
               }}
               placeholder="—"
               className={inlineInputClass}
@@ -4667,6 +4708,12 @@ function PositionEditor({
   headerMeta,
   onDescriptionChange,
   onMediaAdded,
+  onDraftChange,
+  onCreatePosition,
+  onCancelCreate,
+  createDisabled = false,
+  createSubmitting = false,
+  draftDirty = false,
   forcedEditorTab,
   focusAnchor,
   forceBasicTabOnItemChange = false,
@@ -4694,6 +4741,12 @@ function PositionEditor({
   headerMeta?: ReactNode;
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
+  onDraftChange?: (patch: Partial<CatalogItem>) => void;
+  onCreatePosition?: () => void;
+  onCancelCreate?: () => void;
+  createDisabled?: boolean;
+  createSubmitting?: boolean;
+  draftDirty?: boolean;
   forcedEditorTab?: EditorTab;
   focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
@@ -4740,6 +4793,7 @@ function PositionEditor({
     const previewUrl = URL.createObjectURL(file);
     setMedia((m) => [...m, { id: `photo-${Date.now()}`, kind: "photo", fileName: file.name, previewUrl }]);
     onMediaAdded?.(item, previewUrl);
+    onDraftChange?.({ thumbnailUrl: item.thumbnailUrl ?? previewUrl });
   };
   const addVideoFile = (file: File) => {
     const previewUrl = URL.createObjectURL(file);
@@ -4754,6 +4808,7 @@ function PositionEditor({
       ...m.filter((entry) => entry.kind !== "video"),
     ]);
     onMediaAdded?.(item, previewUrl);
+    onDraftChange?.({ thumbnailUrl: item.thumbnailUrl ?? previewUrl });
   };
   const reorderMedia = (fromIndex: number, toIndex: number) => {
     setMedia((current) => {
@@ -4763,12 +4818,16 @@ function PositionEditor({
       next.splice(toIndex, 0, moved);
       return next;
     });
+    onDraftChange?.({});
   };
-  const removeMedia = (id: string) =>
+  const removeMedia = (id: string) => {
     setMedia((m) => m.filter((x) => x.id !== id));
+    onDraftChange?.({ thumbnailUrl: null });
+  };
   const updateBasePrice = (value: string) => {
     if (!isFormattedNumericDraft(value)) return;
     setBasePriceText(value);
+    onDraftChange?.({ price: parseMoneyInput(value) ?? 0 });
   };
   const formatBasePrice = () => {
     const value = parseMoneyInput(basePriceText);
@@ -4777,10 +4836,12 @@ function PositionEditor({
   const addDiscount = () => {
     setDiscountOpen(true);
     setDiscountAutofocusKey((value) => value + 1);
+    onDraftChange?.({ hasDiscount: true });
   };
   const removeDiscount = () => {
     setDiscountOpen(false);
     setDiscountAutofocusKey(0);
+    onDraftChange?.({ hasDiscount: false, priceWithSale: null });
   };
   const basePrice = parseMoneyInput(basePriceText);
   const isArchived = item.status === "archive";
@@ -4843,7 +4904,7 @@ function PositionEditor({
           ) : (
             <div className="flex items-center gap-2 pb-2 pt-6">
               <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
-                <span className="truncate">{item.title}</span>
+                <span className="truncate">{item.title || "Новая позиция"}</span>
                 {isArchived && (
                   <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
                     В архиве
@@ -4901,7 +4962,10 @@ function PositionEditor({
                     weightUnit={weightUnit}
                     discountOpen={discountOpen}
                     discountAutofocusKey={discountAutofocusKey}
-                    onWeightUnitChange={setWeightUnit}
+                    onWeightUnitChange={(unit) => {
+                      setWeightUnit(unit);
+                      onDraftChange?.({ weightLabel: item.weightLabel ? item.weightLabel.replace(/[A-Za-zА-Яа-я]+$/, unit) : null });
+                    }}
                     onBasePriceChange={updateBasePrice}
                     onBasePriceBlur={formatBasePrice}
                     onAddDiscount={addDiscount}
@@ -4910,8 +4974,17 @@ function PositionEditor({
                     onAddVideoFile={addVideoFile}
                     onReorderMedia={reorderMedia}
                     onRemoveMedia={removeMedia}
-                    onDescriptionChange={(value) => onDescriptionChange?.(item, value)}
+                    onDescriptionChange={(value) => {
+                      onDescriptionChange?.(item, value);
+                      onDraftChange?.({ description: value, hasDescription: descriptionHasContent(value) });
+                    }}
                     autoFocusName={mode === "create"}
+                    namePlaceholder={mode === "create" ? "Например, Пицца" : "Введите перевод…"}
+                    onNameChange={(value) => onDraftChange?.({ title: value })}
+                    onWeightChange={(value, unit) => {
+                      const parsed = parseMoneyInput(value);
+                      onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
+                    }}
                   />
                 </div>
               )}
@@ -4954,11 +5027,11 @@ function PositionEditor({
           {activeTab === "basic" && (
             <div className="mt-4 space-y-4">
               <div data-kbju-editor-anchor>
-                {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => setKbjuOpen(false)} />}
+                {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => { setKbjuOpen(false); onDraftChange?.({}); }} />}
                 {!kbjuOpen && (
                   <div className="px-1.5 pt-1">
                     <div className="flex flex-col items-start">
-                      <button type="button" className={addRowClass} onClick={() => setKbjuOpen(true)}>
+                      <button type="button" className={addRowClass} onClick={() => { setKbjuOpen(true); onDraftChange?.({}); }}>
                         <PlusCircle size={16} className="text-[#a8a29e]" />
                         Добавить КБЖУ
                       </button>
@@ -4970,6 +5043,28 @@ function PositionEditor({
           )}
         </div>
       </div>
+      {mode === "create" && (
+        <div data-create-dirty={draftDirty ? "true" : "false"} className="sticky bottom-0 z-20 flex shrink-0 items-center justify-end gap-2 border-t border-[#e7e5e4] bg-white/95 px-6 py-3 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={onCancelCreate}
+            disabled={createSubmitting}
+            className="h-9 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={onCreatePosition}
+            disabled={createDisabled || createSubmitting}
+            aria-busy={createSubmitting}
+            className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#292524] px-3.5 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {createSubmitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/45 border-t-white" />}
+            {createSubmitting ? "Создание…" : "Создать позицию"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -5301,6 +5396,21 @@ function orderSectionItems(items: CatalogItem[], order: string[] | undefined): C
   return [...items].sort((left, right) =>
     (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER),
   );
+}
+
+function orderItemsByStoredPositionOrder(items: CatalogItem[]) {
+  const orders = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
+  const originalIndexes = new Map(items.map((item, index) => [item.id, index]));
+  return [...items].sort((left, right) => {
+    if (left.sectionId !== right.sectionId) {
+      return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
+    }
+    const order = orders[left.sectionId];
+    if (!order?.length) return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
+    const positions = new Map(order.map((id, index) => [id, index]));
+    return (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+      || (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
+  });
 }
 
 function cloneStringArrayRecord(record: Record<string, string[]>) {
@@ -7101,7 +7211,7 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
   draftSeq += 1;
   return {
     id: `draft-${Date.now()}-${draftSeq}`,
-    title: "Новая позиция",
+    title: "",
     sectionId: section?.id ?? "no-section",
     sectionName: section?.name ?? "Без раздела",
     thumbnailUrl: null,
@@ -7181,6 +7291,49 @@ function PermanentDeleteDialog({
             className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20"
           >
             Удалить навсегда
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function CreateDiscardDialog({
+  onContinue,
+  onDiscard,
+}: {
+  onContinue: () => void;
+  onDiscard: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-discard-title"
+        className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]"
+      >
+        <h2 id="create-discard-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
+          Отменить создание позиции?
+        </h2>
+        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+          Введённые данные не сохранятся.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onContinue}
+            className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Продолжить редактирование
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="h-8 rounded-[9px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            Отменить создание
           </button>
         </div>
       </div>
@@ -7326,6 +7479,7 @@ function writeRecentPositionId(id: string, items: CatalogItem[]) {
 
 function PopulatedWorkspace({
   sections,
+  createdItems,
   scopeSectionId,
   resetSignal,
   initialSelectedItemId,
@@ -7334,6 +7488,7 @@ function PopulatedWorkspace({
   onEditPositionInOverview,
 }: {
   sections: TreeSection[];
+  createdItems: CatalogItem[];
   scopeSectionId: string | null;
   resetSignal: number;
   initialSelectedItemId: string | null;
@@ -7350,14 +7505,15 @@ function PopulatedWorkspace({
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
+  const sourceCatalogItems = [...catalogItems, ...createdItems];
   const preferredSectionId =
     catalogSections.find((section) => section.name === "Горячие блюда")?.id ??
     SECTIONS_WITH_ITEMS[0]?.id ??
     catalogSections[0]?.id ??
     null;
-  const preferredSectionItems = catalogItems.filter((item) => item.sectionId === preferredSectionId);
+  const preferredSectionItems = sourceCatalogItems.filter((item) => item.sectionId === preferredSectionId);
   const preferredItemId =
-    catalogItems.find((item) => item.sectionId === preferredSectionId && item.title.includes("Пицца"))?.id ??
+    sourceCatalogItems.find((item) => item.sectionId === preferredSectionId && item.title.includes("Пицца"))?.id ??
     preferredSectionItems[2]?.id ??
     preferredSectionItems[0]?.id ??
     null;
@@ -7371,9 +7527,9 @@ function PopulatedWorkspace({
         : "entity";
   const directPositionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("positionId");
   const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
-  const directItem = directPositionId ? catalogItems.find((item) => item.id === directPositionId) ?? null : null;
+  const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
-  const retainedItem = initialSelectedItemId ? catalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
+  const retainedItem = initialSelectedItemId ? sourceCatalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
   const storedActiveSectionId = readJsonRecord<string | null>(CATALOG_ACTIVE_SECTION_STORAGE_KEY, null);
   const firstTopLevelSectionId = catalogSections.find((section) => !section.parentId)?.id ?? catalogSections[0]?.id ?? null;
   const firstSectionId = directSection?.id
@@ -7494,7 +7650,7 @@ function PopulatedWorkspace({
   const activeSections = allSections.filter((candidate) => candidate.status !== "archive");
   void sections;
 
-  const baseItems = extraItems.length ? [...catalogItems, ...extraItems] : catalogItems;
+  const baseItems = extraItems.length ? [...sourceCatalogItems, ...extraItems] : sourceCatalogItems;
   const allItems = baseItems
     .filter((item) => !deletedItemIds.has(item.id))
     .map((item) => {
@@ -10184,7 +10340,7 @@ function CatalogScopeSelect({
   const sectionCounts = useMemo(() => {
     const counts = new Map<string, number>();
     const parentById = new Map(catalogSections.map((section) => [section.id, section.parentId]));
-    catalogItems.forEach((item) => {
+    [...catalogItems, ...readCreatedCatalogItems()].forEach((item) => {
       let current: string | null = item.sectionId;
       const seen = new Set<string>();
       while (current && !seen.has(current)) {
@@ -10716,15 +10872,24 @@ function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFi
   );
 }
 
-function initialItemsWithPending(pendingOpen: PendingOpen | null | undefined): CatalogItem[] {
-  if (pendingOpen?.item && !catalogItems.some((candidate) => candidate.id === pendingOpen.item!.id)) {
-    return [...catalogItems, pendingOpen.item];
+function initialItemsWithPending(
+  pendingOpen: PendingOpen | null | undefined,
+  sourceItems: CatalogItem[] = catalogItems,
+): CatalogItem[] {
+  if (
+    pendingOpen?.item
+    && pendingOpen.mode !== "create"
+    && !sourceItems.some((candidate) => candidate.id === pendingOpen.item!.id)
+  ) {
+    return [...sourceItems, pendingOpen.item];
   }
-  return catalogItems;
+  return sourceItems;
 }
 
 function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogItem[]): DescriptionAuditQueueState | null {
-  const target = items.find((candidate) => candidate.id === pendingOpen.id);
+  const target = pendingOpen.mode === "create"
+    ? pendingOpen.item
+    : items.find((candidate) => candidate.id === pendingOpen.id);
   if (!target) return null;
   const section = pendingOpen.section;
   const baseIds = section
@@ -10752,42 +10917,54 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
 
 function OverviewWorkspace({
   filterId,
+  createdItems,
   onFilterChange,
   sectionScopeId,
   onSectionScopeChange,
   query,
   onQueryChange,
   onReturnToSections,
+  onCancelCreateToSections,
+  onRegisterCreateNavigationGuard,
   pendingOpen,
   onPendingOpenHandled,
 }: {
   filterId: OverviewFilterId;
+  createdItems: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
   sectionScopeId: string | null;
   onSectionScopeChange: (id: string | null) => void;
   query: string;
   onQueryChange: (value: string) => void;
   onReturnToSections: (openItemId: string | null) => void;
+  onCancelCreateToSections: () => void;
+  onRegisterCreateNavigationGuard: (guard: ((next: CatalogTab, continueNavigation: () => void) => boolean) | null) => void;
   pendingOpen?: PendingOpen | null;
   onPendingOpenHandled?: () => void;
 }) {
   const { registerChange } = usePublish();
+  const sourceCatalogItems = useMemo(() => [...catalogItems, ...createdItems], [createdItems]);
   // Открытие из «Разделов» обрабатывается атомарно на маунте: сразу строим items и
   // очередь-редактор из pendingOpen — без гонок setState, чтобы повторный переход
   // всегда открывал редактор, а не таблицу последнего фильтра.
-  const [items, setItems] = useState<CatalogItem[]>(() => initialItemsWithPending(pendingOpen));
+  const [items, setItems] = useState<CatalogItem[]>(() => initialItemsWithPending(pendingOpen, sourceCatalogItems));
   const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(() =>
-    pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialItemsWithPending(pendingOpen)) : null,
+    pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialItemsWithPending(pendingOpen, sourceCatalogItems)) : null,
   );
   const [activePositionId, setActivePositionId] = useState<string | null>(() => pendingOpen?.id ?? null);
-  const [creationItemId] = useState<string | null>(() => pendingOpen?.mode === "create" ? pendingOpen.id : null);
+  const [creationItemId, setCreationItemId] = useState<string | null>(() => pendingOpen?.mode === "create" ? pendingOpen.id : null);
+  const [draftItem, setDraftItem] = useState<CatalogItem | null>(() => pendingOpen?.mode === "create" ? pendingOpen.item ?? null : null);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
+  const pendingCreateNavigationRef = useRef<(() => void) | null>(null);
   const [panelQuery, setPanelQuery] = useState("");
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
   const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(catalogItems));
+  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(sourceCatalogItems));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
@@ -10854,6 +11031,41 @@ function OverviewWorkspace({
   const showFeedback = (message: string) => {
     setFeedback(message);
   };
+  const isCreateDraftOpen = creationItemId !== null && draftItem !== null;
+  const updateDraft = (patch: Partial<CatalogItem>) => {
+    setDraftItem((current) => (current ? { ...current, ...patch } : current));
+    setDraftDirty(true);
+  };
+  const requestCreateNavigation = (action: () => void) => {
+    if (!isCreateDraftOpen || !draftDirty) {
+      action();
+      return;
+    }
+    pendingCreateNavigationRef.current = action;
+    setDiscardDialogOpen(true);
+  };
+  useEffect(() => {
+    onRegisterCreateNavigationGuard((_next, continueNavigation) => {
+      if (!isCreateDraftOpen) return true;
+      pendingCreateNavigationRef.current = continueNavigation;
+      if (draftDirty) setDiscardDialogOpen(true);
+      else discardCreateDraft();
+      return false;
+    });
+    return () => onRegisterCreateNavigationGuard(null);
+  }, [draftDirty, isCreateDraftOpen, onRegisterCreateNavigationGuard]);
+  const discardCreateDraft = () => {
+    setDiscardDialogOpen(false);
+    setDraftItem(null);
+    setCreationItemId(null);
+    setDraftDirty(false);
+    const action = pendingCreateNavigationRef.current;
+    pendingCreateNavigationRef.current = null;
+    action?.();
+  };
+  const cancelCreateDraft = () => {
+    requestCreateNavigation(onCancelCreateToSections);
+  };
   const rememberOpenedPosition = (id: string) => {
     setRecentPositionIds((current) => promoteRecentPositionId(normalizeRecentPositionIds(current, items), id));
   };
@@ -10910,6 +11122,15 @@ function OverviewWorkspace({
     updateSelectedItems((item) => ({ ...item, hasDiscount: false, priceWithSale: null }), "Скидка убрана");
   };
   const deleteSelectedItems = () => {
+    const selectedCreatedIds = new Set(readCreatedCatalogItems().filter((item) => selectedIds.has(item.id)).map((item) => item.id));
+    if (selectedCreatedIds.size > 0) {
+      writeCreatedCatalogItems(readCreatedCatalogItems().filter((item) => !selectedCreatedIds.has(item.id)));
+      const storedOrder = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
+      writeJsonRecord(
+        CATALOG_POSITION_ORDER_STORAGE_KEY,
+        Object.fromEntries(Object.entries(storedOrder).map(([sectionId, ids]) => [sectionId, ids.filter((id) => !selectedCreatedIds.has(id))])),
+      );
+    }
     setItems((current) => current.filter((item) => !selectedIds.has(item.id)));
     setBulkDialog(null);
     clearSelection();
@@ -10969,7 +11190,7 @@ function OverviewWorkspace({
   };
   // Открыть таблицу текущей выборки: сохранить filter/scope, восстановить scroll,
   // подсветить последнюю открытую позицию.
-  const returnToOverview = () => {
+  const returnToOverviewNow = () => {
     if (queue) {
       onFilterChange(queue.snapshot.filterId);
       onQueryChange(queue.snapshot.tableQuery);
@@ -10983,9 +11204,10 @@ function OverviewWorkspace({
     setBulkDialog(null);
     clearSelection();
   };
+  const returnToOverview = () => requestCreateNavigation(returnToOverviewNow);
   // «Раздел» в breadcrumb: таблица всех позиций раздела, фильтр снимается.
   // Новая таблица монтируется с чистым scroll — restoreScrollTopRef не нужен.
-  const openSectionTable = (targetSectionId: string) => {
+  const openSectionTableNow = (targetSectionId: string) => {
     if (queue) setTableHighlightId(queue.currentId);
     setQueue(null);
     setBulkDialog(null);
@@ -10996,6 +11218,7 @@ function OverviewWorkspace({
     onFilterChange("quick:all");
     onSectionScopeChange(targetSectionId);
   };
+  const openSectionTable = (targetSectionId: string) => requestCreateNavigation(() => openSectionTableNow(targetSectionId));
   // Пока редактор открыт, смена фильтра/scope меняет ТОЛЬКО browse (список слева),
   // не закрывая редактор. Пересобираем очередь, сохраняя currentId (activePositionId);
   // если позиция не входит в новую выборку — строка просто не будет выделена.
@@ -11024,19 +11247,37 @@ function OverviewWorkspace({
       return { ...current, snapshot: { ...current.snapshot, itemIds, query: nextQuery } };
     });
   };
-  const openPanelFilter = (id: OverviewFilterId) => {
+  const openPanelFilterNow = (id: OverviewFilterId) => {
+    const leavingDraft = queue?.currentId === creationItemId;
     setBulkDialog(null);
     clearSelection();
     setPanelQuery("");
     onFilterChange(id);
-    if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
+    if (leavingDraft) setQueue(null);
+    else if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
   };
-  const openPanelSectionScope = (id: string | null) => {
+  const openPanelFilter = (id: OverviewFilterId) => {
+    if (isCreateDraftOpen && id !== queue?.snapshot.filterId) {
+      requestCreateNavigation(() => openPanelFilterNow(id));
+      return;
+    }
+    openPanelFilterNow(id);
+  };
+  const openPanelSectionScopeNow = (id: string | null) => {
+    const leavingDraft = queue?.currentId === creationItemId;
     setBulkDialog(null);
     clearSelection();
     setPanelQuery("");
     onSectionScopeChange(id);
-    if (queue) rebrowse(queue.snapshot.filterId, id);
+    if (leavingDraft) setQueue(null);
+    else if (queue) rebrowse(queue.snapshot.filterId, id);
+  };
+  const openPanelSectionScope = (id: string | null) => {
+    if (isCreateDraftOpen && id !== queue?.snapshot.sectionScopeId) {
+      requestCreateNavigation(() => openPanelSectionScopeNow(id));
+      return;
+    }
+    openPanelSectionScopeNow(id);
   };
   const selectQueueItem = (id: string) => {
     rememberOpenedPosition(id);
@@ -11065,6 +11306,59 @@ function OverviewWorkspace({
     ));
     registerChange("catalog");
   };
+
+  const createPosition = async () => {
+    if (!draftItem || createSubmitting || !draftItem.title.trim()) return;
+    setCreateSubmitting(true);
+    try {
+      // Прототип имитирует сетевой запрос, чтобы состояние loading и защита от
+      // повторной отправки были такими же, как у реального create API.
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+      const createdItem: CatalogItem = {
+        ...draftItem,
+        id: createRealPositionId(),
+        title: draftItem.title.trim(),
+        price: draftItem.price || 0,
+        sectionName: draftItem.sectionName,
+        hasDescription: descriptionHasContent(draftItem.description),
+        translationFilledCount: draftItem.title.trim() ? 1 : 0,
+      };
+      const persistedItems = readCreatedCatalogItems();
+      writeCreatedCatalogItems([...persistedItems, createdItem]);
+      const storedOrder = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
+      writeJsonRecord(CATALOG_POSITION_ORDER_STORAGE_KEY, {
+        ...storedOrder,
+        [createdItem.sectionId]: [
+          createdItem.id,
+          ...(storedOrder[createdItem.sectionId] ?? sourceCatalogItems
+            .filter((item) => item.sectionId === createdItem.sectionId)
+            .map((item) => item.id))
+            .filter((id) => id !== createdItem.id),
+        ],
+      });
+      setItems((current) => [createdItem, ...current.filter((item) => item.id !== createdItem.id)]);
+      setQueue((current) => current ? {
+        ...current,
+        currentId: createdItem.id,
+        snapshot: {
+          ...current.snapshot,
+          itemIds: [createdItem.id, ...current.snapshot.itemIds.filter((id) => id !== createdItem.id)],
+          entryItemId: createdItem.id,
+        },
+      } : current);
+      setActivePositionId(createdItem.id);
+      setCreationItemId(null);
+      setDraftItem(null);
+      setDraftDirty(false);
+      setRecentPositionIds((current) => promoteRecentPositionId(normalizeRecentPositionIds(current, [...items, createdItem]), createdItem.id));
+      registerChange("catalog");
+      showFeedback("Позиция создана");
+    } catch {
+      showFeedback("Не удалось создать позицию. Введённые данные сохранены в форме.");
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
   const setQueueAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
     setItems((current) => current.map((candidate) => {
       if (candidate.id !== item.id || candidate.status === "archive") return candidate;
@@ -11072,6 +11366,12 @@ function OverviewWorkspace({
       return { ...candidate, status: "active", scheduled: mode === "schedule" };
     }));
     registerChange("catalog");
+  };
+  const setCreateAvailabilityMode = (_item: CatalogItem, mode: AvailabilityMode) => {
+    updateDraft({ status: mode === "unavailable" ? "stopped" : "active", scheduled: mode === "schedule" });
+  };
+  const toggleCreateStop = () => {
+    updateDraft({ status: draftItem?.status === "stopped" ? "active" : "stopped" });
   };
   const toggleQueueStop = (item: CatalogItem) => {
     setItems((current) => current.map((candidate) =>
@@ -11122,13 +11422,18 @@ function OverviewWorkspace({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (isCreateDraftOpen) {
+          event.preventDefault();
+          cancelCreateDraft();
+          return;
+        }
         clearSelection();
         setBulkDialog(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [cancelCreateDraft, isCreateDraftOpen]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -11164,7 +11469,12 @@ function OverviewWorkspace({
 
   if (queue) {
     const repairMode = isRepairQueueFilter(queue.snapshot.filterId);
-    const currentItem = queue.currentId ? items.find((item) => item.id === queue.currentId) ?? null : null;
+    const currentItem = queue.currentId
+      ? queue.currentId === creationItemId
+        ? draftItem
+        : items.find((item) => item.id === queue.currentId) ?? null
+      : null;
+    const isCreating = Boolean(currentItem && creationItemId === currentItem.id && draftItem);
     const saveStatus = currentItem ? descriptionSaveStateById[currentItem.id] : undefined;
     const editorContext = getQueueEditorContext(queue.snapshot.entryFilterId);
     const byId = new Map(items.map((item) => [item.id, item]));
@@ -11177,6 +11487,9 @@ function OverviewWorkspace({
       queue.snapshot.sectionScopeId,
       queue.snapshot.sort,
     ).map((id) => byId.get(id)).filter((item): item is CatalogItem => Boolean(item));
+    const panelItemsWithDraft = isCreating && draftItem
+      ? [{ ...draftItem, title: draftItem.title.trim() || "Новая позиция" }, ...panelItems]
+      : panelItems;
     // Раздел для breadcrumb: текущий scope выборки, а если позиция открыта без scope —
     // родной раздел позиции (у каждой позиции ровно один раздел).
     const breadcrumbSectionId = queue.snapshot.sectionScopeId ?? currentItem?.sectionId ?? null;
@@ -11190,7 +11503,7 @@ function OverviewWorkspace({
             filterId={queue.snapshot.filterId}
             scopeSectionId={queue.snapshot.sectionScopeId}
             allItems={items}
-            items={getPanelItems(queue.snapshot.filterId, panelItems)}
+            items={getPanelItems(queue.snapshot.filterId, panelItemsWithDraft)}
             selectedItemId={queue.currentId}
             onShowTable={returnToOverview}
             listQuery={queue.snapshot.query}
@@ -11198,21 +11511,24 @@ function OverviewWorkspace({
             scrollSelectedToTop={queue.snapshot.entryFromSection}
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
-            onSelectItem={(item) => selectQueueItem(item.id)}
+            onSelectItem={(item) => requestCreateNavigation(() => selectQueueItem(item.id))}
           />
           {currentItem ? (
             <PositionEditor
               item={currentItem}
-              mode={currentItem.id === creationItemId ? "create" : "edit"}
+              mode={isCreating ? "create" : "edit"}
               allItems={items}
               upsell={queueUpsellByItem[currentItem.id] ?? {}}
-              onUpsellChange={(next) => setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }))}
+              onUpsellChange={(next) => {
+                setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }));
+                if (isCreating) setDraftDirty(true);
+              }}
               stopBusy={false}
               onArchiveItem={archiveQueueItem}
               onRestoreItem={restoreQueueItem}
               onMoveItem={(targetItem) => showFeedback(`Переместить «${targetItem.title}»: placeholder`)}
-              onToggleStop={toggleQueueStop}
-              onSetAvailabilityMode={setQueueAvailabilityMode}
+              onToggleStop={isCreating ? toggleCreateStop : toggleQueueStop}
+              onSetAvailabilityMode={isCreating ? setCreateAvailabilityMode : setQueueAvailabilityMode}
               unavailableDisplayMode="hidden"
               outsideScheduleMode="hidden"
               weeklySchedule={createDefaultWeeklySchedule()}
@@ -11223,13 +11539,19 @@ function OverviewWorkspace({
               forcedEditorTab={editorContext.tab}
               focusAnchor={editorContext.anchor}
               showStopQuickAction={!repairMode}
-              onDescriptionChange={saveDescription}
-              onMediaAdded={saveQueueMedia}
+              onDescriptionChange={isCreating ? undefined : saveDescription}
+              onMediaAdded={isCreating ? undefined : saveQueueMedia}
+              onDraftChange={isCreating ? updateDraft : undefined}
+              onCreatePosition={isCreating ? createPosition : undefined}
+              onCancelCreate={isCreating ? cancelCreateDraft : undefined}
+              createDisabled={isCreating ? !draftItem?.title.trim() : false}
+              createSubmitting={isCreating ? createSubmitting : false}
+              draftDirty={isCreating ? draftDirty : false}
               breadcrumb={
                 <PositionEditorBreadcrumb
                   filterId={queue.snapshot.filterId}
                   sectionName={breadcrumbSectionName}
-                  positionTitle={currentItem.title}
+                  positionTitle={currentItem.title || "Новая позиция"}
                   onOpenSection={() => breadcrumbSectionId && openSectionTable(breadcrumbSectionId)}
                   onOpenFilter={returnToOverview}
                 />
@@ -11244,6 +11566,15 @@ function OverviewWorkspace({
             </div>
           )}
           {feedback && <SelectionFeedback message={feedback} />}
+          {discardDialogOpen && (
+            <CreateDiscardDialog
+              onContinue={() => {
+                setDiscardDialogOpen(false);
+                pendingCreateNavigationRef.current = null;
+              }}
+              onDiscard={discardCreateDraft}
+            />
+          )}
         </div>
       </main>
     );
@@ -11389,8 +11720,10 @@ export function CatalogWorkspace({
   onViewModeChange,
   onSectionScopeChange,
   onCatalogTabChange,
+  onRegisterCreateNavigationGuard,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
+  const createdItems = readCreatedCatalogItems();
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
@@ -11456,6 +11789,7 @@ export function CatalogWorkspace({
     ) : catalogTab === "overview" ? (
       <OverviewWorkspace
         filterId={viewMode === "sections" ? "quick:all" : viewMode}
+        createdItems={createdItems}
         onFilterChange={(id) => {
           onViewModeChange(id);
           onOverviewFilterChange(id);
@@ -11465,12 +11799,18 @@ export function CatalogWorkspace({
         query={flatQuery}
         onQueryChange={setFlatQuery}
         onReturnToSections={returnToSections}
+        onCancelCreateToSections={() => {
+          onViewModeChange("sections");
+          onCatalogTabChange("sections");
+        }}
+        onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
         pendingOpen={pendingOpen}
         onPendingOpenHandled={() => setPendingOpen(null)}
       />
     ) : catalogPhase === "has-items" ? (
       <PopulatedWorkspace
         sections={sections}
+        createdItems={createdItems}
         scopeSectionId={sectionScopeId}
         resetSignal={resetSignal}
         initialSelectedItemId={retainedItemId}

@@ -31,6 +31,8 @@ export function TranslatableField({
   plain = false,
   storageKey,
   autoFocus = false,
+  onValueChange,
+  persist = true,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -44,10 +46,12 @@ export function TranslatableField({
   plain?: boolean;
   storageKey?: string;
   autoFocus?: boolean;
+  onValueChange?: (value: string) => void;
+  persist?: boolean;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const { account, setWorkspaceLanguageHasContent } = useMockAuth();
-  const persistedKey = account
+  const persistedKey = persist && account
     ? `tasko.catalog.translations.${account.id}.${storageKey ?? label}`
     : null;
   const [translations, setTranslations] = useState<Translations>(() => {
@@ -95,6 +99,7 @@ export function TranslatableField({
       return next;
     });
     setWorkspaceLanguageHasContent(contentLanguage, value.trim() !== "");
+    onValueChange?.(value);
   };
 
   const copyFromFallback = () => saveTranslation(fallbackValue);
