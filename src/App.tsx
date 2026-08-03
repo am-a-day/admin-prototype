@@ -23,6 +23,7 @@ import {
   IS_PRAGMATIC_CATALOG_PREVIEW,
   resetPragmaticCatalogPreview,
 } from "@/lib/catalog-preview";
+import { CatalogStoreProvider } from "@/contexts/catalog-store-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -1179,9 +1180,11 @@ export default function App() {
             <PublishProvider>
               <VitrineLaunchProvider>
                 <PreviewDemoProvider>
-                  <HeaderActionsProvider>
-                    <AppShell />
-                  </HeaderActionsProvider>
+                  <CatalogStoreProvider>
+                    <HeaderActionsProvider>
+                      <AppShell />
+                    </HeaderActionsProvider>
+                  </CatalogStoreProvider>
                 </PreviewDemoProvider>
               </VitrineLaunchProvider>
             </PublishProvider>
