@@ -30,6 +30,7 @@ export function TranslatableField({
   compact = false,
   plain = false,
   storageKey,
+  autoFocus = false,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -42,6 +43,7 @@ export function TranslatableField({
   /** Стиль макета редактора позиции: подпись над полем, поле в собственной рамке. */
   plain?: boolean;
   storageKey?: string;
+  autoFocus?: boolean;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const { account, setWorkspaceLanguageHasContent } = useMockAuth();
@@ -116,6 +118,7 @@ export function TranslatableField({
       {multiline ? (
         <textarea
           ref={(el) => { inputRef.current = el; }}
+          autoFocus={autoFocus}
           rows={rows}
           value={currentValue}
           onChange={(e) => saveTranslation(e.target.value)}
@@ -129,6 +132,7 @@ export function TranslatableField({
       ) : (
         <input
           ref={(el) => { inputRef.current = el; }}
+          autoFocus={autoFocus}
           value={currentValue}
           onChange={(e) => saveTranslation(e.target.value)}
           placeholder={placeholder}

@@ -1276,6 +1276,7 @@ type PendingOpen = {
   id: string;
   item?: CatalogItem;
   section?: { sectionId: string; sectionName: string; positionIds: string[] };
+  mode?: PositionEditorMode;
 };
 
 const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
@@ -1733,6 +1734,12 @@ function getParentAvailability(
     return { available: false, reason: "has-positions", label: "В разделе уже есть позиции" };
   }
   return { available: true };
+}
+
+const POSITION_CREATION_DISABLED_REASON = "В разделе с подразделами нельзя создавать позиции";
+
+function getPositionCreateRestriction(sectionId: string, sections: TreeSection[]): string | null {
+  return sectionHasChildren(sectionId, sections) ? POSITION_CREATION_DISABLED_REASON : null;
 }
 
 function getSectionTreeDepth(sectionId: string, sections: TreeSection[]): number {
@@ -2339,6 +2346,7 @@ function EmptyCatalog({
 // ── Position editor: back → summary header → tabs ─────────────────────────────
 
 type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
+type PositionEditorMode = "create" | "edit";
 type SectionEditorTab = "composition" | "basic" | "availability";
 type AvailabilityMode = "always" | "unavailable" | "schedule";
 type UnavailableDisplayMode = "hidden" | "comingSoon";
@@ -2868,6 +2876,7 @@ function BasicTab({
   onReorderMedia,
   onRemoveMedia,
   onDescriptionChange,
+  autoFocusName = false,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -2886,6 +2895,7 @@ function BasicTab({
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
   onRemoveMedia: (id: string) => void;
   onDescriptionChange?: (value: string) => void;
+  autoFocusName?: boolean;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -2919,6 +2929,7 @@ function BasicTab({
         storageKey={`item-name-${item.id}`}
         showTranslationMeta={false}
         plain
+        autoFocus={autoFocusName}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4635,6 +4646,7 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
 
 function PositionEditor({
   item,
+  mode = "edit",
   allItems,
   upsell,
   onUpsellChange,
@@ -4661,6 +4673,7 @@ function PositionEditor({
   showStopQuickAction = true,
 }: {
   item: CatalogItem;
+  mode?: PositionEditorMode;
   allItems: CatalogItem[];
   upsell: CatalogItemUpsellState;
   onUpsellChange: (next: CatalogItemUpsellState) => void;
@@ -4696,7 +4709,7 @@ function PositionEditor({
   const [discountAutofocusKey, setDiscountAutofocusKey] = useState(0);
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
 
-  const nextForcedTab = forcedEditorTab ?? (forceBasicTabOnItemChange ? "basic" : undefined);
+  const nextForcedTab = forcedEditorTab ?? (mode === "create" || forceBasicTabOnItemChange ? "basic" : undefined);
 
   useEffect(() => {
     setActiveTab(nextForcedTab ?? editorTabByItem.get(item.id) ?? "basic");
@@ -4898,6 +4911,7 @@ function PositionEditor({
                     onReorderMedia={reorderMedia}
                     onRemoveMedia={removeMedia}
                     onDescriptionChange={(value) => onDescriptionChange?.(item, value)}
+                    autoFocusName={mode === "create"}
                   />
                 </div>
               )}
@@ -6314,17 +6328,44 @@ function UnifiedCatalogTreePanel({
   );
 }
 
+function AddPositionButton({
+  onClick,
+  disabledReason,
+  className,
+}: {
+  onClick: () => void;
+  disabledReason?: string | null;
+  className: string;
+}) {
+  const disabled = Boolean(disabledReason);
+  return (
+    <Tooltip label={disabledReason ?? ""} side="top" disabled={!disabled}>
+      <span className="inline-flex">
+        <button
+          type="button"
+          data-position-create-button
+          aria-label="Добавить позицию"
+          onClick={onClick}
+          disabled={disabled}
+          className={cn(className, "disabled:cursor-not-allowed disabled:opacity-50")}
+        >
+          <Plus size={14} />
+          Добавить позицию
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
 function SectionEditorContext({
   section,
   itemCount,
   onEdit,
-  onAddPosition,
   onAction,
 }: {
   section: TreeSection;
   itemCount: number;
   onEdit: () => void;
-  onAddPosition: () => void;
   onAction: (action: string) => void;
 }) {
   return (
@@ -6346,7 +6387,6 @@ function SectionEditorContext({
           <DropdownContent align="end">
             <DropdownActionItem onSelect={onEdit}>Изменить раздел</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-            <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
             <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
@@ -6375,6 +6415,7 @@ function SectionEditor({
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
   onAddPosition,
+  positionCreateDisabledReason,
   onCompositionQueryChange,
   onScrollTopChange,
   onArchive,
@@ -6406,6 +6447,7 @@ function SectionEditor({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onAddPosition: () => void;
+  positionCreateDisabledReason?: string | null;
   onCompositionQueryChange: (value: string) => void;
   onScrollTopChange: (value: number) => void;
   onArchive: () => void;
@@ -6474,6 +6516,11 @@ function SectionEditor({
               {title}
             </h2>
             {archived && <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium text-[#79716b]">В архиве</span>}
+            <AddPositionButton
+              onClick={onAddPosition}
+              disabledReason={positionCreateDisabledReason}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+            />
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button type="button" aria-label="Действия с разделом" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
@@ -6482,7 +6529,6 @@ function SectionEditor({
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
                 <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                <DropdownActionItem onSelect={onAddPosition}>Добавить позицию</DropdownActionItem>
                 <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
               </DropdownContent>
             </DropdownMenu.Root>
@@ -6524,10 +6570,11 @@ function SectionEditor({
                     <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
                     <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Создайте новую позицию — она откроется в полном редакторе во вкладке «Позиции» и будет привязана к этому разделу.</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      <button type="button" onClick={onAddPosition} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">
-                        <Plus size={13} />
-                        Создать позицию
-                      </button>
+                      <AddPositionButton
+                        onClick={onAddPosition}
+                        disabledReason={positionCreateDisabledReason}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]"
+                      />
                     </div>
                   </div>
                 </div>
@@ -6551,6 +6598,11 @@ function SectionEditor({
                         className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
                       />
                     </div>
+                    <AddPositionButton
+                      onClick={onAddPosition}
+                      disabledReason={positionCreateDisabledReason}
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]"
+                    />
                   </div>
                   <div className="pt-2">
                     {selectedCount > 0 && (
@@ -7293,6 +7345,7 @@ function PopulatedWorkspace({
     positionId: string,
     section: { sectionId: string; sectionName: string; positionIds: string[] },
     newItem?: CatalogItem,
+    mode?: PositionEditorMode,
   ) => void;
 }) {
   const { contentLanguage } = useAppSettings();
@@ -7510,7 +7563,7 @@ function PopulatedWorkspace({
     ? orderSectionItems(sectionTableSearchedItems, selectedSectionId ? positionOrderBySection[selectedSectionId] : undefined)
     : sortItemsByPrice(sectionTableSearchedItems, sectionTablePriceSort);
   const sectionTableTitle = section
-    ? `Позиции раздела “${section.name}”`
+    ? `Позиции раздела «${section.name}»`
     : "Позиции раздела";
 
   const openSectionCreation = (parentId: string | null = null) => {
@@ -8468,6 +8521,11 @@ function PopulatedWorkspace({
   const addPositionToSection = (sectionId: string) => {
     const targetSection = allSections.find((candidate) => candidate.id === sectionId) ?? null;
     if (!targetSection) return;
+    const restriction = getPositionCreateRestriction(sectionId, allSections);
+    if (restriction) {
+      setFeedback(restriction);
+      return;
+    }
     const draft = makeDraftItem(targetSection);
     setExtraItems((prev) => [...prev, draft]);
     setSelectedSectionId(sectionId);
@@ -8478,6 +8536,7 @@ function PopulatedWorkspace({
       draft.id,
       { sectionId, sectionName: targetSection.name, positionIds: sectionTableItems.map((it) => it.id) },
       draft,
+      "create",
     );
   };
   const addPosition = () => {
@@ -8982,6 +9041,7 @@ function PopulatedWorkspace({
                 registerChange("catalog");
               }}
               onAddPosition={() => addPositionToSection(section.id)}
+              positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
               onCompositionQueryChange={(value) => {
                 setSelectedIds(new Set());
                 setSectionTableQuery(value);
@@ -9027,7 +9087,6 @@ function PopulatedWorkspace({
                     section={selectedItemSection}
                     itemCount={itemCount}
                     onEdit={() => handleUnifiedSectionAction(selectedItemSection, "Изменить раздел")}
-                    onAddPosition={() => addPositionToSection(selectedItemSection.id)}
                     onAction={(action) => handleUnifiedSectionAction(selectedItemSection, action)}
                   />
                 );
@@ -10721,6 +10780,7 @@ function OverviewWorkspace({
     pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialItemsWithPending(pendingOpen)) : null,
   );
   const [activePositionId, setActivePositionId] = useState<string | null>(() => pendingOpen?.id ?? null);
+  const [creationItemId] = useState<string | null>(() => pendingOpen?.mode === "create" ? pendingOpen.id : null);
   const [panelQuery, setPanelQuery] = useState("");
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
@@ -11143,6 +11203,7 @@ function OverviewWorkspace({
           {currentItem ? (
             <PositionEditor
               item={currentItem}
+              mode={currentItem.id === creationItemId ? "create" : "edit"}
               allItems={items}
               upsell={queueUpsellByItem[currentItem.id] ?? {}}
               onUpsellChange={(next) => setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }))}
@@ -11338,10 +11399,11 @@ export function CatalogWorkspace({
     positionId: string,
     section: { sectionId: string; sectionName: string; positionIds: string[] },
     newItem?: CatalogItem,
+    mode?: PositionEditorMode,
   ) => {
     // Атомарно: редактор строится из pendingOpen на маунте (scope=раздел, «Все позиции»),
     // а parent-state приводим в соответствие, чтобы никакой прошлый фильтр не всплыл.
-    setPendingOpen({ id: positionId, item: newItem, section });
+    setPendingOpen({ id: positionId, item: newItem, section, mode });
     onSectionScopeChange(section.sectionId);
     onViewModeChange("quick:all");
     onOverviewFilterChange("quick:all");
