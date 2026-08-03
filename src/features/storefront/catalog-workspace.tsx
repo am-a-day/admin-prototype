@@ -1831,7 +1831,6 @@ function SectionParentPicker({
           </DropdownMenu.Item>
           {availableSections.length > 0 && (
             <div className="mt-1 border-t border-[#f0efec] pt-1">
-              <DropdownMenu.Label className="px-2 pb-1 pt-1 text-[11px] font-medium text-[#a8a29e]">Разделы без позиций</DropdownMenu.Label>
               {availableSections.map((section) => renderSectionItem(section, false))}
             </div>
           )}
