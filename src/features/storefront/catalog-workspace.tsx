@@ -5449,6 +5449,7 @@ function UnifiedCatalogTreePanel({
   onSelectItem,
   onScopeChange,
   onCreateSection,
+  onAddPositionToSection,
   createSectionButtonRef,
   revealSectionId,
   onSectionAction,
@@ -5469,6 +5470,7 @@ function UnifiedCatalogTreePanel({
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
   onCreateSection: () => void;
+  onAddPositionToSection: (sectionId: string) => void;
   createSectionButtonRef?: RefObject<HTMLButtonElement | null>;
   revealSectionId?: string | null;
   onSectionAction: (section: TreeSection, action: string) => void;
@@ -6271,19 +6273,53 @@ function UnifiedCatalogTreePanel({
           </span>
           <div className="ml-1 flex min-w-0 flex-1 items-center gap-2">
             <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
-            <TruncatedText className={cn("h-4 text-left text-[13px] font-medium leading-[18px] transition-[padding] group-hover:pr-11 group-has-[:focus-visible]:pr-11", active ? "text-[#292524]" : "text-[#79716b]")}>
+            <TruncatedText className={cn(
+              "h-4 text-left text-[13px] font-medium leading-[18px] transition-[padding]",
+              active ? "pr-[68px]" : "group-hover:pr-[52px] group-has-[:focus-visible]:pr-[52px]",
+              active ? "text-[#292524]" : "text-[#79716b]",
+            )}>
               {section.name}
             </TruncatedText>
           </div>
-          <div className="ml-2 flex min-w-0 shrink-0 items-center justify-end transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0">
+          <div className={cn(
+            "ml-2 flex min-w-0 shrink-0 items-center justify-end transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
+            active && "opacity-0",
+          )}>
             {sectionTrailingMeta}
           </div>
           <div
             className={cn(
               "pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100",
-              active ? "bg-[#f3f3ed]" : "bg-[#f3f3ed]",
+              "bg-[#f3f3ed]",
+              active && "pointer-events-auto opacity-100",
+              isDragging && "invisible",
             )}
           >
+            {active && <span className="mr-1 flex h-5 shrink-0 items-center justify-end">{sectionTrailingMeta}</span>}
+            <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
+              <button
+                type="button"
+                data-no-tree-drag
+                data-no-dnd
+                draggable={false}
+                aria-label={`Добавить позицию в раздел «${section.name}»`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddPositionToSection(section.id);
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onAddPositionToSection(section.id);
+                  }
+                }}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] hover:bg-[#e6e6db] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <Plus size={14} weight="regular" />
+              </button>
+            </Tooltip>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -9112,6 +9148,7 @@ function PopulatedWorkspace({
             onSelectItem={openItem}
             onScopeChange={onScopeChange}
             onCreateSection={() => openSectionCreation()}
+            onAddPositionToSection={addPositionToSection}
             createSectionButtonRef={createSectionButtonRef}
             revealSectionId={revealSectionId}
             onSectionAction={handleUnifiedSectionAction}
