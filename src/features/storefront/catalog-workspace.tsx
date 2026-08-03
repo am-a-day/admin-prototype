@@ -1721,6 +1721,132 @@ function sectionHasChildren(sectionId: string, sections: TreeSection[]) {
 
 type SectionCreationResult = boolean | string | void;
 
+type ParentAvailability =
+  | { available: true }
+  | { available: false; reason: "has-positions"; label: string };
+
+function getParentAvailability(
+  section: TreeSection,
+  allItems: CatalogItem[],
+): ParentAvailability {
+  if (allItems.some((item) => item.sectionId === section.id && item.status !== "archive")) {
+    return { available: false, reason: "has-positions", label: "В разделе уже есть позиции" };
+  }
+  return { available: true };
+}
+
+function getSectionTreeDepth(sectionId: string, sections: TreeSection[]): number {
+  const flat = flattenSections(sections);
+  const byId = new Map(flat.map((section) => [section.id, section]));
+  let depth = 0;
+  let current = byId.get(sectionId);
+  const seen = new Set<string>();
+  while (current?.parentId && !seen.has(current.id)) {
+    seen.add(current.id);
+    depth += 1;
+    current = byId.get(current.parentId);
+  }
+  return depth;
+}
+
+function SectionParentPicker({
+  sections,
+  allItems,
+  value,
+  onChange,
+}: {
+  sections: TreeSection[];
+  allItems: CatalogItem[];
+  value: string | null;
+  onChange: (parentId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? sections.find((section) => section.id === value) ?? null : null;
+  const availableSections = sections.filter((section) => getParentAvailability(section, allItems).available);
+  const unavailableSections = sections.filter((section) => !getParentAvailability(section, allItems).available);
+  const selectedLabel = selected?.name ?? "Каталог";
+
+  const renderSectionItem = (section: TreeSection, disabled: boolean) => {
+    const availability = getParentAvailability(section, allItems);
+    const isSelected = value === section.id;
+    const unavailable = !availability.available;
+    return (
+      <DropdownMenu.Item
+        key={section.id}
+        disabled={disabled}
+        onSelect={() => onChange(section.id)}
+        style={{ paddingLeft: 8 + getSectionTreeDepth(section.id, sections) * 16 }}
+        className={cn(
+          "flex min-h-10 select-none items-center gap-2 rounded-[8px] pr-2 text-left outline-none transition",
+          disabled
+            ? "cursor-not-allowed opacity-55"
+            : "cursor-pointer data-[highlighted]:bg-[#f5f5f4]",
+          isSelected && !disabled && "bg-[#f3f3ed]",
+        )}
+      >
+        <CatalogThumbnail src={section.imageUrl} kind="section" className="h-6 w-6 rounded-[6px]" />
+        <span className="min-w-0 flex-1">
+          <span className={cn("block truncate text-[13px] font-medium", disabled ? "text-[#8a8179]" : "text-[#44403b]")}>{section.name}</span>
+          {unavailable && availability.reason === "has-positions" && (
+            <span className="mt-0.5 block truncate text-[11px] font-normal leading-4 text-[#a8a29e]">{availability.label}</span>
+          )}
+        </span>
+        {isSelected && !disabled && <Check size={14} className="shrink-0 text-[#57534d]" />}
+      </DropdownMenu.Item>
+    );
+  };
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          id="catalog-create-section-parent"
+          aria-label={`Расположение: ${selectedLabel}`}
+          aria-expanded={open}
+          className="mt-1.5 flex h-9 w-full items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 text-left text-[13px] text-[#292524] outline-none transition hover:border-[#d6d3d1] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/10"
+        >
+          <CatalogThumbnail src={selected?.imageUrl} kind="section" className="h-5 w-5 rounded-[5px]" />
+          <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+          <CaretDown size={13} weight="bold" className="shrink-0 text-[#a8a29e]" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          sideOffset={6}
+          className="z-[100002] max-h-[min(420px,calc(100vh-32px))] w-[min(380px,calc(100vw-32px))] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+        >
+          <DropdownMenu.Label className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">Доступно</DropdownMenu.Label>
+          <DropdownMenu.Item
+            onSelect={() => onChange(null)}
+            className={cn(
+              "flex h-9 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+              value === null && "bg-[#f3f3ed]",
+            )}
+          >
+            <CatalogThumbnail kind="section" className="h-6 w-6 rounded-[6px]" />
+            <span className="min-w-0 flex-1">Каталог</span>
+            {value === null && <Check size={14} className="shrink-0 text-[#57534d]" />}
+          </DropdownMenu.Item>
+          {availableSections.length > 0 && (
+            <div className="mt-1 border-t border-[#f0efec] pt-1">
+              <DropdownMenu.Label className="px-2 pb-1 pt-1 text-[11px] font-medium text-[#a8a29e]">Разделы без позиций</DropdownMenu.Label>
+              {availableSections.map((section) => renderSectionItem(section, false))}
+            </div>
+          )}
+          {unavailableSections.length > 0 && (
+            <div className="mt-1 border-t border-[#f0efec] pt-1">
+              <DropdownMenu.Label className="px-2 pb-1 pt-1 text-[11px] font-medium text-[#a8a29e]">Недоступно для подраздела</DropdownMenu.Label>
+              {unavailableSections.map((section) => renderSectionItem(section, true))}
+            </div>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 function CreateSectionDialog({
   sections = [],
   allItems = [],
@@ -1744,10 +1870,13 @@ function CreateSectionDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const flatSections = flattenSections(sections);
   const selectedParent = parentId ? flatSections.find((section) => section.id === parentId) ?? null : null;
-  const parentRestriction = selectedParent
-    ? getSectionCreateRestriction(selectedParent, flatSections, allItems)
-    : null;
-  const canSubmit = Boolean(name.trim()) && !parentRestriction && !submitting;
+  const selectedParentAvailability = selectedParent ? getParentAvailability(selectedParent, allItems) : null;
+  const parentError = parentId && !selectedParent
+    ? "Выбранный родитель больше недоступен"
+    : selectedParentAvailability && !selectedParentAvailability.available
+      ? selectedParentAvailability.label
+      : null;
+  const canSubmit = Boolean(name.trim()) && !parentError && !submitting;
 
   useEffect(() => {
     const timeouts = [0, 120, 360].map((delay) => window.setTimeout(() => inputRef.current?.focus(), delay));
@@ -1785,7 +1914,7 @@ function CreateSectionDialog({
 
   const handleSubmit = () => {
     const nextName = name.trim();
-    if (!nextName || parentRestriction || submitting) return;
+    if (!nextName || parentError || submitting) return;
     setSubmitting(true);
     const result = onCreate(nextName, parentId);
     if (typeof result === "string") {
@@ -1851,31 +1980,16 @@ function CreateSectionDialog({
           </div>
           <div className="mt-4">
             <label htmlFor="catalog-create-section-parent" className="block text-[13px] font-medium text-[#44403b]">Расположение</label>
-            <select
-              id="catalog-create-section-parent"
-              value={parentId ?? ""}
-              onChange={(event) => {
-                setParentId(event.target.value || null);
+            <SectionParentPicker
+              sections={flatSections}
+              allItems={allItems}
+              value={parentId}
+              onChange={(nextParentId) => {
+                setParentId(nextParentId);
                 setError("");
               }}
-              className="mt-1.5 h-[30px] w-full rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/10"
-            >
-              <option value="">Каталог</option>
-              {flatSections.map((section) => {
-                const restriction = getSectionCreateRestriction(section, flatSections, allItems);
-                return (
-                  <option
-                    key={section.id}
-                    value={section.id}
-                    disabled={Boolean(restriction)}
-                    title={restriction ?? undefined}
-                  >
-                    {"  ".repeat(getSectionDepthFromTree(section.id, sections))}{section.name}{restriction ? ` · ${restriction}` : ""}
-                  </option>
-                );
-              })}
-            </select>
-            {parentRestriction && <p className="mt-1.5 text-[12px] leading-4 text-[#9f1239]">{parentRestriction}</p>}
+            />
+            {parentError && <p className="mt-1.5 text-[12px] leading-4 text-[#9f1239]">{parentError}</p>}
             {error && <p id="catalog-create-section-error" className="mt-1.5 text-[12px] leading-4 text-[#9f1239]">{error}</p>}
           </div>
           <div className="mt-5 flex justify-end gap-2">
@@ -5912,7 +6026,7 @@ function UnifiedCatalogTreePanel({
     );
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
     const hasTreeChildren = (showPositions && sectionItems.length > 0) || (section.children?.length ?? 0) > 0;
-    const sectionCreateRestriction = getSectionCreateRestriction(section, allFlatSections, items);
+    const parentAvailability = getParentAvailability(section, items);
     const dragEnabled = !normalizedQuery && restrictedScopeSectionId !== section.id;
     const sectionDragData: PragmaticTreeDragData = {
       type: PRAGMATIC_TREE_DRAG_TYPE,
@@ -6064,10 +6178,10 @@ function UnifiedCatalogTreePanel({
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
                 <DropdownActionItem
-                  disabled={Boolean(sectionCreateRestriction)}
+                  disabled={!parentAvailability.available}
                   onSelect={() => onSectionAction(section, "Добавить подраздел")}
                 >
-                  Добавить подраздел{sectionCreateRestriction ? ` · ${sectionCreateRestriction}` : ""}
+                  Добавить подраздел{parentAvailability.available ? "" : ` · ${parentAvailability.label}`}
                 </DropdownActionItem>
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
                 <DropdownActionItem onSelect={() => onSectionAction(section, "Переместить")}>Переместить</DropdownActionItem>
@@ -6960,42 +7074,6 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
   };
 }
 
-const CATALOG_SECTION_CREATION_MAX_DEPTH = 2;
-
-function getSectionDepthFromTree(sectionId: string, sections: TreeSection[]): number {
-  const flat = flattenSections(sections);
-  const byId = new Map(flat.map((section) => [section.id, section]));
-  let depth = 0;
-  let current = byId.get(sectionId);
-  const seen = new Set<string>();
-  while (current?.parentId && !seen.has(current.id)) {
-    seen.add(current.id);
-    depth += 1;
-    current = byId.get(current.parentId);
-  }
-  return depth;
-}
-
-function getSectionCreateRestriction(
-  section: TreeSection,
-  allSections: TreeSection[],
-  allItems: CatalogItem[],
-) {
-  if (allSections.some((candidate) => (candidate.parentId ?? null) === section.id)) {
-    return "В разделе уже есть подразделы";
-  }
-  if (section.status === "archive") {
-    return "Раздел находится в архиве";
-  }
-  if (getSectionDepthFromTree(section.id, allSections) >= CATALOG_SECTION_CREATION_MAX_DEPTH) {
-    return "Достигнут лимит вложенности";
-  }
-  if (allItems.some((item) => item.sectionId === section.id && item.status !== "archive")) {
-    return "В разделе уже есть позиции";
-  }
-  return null;
-}
-
 function getLinkedEntitiesCount(item: CatalogItem) {
   return item.recommendationsCount + item.optionsCount + item.modifiersCount;
 }
@@ -7438,9 +7516,16 @@ function PopulatedWorkspace({
 
   const openSectionCreation = (parentId: string | null = null) => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
-    if (parentId && (!parent || getSectionCreateRestriction(parent, flattenSections(activeSectionTree), allItems))) {
-      setFeedback(parent ? getSectionCreateRestriction(parent, flattenSections(activeSectionTree), allItems) ?? "Нельзя добавить подраздел" : "Родительский раздел не найден");
+    if (parentId && !parent) {
+      setFeedback("Родительский раздел не найден");
       return;
+    }
+    if (parent) {
+      const availability = getParentAvailability(parent, allItems);
+      if (!availability.available) {
+        setFeedback(availability.label);
+        return;
+      }
     }
     setSectionCreationDialog({ parentId });
   };
@@ -7453,8 +7538,10 @@ function PopulatedWorkspace({
   const createSectionFromDialog = (name: string, parentId: string | null): SectionCreationResult => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
     if (parentId && !parent) return "Родительский раздел не найден. Обновите список и повторите попытку.";
-    const restriction = parent ? getSectionCreateRestriction(parent, flattenSections(activeSectionTree), allItems) : null;
-    if (restriction) return restriction;
+    if (parent) {
+      const availability = getParentAvailability(parent, allItems);
+      if (!availability.available) return availability.label;
+    }
     const normalizedName = name.trim();
     const duplicate = allSections.some((candidate) =>
       (candidate.parentId ?? null) === (parent?.id ?? null)
