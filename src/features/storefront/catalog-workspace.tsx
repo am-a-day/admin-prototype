@@ -5123,6 +5123,7 @@ function PositionEditorHost({
     deleteItem,
     setItemStatus,
     setAutosaveStatus,
+    setActiveEditorItemId,
   } = useCatalogStore();
   const { registerChange } = usePublish();
   const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
@@ -5147,6 +5148,16 @@ function PositionEditorHost({
   const editorContext = intent.origin === "positions" && intent.snapshot
     ? getQueueEditorContext(intent.snapshot.entryFilterId)
     : { tab: "basic" as EditorTab, anchor: undefined };
+  const currentSelectionIds = intent.snapshot
+    ? getQueueItemIds(
+        intent.snapshot.filterId,
+        items,
+        intent.snapshot.query,
+        intent.snapshot.sectionScopeId,
+        intent.snapshot.sort,
+      )
+    : intent.orderedIds;
+  const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
 
   useEffect(() => {
     writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
@@ -5159,6 +5170,11 @@ function PositionEditorHost({
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
   }, []);
+
+  useEffect(() => {
+    setActiveEditorItemId(intent.currentId);
+    return () => setActiveEditorItemId(null);
+  }, [intent.currentId, setActiveEditorItemId]);
 
   if (!item) {
     return <DescriptionQueueComplete filterId={intent.snapshot?.filterId ?? "quick:all"} onBack={onClose} />;
@@ -5181,7 +5197,13 @@ function PositionEditorHost({
   };
 
   return (
-    <PositionEditor
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {outsideCurrentSelection && (
+        <div className="mx-6 mt-4 shrink-0 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2 text-[12px] leading-5 text-[#79716b]">
+          Позиция больше не входит в текущую выборку
+        </div>
+      )}
+      <PositionEditor
       item={item}
       allItems={items}
       upsell={upsellByItem[item.id] ?? {}}
@@ -5259,7 +5281,8 @@ function PositionEditorHost({
           </button>
         </div>
       }
-    />
+      />
+    </div>
   );
 }
 

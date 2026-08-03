@@ -27,6 +27,7 @@ import {
 } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 import { useMockAuth } from "@/contexts/mock-auth-context";
+import { formatPrice, type CatalogItem } from "@/data/catalog";
 
 /** Стиль наведения для кликабельных навигационных сущностей в превью. */
 const NAV_HOVER = "cursor-pointer transition hover:ring-2 hover:ring-blue-400/60";
@@ -319,11 +320,38 @@ export function PhoneCatalog({
   selectedDishId,
   restaurantName = RESTAURANT_NAME,
   themed,
+  catalogItem,
 }: {
   selectedDishId: string;
   restaurantName?: string;
   themed?: boolean;
+  catalogItem?: CatalogItem | null;
 }) {
+  if (catalogItem) {
+    return (
+      <div className={cn("pb-6", themed && "bg-amber-50")}>
+        <div className="flex h-64 items-center justify-center overflow-hidden bg-zinc-100">
+          {catalogItem.thumbnailUrl ? (
+            <img src={catalogItem.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <UtensilsCrossed size={56} className="text-zinc-300" />
+          )}
+        </div>
+        <div className="rounded-t-[28px] bg-white px-5 pt-5">
+          <h2 className="text-xl font-black leading-tight">{catalogItem.title}</h2>
+          <RichDescriptionPreview value={catalogItem.description} />
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <div className="text-xl font-black">{formatPrice(catalogItem.price)}</div>
+            {catalogItem.displayMode !== "no-button" && catalogItem.displayMode !== "no-price" && (
+              <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">
+                В корзину
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   const selected = dishes.find((d) => d.id === selectedDishId);
   return (
     <div className={cn("p-4 pt-10", themed && "bg-amber-50")}>

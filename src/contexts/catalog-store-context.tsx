@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   type ReactNode,
 } from "react";
 import { catalogItems, catalogSections, type CatalogItem, type CatalogSection } from "@/data/catalog";
@@ -212,12 +213,15 @@ type CatalogStoreValue = CatalogState & {
   setItemOrder: (sectionId: string, ids: string[]) => void;
   replaceItemOrder: (order: Record<string, string[]>) => void;
   setAutosaveStatus: (id: string, status: CatalogSaveStatus) => void;
+  activeEditorItemId: string | null;
+  setActiveEditorItemId: (id: string | null) => void;
 };
 
 const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 
 export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
+  const [activeEditorItemId, setActiveEditorItemId] = useState<string | null>(null);
 
   useEffect(() => {
     const statuses: Record<string, CatalogItem["status"]> = {};
@@ -279,6 +283,8 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     setItemOrder,
     replaceItemOrder,
     setAutosaveStatus,
+    activeEditorItemId,
+    setActiveEditorItemId,
   }), [
     state,
     updateItem,
@@ -290,6 +296,7 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     setItemOrder,
     replaceItemOrder,
     setAutosaveStatus,
+    activeEditorItemId,
   ]);
 
   return <CatalogStoreContext.Provider value={value}>{children}</CatalogStoreContext.Provider>;

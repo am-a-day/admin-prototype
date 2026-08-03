@@ -42,6 +42,7 @@ import {
   type PreviewTab,
 } from "@/components/preview/phone-screens";
 import { useOrderRouting } from "@/contexts/order-routing-context";
+import type { CatalogItem } from "@/data/catalog";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -62,6 +63,7 @@ type PhonePreviewProps = {
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
+  catalogItem?: CatalogItem | null;
 };
 
 export function PhonePreview({
@@ -81,6 +83,7 @@ export function PhonePreview({
   onCreateFirstItem,
   seoTitle = "",
   seoDescription = "",
+  catalogItem = null,
 }: PhonePreviewProps) {
   const {
     serviceFeeRequireConsent,
@@ -242,7 +245,7 @@ export function PhonePreview({
   } else if (scenario === "catalog-empty") {
     screen = <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />;
   } else if (activeTab === "catalog") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} />;
   } else if (activeTab === "upsell") {
     // Сценарий превью управляется фокусом полей «Тексты рекомендаций».
     if (upsellSurface === "home") {
@@ -273,7 +276,7 @@ export function PhonePreview({
       );
     }
   } else if (activeTab === "appearance") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} themed />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} themed />;
   }
 
   // Overlay публикации (Publish model): аккуратный полупрозрачный слой на 3 сек.
