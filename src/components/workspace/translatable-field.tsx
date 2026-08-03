@@ -30,7 +30,6 @@ export function TranslatableField({
   compact = false,
   plain = false,
   storageKey,
-  onChange,
 }: {
   label: string;
   initialTranslations: Translations;
@@ -43,7 +42,6 @@ export function TranslatableField({
   /** Стиль макета редактора позиции: подпись над полем, поле в собственной рамке. */
   plain?: boolean;
   storageKey?: string;
-  onChange?: (value: string, language: LanguageCode) => void;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const { account, setWorkspaceLanguageHasContent } = useMockAuth();
@@ -95,7 +93,6 @@ export function TranslatableField({
       return next;
     });
     setWorkspaceLanguageHasContent(contentLanguage, value.trim() !== "");
-    onChange?.(value, contentLanguage);
   };
 
   const copyFromFallback = () => saveTranslation(fallbackValue);
