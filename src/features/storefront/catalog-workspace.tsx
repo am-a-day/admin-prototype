@@ -2630,6 +2630,7 @@ function BasicTab({
   onReorderMedia,
   onRemoveMedia,
   onDescriptionChange,
+  onTitleChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -2648,6 +2649,7 @@ function BasicTab({
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
   onRemoveMedia: (id: string) => void;
   onDescriptionChange?: (value: string) => void;
+  onTitleChange?: (value: string) => void;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -2681,6 +2683,9 @@ function BasicTab({
         storageKey={`item-name-${item.id}`}
         showTranslationMeta={false}
         plain
+        onChange={(value, language) => {
+          if (language === "ru") onTitleChange?.(value);
+        }}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4421,6 +4426,10 @@ function PositionEditor({
   focusAnchor,
   forceBasicTabOnItemChange = false,
   showStopQuickAction = true,
+  hideHeader = false,
+  editorTop,
+  onTitleChange,
+  onPriceChange,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
@@ -4447,6 +4456,10 @@ function PositionEditor({
   focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
   showStopQuickAction?: boolean;
+  hideHeader?: boolean;
+  editorTop?: ReactNode;
+  onTitleChange?: (value: string) => void;
+  onPriceChange?: (value: number | null) => void;
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>(() => editorTabByItem.get(item.id) ?? "basic");
   const editorScrollRef = useRef<HTMLDivElement | null>(null);
@@ -4518,6 +4531,7 @@ function PositionEditor({
   const updateBasePrice = (value: string) => {
     if (!isFormattedNumericDraft(value)) return;
     setBasePriceText(value);
+    onPriceChange?.(parseMoneyInput(value));
   };
   const formatBasePrice = () => {
     const value = parseMoneyInput(basePriceText);
@@ -4583,7 +4597,7 @@ function PositionEditor({
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
         <div className="mx-auto w-full max-w-[800px]">
-          {breadcrumb ? (
+          {!hideHeader && (breadcrumb ? (
             // «Позиции»: одна строка — breadcrumb вместо отдельного крупного заголовка позиции.
             <div className="flex items-center gap-2 pb-2 pt-5">
               <div className="min-w-0 flex-1">{breadcrumb}</div>
@@ -4606,7 +4620,9 @@ function PositionEditor({
               </h2>
               {positionActions}
             </div>
-          )}
+          ))}
+
+          {editorTop}
 
           <div className="space-y-2">
             <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
@@ -4660,6 +4676,7 @@ function PositionEditor({
                     onReorderMedia={reorderMedia}
                     onRemoveMedia={removeMedia}
                     onDescriptionChange={(value) => onDescriptionChange?.(item, value)}
+                    onTitleChange={onTitleChange}
                   />
                 </div>
               )}
@@ -5086,9 +5103,10 @@ function UnifiedCatalogTreePanel({
   onSelectSection,
   onSelectItem,
   onScopeChange,
-  onAddSection,
-  onAddPositionRequest,
   onAddPosition,
+  creationActive,
+  onOpenCreation,
+  revealSectionId,
   onSectionAction,
   onInsertSection,
   onInsertItem,
@@ -5106,9 +5124,10 @@ function UnifiedCatalogTreePanel({
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
-  onAddSection: () => void;
-  onAddPositionRequest: () => void;
   onAddPosition: (sectionId: string) => void;
+  creationActive?: boolean;
+  onOpenCreation?: () => void;
+  revealSectionId?: string | null;
   onSectionAction: (section: TreeSection, action: string) => void;
   onInsertSection: (draggedId: string, targetParentId: string | null, targetIndex: number) => void;
   onInsertItem: (draggedId: string, targetParentId: string, targetIndex: number) => void;
@@ -5698,6 +5717,13 @@ function UnifiedCatalogTreePanel({
     setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
   }, [sections, restrictedScopeSectionId]);
 
+  useEffect(() => {
+    if (!revealSectionId) return;
+    const path = findSectionPath(sections, revealSectionId);
+    if (path.length === 0) return;
+    setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
+  }, [revealSectionId, sections]);
+
   const toggleSection = (id: string) => {
     setExpanded((current) => ({ ...current, [id]: !(current[id] ?? false) }));
   };
@@ -5767,27 +5793,9 @@ function UnifiedCatalogTreePanel({
     event.stopPropagation();
   };
 
-  const renderSectionAddChoice = (
-    label: string,
-    description: string,
-    onSelect: () => void,
-  ) => (
-    <DropdownMenu.Item
-      onSelect={(event) => {
-        event.stopPropagation();
-        onSelect();
-      }}
-      className="flex min-h-[44px] cursor-pointer select-none flex-col justify-center rounded-[8px] px-2.5 py-1.5 outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-    >
-      <span className="text-[13px] font-medium leading-4 text-[#44403b]">{label}</span>
-      <span className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">{description}</span>
-    </DropdownMenu.Item>
-  );
-
-  const renderSectionQuickAdd = (section: TreeSection, addKind: ReturnType<typeof getSectionAddKind>) => {
+  const renderSectionQuickAdd = (section: TreeSection) => {
     const baseClassName = cn(
       "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#a6a09b] transition hover:bg-[#e6e6db] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-      addKind === "mixed" && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#a6a09b]",
     );
     const commonProps = {
       type: "button" as const,
@@ -5797,75 +5805,20 @@ function UnifiedCatalogTreePanel({
       onPointerDown: stopSectionControlEvent,
     };
 
-    if (addKind === "section") {
-      return (
-        <Tooltip label="Добавить подраздел" side="top" delayDuration={200}>
-          <button
-            {...commonProps}
-            aria-label={`Добавить подраздел в раздел “${section.name}”`}
-            className={baseClassName}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSectionAction(section, "Добавить подраздел");
-            }}
-          >
-            <Plus size={13} />
-          </button>
-        </Tooltip>
-      );
-    }
-
-    if (addKind === "item") {
-      return (
-        <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
-          <button
-            {...commonProps}
-            aria-label={`Добавить позицию в раздел “${section.name}”`}
-            className={baseClassName}
-            onClick={(event) => {
-              event.stopPropagation();
-              onAddPosition(section.id);
-            }}
-          >
-            <Plus size={13} />
-          </button>
-        </Tooltip>
-      );
-    }
-
-    if (addKind === "mixed") {
-      return (
-        <Tooltip label="Смешанные прямые дети: используйте меню действий" side="top" delayDuration={200}>
-          <button
-            {...commonProps}
-            disabled
-            aria-label={`Нельзя быстро добавить в раздел “${section.name}”: смешанная структура`}
-            className={baseClassName}
-          >
-            <Plus size={13} />
-          </button>
-        </Tooltip>
-      );
-    }
-
     return (
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            {...commonProps}
-            title="Добавить в раздел"
-            aria-label={`Добавить в раздел “${section.name}”`}
-            className={baseClassName}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Plus size={13} />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownContent align="end">
-          {renderSectionAddChoice("Добавить подраздел", "Создать вложенный раздел", () => onSectionAction(section, "Добавить подраздел"))}
-          {renderSectionAddChoice("Добавить позицию", "Добавить блюдо или товар", () => onAddPosition(section.id))}
-        </DropdownContent>
-      </DropdownMenu.Root>
+      <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
+        <button
+          {...commonProps}
+          aria-label={`Добавить позицию в раздел “${section.name}”`}
+          className={baseClassName}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAddPosition(section.id);
+          }}
+        >
+          <Plus size={13} />
+        </button>
+      </Tooltip>
     );
   };
 
@@ -5891,7 +5844,7 @@ function UnifiedCatalogTreePanel({
       && parentDropState.reason
       && invalidTooltipIdentity === getPragmaticTreeDropIdentity(parentDropState),
     );
-    const active = sectionEditingEnabled && selectedSectionId === section.id;
+    const active = !creationActive && sectionEditingEnabled && selectedSectionId === section.id;
     const highlighted = highlightedSectionId === section.id;
     const activeCount = getAggregateItemCount(section);
     const draggedSubtreeSections = [section, ...flattenSections(section.children ?? [])];
@@ -6036,7 +5989,7 @@ function UnifiedCatalogTreePanel({
               active ? "bg-[#f3f3ed]" : "bg-[#f3f3ed]",
             )}
           >
-            {renderSectionQuickAdd(section, addKind)}
+            {renderSectionQuickAdd(section)}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -6156,32 +6109,20 @@ function UnifiedCatalogTreePanel({
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-5 min-w-0 items-center justify-between gap-4">
           <span className="min-w-0 flex-1 truncate px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">Разделы</span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Добавить"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5.263px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <PlusCircle size={18} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              {focusedSection ? (
-                <>
-                  <DropdownActionItem onSelect={() => onAddPosition(focusedSection.id)}>Добавить позицию</DropdownActionItem>
-                  <DropdownActionItem onSelect={() => onSectionAction(focusedSection, "Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
-                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел верхнего уровня</DropdownActionItem>
-                </>
-              ) : (
-                <>
-                  <DropdownActionItem onSelect={onAddSection}>Добавить раздел</DropdownActionItem>
-                  <DropdownActionItem onSelect={onAddPositionRequest}>Добавить позицию</DropdownActionItem>
-                </>
-              )}
-            </DropdownContent>
-          </DropdownMenu.Root>
+          <button
+            type="button"
+            onClick={onOpenCreation}
+            aria-label="Создать"
+            className={cn(
+              "mt-1 flex h-8 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              creationActive
+                ? "bg-white text-[#292524] shadow-[0_0_2px_rgba(0,0,0,0.1)]"
+                : "text-[#44403b] hover:bg-[#f1f1ea] hover:text-[#292524]",
+            )}
+          >
+            <Plus size={14} />
+            Создать
+          </button>
         </div>
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />
@@ -6971,6 +6912,225 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
   };
 }
 
+const CATALOG_SECTION_CREATION_MAX_DEPTH = 2;
+type CatalogCreationMode = "position" | "section";
+type CatalogSectionCreationDraft = { name: string; parentId: string | null };
+
+function makeCreationPositionDraft(section: { id: string; name: string } | null): CatalogItem {
+  return { ...makeDraftItem(section), title: "" };
+}
+
+function getSectionDepthFromTree(sectionId: string, sections: TreeSection[]): number {
+  const flat = flattenSections(sections);
+  const byId = new Map(flat.map((section) => [section.id, section]));
+  let depth = 0;
+  let current = byId.get(sectionId);
+  const seen = new Set<string>();
+  while (current?.parentId && !seen.has(current.id)) {
+    seen.add(current.id);
+    depth += 1;
+    current = byId.get(current.parentId);
+  }
+  return depth;
+}
+
+function getSectionCreateRestriction(
+  section: TreeSection,
+  allSections: TreeSection[],
+  allItems: CatalogItem[],
+) {
+  if (allSections.some((candidate) => (candidate.parentId ?? null) === section.id)) {
+    return "В разделе уже есть подразделы";
+  }
+  if (getSectionDepthFromTree(section.id, allSections) >= CATALOG_SECTION_CREATION_MAX_DEPTH) {
+    return "Достигнут лимит вложенности";
+  }
+  if (allItems.some((item) => item.sectionId === section.id && item.status !== "archive")) {
+    return "В разделе уже есть позиции";
+  }
+  return null;
+}
+
+function getPositionCreateRestriction(section: TreeSection, allSections: TreeSection[]) {
+  return allSections.some((candidate) => (candidate.parentId ?? null) === section.id)
+    ? "В разделе уже есть подразделы"
+    : null;
+}
+
+function CatalogCreationWorkspace({
+  mode,
+  positionDraft,
+  sectionDraft,
+  allItems,
+  sections,
+  positionError,
+  sectionError,
+  onModeChange,
+  onPositionDraftChange,
+  onSectionDraftChange,
+  onCreatePosition,
+  onCreateSection,
+  onCancel,
+}: {
+  mode: CatalogCreationMode;
+  positionDraft: CatalogItem;
+  sectionDraft: CatalogSectionCreationDraft;
+  allItems: CatalogItem[];
+  sections: TreeSection[];
+  positionError: string;
+  sectionError: string;
+  onModeChange: (mode: CatalogCreationMode) => void;
+  onPositionDraftChange: (patch: Partial<CatalogItem>) => void;
+  onSectionDraftChange: (patch: Partial<CatalogSectionCreationDraft>) => void;
+  onCreatePosition: () => void;
+  onCreateSection: () => void;
+  onCancel: () => void;
+}) {
+  const flatSections = flattenSections(sections);
+  const selectedPositionSection = flatSections.find((section) => section.id === positionDraft.sectionId) ?? null;
+  const positionSectionRestriction = selectedPositionSection
+    ? getPositionCreateRestriction(selectedPositionSection, flattenSections(sections))
+    : null;
+  const canCreatePosition = Boolean(positionDraft.title.trim() && positionDraft.sectionId && !positionSectionRestriction);
+  const canCreateSection = Boolean(sectionDraft.name.trim() && !sectionError);
+
+  const sectionSelector = (
+    <div className="mb-3 space-y-1.5">
+      <label className="block text-[13px] leading-5 text-[#303030]" htmlFor="catalog-create-position-section">Раздел</label>
+      <select
+        id="catalog-create-position-section"
+        value={positionDraft.sectionId === "no-section" ? "" : positionDraft.sectionId}
+        onChange={(event) => {
+          const next = flatSections.find((section) => section.id === event.target.value) ?? null;
+          onPositionDraftChange({ sectionId: next?.id ?? "no-section", sectionName: next?.name ?? "Без раздела" });
+        }}
+        className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#4f39f6]/10"
+      >
+        <option value="">Выберите раздел</option>
+        {flatSections.map((section) => {
+          const restriction = getPositionCreateRestriction(section, flattenSections(sections));
+          return (
+            <option key={section.id} value={section.id} disabled={Boolean(restriction)}>
+              {"  ".repeat(getSectionDepthFromTree(section.id, sections))}{section.name}{restriction ? ` · ${restriction}` : ""}
+            </option>
+          );
+        })}
+      </select>
+      {positionSectionRestriction && <p className="text-[12px] leading-4 text-[#9f1239]">{positionSectionRestriction}</p>}
+      {!positionDraft.sectionId || positionDraft.sectionId === "no-section" ? (
+        <p className="text-[12px] leading-4 text-[#9f1239]">Выберите раздел: позицию нельзя создать без него.</p>
+      ) : null}
+      {positionError && <p className="text-[12px] leading-4 text-[#9f1239]">{positionError}</p>}
+    </div>
+  );
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+      <div className="shrink-0 border-b border-[#e7e5e4] px-6 py-4">
+        <div className="mx-auto flex max-w-[800px] items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[16px] font-semibold leading-6 text-[#292524]">Создание</h2>
+            <div className="mt-3 inline-flex items-center rounded-[8px] bg-[#f1f1ea] p-0.5" role="tablist" aria-label="Тип создаваемой сущности">
+              {([
+                ["position", "Позиция"],
+                ["section", "Раздел"],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === id}
+                  onClick={() => onModeChange(id)}
+                  className={cn(
+                    "h-7 rounded-[6px] px-3 text-[12px] font-medium transition",
+                    mode === id ? "bg-white text-[#292524] shadow-[0_0_2px_rgba(0,0,0,0.1)]" : "text-[#79716b] hover:text-[#44403b]",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 pt-1">
+            <button type="button" onClick={onCancel} className="h-8 rounded-[8px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]">Отмена</button>
+            <button
+              type="button"
+              disabled={mode === "position" ? !canCreatePosition : !canCreateSection}
+              onClick={mode === "position" ? onCreatePosition : onCreateSection}
+              className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {mode === "position" ? "Создать позицию" : "Создать раздел"}
+            </button>
+          </div>
+        </div>
+      </div>
+      {mode === "position" ? (
+        <PositionEditor
+          item={positionDraft}
+          allItems={allItems}
+          upsell={{}}
+          onUpsellChange={() => undefined}
+          stopBusy={false}
+          onArchiveItem={() => undefined}
+          onRestoreItem={() => undefined}
+          onMoveItem={() => undefined}
+          onToggleStop={() => undefined}
+          onSetAvailabilityMode={() => undefined}
+          unavailableDisplayMode="hidden"
+          outsideScheduleMode="hidden"
+          weeklySchedule={createDefaultWeeklySchedule()}
+          onUnavailableDisplayModeChange={() => undefined}
+          onOutsideScheduleModeChange={() => undefined}
+          onWeeklyScheduleChange={() => undefined}
+          onRequestPermanentDelete={() => undefined}
+          hideHeader
+          showStopQuickAction={false}
+          editorTop={sectionSelector}
+          onTitleChange={(title) => onPositionDraftChange({ title, hasDescription: positionDraft.hasDescription })}
+          onPriceChange={(price) => onPositionDraftChange({ price: price ?? 0 })}
+          onDescriptionChange={(_, description) => onPositionDraftChange({ description, hasDescription: descriptionHasContent(description) })}
+        />
+      ) : (
+        <div className="min-w-0 flex-1 overflow-y-auto p-6">
+          <div className="mx-auto w-full max-w-[800px] space-y-4">
+            <div>
+              <label className="block text-[13px] leading-5 text-[#303030]" htmlFor="catalog-create-section-name">Название раздела</label>
+              <input
+                id="catalog-create-section-name"
+                value={sectionDraft.name}
+                onChange={(event) => onSectionDraftChange({ name: event.target.value })}
+                placeholder="Например, Завтраки"
+                className="mt-1.5 h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#4f39f6]/10"
+              />
+            </div>
+            <div>
+              <label className="block text-[13px] leading-5 text-[#303030]" htmlFor="catalog-create-section-parent">Родительский раздел</label>
+              <select
+                id="catalog-create-section-parent"
+                value={sectionDraft.parentId ?? ""}
+                onChange={(event) => onSectionDraftChange({ parentId: event.target.value || null })}
+                className="mt-1.5 h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#4f39f6]/10"
+              >
+                <option value="">Без родителя</option>
+                {flatSections.map((section) => {
+                  const restriction = getSectionCreateRestriction(section, flattenSections(sections), allItems);
+                  return (
+                    <option key={section.id} value={section.id} disabled={Boolean(restriction)}>
+                      {"  ".repeat(getSectionDepthFromTree(section.id, sections))}{section.name}{restriction ? ` · ${restriction}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              {sectionError && <p className="mt-1.5 text-[12px] leading-4 text-[#9f1239]">{sectionError}</p>}
+              <p className="mt-1.5 text-[12px] leading-4 text-[#a8a29e]">Разделы можно вкладывать максимум на {CATALOG_SECTION_CREATION_MAX_DEPTH} уровня.</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getLinkedEntitiesCount(item: CatalogItem) {
   return item.recommendationsCount + item.optionsCount + item.modifiersCount;
 }
@@ -7249,6 +7409,13 @@ function PopulatedWorkspace({
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   // Черновики, созданные кнопкой «Добавить позицию» (статичные catalogItems не мутируем).
   const [extraItems, setExtraItems] = useState<CatalogItem[]>([]);
+  const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
+  const [creationMode, setCreationMode] = useState<CatalogCreationMode | null>(null);
+  const [creationPositionDraft, setCreationPositionDraft] = useState<CatalogItem>(() => makeCreationPositionDraft(null));
+  const [creationSectionDraft, setCreationSectionDraft] = useState<CatalogSectionCreationDraft>({ name: "", parentId: null });
+  const [creationError, setCreationError] = useState("");
+  const [creationSectionError, setCreationSectionError] = useState("");
+  const [revealSectionId, setRevealSectionId] = useState<string | null>(null);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
   const [highlightItemId, setHighlightItemId] = useState<string | null>(initialSelectedItemId);
   useEffect(() => {
@@ -7312,7 +7479,7 @@ function PopulatedWorkspace({
   const [treeMoveUndo, setTreeMoveUndo] = useState<CatalogTreeMoveUndoState>(null);
   const resetSignalReadyRef = useRef(false);
 
-  const allSections = catalogSections
+  const allSections = [...catalogSections, ...extraSections]
     .filter((section) => !deletedSectionIds.has(section.id))
     .map<TreeSection>((section) => {
       const parentId = Object.prototype.hasOwnProperty.call(sectionParentOverrides, section.id)
@@ -7406,6 +7573,143 @@ function PopulatedWorkspace({
   const sectionTableTitle = section
     ? `Позиции раздела “${section.name}”`
     : "Позиции раздела";
+
+  const creationHasChanges = creationMode === "position"
+    ? Boolean(creationPositionDraft.title.trim() || creationPositionDraft.price > 0 || creationPositionDraft.description.trim())
+    : creationMode === "section"
+      ? Boolean(creationSectionDraft.name.trim())
+      : false;
+
+  const closeCreation = () => {
+    if (creationHasChanges && !window.confirm("Закрыть создание? Введённые данные будут потеряны.")) return false;
+    setCreationMode(null);
+    setCreationError("");
+    setCreationSectionError("");
+    return true;
+  };
+
+  const openCreation = (mode: CatalogCreationMode, contextSectionId: string | null = null) => {
+    if (creationMode) {
+      setCreationMode(mode);
+      return;
+    }
+    const contextSection = contextSectionId ? allSections.find((candidate) => candidate.id === contextSectionId) ?? null : null;
+    setCreationMode(mode);
+    setCreationError("");
+    setCreationSectionError("");
+    if (mode === "position") {
+      setCreationPositionDraft(makeCreationPositionDraft(contextSection));
+    } else {
+      setCreationSectionDraft({ name: "", parentId: contextSection?.id ?? null });
+    }
+    setSelectedItemId(null);
+    setEditing(false);
+  };
+
+  const switchCreationMode = (mode: CatalogCreationMode) => {
+    if (mode === creationMode) return;
+    if (mode === "section") {
+      const nextParentId = creationPositionDraft.sectionId !== "no-section" ? creationPositionDraft.sectionId : null;
+      setCreationSectionDraft((current) => ({ ...current, parentId: current.parentId ?? nextParentId }));
+    } else if (creationSectionDraft.parentId) {
+      const nextSection = allSections.find((candidate) => candidate.id === creationSectionDraft.parentId) ?? null;
+      if (nextSection) setCreationPositionDraft((current) => ({ ...current, sectionId: nextSection.id, sectionName: nextSection.name }));
+    }
+    setCreationMode(mode);
+    setCreationError("");
+    setCreationSectionError("");
+  };
+
+  const updateCreationPositionDraft = (patch: Partial<CatalogItem>) => {
+    setCreationPositionDraft((current) => ({ ...current, ...patch }));
+    setCreationError("");
+  };
+
+  const updateCreationSectionDraft = (patch: Partial<CatalogSectionCreationDraft>) => {
+    setCreationSectionDraft((current) => ({ ...current, ...patch }));
+    setCreationSectionError("");
+  };
+
+  const handleTreeSelectSection = (id: string) => {
+    if (!closeCreation()) return;
+    openSectionEditor(id);
+  };
+
+  const createPositionFromDraft = () => {
+    const title = creationPositionDraft.title.trim();
+    const targetSection = allSections.find((candidate) => candidate.id === creationPositionDraft.sectionId) ?? null;
+    if (!title) {
+      setCreationError("Введите название позиции");
+      return;
+    }
+    if (!targetSection) {
+      setCreationError("Выберите раздел: позицию нельзя создать без него");
+      return;
+    }
+    const restriction = getPositionCreateRestriction(targetSection, flattenSections(activeSectionTree));
+    if (restriction === "В разделе уже есть подразделы") {
+      setCreationError("Позицию нельзя добавить в раздел с подразделами");
+      return;
+    }
+    const finalDraft: CatalogItem = {
+      ...creationPositionDraft,
+      title,
+      sectionId: targetSection.id,
+      sectionName: targetSection.name,
+      hasDescription: descriptionHasContent(creationPositionDraft.description),
+    };
+    setExtraItems((current) => [...current, finalDraft]);
+    setSelectedSectionId(targetSection.id);
+    setSelectedItemId(finalDraft.id);
+    setLastItemBySection((current) => ({ ...current, [targetSection.id]: finalDraft.id }));
+    setCreationMode(null);
+    setCreationError("");
+    setEditing(true);
+    registerChange("catalog");
+    setFeedback("Позиция создана");
+  };
+
+  const createSectionFromDraft = () => {
+    const name = creationSectionDraft.name.trim();
+    const parent = creationSectionDraft.parentId
+      ? allSections.find((candidate) => candidate.id === creationSectionDraft.parentId) ?? null
+      : null;
+    const restriction = parent ? getSectionCreateRestriction(parent, flattenSections(activeSectionTree), allItems) : null;
+    if (!name) {
+      setCreationSectionError("Введите название раздела");
+      return;
+    }
+    if (restriction) {
+      setCreationSectionError(restriction);
+      return;
+    }
+    const id = `draft-section-${Date.now()}-${extraSections.length + 1}`;
+    const created: TreeSection = {
+      id,
+      parentId: parent?.id ?? null,
+      name,
+      imageUrl: null,
+      emoji: "🍽️",
+      sortOrder: 100_000 + extraSections.length,
+      status: "active",
+    };
+    setExtraSections((current) => [...current, created]);
+    setSectionOrderByParent((current) => ({
+      ...current,
+      [parent?.id ?? "__root__"]: [
+        ...(current[parent?.id ?? "__root__"] ?? []),
+        id,
+      ],
+    }));
+    setSelectedSectionId(id);
+    setSelectedItemId(null);
+    setEditing(false);
+    setRevealSectionId(id);
+    setCreationMode(null);
+    setCreationSectionError("");
+    registerChange("catalog");
+    setFeedback("Раздел создан");
+  };
 
   const rememberItem = (id: string) => {
     const it = allItems.find((i) => i.id === id);
@@ -8494,6 +8798,14 @@ function PopulatedWorkspace({
   };
 
   const handleUnifiedSectionAction = (target: TreeSection, action: string) => {
+    if (action === "Добавить подраздел") {
+      openCreation("section", target.id);
+      return;
+    }
+    if (action === "Добавить позицию") {
+      openCreation("position", target.id);
+      return;
+    }
     if (action === "Настроить раздел" || action === "Изменить раздел") {
       if (editorNavMode === "entity") openSectionEditor(target.id);
       else showPlaceholderFeedback(`${action}: placeholder`);
@@ -8710,18 +9022,19 @@ function PopulatedWorkspace({
             sections={editorNavMode === "entity" ? allSectionTree : activeSectionTree}
             items={allItems}
             scopeSectionId={scopeSectionId}
-            selectedSectionId={selectedSectionId}
+            selectedSectionId={creationMode ? null : selectedSectionId}
             selectedItemId={selectedItemId}
             sectionEditingEnabled={editorNavMode === "entity"}
             includeArchived={editorNavMode === "entity"}
             showPositions={editorNavMode !== "entity"}
             positionOrderBySection={positionOrderBySection}
-            onSelectSection={openSectionEditor}
+            onSelectSection={handleTreeSelectSection}
             onSelectItem={openItem}
             onScopeChange={onScopeChange}
-            onAddSection={() => showPlaceholderFeedback("Добавить раздел: placeholder")}
-            onAddPositionRequest={() => showPlaceholderFeedback("Добавить позицию: выберите родительский раздел")}
-            onAddPosition={addPositionToSection}
+            onAddPosition={(sectionId) => openCreation("position", sectionId)}
+            creationActive={Boolean(creationMode)}
+            onOpenCreation={() => openCreation("position", selectedSectionId)}
+            revealSectionId={revealSectionId}
             onSectionAction={handleUnifiedSectionAction}
             onInsertSection={insertTreeSectionAt}
             onInsertItem={insertTreeItemAt}
@@ -8776,7 +9089,23 @@ function PopulatedWorkspace({
           onDragEnd={handleDndDragEnd}
           onDragCancel={handleDndDragCancel}
         >
-        {editorNavMode === "entity" ? (
+        {creationMode ? (
+          <CatalogCreationWorkspace
+            mode={creationMode}
+            positionDraft={creationPositionDraft}
+            sectionDraft={creationSectionDraft}
+            allItems={allItems}
+            sections={activeSectionTree}
+            positionError={creationError}
+            sectionError={creationSectionError}
+            onModeChange={switchCreationMode}
+            onPositionDraftChange={updateCreationPositionDraft}
+            onSectionDraftChange={updateCreationSectionDraft}
+            onCreatePosition={createPositionFromDraft}
+            onCreateSection={createSectionFromDraft}
+            onCancel={closeCreation}
+          />
+        ) : editorNavMode === "entity" ? (
           section ? (
             <SectionEditor
               section={section}
@@ -8804,7 +9133,7 @@ function PopulatedWorkspace({
                 setSectionWeeklyScheduleBySection((current) => ({ ...current, [section.id]: schedule }));
                 registerChange("catalog");
               }}
-              onAddPosition={() => addPositionToSection(section.id)}
+              onAddPosition={() => openCreation("position", section.id)}
               onCompositionQueryChange={(value) => {
                 setSelectedIds(new Set());
                 setSectionTableQuery(value);
@@ -8850,7 +9179,7 @@ function PopulatedWorkspace({
                     section={selectedItemSection}
                     itemCount={itemCount}
                     onEdit={() => handleUnifiedSectionAction(selectedItemSection, "Изменить раздел")}
-                    onAddPosition={() => addPositionToSection(selectedItemSection.id)}
+                    onAddPosition={() => openCreation("position", selectedItemSection.id)}
                     onAction={(action) => handleUnifiedSectionAction(selectedItemSection, action)}
                   />
                 );
