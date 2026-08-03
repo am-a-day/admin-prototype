@@ -1748,6 +1748,26 @@ function sectionHasChildren(sectionId: string, sections: TreeSection[]) {
   return sections.some((section) => section.parentId === sectionId);
 }
 
+function getSectionSubtreeIds(sectionId: string, sections: TreeSection[]) {
+  const result = new Set<string>([sectionId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    sections.forEach((section) => {
+      if (section.parentId && result.has(section.parentId) && !result.has(section.id)) {
+        result.add(section.id);
+        changed = true;
+      }
+    });
+  }
+  return result;
+}
+
+type SectionDeleteSummary = {
+  positionCount: number;
+  subsectionCount: number;
+};
+
 type SectionCreationResult = boolean | string | void;
 
 type ParentAvailability =
@@ -5221,9 +5241,14 @@ function SectionItemList({
                     Удалить навсегда
                   </DropdownActionItem>
                 ) : (
-                  <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">
-                    Архивировать
-                  </DropdownActionItem>
+                  <>
+                    <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">
+                      Архивировать
+                    </DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction("Удалить раздел")} tone="danger">
+                      Удалить раздел
+                    </DropdownActionItem>
+                  </>
                 )}
               </DropdownContent>
             </DropdownMenu.Root>
@@ -5252,7 +5277,10 @@ function SectionItemList({
                 {isArchivedSection ? (
                   <DropdownActionItem onSelect={() => onSectionAction("Удалить навсегда")} tone="danger">Удалить навсегда</DropdownActionItem>
                 ) : (
-                  <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
+                  <>
+                    <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => onSectionAction("Удалить раздел")} tone="danger">Удалить раздел</DropdownActionItem>
+                  </>
                 )}
               </DropdownContent>
             </DropdownMenu.Root>
@@ -6347,9 +6375,15 @@ function UnifiedCatalogTreePanel({
                 <DropdownActionItem onSelect={() => onSectionAction(section, "Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
                 {section.status === "archive" ? (
-                  <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
+                  <>
+                    <DropdownActionItem onSelect={() => onSectionAction(section, "Восстановить раздел")}>Восстановить из архива</DropdownActionItem>
+                    <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
+                  </>
                 ) : (
-                  <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
+                  <>
+                    <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Архивировать раздел")}>Архивировать</DropdownActionItem>
+                    <DropdownActionItem tone="danger" onSelect={() => onSectionAction(section, "Удалить раздел")}>Удалить раздел</DropdownActionItem>
+                  </>
                 )}
               </DropdownContent>
             </DropdownMenu.Root>
@@ -6537,6 +6571,7 @@ function SectionEditorContext({
             <DropdownActionItem onSelect={() => onAction("Скрыть или показать")}>Скрыть или показать</DropdownActionItem>
             <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
             <DropdownActionItem tone="danger" onSelect={() => onAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
+            <DropdownActionItem tone="danger" onSelect={() => onAction("Удалить раздел")}>Удалить раздел</DropdownActionItem>
           </DropdownContent>
         </DropdownMenu.Root>
       </div>
@@ -6676,6 +6711,12 @@ function SectionEditor({
               <DropdownContent align="end">
                 <DropdownActionItem onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>
                 <DropdownActionItem onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                {archived ? (
+                  <DropdownActionItem tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
+                ) : (
+                  <DropdownActionItem tone="danger" onSelect={() => onAction("Удалить раздел")}>Удалить раздел</DropdownActionItem>
+                )}
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
@@ -6822,15 +6863,20 @@ function SectionEditor({
                 <div className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
                   <div>
                     <div className="text-[13px] font-medium text-[#9f3a31]">Опасная зона</div>
-                    <div className="mt-0.5 text-[12px] leading-4 text-[#a8a29e]">Архивирование раздела</div>
+                    <div className="mt-0.5 text-[12px] leading-4 text-[#a8a29e]">Архивирование и удаление раздела</div>
                   </div>
-                  <div>
-                    <div className="text-[12px] leading-5 text-[#79716b]">
-                      {archived ? "Раздел находится в архиве и не показывается гостям." : "Архивный раздел не показывается гостям и остается доступен для восстановления."}
+                <div>
+                  <div className="text-[12px] leading-5 text-[#79716b]">
+                    {archived ? "Раздел находится в архиве и не показывается гостям." : "Архивный раздел не показывается гостям и остается доступен для восстановления."}
+                  </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={archived ? onRestore : onArchive} className={cn("h-8 rounded-[8px] border px-3 text-[12px] font-medium transition", archived ? "border-[#d8d5d0] text-[#57534d] hover:bg-[#f5f5f4]" : "border-[#e7c6c2] text-[#9f3a31] hover:bg-[#fff7f6]")}>
+                        {archived ? "Восстановить раздел" : "Архивировать раздел"}
+                      </button>
+                      <button type="button" onClick={() => onAction("Удалить раздел")} className="h-8 rounded-[8px] border border-[#e7c6c2] px-3 text-[12px] font-medium text-[#9f3a31] transition hover:bg-[#fff7f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f3a31]/20">
+                        Удалить раздел
+                      </button>
                     </div>
-                    <button type="button" onClick={archived ? onRestore : onArchive} className={cn("mt-2 h-8 rounded-[8px] border px-3 text-[12px] font-medium transition", archived ? "border-[#d8d5d0] text-[#57534d] hover:bg-[#f5f5f4]" : "border-[#e7c6c2] text-[#9f3a31] hover:bg-[#fff7f6]")}>
-                      {archived ? "Восстановить раздел" : "Архивировать раздел"}
-                    </button>
                   </div>
                 </div>
               </div>
@@ -7169,6 +7215,7 @@ function SectionPositionNav({
               <DropdownActionItem onSelect={() => onSectionAction("Переместить")}>Переместить</DropdownActionItem>
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
               <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Архивировать раздел")}>Архивировать</DropdownActionItem>
+              <DropdownActionItem tone="danger" onSelect={() => onSectionAction("Удалить раздел")}>Удалить раздел</DropdownActionItem>
             </DropdownContent>
           </DropdownMenu.Root>
         </div>
@@ -7380,75 +7427,125 @@ function CreateDiscardDialog({
 
 type SectionDeleteDialogState = {
   section: TreeSection;
-  mode: "confirm" | "blocked";
-  reason?: "items" | "children" | "both";
+  archived: boolean;
+  summary: SectionDeleteSummary;
 };
 
 function SectionDeleteDialog({
   state,
   onCancel,
+  onArchive,
   onConfirm,
-  onOpenSection,
 }: {
   state: SectionDeleteDialogState;
   onCancel: () => void;
-  onConfirm: (section: TreeSection) => void;
-  onOpenSection: (section: TreeSection) => void;
+  onArchive: (section: TreeSection) => void | Promise<void>;
+  onConfirm: (section: TreeSection) => void | Promise<void>;
 }) {
-  const blockedDescription =
-    state.reason === "both"
-      ? "Раздел не пуст. Сначала переместите или удалите позиции и подразделы."
-      : state.reason === "children"
-        ? "В разделе есть подразделы. Сначала переместите или удалите их."
-        : "В разделе есть позиции. Сначала переместите или удалите их.";
+  const [pendingAction, setPendingAction] = useState<"archive" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [failedAction, setFailedAction] = useState<"archive" | "delete" | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const hasContents = state.summary.positionCount > 0 || state.summary.subsectionCount > 0;
+  const title = state.archived
+    ? `Удалить раздел «${state.section.name}» навсегда?`
+    : `Удалить раздел «${state.section.name}»?`;
+  const description = hasContents
+    ? `В разделе и его подразделах ${state.summary.positionCount} ${plural(state.summary.positionCount, "позиция", "позиции", "позиций")} и ${state.summary.subsectionCount} ${plural(state.summary.subsectionCount, "подраздел", "подраздела", "подразделов")}. После удаления восстановить их будет нельзя.`
+    : "Восстановить раздел после удаления не получится.";
+
+  const runAction = async (action: "archive" | "delete") => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    setError(null);
+    setFailedAction(null);
+    try {
+      await Promise.resolve(action === "archive" ? onArchive(state.section) : onConfirm(state.section));
+    } catch (cause) {
+      setFailedAction(action);
+      setError(cause instanceof Error ? cause.message : "Не удалось выполнить действие. Попробуйте ещё раз.");
+    } finally {
+      setPendingAction(null);
+    }
+  };
 
   useEffect(() => {
+    dialogRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape" && !pendingAction) onCancel();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+  }, [onCancel, pendingAction]);
 
   return createPortal(
-    <div className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
+    <div
+      className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !pendingAction) onCancel();
+      }}
+    >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="section-delete-title"
-        className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]"
+        tabIndex={-1}
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-[560px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)] outline-none"
       >
         <h2 id="section-delete-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
-          {state.mode === "confirm" ? "Удалить раздел навсегда?" : "Нельзя удалить раздел"}
+          {title}
         </h2>
         <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
-          {state.mode === "confirm" ? "Раздел нельзя будет восстановить." : blockedDescription}
+          {description}
         </p>
-        <div className="mt-5 flex justify-end gap-2">
+        {hasContents && !state.archived && (
+          <div className="mt-4 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2.5 text-[12px] leading-5 text-[#57534d]">
+            Безопаснее сначала архивировать раздел: содержимое останется доступно для восстановления.
+          </div>
+        )}
+        {error && (
+          <div className="mt-3 flex items-center justify-between gap-3 text-[12px] leading-5 text-[#9f3a31]">
+            <p role="alert">{error}</p>
+            {failedAction && (
+              <button
+                type="button"
+                onClick={() => void runAction(failedAction)}
+                className="shrink-0 rounded-[7px] px-2 py-1 font-medium text-[#9f3a31] transition hover:bg-[#fff7f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f3a31]/20"
+              >
+                Повторить
+              </button>
+            )}
+          </div>
+        )}
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onCancel}
-            className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            disabled={Boolean(pendingAction)}
+            className="h-9 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Отмена
           </button>
-          {state.mode === "confirm" ? (
+          {hasContents && !state.archived && (
             <button
               type="button"
-              onClick={() => onConfirm(state.section)}
-              className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20"
+              onClick={() => void runAction("archive")}
+              disabled={Boolean(pendingAction)}
+              className="h-9 rounded-[9px] border border-[#d8d5d0] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Удалить навсегда
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onOpenSection(state.section)}
-              className="h-8 rounded-[9px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              Открыть позиции раздела
+              {pendingAction === "archive" ? "Архивирование…" : "Архивировать"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void runAction("delete")}
+            disabled={Boolean(pendingAction)}
+            className="h-9 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pendingAction === "delete" ? "Удаление…" : state.archived || hasContents ? "Удалить навсегда" : "Удалить"}
+          </button>
         </div>
       </div>
     </div>,
@@ -8835,11 +8932,26 @@ function PopulatedWorkspace({
 
   const archiveSection = (target: TreeSection | null = section) => {
     if (!target) return;
-    setSectionStatusOverrides((prev) => ({ ...prev, [target.id]: "archive" }));
-    setSelectedSectionId(target.id);
+    const subtreeIds = getSectionSubtreeIds(target.id, allSections);
+    setSectionStatusOverrides((prev) => {
+      const next = { ...prev };
+      subtreeIds.forEach((id) => {
+        next[id] = "archive";
+      });
+      return next;
+    });
     setSelectedIds(new Set());
     setSectionArchiveOpen(true);
-    if (editorNavMode === "entity" || (editorNavMode === "unified" && selectedItem?.sectionId === target.id)) {
+    const selectionInSubtree = Boolean(selectedSectionId && subtreeIds.has(selectedSectionId));
+    if (editorNavMode === "unified" && selectionInSubtree) {
+      const replacement = activeSections.find((candidate) => !subtreeIds.has(candidate.id)) ?? null;
+      setSelectedSectionId(replacement?.id ?? null);
+      setSelectedItemId(null);
+      setEditing(false);
+    } else {
+      setSelectedSectionId(target.id);
+    }
+    if (editorNavMode === "entity" || (editorNavMode === "unified" && selectedItem && subtreeIds.has(selectedItem.sectionId))) {
       setSelectedItemId(null);
       setEditing(false);
     }
@@ -8848,59 +8960,85 @@ function PopulatedWorkspace({
   };
 
   const restoreSection = (target: TreeSection) => {
+    const subtreeIds = getSectionSubtreeIds(target.id, allSections);
     if (target.parentId) {
       const parent = allSections.find((candidate) => candidate.id === target.parentId);
-      if (parent?.status === "archive") {
+      if (parent?.status === "archive" && !subtreeIds.has(parent.id)) {
         setFeedback("Сначала восстановите родительский раздел");
         return;
       }
     }
-    setSectionStatusOverrides((prev) => ({ ...prev, [target.id]: "active" }));
+    setSectionStatusOverrides((prev) => {
+      const next = { ...prev };
+      subtreeIds.forEach((id) => {
+        next[id] = "active";
+      });
+      return next;
+    });
     setSelectedSectionId(target.id);
     if (editorNavMode === "entity") setSelectedItemId(null);
     registerChange("catalog");
     setFeedback("Раздел восстановлен");
   };
 
-  const requestDeleteArchivedSection = (target: TreeSection) => {
-    if (target.status !== "archive") return;
-    const hasItems = allItems.some((item) => item.sectionId === target.id);
-    const hasChildren = sectionHasChildren(target.id, allSections);
-    if (hasItems || hasChildren) {
-      setPendingSectionDelete({
-        section: target,
-        mode: "blocked",
-        reason: hasItems && hasChildren ? "both" : hasChildren ? "children" : "items",
-      });
-      return;
-    }
-    setPendingSectionDelete({ section: target, mode: "confirm" });
+  const requestSectionDelete = (target: TreeSection) => {
+    const subtreeIds = getSectionSubtreeIds(target.id, allSections);
+    const positionCount = allItems.filter((item) => subtreeIds.has(item.sectionId)).length;
+    setPendingSectionDelete({
+      section: target,
+      archived: target.status === "archive",
+      summary: {
+        positionCount,
+        subsectionCount: Math.max(0, subtreeIds.size - 1),
+      },
+    });
   };
 
-  const confirmDeleteArchivedSection = (target: TreeSection) => {
-    setDeletedSectionIds((prev) => new Set(prev).add(target.id));
+  const confirmDeleteSection = (target: TreeSection) => {
+    const subtreeIds = getSectionSubtreeIds(target.id, allSections);
+    const deletedItemIdSet = new Set(
+      allItems.filter((item) => subtreeIds.has(item.sectionId)).map((item) => item.id),
+    );
+    setDeletedSectionIds((prev) => new Set([...prev, ...subtreeIds]));
+    setDeletedItemIds((prev) => new Set([...prev, ...deletedItemIdSet]));
     setSectionStatusOverrides((prev) => {
       const next = { ...prev };
-      delete next[target.id];
+      subtreeIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    setSectionDraftOverrides((prev) => {
+      const next = { ...prev };
+      subtreeIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    setSectionParentOverrides((prev) => {
+      const next = { ...prev };
+      subtreeIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    setSectionOrderByParent((prev) => Object.fromEntries(
+      Object.entries(prev).map(([parentId, ids]) => [parentId, ids.filter((id) => !subtreeIds.has(id))]),
+    ));
+    setItemStatusOverrides((prev) => {
+      const next = { ...prev };
+      deletedItemIdSet.forEach((id) => delete next[id]);
       return next;
     });
     setPendingSectionDelete(null);
-    if (selectedSectionId === target.id) {
-      const replacement = activeSections.find((candidate) => candidate.id !== target.id) ?? null;
+    const selectionWasDeleted = Boolean(selectedSectionId && subtreeIds.has(selectedSectionId));
+    const itemWasDeleted = Boolean(selectedItemId && deletedItemIdSet.has(selectedItemId));
+    if (selectionWasDeleted || itemWasDeleted) {
+      const replacement = activeSections.find((candidate) => !subtreeIds.has(candidate.id)) ?? null;
       setSelectedSectionId(replacement?.id ?? null);
       setSelectedItemId(null);
       setEditing(false);
     }
+    setSelectedIds(new Set());
+    registerChange("catalog");
     setFeedback("Раздел удалён навсегда");
   };
 
-  const openSectionFromDeleteDialog = (target: TreeSection) => {
-    setPendingSectionDelete(null);
-    setSelectedSectionId(target.id);
-    setSelectedItemId(null);
-    setEditing(false);
-    if (target.status === "archive") setSectionArchiveOpen(true);
-  };
+  const requestDeleteArchivedSection = requestSectionDelete;
 
   const handleSectionAction = (action: string) => {
     if (action === "Архивировать" || action === "Архивировать раздел") {
@@ -8911,8 +9049,8 @@ function PopulatedWorkspace({
       restoreSection(section);
       return;
     }
-    if (action === "Удалить навсегда" && section) {
-      requestDeleteArchivedSection(section);
+    if ((action === "Удалить навсегда" || action === "Удалить раздел") && section) {
+      requestSectionDelete(section);
       return;
     }
     showPlaceholderFeedback(`${action}: placeholder`);
@@ -8933,6 +9071,10 @@ function PopulatedWorkspace({
     }
     if (action === "Восстановить раздел" || action === "Восстановить из архива") {
       restoreSection(target);
+      return;
+    }
+    if (action === "Удалить раздел" || action === "Удалить навсегда") {
+      requestSectionDelete(target);
       return;
     }
     showPlaceholderFeedback(`${action}: placeholder`);
@@ -9354,8 +9496,15 @@ function PopulatedWorkspace({
           <SectionDeleteDialog
             state={pendingSectionDelete}
             onCancel={() => setPendingSectionDelete(null)}
-            onConfirm={confirmDeleteArchivedSection}
-            onOpenSection={openSectionFromDeleteDialog}
+            onArchive={async (target) => {
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              archiveSection(target);
+              setPendingSectionDelete(null);
+            }}
+            onConfirm={async (target) => {
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              confirmDeleteSection(target);
+            }}
           />
         )}
         {sectionCreationDialog && (
