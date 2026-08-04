@@ -634,9 +634,10 @@ function PragmaticTreeInsertionTarget({
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
 
 export type CatalogTab = "sections" | "overview" | "upsell";
-export type CatalogPrimaryTab = "catalog" | "upsell" | "stop-list";
+export type CatalogPrimaryTab = "sections" | "overview" | "upsell" | "stop-list";
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
-  { id: "catalog", label: "Каталог" },
+  { id: "sections", label: "По разделам" },
+  { id: "overview", label: "Таблица" },
   { id: "upsell", label: "Рекомендации" },
   { id: "stop-list", label: "Стоп-лист" },
 ];
@@ -706,42 +707,6 @@ export function CatalogTabs({
   );
 }
 
-function CatalogViewSwitcher({
-  value,
-  onChange,
-}: {
-  value: "tree" | "table";
-  onChange: (view: "tree" | "table") => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Представление каталога"
-      className="inline-flex h-7 items-center rounded-[8px] bg-[#efefea] p-0.5"
-    >
-      {([
-        { id: "tree" as const, label: "По разделам" },
-        { id: "table" as const, label: "Таблица" },
-      ]).map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          aria-pressed={value === option.id}
-          onClick={() => onChange(option.id)}
-          className={cn(
-            "flex h-6 items-center rounded-[6px] px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            value === option.id
-              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-              : "text-[#79716b] hover:text-[#44403b]",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function StopListShortcut({
   hidden,
   onClick,
@@ -795,7 +760,6 @@ type CatalogWorkspaceProps = {
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
-  onCatalogViewChange: (view: "tree" | "table") => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
@@ -12132,8 +12096,6 @@ function EditorFirstPositionEmptyState() {
 function OverviewWorkspace({
   filterId,
   createdItems,
-  initialContext,
-  onContextChange,
   onFilterChange,
   sectionScopeId,
   onSectionScopeChange,
@@ -12151,8 +12113,6 @@ function OverviewWorkspace({
 }: {
   filterId: OverviewFilterId;
   createdItems: CatalogItem[];
-  initialContext: OverviewWorkspaceContext;
-  onContextChange: (context: OverviewWorkspaceContext) => void;
   onFilterChange: (id: OverviewFilterId) => void;
   sectionScopeId: string | null;
   onSectionScopeChange: (id: string | null) => void;
@@ -12181,7 +12141,7 @@ function OverviewWorkspace({
     revision: catalogRevision,
   } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
-  const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => initialContext);
+  const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext());
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
     ? restoreEditorFirstQueue(initialEditorFirstState, initialWorkspaceItems)
@@ -12246,15 +12206,13 @@ function OverviewWorkspace({
   const workspacePriceSort = editorFirstEnabled ? editorFirstPriceSort : priceSort;
   const workspacePanelQuery = editorFirstEnabled ? editorFirstQuery : panelQuery;
   useEffect(() => {
-    const nextContext: OverviewWorkspaceContext = {
+    writeJsonRecord(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, {
       panelQuery,
       priceSort,
       scrollTop: overviewScrollTop,
       sectionScopeId: workspaceSectionScopeId,
-    };
-    writeJsonRecord(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, nextContext);
-    onContextChange(nextContext);
-  }, [onContextChange, overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
+    });
+  }, [overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
   const setWorkspaceFilterId = (id: OverviewFilterId) => {
     if (editorFirstEnabled) setEditorFirstFilterId(id);
     else onFilterChange(id);
@@ -13320,7 +13278,6 @@ export function CatalogWorkspace({
   onViewModeChange,
   onSectionScopeChange,
   onCatalogTabChange,
-  onCatalogViewChange,
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
@@ -13368,11 +13325,7 @@ export function CatalogWorkspace({
         ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
         : buildSectionTree(catalogSections);
   const [flatQuery, setFlatQuery] = useState("");
-  const overviewContextRef = useRef<OverviewWorkspaceContext>(readOverviewWorkspaceContext());
-  const overviewSectionScopeRef = useRef<string | null>(overviewContextRef.current.sectionScopeId);
-  const handleOverviewContextChange = useCallback((context: OverviewWorkspaceContext) => {
-    overviewContextRef.current = context;
-  }, []);
+  const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
   const [overviewTableOpenSignal, setOverviewTableOpenSignal] = useState(0);
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
   // Синхронизация вкладок: при переходе «Позиции → Разделы» с выбранным разделом —
@@ -13394,7 +13347,7 @@ export function CatalogWorkspace({
     }
     if (catalogTab === "overview" && prevTab === "sections") {
       const restoredOverviewScopeId = overviewSectionScopeRef.current;
-      const restoredOverviewContext = overviewContextRef.current;
+      const restoredOverviewContext = readOverviewWorkspaceContext();
       onSectionScopeChange(restoredOverviewScopeId);
       if (!activeEditorItemId) return;
       const activeItem = sharedCatalogItems.find((item) => item.id === activeEditorItemId) ?? null;
@@ -13452,23 +13405,10 @@ export function CatalogWorkspace({
     onViewModeChange("sections");
     onCatalogTabChange("sections");
   };
-  const handleCatalogViewChange = (view: "tree" | "table") => {
-    if (view === "tree") {
-      const activeItem = activeEditorItemId
-        ? sharedCatalogItems.find((item) => item.id === activeEditorItemId) ?? null
-        : null;
-      setRetainedItemId(activeItem?.id ?? null);
-      setRetainedSectionId(activeItem?.sectionId ?? sectionScopeId);
-      if (activeItem) onSectionScopeChange(activeItem.sectionId);
-    }
-    onCatalogViewChange(view);
-  };
   const overviewWorkspace = catalogPhase === "empty" ? null : (
     <OverviewWorkspace
       filterId={viewMode === "sections" ? "quick:all" : viewMode}
       createdItems={createdItems}
-      initialContext={overviewContextRef.current}
-      onContextChange={handleOverviewContextChange}
       onFilterChange={(id) => {
         onViewModeChange(id);
         onOverviewFilterChange(id);
@@ -13537,18 +13477,8 @@ export function CatalogWorkspace({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
-        {catalogPhase !== "empty" && catalogTab !== "upsell" && (
-          <div className="flex h-8 shrink-0 items-center border-b border-[#e7e5e4] bg-[#fbfbf9] px-2">
-            <CatalogViewSwitcher
-              value={catalogTab === "overview" ? "table" : "tree"}
-              onChange={handleCatalogViewChange}
-            />
-          </div>
-        )}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {workspace}
-        </div>
+      <div className="flex min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
+        {workspace}
       </div>
       {sectionDialogOpen && (
         <CreateSectionDialog

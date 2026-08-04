@@ -612,8 +612,27 @@ function AuthenticatedShell() {
     ? "upsell"
     : catalogTab === "overview" && catalogViewMode === "status:stop"
       ? "stop-list"
-      : "catalog";
+      : catalogTab === "sections"
+        ? "sections"
+        : "overview";
   const changeCatalogPrimaryTab = (next: CatalogPrimaryTab) => {
+    if (next === "sections") {
+      changeCatalogTab("sections");
+      return;
+    }
+    if (next === "overview") {
+      if (catalogViewMode === "status:stop") {
+        requestCatalogNavigation(() => {
+          const restoredFilter = lastNonStopCatalogFilterRef.current;
+          setCatalogTab("overview");
+          setCatalogViewMode(restoredFilter);
+          setCatalogOverviewFilterId(restoredFilter);
+        });
+        return;
+      }
+      changeCatalogTab("overview");
+      return;
+    }
     if (next === "upsell") {
       changeCatalogTab("upsell");
       return;
@@ -626,16 +645,6 @@ function AuthenticatedShell() {
       });
       return;
     }
-    if (catalogViewMode === "status:stop") {
-      requestCatalogNavigation(() => {
-        const restoredFilter = lastNonStopCatalogFilterRef.current;
-        setCatalogTab("overview");
-        setCatalogViewMode(restoredFilter);
-        setCatalogOverviewFilterId(restoredFilter);
-      });
-      return;
-    }
-    changeCatalogTab(catalogViewMode === "sections" ? "sections" : "overview");
   };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -955,7 +964,6 @@ function AuthenticatedShell() {
           onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
-          onCatalogViewChange={(view) => changeCatalogTab(view === "tree" ? "sections" : "overview")}
           onRegisterCreateNavigationGuard={(guard) => {
             catalogCreateNavigationGuardRef.current = guard;
           }}
