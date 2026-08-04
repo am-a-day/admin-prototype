@@ -86,6 +86,7 @@ import type { Category } from "@/data/mock-data";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/catalog";
+import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 
@@ -1429,6 +1430,15 @@ type DescriptionAuditQueueState = {
   snapshot: DescriptionAuditQueueSnapshot;
   currentId: string | null;
 };
+type OpenPositionIntent = {
+  origin: "structure" | "positions";
+  currentId: string;
+  orderedIds: string[];
+  sectionId?: string;
+  snapshot?: DescriptionAuditQueueSnapshot;
+  returnContext: { label: string };
+  revision: number;
+};
 type PositionsWorkspaceMode = "legacy" | "editor-first";
 type EditorFirstPositionsView = "editor" | "table";
 type EditorFirstPositionsState = {
@@ -1480,7 +1490,6 @@ function restoreEditorFirstQueue(
   };
 }
 type DescriptionSaveStatus = "idle" | "saving" | "saved";
-
 /** Запрос на открытие позиции во вкладке «Позиции» из вкладки «Разделы». */
 type PendingOpen = {
   id: string;
@@ -1524,7 +1533,6 @@ function readDirectCreatePendingOpen(): PendingOpen | null {
     } : undefined,
   };
 }
-
 const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
   "quick:no-description",
   "quick:no-photo",
@@ -2655,7 +2663,6 @@ const VIDEO_LIMIT_USED = 6;
 const VIDEO_PACKAGE_CONNECTED = true;
 const ACTIVE_POSITION_LIMIT = 600;
 const CATALOG_STATUS_STORAGE_KEY = catalogStorageKey("statusOverrides");
-const CATALOG_SCHEDULE_STORAGE_KEY = catalogStorageKey("scheduleOverrides");
 const CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY = catalogStorageKey("previousAvailability");
 const CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY = catalogStorageKey("unavailableDisplay");
 const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = catalogStorageKey("outsideSchedule");
@@ -2669,7 +2676,6 @@ const CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY = catalogStorageKey("sectionWe
 const CATALOG_UPSELL_STORAGE_KEY = catalogStorageKey("upsellByItem");
 const CATALOG_POSITION_ORDER_STORAGE_KEY = catalogStorageKey("positionOrderBySection");
 const CATALOG_SECTION_ORDER_STORAGE_KEY = catalogStorageKey("sectionOrderByParent");
-const CATALOG_ITEM_SECTION_STORAGE_KEY = catalogStorageKey("itemSectionOverrides");
 const CATALOG_SECTION_PARENT_STORAGE_KEY = catalogStorageKey("sectionParentOverrides");
 const CATALOG_RECENT_POSITION_STORAGE_KEY = catalogStorageKey("recentPositionIds");
 const CATALOG_ACTIVE_SECTION_STORAGE_KEY = catalogStorageKey("sections.activeSectionId");
@@ -3146,6 +3152,7 @@ function BasicTab({
   namePlaceholder = "Введите перевод…",
   onNameChange,
   onWeightChange,
+  onTitleChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -3168,6 +3175,7 @@ function BasicTab({
   namePlaceholder?: string;
   onNameChange?: (value: string) => void;
   onWeightChange?: (value: string, unit: string) => void;
+  onTitleChange?: (value: string) => void;
 }) {
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
@@ -3205,6 +3213,7 @@ function BasicTab({
         persist={!autoFocusName}
         placeholder={namePlaceholder}
         onValueChange={onNameChange}
+        onChange={(translations) => onTitleChange?.(translations.ru ?? item.title)}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4938,6 +4947,7 @@ function PositionEditor({
   onCancelCreate,
   createDisabled = false,
   createSubmitting = false,
+  onItemChange,
   forcedEditorTab,
   focusAnchor,
   forceBasicTabOnItemChange = false,
@@ -4972,6 +4982,7 @@ function PositionEditor({
   onCancelCreate?: () => void;
   createDisabled?: boolean;
   createSubmitting?: boolean;
+  onItemChange?: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   forcedEditorTab?: EditorTab;
   focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
@@ -5056,7 +5067,10 @@ function PositionEditor({
   };
   const formatBasePrice = () => {
     const value = parseMoneyInput(basePriceText);
-    if (value != null) setBasePriceText(formatMoneyInput(value));
+    if (value != null) {
+      setBasePriceText(formatMoneyInput(value));
+      onItemChange?.(item, { price: value });
+    }
   };
   const addDiscount = () => {
     setDiscountOpen(true);
@@ -5259,6 +5273,7 @@ function PositionEditor({
                       const parsed = parseMoneyInput(value);
                       onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
                     }}
+                    onTitleChange={(value) => onItemChange?.(item, { title: value })}
                   />
                 </div>
               )}
@@ -5317,6 +5332,189 @@ function PositionEditor({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PositionEditorHost({
+  intent,
+  onCurrentIdChange,
+  onClose,
+  onFeedback,
+  onRequestPermanentDelete,
+}: {
+  intent: OpenPositionIntent;
+  onCurrentIdChange: (id: string) => void;
+  onClose: () => void;
+  onFeedback?: (message: string) => void;
+  onRequestPermanentDelete?: (item: CatalogItem) => void;
+}) {
+  const {
+    items,
+    itemsById,
+    updateItem,
+    deleteItem,
+    setItemStatus,
+    setAutosaveStatus,
+    setActiveEditorItemId,
+  } = useCatalogStore();
+  const { registerChange } = usePublish();
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
+    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
+  );
+  const [unavailableDisplayByItem, setUnavailableDisplayByItem] = useState<Record<string, UnavailableDisplayMode>>(() =>
+    readJsonRecord<Record<string, UnavailableDisplayMode>>(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, {}),
+  );
+  const [outsideScheduleByItem, setOutsideScheduleByItem] = useState<Record<string, OutsideScheduleMode>>(() =>
+    readJsonRecord<Record<string, OutsideScheduleMode>>(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const [weeklyScheduleByItem, setWeeklyScheduleByItem] = useState<Record<string, WeeklySchedule>>(() =>
+    readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
+  );
+  const saveTimersRef = useRef<Record<string, number>>({});
+  const item = itemsById[intent.currentId] ?? null;
+  const currentIndex = intent.orderedIds.indexOf(intent.currentId);
+  const previousId = currentIndex > 0 ? intent.orderedIds[currentIndex - 1] : null;
+  const nextId = currentIndex >= 0 && currentIndex < intent.orderedIds.length - 1
+    ? intent.orderedIds[currentIndex + 1]
+    : null;
+  const editorContext = intent.origin === "positions" && intent.snapshot
+    ? getQueueEditorContext(intent.snapshot.entryFilterId)
+    : { tab: "basic" as EditorTab, anchor: undefined };
+  const currentSelectionIds = intent.snapshot
+    ? getQueueItemIds(
+        intent.snapshot.filterId,
+        items,
+        intent.snapshot.query,
+        intent.snapshot.sectionScopeId,
+        intent.snapshot.sort,
+      )
+    : intent.orderedIds;
+  const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
+  }, [upsellByItem]);
+
+  useEffect(() => writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem), [unavailableDisplayByItem]);
+  useEffect(() => writeJsonRecord(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, outsideScheduleByItem), [outsideScheduleByItem]);
+  useEffect(() => writeJsonRecord(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, weeklyScheduleByItem), [weeklyScheduleByItem]);
+
+  useEffect(() => () => {
+    Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  useEffect(() => {
+    setActiveEditorItemId(intent.currentId);
+    return () => setActiveEditorItemId(null);
+  }, [intent.currentId, setActiveEditorItemId]);
+
+  if (!item) {
+    return <DescriptionQueueComplete filterId={intent.snapshot?.filterId ?? "quick:all"} onBack={onClose} />;
+  }
+
+  const saveDescription = (target: CatalogItem, value: string) => {
+    window.clearTimeout(saveTimersRef.current[target.id]);
+    updateItem(target.id, { description: value });
+    saveTimersRef.current[target.id] = window.setTimeout(() => {
+      updateItem(target.id, { description: value, hasDescription: descriptionHasContent(value) }, { autosave: false });
+      setAutosaveStatus(target.id, "saved");
+      registerChange("catalog");
+    }, 450);
+  };
+
+  const setAvailability = (target: CatalogItem, mode: AvailabilityMode) => {
+    if (target.status === "archive") return;
+    setItemStatus(target.id, mode === "unavailable" ? "stopped" : "active", mode === "schedule");
+    registerChange("catalog");
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {outsideCurrentSelection && (
+        <div className="mx-6 mt-4 shrink-0 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2 text-[12px] leading-5 text-[#79716b]">
+          Позиция больше не входит в текущую выборку
+        </div>
+      )}
+      <PositionEditor
+      item={item}
+      allItems={items}
+      upsell={upsellByItem[item.id] ?? {}}
+      onUpsellChange={(next) => {
+        setUpsellByItem((current) => ({ ...current, [item.id]: next }));
+        registerChange("catalog");
+      }}
+      stopBusy={false}
+      onArchiveItem={(target) => {
+        setItemStatus(target.id, "archive");
+        onFeedback?.("Позиция перенесена в архив");
+      }}
+      onRestoreItem={(target) => {
+        setItemStatus(target.id, "active");
+        onFeedback?.("Позиция восстановлена");
+      }}
+      onMoveItem={(target) => onFeedback?.(`Переместить «${target.title}»: placeholder`)}
+      onToggleStop={(target) => setItemStatus(target.id, target.status === "stopped" ? "active" : "stopped")}
+      onSetAvailabilityMode={setAvailability}
+      unavailableDisplayMode={unavailableDisplayByItem[item.id] ?? "hidden"}
+      outsideScheduleMode={outsideScheduleByItem[item.id] ?? "hidden"}
+      weeklySchedule={weeklyScheduleByItem[item.id] ?? createDefaultWeeklySchedule()}
+      onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((current) => ({ ...current, [item.id]: mode }))}
+      onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((current) => ({ ...current, [item.id]: mode }))}
+      onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((current) => ({ ...current, [item.id]: schedule }))}
+      onRequestPermanentDelete={(target) => {
+        if (onRequestPermanentDelete) onRequestPermanentDelete(target);
+        else {
+          deleteItem(target.id);
+          onClose();
+        }
+      }}
+      onDescriptionChange={saveDescription}
+      onMediaAdded={(target, previewUrl) => {
+        updateItem(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
+        registerChange("catalog");
+      }}
+      onItemChange={(target, patch) => {
+        updateItem(target.id, patch);
+        registerChange("catalog");
+      }}
+      forcedEditorTab={editorContext.tab}
+      focusAnchor={editorContext.anchor}
+      showStopQuickAction={!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId)}
+      breadcrumb={
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
+        >
+          <ArrowLeft size={14} />
+          <span className="truncate">{intent.returnContext.label}</span>
+        </button>
+      }
+      headerMeta={
+        <div className="flex items-center gap-1 text-[12px] text-[#a6a09b]">
+          <span className="px-1 tabular-nums">{currentIndex >= 0 ? currentIndex + 1 : 1}/{intent.orderedIds.length}</span>
+          <button
+            type="button"
+            aria-label="Предыдущая позиция"
+            disabled={!previousId}
+            onClick={() => previousId && onCurrentIdChange(previousId)}
+            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
+          >
+            <CaretUp size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="Следующая позиция"
+            disabled={!nextId}
+            onClick={() => nextId && onCurrentIdChange(nextId)}
+            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
+          >
+            <CaretDown size={14} />
+          </button>
+        </div>
+      }
+      />
     </div>
   );
 }
@@ -8099,7 +8297,18 @@ function PopulatedWorkspace({
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
-  const sourceCatalogItems = [...catalogItems, ...createdItems];
+  const {
+    items: catalogStoreItems,
+    itemOrderBySection: positionOrderBySection,
+    addItem: addCatalogItem,
+    deleteItem: deleteCatalogItem,
+    moveItem: moveCatalogItem,
+    setItemStatus: setCatalogItemStatus,
+    replaceItemOrder: replaceCatalogItemOrder,
+    revision: catalogRevision,
+  } = useCatalogStore();
+  const sourceCatalogItems = catalogStoreItems;
+  void createdItems;
   const preferredSectionId =
     catalogSections.find((section) => section.name === "Горячие блюда")?.id ??
     SECTIONS_WITH_ITEMS[0]?.id ??
@@ -8138,22 +8347,14 @@ function PopulatedWorkspace({
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
   const [editing, setEditing] = useState(editorNavMode === "section" ? false : Boolean(firstItemId));
-  const [positionOrderBySection, setPositionOrderBySection] = useState<Record<string, string[]>>(() =>
-    readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {}),
-  );
   const [sectionOrderByParent, setSectionOrderByParent] = useState<Record<string, string[]>>(() =>
     readJsonRecord<Record<string, string[]>>(CATALOG_SECTION_ORDER_STORAGE_KEY, {}),
-  );
-  const [itemSectionOverrides, setItemSectionOverrides] = useState<Record<string, string>>(() =>
-    readJsonRecord<Record<string, string>>(CATALOG_ITEM_SECTION_STORAGE_KEY, {}),
   );
   const [sectionParentOverrides, setSectionParentOverrides] = useState<Record<string, string | null>>(() =>
     readJsonRecord<Record<string, string | null>>(CATALOG_SECTION_PARENT_STORAGE_KEY, {}),
   );
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
-  // Черновики, созданные кнопкой «Добавить позицию» (статичные catalogItems не мутируем).
-  const [extraItems, setExtraItems] = useState<CatalogItem[]>([]);
   const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
   const [revealSectionId, setRevealSectionId] = useState<string | null>(null);
@@ -8165,23 +8366,8 @@ function PopulatedWorkspace({
     const timer = window.setTimeout(() => setHighlightItemId(null), 2600);
     return () => window.clearTimeout(timer);
   }, [highlightItemId]);
-  const [itemStatusOverrides, setItemStatusOverrides] = useState<Record<string, CatalogItem["status"]>>(() =>
-    readJsonRecord<Record<string, CatalogItem["status"]>>(CATALOG_STATUS_STORAGE_KEY, {}),
-  );
-  const [itemScheduledOverrides, setItemScheduledOverrides] = useState<Record<string, boolean>>(() =>
-    readJsonRecord<Record<string, boolean>>(CATALOG_SCHEDULE_STORAGE_KEY, {}),
-  );
   const [previousAvailabilityByItem, setPreviousAvailabilityByItem] = useState<Record<string, PreviousAvailabilityState>>(() =>
     readJsonRecord<Record<string, PreviousAvailabilityState>>(CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY, {}),
-  );
-  const [unavailableDisplayByItem, setUnavailableDisplayByItem] = useState<Record<string, UnavailableDisplayMode>>(() =>
-    readJsonRecord<Record<string, UnavailableDisplayMode>>(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, {}),
-  );
-  const [outsideScheduleByItem, setOutsideScheduleByItem] = useState<Record<string, OutsideScheduleMode>>(() =>
-    readJsonRecord<Record<string, OutsideScheduleMode>>(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, {}),
-  );
-  const [weeklyScheduleByItem, setWeeklyScheduleByItem] = useState<Record<string, WeeklySchedule>>(() =>
-    readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
   );
   const [sectionStatusOverrides, setSectionStatusOverrides] = useState<Record<string, SectionStatus>>(() =>
     readJsonRecord<Record<string, SectionStatus>>(CATALOG_SECTION_STATUS_STORAGE_KEY, {}),
@@ -8201,10 +8387,9 @@ function PopulatedWorkspace({
   const [sectionWeeklyScheduleBySection, setSectionWeeklyScheduleBySection] = useState<Record<string, WeeklySchedule>>(() =>
     readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
   );
-  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
+  const [upsellByItem] = useState<CatalogUpsellStateByItem>(() =>
     readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
   );
-  const [deletedItemIds, setDeletedItemIds] = useState<Set<string>>(new Set());
   const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
   const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
@@ -8257,15 +8442,11 @@ function PopulatedWorkspace({
   const activeSections = allSections.filter((candidate) => candidate.status !== "archive");
   void sections;
 
-  const baseItems = extraItems.length ? [...sourceCatalogItems, ...extraItems] : sourceCatalogItems;
-  const allItems = baseItems
-    .filter((item) => !deletedItemIds.has(item.id))
-    .map((item) => {
-      const status = itemStatusOverrides[item.id];
-      const scheduled = itemScheduledOverrides[item.id];
+  const baseItems = catalogStoreItems;
+  const allItems = baseItems.map((item) => {
       const upsell = upsellByItem[item.id];
       const recommendationIds = resolveRecommendationIds(
-        { ...item, status: status ?? item.status, scheduled: scheduled ?? item.scheduled },
+        item,
         baseItems,
         upsell,
       );
@@ -8279,15 +8460,15 @@ function PopulatedWorkspace({
       );
       return {
         ...item,
-        sectionId: itemSectionOverrides[item.id] ?? item.sectionId,
-        sectionName: allSections.find((section) => section.id === (itemSectionOverrides[item.id] ?? item.sectionId))?.name ?? item.sectionName,
-        status: status ?? item.status,
-        scheduled: scheduled ?? item.scheduled,
         guestLabels: sticker ? [sticker] : [],
         tags,
         recommendationsCount: recommendationIds.length,
       };
     });
+  const itemSectionOverrides = Object.fromEntries(allItems.map((item) => [item.id, item.sectionId]));
+  const setPositionOrderBySection = (
+    update: Record<string, string[]> | ((current: Record<string, string[]>) => Record<string, string[]>),
+  ) => replaceCatalogItemOrder(typeof update === "function" ? update(positionOrderBySection) : update);
   const section = allSections.find((s) => s.id === selectedSectionId) ?? null;
   const sectionItems = orderSectionItems(
     allItems.filter((item) => item.sectionId === selectedSectionId),
@@ -8477,6 +8658,8 @@ function PopulatedWorkspace({
 
   // Открыть позицию (из обзора или sibling-навигации) → войти в editor mode.
   const openItem = (id: string) => {
+    const targetItem = allItems.find((item) => item.id === id);
+    if (targetItem) setSelectedSectionId(targetItem.sectionId);
     setSelectedItemId(id);
     setEditing(true);
     rememberItem(id);
@@ -8549,6 +8732,7 @@ function PopulatedWorkspace({
     const dragged = allItems.find((item) => item.id === draggedId);
     if (!dragged) return;
     const sourceSectionId = dragged.sectionId;
+    let targetInsertionIndex: number | undefined;
     setPositionOrderBySection((current) => {
       const getIds = (sectionId: string, excludeDragged = false) => orderSectionItems(
         allItems.filter((item) => item.sectionId === sectionId && (!excludeDragged || item.id !== draggedId)),
@@ -8568,12 +8752,13 @@ function PopulatedWorkspace({
       const targetIds = getIds(targetSectionId, true);
       const targetIndex = targetItemId ? targetIds.indexOf(targetItemId) : -1;
       const insertionIndex = targetIndex < 0 ? targetIds.length : mode === "after" ? targetIndex + 1 : targetIndex;
+      targetInsertionIndex = insertionIndex;
       targetIds.splice(insertionIndex, 0, draggedId);
       const next = { ...current, [sourceSectionId]: sourceIds, [targetSectionId]: targetIds };
       return next;
     });
     if (sourceSectionId !== targetSectionId) {
-      setItemSectionOverrides((current) => ({ ...current, [draggedId]: targetSectionId }));
+      moveCatalogItem(draggedId, targetSectionId, { index: targetInsertionIndex });
     }
     if (announce) {
       setLastItemBySection((current) => ({ ...current, [targetSectionId]: draggedId }));
@@ -8647,7 +8832,10 @@ function PopulatedWorkspace({
     const { snapshot } = treeMoveUndo;
     setPositionOrderBySection(cloneStringArrayRecord(snapshot.positionOrderBySection));
     setSectionOrderByParent(cloneStringArrayRecord(snapshot.sectionOrderByParent));
-    setItemSectionOverrides({ ...snapshot.itemSectionOverrides });
+    Object.entries(snapshot.itemSectionOverrides).forEach(([itemId, sectionId]) => {
+      const sectionName = allSections.find((candidate) => candidate.id === sectionId)?.name;
+      moveCatalogItem(itemId, sectionId, { sectionName });
+    });
     setSectionParentOverrides({ ...snapshot.sectionParentOverrides });
     setLastItemBySection({ ...snapshot.lastItemBySection });
     setTreeMoveUndo(null);
@@ -8742,7 +8930,8 @@ function PopulatedWorkspace({
       };
     });
     if (sourceParentId !== targetParentId) {
-      setItemSectionOverrides((current) => ({ ...current, [draggedId]: targetParentId }));
+      const sectionName = allSections.find((candidate) => candidate.id === targetParentId)?.name;
+      moveCatalogItem(draggedId, targetParentId, { index: adjustedTargetIndex, sectionName });
     }
     setLastItemBySection((current) => ({ ...current, [targetParentId]: draggedId }));
     registerChange("catalog");
@@ -9199,7 +9388,10 @@ function PopulatedWorkspace({
     if (!snapshot) return;
     setPositionOrderBySection(snapshot.positionOrderBySection);
     setSectionOrderByParent(snapshot.sectionOrderByParent);
-    setItemSectionOverrides(snapshot.itemSectionOverrides);
+    Object.entries(snapshot.itemSectionOverrides).forEach(([itemId, sectionId]) => {
+      const item = allItems.find((candidate) => candidate.id === itemId);
+      if (item && item.sectionId !== sectionId) moveCatalogItem(itemId, sectionId);
+    });
     setSectionParentOverrides(snapshot.sectionParentOverrides);
   };
 
@@ -9326,7 +9518,7 @@ function PopulatedWorkspace({
       return;
     }
     const draft = makeDraftItem(targetSection);
-    setExtraItems((prev) => [...prev, draft]);
+    addCatalogItem(draft);
     setSelectedSectionId(sectionId);
     setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
     // Новая позиция создаётся с привязкой к разделу и открывается в полном
@@ -9366,32 +9558,8 @@ function PopulatedWorkspace({
   };
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_STATUS_STORAGE_KEY, itemStatusOverrides);
-    window.dispatchEvent(new Event("tasko-catalog-status-change"));
-  }, [itemStatusOverrides]);
-
-  useEffect(() => {
-    writeJsonRecord(CATALOG_SCHEDULE_STORAGE_KEY, itemScheduledOverrides);
-  }, [itemScheduledOverrides]);
-
-  useEffect(() => {
     writeJsonRecord(CATALOG_PREVIOUS_AVAILABILITY_STORAGE_KEY, previousAvailabilityByItem);
   }, [previousAvailabilityByItem]);
-
-  useEffect(() => {
-    writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem);
-  }, [unavailableDisplayByItem]);
-
-  useEffect(() => {
-    writeJsonRecord(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, outsideScheduleByItem);
-  }, [outsideScheduleByItem]);
-
-  useEffect(() => {
-    const validSchedules = Object.fromEntries(
-      Object.entries(weeklyScheduleByItem).filter(([, schedule]) => isWeeklyScheduleValid(schedule)),
-    );
-    writeJsonRecord(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, validSchedules);
-  }, [weeklyScheduleByItem]);
 
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_STATUS_STORAGE_KEY, sectionStatusOverrides);
@@ -9421,29 +9589,12 @@ function PopulatedWorkspace({
   }, [sectionWeeklyScheduleBySection]);
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
-  }, [upsellByItem]);
-
-  useEffect(() => {
-    writeJsonRecord(CATALOG_POSITION_ORDER_STORAGE_KEY, positionOrderBySection);
-  }, [positionOrderBySection]);
-
-  useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_ORDER_STORAGE_KEY, sectionOrderByParent);
   }, [sectionOrderByParent]);
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_ITEM_SECTION_STORAGE_KEY, itemSectionOverrides);
-  }, [itemSectionOverrides]);
-
-  useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_PARENT_STORAGE_KEY, sectionParentOverrides);
   }, [sectionParentOverrides]);
-
-  const updateUpsell = (itemId: string, next: CatalogItemUpsellState) => {
-    setUpsellByItem((prev) => ({ ...prev, [itemId]: next }));
-    registerChange("catalog");
-  };
 
   const updateSectionDraft = (sectionId: string, patch: SectionDraftOverride) => {
     setSectionDraftOverrides((current) => ({
@@ -9523,7 +9674,8 @@ function PopulatedWorkspace({
       allItems.filter((item) => subtreeIds.has(item.sectionId)).map((item) => item.id),
     );
     setDeletedSectionIds((prev) => new Set([...prev, ...subtreeIds]));
-    setDeletedItemIds((prev) => new Set([...prev, ...deletedItemIdSet]));
+    deletedItemIdSet.forEach(deleteCatalogItem);
+    writeCreatedCatalogItems(readCreatedCatalogItems().filter((item) => !deletedItemIdSet.has(item.id)));
     setSectionStatusOverrides((prev) => {
       const next = { ...prev };
       subtreeIds.forEach((id) => delete next[id]);
@@ -9542,11 +9694,6 @@ function PopulatedWorkspace({
     setSectionOrderByParent((prev) => Object.fromEntries(
       Object.entries(prev).map(([parentId, ids]) => [parentId, ids.filter((id) => !subtreeIds.has(id))]),
     ));
-    setItemStatusOverrides((prev) => {
-      const next = { ...prev };
-      deletedItemIdSet.forEach((id) => delete next[id]);
-      return next;
-    });
     setPendingSectionDelete(null);
     const selectionWasDeleted = Boolean(selectedSectionId && subtreeIds.has(selectedSectionId));
     const itemWasDeleted = Boolean(selectedItemId && deletedItemIdSet.has(selectedItemId));
@@ -9692,48 +9839,14 @@ function PopulatedWorkspace({
     showPlaceholderFeedback(`${action}: placeholder`);
   };
 
-  const archiveItem = (item: CatalogItem) => {
-    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "archive" }));
-    setArchiveOpen(true);
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      next.delete(item.id);
-      return next;
-    });
-    setFeedback("Позиция перемещена в архив");
-  };
   const restoreItem = (item: CatalogItem) => {
     const activeCount = allItems.filter((candidate) => candidate.status !== "archive" && candidate.id !== item.id).length;
     if (activeCount >= ACTIVE_POSITION_LIMIT) {
       setFeedback("Нельзя восстановить позицию: достигнут лимит тарифа");
       return;
     }
-    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "active" }));
+    setCatalogItemStatus(item.id, "active");
     setFeedback("Позиция восстановлена");
-  };
-
-  const setAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
-    if (item.status === "archive") return;
-    if (mode === "unavailable") {
-      if (item.status !== "stopped") {
-        setPreviousAvailabilityByItem((prev) => ({
-          ...prev,
-          [item.id]: { status: item.status, scheduled: item.scheduled },
-        }));
-      }
-      setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "stopped" }));
-      setFeedback("Позиция поставлена на стоп");
-      return;
-    }
-
-    setPreviousAvailabilityByItem((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "active" }));
-    setItemScheduledOverrides((prev) => ({ ...prev, [item.id]: mode === "schedule" }));
-    setFeedback(mode === "schedule" ? "Позиция доступна по расписанию" : "Позиция снова доступна для заказа");
   };
 
   const toggleStopItem = (item: CatalogItem) => {
@@ -9742,8 +9855,7 @@ function PopulatedWorkspace({
     window.setTimeout(() => {
       if (item.status === "stopped") {
         const previous = previousAvailabilityByItem[item.id] ?? { status: "active", scheduled: false };
-        setItemStatusOverrides((prev) => ({ ...prev, [item.id]: previous.status }));
-        setItemScheduledOverrides((prev) => ({ ...prev, [item.id]: previous.scheduled }));
+        setCatalogItemStatus(item.id, previous.status, previous.scheduled);
         setPreviousAvailabilityByItem((prev) => {
           const next = { ...prev };
           delete next[item.id];
@@ -9755,7 +9867,7 @@ function PopulatedWorkspace({
           ...prev,
           [item.id]: { status: item.status, scheduled: item.scheduled },
         }));
-        setItemStatusOverrides((prev) => ({ ...prev, [item.id]: "stopped" }));
+        setCatalogItemStatus(item.id, "stopped", false);
         setFeedback("Позиция поставлена на стоп");
       }
       setStopBusyIds((current) => {
@@ -9770,7 +9882,7 @@ function PopulatedWorkspace({
     setPendingPermanentDelete(item);
   };
   const confirmPermanentDelete = (item: CatalogItem) => {
-    setDeletedItemIds((prev) => new Set(prev).add(item.id));
+    deleteCatalogItem(item.id);
     setPendingPermanentDelete(null);
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -9794,25 +9906,16 @@ function PopulatedWorkspace({
     const selectedCount = selectedIds.size;
     const selectedLabel = `${selectedCount} ${plural(selectedCount, "позиция", "позиции", "позиций")}`;
     const setSelectedStatus = (status: CatalogItem["status"], message: string) => {
-      setItemStatusOverrides((prev) => {
-        const next = { ...prev };
-        selectedIds.forEach((id) => {
-          next[id] = status;
-        });
-        return next;
-      });
+      selectedIds.forEach((id) => setCatalogItemStatus(id, status));
       setFeedback(message);
       setSelectedIds(new Set());
     };
 
     if (action === "В меню" || action === "Убрать со стопа") {
       setSelectedStatus("active", `${selectedLabel} возвращены в меню`);
-      setItemScheduledOverrides((prev) => {
-        const next = { ...prev };
-        selectedIds.forEach((id) => {
-          next[id] = false;
-        });
-        return next;
+      selectedIds.forEach((id) => {
+        const item = allItems.find((candidate) => candidate.id === id);
+        if (item) setCatalogItemStatus(id, "active", false);
       });
       return;
     }
@@ -9830,20 +9933,7 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "По расписанию") {
-      setItemStatusOverrides((prev) => {
-        const next = { ...prev };
-        selectedIds.forEach((id) => {
-          next[id] = "active";
-        });
-        return next;
-      });
-      setItemScheduledOverrides((prev) => {
-        const next = { ...prev };
-        selectedIds.forEach((id) => {
-          next[id] = true;
-        });
-        return next;
-      });
+      selectedIds.forEach((id) => setCatalogItemStatus(id, "active", true));
       setFeedback(`${selectedLabel} доступны по расписанию`);
       setSelectedIds(new Set());
       return;
@@ -9863,27 +9953,33 @@ function PopulatedWorkspace({
     return () => window.clearTimeout(timeout);
   }, [treeMoveUndo]);
 
-  const renderPositionEditor = (item: CatalogItem) => (
-    <PositionEditor
-      item={item}
-      allItems={allItems}
-      upsell={upsellByItem[item.id] ?? {}}
-      onUpsellChange={(next) => updateUpsell(item.id, next)}
-      stopBusy={stopBusyIds.has(item.id)}
-      onArchiveItem={archiveItem}
-      onRestoreItem={restoreItem}
-      onMoveItem={(targetItem) => showPlaceholderFeedback(`Переместить «${targetItem.title}»: placeholder`)}
-      onToggleStop={toggleStopItem}
-      onSetAvailabilityMode={setAvailabilityMode}
-      unavailableDisplayMode={unavailableDisplayByItem[item.id] ?? "hidden"}
-      outsideScheduleMode={outsideScheduleByItem[item.id] ?? "hidden"}
-      weeklySchedule={weeklyScheduleByItem[item.id] ?? createDefaultWeeklySchedule()}
-      onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((prev) => ({ ...prev, [item.id]: mode }))}
-      onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((prev) => ({ ...prev, [item.id]: mode }))}
-      onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((prev) => ({ ...prev, [item.id]: schedule }))}
-      onRequestPermanentDelete={requestPermanentDelete}
-    />
-  );
+  const renderPositionEditor = (item: CatalogItem) => {
+    const orderedIds = orderSectionItems(
+      allItems.filter((candidate) => candidate.sectionId === item.sectionId),
+      positionOrderBySection[item.sectionId],
+    ).map((candidate) => candidate.id);
+    const structureIntent: OpenPositionIntent = {
+      origin: "structure",
+      currentId: item.id,
+      orderedIds: orderedIds.includes(item.id) ? orderedIds : [...orderedIds, item.id],
+      sectionId: item.sectionId,
+      returnContext: { label: `Назад в раздел “${item.sectionName}”` },
+      revision: catalogRevision,
+    };
+    return (
+      <PositionEditorHost
+        intent={structureIntent}
+        onCurrentIdChange={openItem}
+        onClose={() => {
+          setHighlightItemId(item.id);
+          setSelectedItemId(null);
+          setEditing(false);
+        }}
+        onFeedback={setFeedback}
+        onRequestPermanentDelete={requestPermanentDelete}
+      />
+    );
+  };
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
@@ -9896,7 +9992,7 @@ function PopulatedWorkspace({
             selectedItemId={selectedItemId}
             sectionEditingEnabled
             includeArchived={editorNavMode === "entity"}
-            showPositions={false}
+            showPositions
             positionOrderBySection={positionOrderBySection}
             onSelectSection={handleTreeSelectSection}
             onSelectItem={openItem}
@@ -9959,8 +10055,10 @@ function PopulatedWorkspace({
           onDragEnd={handleDndDragEnd}
           onDragCancel={handleDndDragCancel}
         >
-        {editorNavMode === "entity" || (editorNavMode === "unified" && !selectedItem) ? (
-          section ? (
+        {editorNavMode === "entity" ? (
+          selectedItem ? (
+            renderPositionEditor(selectedItem)
+          ) : section ? (
             <SectionEditor
               section={section}
               childSections={directChildSections}
@@ -10005,18 +10103,9 @@ function PopulatedWorkspace({
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
               onAction={(action) => handleUnifiedSectionAction(section, action)}
-              onItemAction={(item, action) => {
-                if (action === "Редактировать в Позициях" || action === "Открыть позицию" || action === "Редактировать") {
-                  onEditPositionInOverview(item.id, {
-                    sectionId: item.sectionId,
-                    sectionName: allSections.find((s) => s.id === item.sectionId)?.name ?? item.sectionName,
-                    positionIds: sectionTableItems.map((it) => it.id),
-                    returnContext: getStructureReturnContext(item.sectionId),
-                    sectionPath: findSectionPath(allSectionTree, item.sectionId)
-                      .map((id) => allSections.find((candidate) => candidate.id === id))
-                      .filter((candidate): candidate is TreeSection => Boolean(candidate))
-                      .map((candidate) => ({ id: candidate.id, name: candidate.name })),
-                  });
+                onItemAction={(item, action) => {
+                  if (action === "Редактировать в Позициях" || action === "Открыть позицию" || action === "Редактировать") {
+                    openItem(item.id);
                   return;
                 }
                 if (action === "Переместить в раздел") showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`);
@@ -11783,9 +11872,6 @@ function UnifiedFlatCatalogPanel({
   );
 }
 
-/** Breadcrumb над редактором: <раздел> / <фильтр — только если активен> / <название позиции>.
- * «Раздел» открывает таблицу всех позиций раздела (фильтр снимается); «Фильтр» —
- * таблицу текущей отфильтрованной выборки. Название позиции не кликабельно. */
 function PositionEditorBreadcrumb({
   filterId,
   sectionName,
@@ -11841,7 +11927,6 @@ function CreatePositionSectionLink({
   );
 }
 
-
 function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFilterId; onBack: () => void }) {
   return (
     <div className="flex min-w-0 flex-1 items-center justify-center p-8">
@@ -11866,7 +11951,7 @@ function DescriptionQueueComplete({ filterId, onBack }: { filterId: AuditQueueFi
 
 function initialItemsWithPending(
   pendingOpen: PendingOpen | null | undefined,
-  sourceItems: CatalogItem[] = catalogItems,
+  sourceItems: CatalogItem[],
 ): CatalogItem[] {
   if (
     pendingOpen?.item
@@ -11996,19 +12081,27 @@ function OverviewWorkspace({
 }) {
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
-  const sourceCatalogItems = useMemo(() => [...catalogItems, ...createdItems], [createdItems]);
+  const {
+    items,
+    updateItem,
+    addItem,
+    deleteItem,
+    setItemStatus,
+    setAutosaveStatus,
+    revision: catalogRevision,
+  } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
-  const initialWorkspaceItems = initialItemsWithPending(pendingOpen, sourceCatalogItems);
+  const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
     ? restoreEditorFirstQueue(initialEditorFirstState, initialWorkspaceItems)
     : null;
   // Открытие из «Разделов» обрабатывается атомарно на маунте: сразу строим items и
   // очередь-редактор из pendingOpen — без гонок setState, чтобы повторный переход
   // всегда открывал редактор, а не таблицу последнего фильтра.
-  const [items, setItems] = useState<CatalogItem[]>(() => initialWorkspaceItems);
   const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(() =>
     pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialWorkspaceItems) : restoredEditorFirstQueue,
   );
+  void createdItems;
   const [activePositionId, setActivePositionId] = useState<string | null>(() =>
     pendingOpen?.id ?? restoredEditorFirstQueue?.currentId ?? null,
   );
@@ -12035,7 +12128,7 @@ function OverviewWorkspace({
   const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
   const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(sourceCatalogItems));
+  const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
@@ -12188,7 +12281,10 @@ function OverviewWorkspace({
     });
   };
   const updateItems = (ids: Set<string>, update: (item: CatalogItem) => CatalogItem, clear = false) => {
-    setItems((current) => current.map((item) => (ids.has(item.id) ? update(item) : item)));
+    items.forEach((item) => {
+      if (!ids.has(item.id)) return;
+      updateItem(item.id, update(item));
+    });
     if (clear) clearSelection();
   };
   const updateSelectedItems = (update: (item: CatalogItem) => CatalogItem, message: string) => {
@@ -12224,7 +12320,7 @@ function OverviewWorkspace({
         Object.fromEntries(Object.entries(storedOrder).map(([sectionId, ids]) => [sectionId, ids.filter((id) => !selectedCreatedIds.has(id))])),
       );
     }
-    setItems((current) => current.filter((item) => !selectedIds.has(item.id)));
+    selectedIds.forEach(deleteItem);
     setBulkDialog(null);
     clearSelection();
     showFeedback("Позиции удалены из прототипа");
@@ -12327,7 +12423,9 @@ function OverviewWorkspace({
     pendingHandledRef.current = true;
     const nextItems = initialItemsWithPending(pendingOpen, items);
     const nextQueue = buildSectionQueueFromPending(pendingOpen, nextItems);
-    setItems(nextItems);
+    if (pendingOpen.item && !items.some((item) => item.id === pendingOpen.item?.id)) {
+      addItem(pendingOpen.item);
+    }
     setQueue(nextQueue);
     setActivePositionId(pendingOpen.id);
     if (editorFirstEnabled) {
@@ -12348,6 +12446,7 @@ function OverviewWorkspace({
     }
     rememberOpenedPosition(pendingOpen.id);
     onPendingOpenHandled?.();
+    // pendingOpen is an atomic hand-off that must be consumed only once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOpen]);
   const prepareRowAction = (item: CatalogItem, action: string) => {
@@ -12580,23 +12679,16 @@ function OverviewWorkspace({
   const saveDescription = (item: CatalogItem, value: string) => {
     window.clearTimeout(descriptionSaveTimersRef.current[item.id]);
     setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saving" }));
-    setItems((current) => current.map((candidate) =>
-      candidate.id === item.id ? { ...candidate, description: value } : candidate
-    ));
+    updateItem(item.id, { description: value }, { autosave: true });
     descriptionSaveTimersRef.current[item.id] = window.setTimeout(() => {
-      setItems((current) => current.map((candidate) =>
-        candidate.id === item.id
-          ? { ...candidate, description: value, hasDescription: descriptionHasContent(value) }
-          : candidate
-      ));
+      updateItem(item.id, { description: value, hasDescription: descriptionHasContent(value) }, { autosave: false });
+      setAutosaveStatus(item.id, "saved");
       setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saved" }));
       registerChange("catalog");
     }, 450);
   };
   const saveQueueMedia = (item: CatalogItem, previewUrl: string) => {
-    setItems((current) => current.map((candidate) =>
-      candidate.id === item.id ? { ...candidate, thumbnailUrl: candidate.thumbnailUrl ?? previewUrl } : candidate
-    ));
+    updateItem(item.id, { thumbnailUrl: item.thumbnailUrl ?? previewUrl });
     registerChange("catalog");
   };
 
@@ -12623,13 +12715,14 @@ function OverviewWorkspace({
         ...storedOrder,
         [createdItem.sectionId]: [
           createdItem.id,
-          ...(storedOrder[createdItem.sectionId] ?? sourceCatalogItems
+          ...(storedOrder[createdItem.sectionId] ?? items
             .filter((item) => item.sectionId === createdItem.sectionId)
             .map((item) => item.id))
             .filter((id) => id !== createdItem.id),
         ],
       });
-      setItems((current) => [createdItem, ...current.filter((item) => item.id !== createdItem.id)]);
+      if (draftItem.id !== createdItem.id) deleteItem(draftItem.id);
+      addItem(createdItem);
       setQueue((current) => current ? {
         ...current,
         currentId: createdItem.id,
@@ -12666,11 +12759,8 @@ function OverviewWorkspace({
     }
   };
   const setQueueAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
-    setItems((current) => current.map((candidate) => {
-      if (candidate.id !== item.id || candidate.status === "archive") return candidate;
-      if (mode === "unavailable") return { ...candidate, status: "stopped", scheduled: false };
-      return { ...candidate, status: "active", scheduled: mode === "schedule" };
-    }));
+    if (item.status === "archive") return;
+    setItemStatus(item.id, mode === "unavailable" ? "stopped" : "active", mode === "schedule");
     registerChange("catalog");
   };
   const setCreateAvailabilityMode = (_item: CatalogItem, mode: AvailabilityMode) => {
@@ -12680,26 +12770,17 @@ function OverviewWorkspace({
     updateDraft({ status: draftItem?.status === "stopped" ? "active" : "stopped" });
   };
   const toggleQueueStop = (item: CatalogItem) => {
-    setItems((current) => current.map((candidate) =>
-      candidate.id === item.id
-        ? { ...candidate, status: candidate.status === "stopped" ? "active" : "stopped" }
-        : candidate
-    ));
+    setItemStatus(item.id, item.status === "stopped" ? "active" : "stopped");
     registerChange("catalog");
   };
   const archiveQueueItem = (item: CatalogItem) => {
-    setItems((current) => current.map((candidate) =>
-      candidate.id === item.id ? { ...candidate, status: "archive" } : candidate
-    ));
+    setItemStatus(item.id, "archive");
     showFeedback("Позиция перенесена в архив");
   };
   const restoreQueueItem = (item: CatalogItem) => {
-    setItems((current) => current.map((candidate) =>
-      candidate.id === item.id ? { ...candidate, status: "active" } : candidate
-    ));
+    setItemStatus(item.id, "active");
     showFeedback("Позиция восстановлена");
   };
-
   useEffect(() => {
     clearSelection();
   }, [workspaceFilterId]);
@@ -12747,12 +12828,6 @@ function OverviewWorkspace({
     const timeout = window.setTimeout(() => setFeedback(""), 2200);
     return () => window.clearTimeout(timeout);
   }, [feedback]);
-
-  useEffect(() => {
-    return () => {
-      Object.values(descriptionSaveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
-    };
-  }, []);
 
   useEffect(() => {
     setRecentPositionIds((current) => {
@@ -12854,6 +12929,15 @@ function OverviewWorkspace({
     const breadcrumbSectionName = queue.snapshot.sectionScopeId
       ? catalogSections.find((section) => section.id === queue.snapshot.sectionScopeId)?.name ?? "Все разделы"
       : currentItem?.sectionName ?? "Все разделы";
+    const editorIntent: OpenPositionIntent | null = currentItem && !isCreating ? {
+      origin: "positions",
+      currentId: currentItem.id,
+      orderedIds: queueOrderedItemIds,
+      sectionId: queue.snapshot.sectionScopeId ?? undefined,
+      snapshot: queue.snapshot,
+      returnContext: { label: `Назад к выборке «${getFilterPanelTitle(queue.snapshot.filterId)}»` },
+      revision: catalogRevision,
+    } : null;
     return (
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
         <div className="flex min-h-0 flex-1">
@@ -12887,12 +12971,7 @@ function OverviewWorkspace({
               }}
             />
           )}
-          {editorFirstEnabled && currentItem && !isCreating && !queueLiveItemIdSet.has(currentItem.id) && (
-            <div className="shrink-0 border-b border-[#f0efe9] bg-[#fffaf0] px-5 py-2 text-[12px] leading-4 text-[#8a6a22]">
-              Позиция не входит в текущую выборку
-            </div>
-          )}
-          {currentItem ? (
+          {isCreating && currentItem ? (
             <PositionEditor
               item={currentItem}
               mode={isCreating ? "create" : "edit"}
@@ -12943,6 +13022,13 @@ function OverviewWorkspace({
                   />
                 )
               }
+            />
+          ) : editorIntent ? (
+            <PositionEditorHost
+              intent={editorIntent}
+              onCurrentIdChange={selectQueueItem}
+              onClose={returnToOrigin}
+              onFeedback={showFeedback}
             />
           ) : (
             <DescriptionQueueComplete filterId={queue.snapshot.filterId} onBack={returnToOverview} />

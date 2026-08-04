@@ -23,6 +23,7 @@ import {
   IS_PRAGMATIC_CATALOG_PREVIEW,
   resetPragmaticCatalogPreview,
 } from "@/lib/catalog-preview";
+import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -503,6 +504,7 @@ function AuthenticatedShell() {
   const { account } = useMockAuth();
   const { registerChange } = usePublish();
   const { markVisited, stage } = useVitrineLaunch();
+  const { activeEditorItemId, itemsById } = useCatalogStore();
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
@@ -1190,6 +1192,7 @@ function AuthenticatedShell() {
                   onCreateFirstItem={() => navigate("storefront", "catalog")}
                   seoTitle={seoTitle}
                   seoDescription={seoDescription}
+                  catalogItem={activeEditorItemId ? itemsById[activeEditorItemId] ?? null : null}
                 />
               </div>
             )}
@@ -1226,9 +1229,11 @@ export default function App() {
             <PublishProvider>
               <VitrineLaunchProvider>
                 <PreviewDemoProvider>
-                  <HeaderActionsProvider>
-                    <AppShell />
-                  </HeaderActionsProvider>
+                  <CatalogStoreProvider>
+                    <HeaderActionsProvider>
+                      <AppShell />
+                    </HeaderActionsProvider>
+                  </CatalogStoreProvider>
                 </PreviewDemoProvider>
               </VitrineLaunchProvider>
             </PublishProvider>
