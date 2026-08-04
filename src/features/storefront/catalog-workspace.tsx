@@ -691,8 +691,7 @@ export type CatalogPhase = "empty" | "has-sections" | "has-items";
 export type CatalogTab = "sections" | "overview" | "upsell";
 export type CatalogPrimaryTab = "sections" | "overview" | "upsell" | "stop-list";
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
-  { id: "sections", label: "По разделам" },
-  { id: "overview", label: "Таблица" },
+  { id: "sections", label: "Каталог" },
   { id: "upsell", label: "Допродажи" },
   { id: "stop-list", label: "Стоп-лист" },
 ];
@@ -808,6 +807,7 @@ type CatalogWorkspaceProps = {
   selectedDishId: string;
   catalogPhase: CatalogPhase;
   catalogTab: CatalogTab;
+  stopListActive: boolean;
   viewMode: CatalogViewMode;
   sectionScopeId: string | null;
   resetSignal: number;
@@ -2745,6 +2745,7 @@ const CATALOG_SECTION_TREE_QUERY_STORAGE_KEY = catalogStorageKey("sections.treeQ
 const CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY = catalogStorageKey("sections.treeExpanded");
 const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("sections.treeScrollTop");
 const CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY = catalogStorageKey("sections.treeContent");
+const CATALOG_UNIFIED_SCOPE_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.scope");
 type CatalogTreeContentMode = "sections-and-positions" | "sections-only";
 
 function readCatalogTreeContentMode(): CatalogTreeContentMode {
@@ -5931,6 +5932,7 @@ function findSectionPath(sections: TreeSection[], targetId: string): string[] {
 function UnifiedCatalogTreePanel({
   sections,
   items,
+  allPositionsSelected,
   scopeSectionId,
   selectedSectionId,
   selectedItemId,
@@ -5940,6 +5942,7 @@ function UnifiedCatalogTreePanel({
   treeContentMode = "sections-and-positions",
   positionOrderBySection,
   onSelectSection,
+  onSelectAllPositions,
   onSelectItem,
   onScopeChange,
   onCreateSection,
@@ -5954,6 +5957,7 @@ function UnifiedCatalogTreePanel({
 }: {
   sections: TreeSection[];
   items: CatalogItem[];
+  allPositionsSelected: boolean;
   scopeSectionId: string | null;
   selectedSectionId: string | null;
   selectedItemId: string | null;
@@ -5963,6 +5967,7 @@ function UnifiedCatalogTreePanel({
   treeContentMode?: CatalogTreeContentMode;
   positionOrderBySection: Record<string, string[]>;
   onSelectSection: (id: string) => void;
+  onSelectAllPositions: () => void;
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
   onCreateSection: () => void;
@@ -6992,6 +6997,27 @@ function UnifiedCatalogTreePanel({
             />
           </label>
         )}
+        <button
+          type="button"
+          onClick={onSelectAllPositions}
+          className={cn(
+            "mb-2 flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            allPositionsSelected ? "bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
+          )}
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#57534d]">
+            <List size={13} />
+          </span>
+          <span className={cn(
+            "min-w-0 flex-1 truncate text-[13px] font-medium",
+            allPositionsSelected ? "text-[#292524]" : "text-[#79716b]",
+          )}>
+            Все позиции
+          </span>
+          <span className="min-w-4 shrink-0 text-right text-[11px] tabular-nums text-[#a8a29e]">
+            {items.length}
+          </span>
+        </button>
         <div className="space-y-0.5">{renderSectionList(treeSections, null, 0)}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">
@@ -7078,46 +7104,6 @@ function CatalogActionButton({
         </button>
       </span>
     </Tooltip>
-  );
-}
-
-function SectionEditorContext({
-  section,
-  itemCount,
-  onEdit,
-  onAction,
-}: {
-  section: TreeSection;
-  itemCount: number;
-  onEdit: () => void;
-  onAction: (action: string) => void;
-}) {
-  const status = getSectionStatusMeta(section);
-  return (
-    <div className="h-12 shrink-0 border-b border-[#e7e5e4] bg-[#fbfbf9] px-6">
-      <div className="mx-auto flex h-full max-w-[600px] items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#57534d]">
-          {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : section.emoji ?? <ForkKnife size={13} weight="fill" />}
-        </span>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 truncate text-[13px] font-semibold text-[#44403b]">
-            {section.name} <span className="font-normal text-[#a8a29e]">· {itemCount} {plural(itemCount, "позиция", "позиции", "позиций")}</span>
-          </span>
-          <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
-        </div>
-        <button type="button" onClick={onEdit} className="inline-flex h-7 items-center rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524]">Изменить</button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button type="button" aria-label={`Действия с разделом ${section.name}`} className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524]">
-              <DotsThreeVertical size={16} weight="bold" />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownContent align="end">
-            <SectionActionMenuContent section={section} onAction={onAction} />
-          </DropdownContent>
-        </DropdownMenu.Root>
-      </div>
-    </div>
   );
 }
 
@@ -7306,6 +7292,9 @@ function SectionEditor({
   dropTarget,
   dragActiveRef,
   highlightItemId,
+  showOpenInPositions = true,
+  forcePositionsLabel = false,
+  compositionCountOverride,
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -7337,6 +7326,9 @@ function SectionEditor({
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   highlightItemId?: string | null;
+  showOpenInPositions?: boolean;
+  forcePositionsLabel?: boolean;
+  compositionCountOverride?: number;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -7428,7 +7420,7 @@ function SectionEditor({
               <div className="flex items-center justify-between gap-3 px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   {([
-                    { id: "composition", label: hasChildSections ? "Подразделы" : "Позиции" },
+                    { id: "composition", label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции" },
                     { id: "basic", label: "Настройки раздела" },
                     { id: "availability", label: "Доступность" },
                   ] as const).map((tab) => (
@@ -7446,20 +7438,20 @@ function SectionEditor({
                       {tab.label}
                       {tab.id === "composition" && (
                         <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                          {hasChildSections ? childSections.length : compositionItems.length}
+                          {compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length)}
                         </span>
                       )}
                     </button>
                   ))}
                 </div>
-                <button
+                {showOpenInPositions && <button
                   type="button"
                   onClick={onOpenInPositions}
                   className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
                   <ArrowsOut size={14} weight="regular" />
                   Открыть в таблице
-                </button>
+                </button>}
               </div>
               <div className="border-t border-[#e7e5e4]">
             {activeTab === "composition" ? (
@@ -7618,6 +7610,89 @@ function UnifiedCatalogSelectionState() {
       <div className="max-w-[320px] text-center">
         <h2 className="text-[14px] font-semibold text-[#292524]">Выберите позицию</h2>
         <p className="mt-1 text-[13px] leading-5 text-[#79716b]">Раскройте раздел слева и откройте позицию для редактирования.</p>
+      </div>
+    </div>
+  );
+}
+
+function UnifiedSectionTableHeader({
+  section,
+  itemCount,
+  activeTab,
+  onTabChange,
+  onAddPosition,
+  onAction,
+  positionCreateDisabledReason,
+  subsectionCreateDisabledReason,
+}: {
+  section: TreeSection;
+  itemCount: number;
+  activeTab: SectionEditorTab;
+  onTabChange: (tab: SectionEditorTab) => void;
+  onAddPosition: () => void;
+  onAction: (action: string) => void;
+  positionCreateDisabledReason?: string | null;
+  subsectionCreateDisabledReason?: string | null;
+}) {
+  const archived = section.status === "archive";
+  const status = getSectionStatusMeta(section);
+  return (
+    <div className="pt-3">
+      <div className="flex items-center gap-2 pb-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#a8a29e]">
+            {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={14} />}
+          </span>
+          <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
+          <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
+        </div>
+        <CatalogActionButton
+          onClick={onAddPosition}
+          disabled={archived}
+          disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
+          ariaLabel="Добавить позицию"
+          dataPositionCreateButton
+        >
+          Добавить позицию
+        </CatalogActionButton>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <CatalogMoreButton ariaLabel="Действия с разделом" />
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <SectionActionMenuContent
+              section={section}
+              subsectionDisabledReason={subsectionCreateDisabledReason}
+              onAction={onAction}
+            />
+          </DropdownContent>
+        </DropdownMenu.Root>
+      </div>
+      <div className="flex items-center gap-2 border-b border-[#e7e5e4]">
+        {([
+          { id: "composition", label: "Позиции" },
+          { id: "basic", label: "Настройки раздела" },
+          { id: "availability", label: "Доступность" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onTabChange(tab.id)}
+            className={cn(
+              "flex items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
+              activeTab === tab.id
+                ? "border-[#1c1917] font-medium text-[#1c1917]"
+                : "border-transparent text-[#79716b] hover:text-[#44403b]",
+            )}
+          >
+            {tab.label}
+            {tab.id === "composition" && (
+              <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
+                {itemCount}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -8388,18 +8463,29 @@ function writeRecentPositionId(id: string, items: CatalogItem[]) {
 function PopulatedWorkspace({
   sections,
   createdItems,
+  filterId,
   scopeSectionId,
+  query,
   resetSignal,
   initialSelectedItemId,
   initialHighlightItemId,
   initialSelectedSectionId,
   initialReturnContext,
+  pendingOpen,
+  tableOpenSignal,
+  onFilterChange,
+  onQueryChange,
   onScopeChange,
   onOpenSectionInOverview,
+  onRegisterCreateNavigationGuard,
+  onPendingOpenHandled,
+  onCreateClosed,
 }: {
   sections: TreeSection[];
   createdItems: CatalogItem[];
+  filterId: OverviewFilterId;
   scopeSectionId: string | null;
+  query: string;
   resetSignal: number;
   initialSelectedItemId: string | null;
   initialHighlightItemId?: string | null;
@@ -8407,8 +8493,15 @@ function PopulatedWorkspace({
    * состояния дерева, но не выше прямой ссылки на раздел (?sectionId=). */
   initialSelectedSectionId: string | null;
   initialReturnContext?: StructureReturnContext | null;
+  pendingOpen?: PendingOpen | null;
+  tableOpenSignal: number;
+  onFilterChange: (id: OverviewFilterId) => void;
+  onQueryChange: (value: string) => void;
   onScopeChange: (id: string | null) => void;
   onOpenSectionInOverview: (sectionId: string) => void;
+  onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
+  onPendingOpenHandled?: () => void;
+  onCreateClosed?: () => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -8442,27 +8535,32 @@ function PopulatedWorkspace({
     ? "legacy"
     : editorNavParam === "section"
       ? "section"
-      : editorNavParam === "unified"
-        ? "unified"
-        : "entity";
+      : editorNavParam === "entity"
+        ? "entity"
+        : "unified";
   const directPositionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("positionId");
   const directHighlightItemId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("highlightPositionId");
   const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
   const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
   const retainedItem = initialSelectedItemId ? sourceCatalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
-  const storedActiveSectionId = readJsonRecord<string | null>(CATALOG_ACTIVE_SECTION_STORAGE_KEY, null);
-  const firstTopLevelSectionId = catalogSections.find((section) => !section.parentId)?.id ?? catalogSections[0]?.id ?? null;
+  const storedUnifiedScope = readJsonRecord<string | "__all">(CATALOG_UNIFIED_SCOPE_STORAGE_KEY, "__all");
+  const storedUnifiedSectionId = storedUnifiedScope !== "__all"
+    && catalogSections.some((section) => section.id === storedUnifiedScope)
+    ? storedUnifiedScope
+    : null;
   const firstSectionId = directSection?.id
     ?? (initialSelectedSectionId && catalogSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
-    ?? (storedActiveSectionId && catalogSections.some((section) => section.id === storedActiveSectionId) ? storedActiveSectionId : null)
-    ?? firstTopLevelSectionId;
+    ?? (scopeSectionId && catalogSections.some((section) => section.id === scopeSectionId) ? scopeSectionId : null)
+    ?? storedUnifiedSectionId;
   const firstItemId = editorNavMode === "entity" || editorNavMode === "unified"
     ? activeEditorItemId ?? retainedItem?.id ?? directItem?.id ?? null
     : preferredItemId;
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
+  const [editorSource, setEditorSource] = useState<"tree" | "table" | null>(null);
+  const [unifiedTableOpenSignal, setUnifiedTableOpenSignal] = useState(0);
   const [treeContentMode, setTreeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
@@ -8718,20 +8816,23 @@ function PopulatedWorkspace({
   };
 
   useEffect(() => {
+    if (selectedSectionId === null) return;
     if (selectedSectionId && allSections.some((candidate) => candidate.id === selectedSectionId)) return;
-    const replacement = allSections.find((candidate) => candidate.status !== "archive" && !candidate.parentId)
-      ?? allSections.find((candidate) => candidate.status !== "archive")
-      ?? allSections[0]
-      ?? null;
-    setSelectedSectionId(replacement?.id ?? null);
+    setSelectedSectionId(null);
+    onScopeChange(null);
     setSelectedItemId(null);
     setEditing(false);
-  }, [allSections, selectedSectionId]);
+  }, [allSections, onScopeChange, selectedSectionId]);
 
   useEffect(() => {
     if (!selectedSectionId) return;
     writeJsonRecord(CATALOG_ACTIVE_SECTION_STORAGE_KEY, selectedSectionId);
   }, [selectedSectionId]);
+
+  useEffect(() => {
+    writeJsonRecord(CATALOG_UNIFIED_SCOPE_STORAGE_KEY, selectedSectionId ?? "__all");
+    if (scopeSectionId !== selectedSectionId) onScopeChange(selectedSectionId);
+  }, [onScopeChange, scopeSectionId, selectedSectionId]);
 
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY, treeContentMode);
@@ -8774,8 +8875,11 @@ function PopulatedWorkspace({
   };
 
   const openSectionEditor = (id: string) => {
+    setUnifiedTableOpenSignal((signal) => signal + 1);
     setSelectedSectionId(id);
+    onScopeChange(id);
     setSelectedItemId(null);
+    setEditorSource(null);
     setActiveEditorItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
@@ -8794,6 +8898,7 @@ function PopulatedWorkspace({
     const targetItem = allItems.find((item) => item.id === id);
     if (targetItem) setSelectedSectionId(targetItem.sectionId);
     setSelectedItemId(id);
+    setEditorSource("tree");
     setActiveEditorItemId(id);
     setEditing(true);
     rememberItem(id);
@@ -8819,9 +8924,25 @@ function PopulatedWorkspace({
 
   const openSectionOverview = () => {
     setSelectedItemId(null);
+    setEditorSource(null);
     setActiveEditorItemId(null);
     setEditing(false);
     setSelectedIds(new Set());
+  };
+
+  const selectAllPositions = () => {
+    if (structurePositionDraft) {
+      setFeedback("Завершите создание или нажмите «Отменить»");
+      return;
+    }
+    setSelectedSectionId(null);
+    setUnifiedTableOpenSignal((signal) => signal + 1);
+    setSelectedItemId(null);
+    setEditorSource(null);
+    setActiveEditorItemId(null);
+    setSelectedIds(new Set());
+    setSectionEditorTab("composition");
+    onScopeChange(null);
   };
 
   const reorderItemsInSection = (sectionId: string, draggedId: string, targetId: string) => {
@@ -9655,6 +9776,7 @@ function PopulatedWorkspace({
     if (returnItem) {
       setSelectedSectionId(returnItem.sectionId);
       setSelectedItemId(returnItem.id);
+      setEditorSource("tree");
       setActiveEditorItemId(returnItem.id);
       setEditing(true);
       if (editorNavMode === "entity") {
@@ -9672,6 +9794,7 @@ function PopulatedWorkspace({
       : pendingDraft.targetSectionId;
     setSelectedSectionId(returnSectionId);
     setSelectedItemId(null);
+    setEditorSource(null);
     setActiveEditorItemId(null);
     setEditing(pendingDraft.returnEditing && editorNavMode !== "entity");
     if (editorNavMode === "entity") {
@@ -9719,6 +9842,7 @@ function PopulatedWorkspace({
     setStructureCreateSubmitting(false);
     setSelectedSectionId(createdItem.sectionId);
     setSelectedItemId(createdItem.id);
+    setEditorSource("tree");
     setActiveEditorItemId(createdItem.id);
     setEditing(true);
     setLastItemBySection((current) => ({ ...current, [createdItem.sectionId]: createdItem.id }));
@@ -10202,6 +10326,7 @@ function PopulatedWorkspace({
         onClose={() => {
           setHighlightItemId(item.id);
           setSelectedItemId(null);
+          setEditorSource(null);
           setActiveEditorItemId(null);
           setEditing(false);
         }}
@@ -10266,24 +10391,150 @@ function PopulatedWorkspace({
     );
   };
 
+  const handleOverviewActiveItemChange = useCallback((id: string | null) => {
+    setSelectedItemId(id);
+    setEditorSource(id ? "table" : null);
+  }, []);
+
+  const handleUnifiedTableScopeChange = (id: string | null) => {
+    setSelectedSectionId(id);
+    setSelectedItemId(null);
+    setEditorSource(null);
+    setActiveEditorItemId(null);
+    setSelectedIds(new Set());
+    setSectionEditorTab("composition");
+    setSectionEditorScrollTop(0);
+    onScopeChange(id);
+  };
+
+  const restoreUnifiedStructureContext = (context: StructureReturnContext, openItemId: string | null) => {
+    if (context.sectionEditorTab) setSectionEditorTab(context.sectionEditorTab);
+    if (context.treeQuery !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, context.treeQuery);
+    if (context.treeExpanded) writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, context.treeExpanded);
+    if (context.treeScrollTop !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, context.treeScrollTop);
+    setSelectedSectionId(context.sectionId);
+    setSelectedItemId(openItemId);
+    setEditorSource(openItemId ? "tree" : null);
+    onScopeChange(context.sectionId);
+  };
+
+  const scopedItemCount = selectedSectionId
+    ? getQueueItemIds(filterId, allItems, query, selectedSectionId).length
+    : getQueueItemIds(filterId, allItems, query, null).length;
+  const subsectionDisabledReason = section ? (() => {
+    const availability = getParentAvailability(section, allItems, allSections);
+    return availability.available ? null : availability.label;
+  })() : null;
+  const tableHeader = section ? (
+    <UnifiedSectionTableHeader
+      section={section}
+      itemCount={scopedItemCount}
+      activeTab={sectionEditorTab}
+      onTabChange={setSectionEditorTab}
+      onAddPosition={() => addPositionToSection(section.id)}
+      onAction={(action) => handleUnifiedSectionAction(section, action)}
+      positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
+      subsectionCreateDisabledReason={subsectionDisabledReason}
+    />
+  ) : null;
+
+  const unifiedOverviewWorkspace = (
+    <OverviewWorkspace
+      filterId={filterId}
+      createdItems={createdItems}
+      onFilterChange={onFilterChange}
+      sectionScopeId={selectedSectionId}
+      onSectionScopeChange={handleUnifiedTableScopeChange}
+      query={query}
+      onQueryChange={onQueryChange}
+      onReturnToSections={() => onFilterChange("quick:all")}
+      onRestoreStructureContext={restoreUnifiedStructureContext}
+      onOpenSectionInSections={(sectionId, highlightedItemId = null) => {
+        handleUnifiedTableScopeChange(sectionId);
+        setHighlightItemId(highlightedItemId);
+      }}
+      onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
+      pendingOpen={pendingOpen}
+      onPendingOpenHandled={onPendingOpenHandled}
+      onCreateClosed={onCreateClosed}
+      tableOpenSignal={tableOpenSignal + unifiedTableOpenSignal}
+      positionsWorkspaceMode="legacy"
+      embedded
+      tableHeader={tableHeader}
+      onActiveItemChange={handleOverviewActiveItemChange}
+    />
+  );
+
+  const renderUnifiedSectionSettings = () => section ? (
+    <SectionEditor
+      section={section}
+      childSections={directChildSections}
+      highlightItemId={highlightItemId}
+      compositionItems={sectionTableItems}
+      compositionQuery={sectionTableQuery}
+      scrollTop={sectionEditorScrollTop}
+      activeTab={sectionEditorTab}
+      availabilityMode={sectionAvailabilityBySection[section.id] ?? "always"}
+      outsideScheduleMode={sectionOutsideScheduleBySection[section.id] ?? "hidden"}
+      weeklySchedule={sectionWeeklyScheduleBySection[section.id] ?? createDefaultWeeklySchedule()}
+      onTabChange={setSectionEditorTab}
+      onNameChange={(name) => updateSectionDraft(section.id, { name })}
+      onImageChange={(imageUrl) => updateSectionDraft(section.id, { imageUrl })}
+      onAvailabilityModeChange={(mode) => {
+        setSectionAvailabilityBySection((current) => ({ ...current, [section.id]: mode }));
+        registerChange("catalog");
+      }}
+      onOutsideScheduleModeChange={(mode) => {
+        setSectionOutsideScheduleBySection((current) => ({ ...current, [section.id]: mode }));
+        registerChange("catalog");
+      }}
+      onWeeklyScheduleChange={(schedule) => {
+        setSectionWeeklyScheduleBySection((current) => ({ ...current, [section.id]: schedule }));
+        registerChange("catalog");
+      }}
+      onAddPosition={() => addPositionToSection(section.id)}
+      onOpenInPositions={() => {}}
+      onSelectChildSection={handleTreeSelectSection}
+      onChildSectionAction={handleUnifiedSectionAction}
+      positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
+      subsectionCreateDisabledReason={subsectionDisabledReason}
+      onCompositionQueryChange={setSectionTableQuery}
+      dropTarget={dropTarget}
+      dragActiveRef={dragActiveRef}
+      onScrollTopChange={setSectionEditorScrollTop}
+      onArchive={() => archiveSection(section)}
+      onRestore={() => restoreSection(section)}
+      onAction={(action) => handleUnifiedSectionAction(section, action)}
+      onItemAction={(item, action) => {
+        if (action === "Редактировать в Позициях" || action === "Открыть позицию" || action === "Редактировать") openItem(item.id);
+        else if (action === "Переместить в раздел") showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`);
+      }}
+      showOpenInPositions={false}
+      forcePositionsLabel
+      compositionCountOverride={scopedItemCount}
+    />
+  ) : unifiedOverviewWorkspace;
+
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <UnifiedCatalogTreePanel
-            sections={editorNavMode === "entity" ? allSectionTree : activeSectionTree}
+            sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
             items={allItems}
+            allPositionsSelected={selectedSectionId === null}
             scopeSectionId={scopeSectionId}
             selectedSectionId={selectedSectionId}
             selectedItemId={selectedItemId}
             sectionEditingEnabled
-            includeArchived={editorNavMode === "entity"}
+            includeArchived={editorNavMode === "entity" || editorNavMode === "unified"}
             showPositions={treeContentMode === "sections-and-positions"}
             treeContentMode={treeContentMode}
             positionOrderBySection={positionOrderBySection}
             onSelectSection={structurePositionDraft
               ? () => setFeedback("Завершите создание или нажмите «Отменить»")
               : handleTreeSelectSection}
+            onSelectAllPositions={selectAllPositions}
             onSelectItem={structurePositionDraft
               ? () => setFeedback("Завершите создание или нажмите «Отменить»")
               : openItem}
@@ -10409,26 +10660,11 @@ function PopulatedWorkspace({
             <UnifiedCatalogSelectionState />
           )
         ) : editorNavMode === "unified" ? (
-          selectedItem ? (
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              {(() => {
-                const selectedItemSection = allSections.find((candidate) => candidate.id === selectedItem.sectionId) ?? null;
-                if (!selectedItemSection) return null;
-                const itemCount = allItems.filter((candidate) => candidate.sectionId === selectedItemSection.id && candidate.status !== "archive").length;
-                return (
-                  <SectionEditorContext
-                    section={selectedItemSection}
-                    itemCount={itemCount}
-                    onEdit={() => handleUnifiedSectionAction(selectedItemSection, "Изменить раздел")}
-                    onAction={(action) => handleUnifiedSectionAction(selectedItemSection, action)}
-                  />
-                );
-              })()}
-              {renderPositionEditor(selectedItem)}
-            </div>
-          ) : (
-            <UnifiedCatalogSelectionState />
-          )
+          editorSource === "tree" && selectedItem
+            ? renderPositionEditor(selectedItem)
+            : section && sectionEditorTab !== "composition"
+              ? renderUnifiedSectionSettings()
+              : unifiedOverviewWorkspace
         ) : editing ? (
           selectedItem ? (
             renderPositionEditor(selectedItem)
@@ -11561,6 +11797,114 @@ function OverviewStatusBar({
   );
 }
 
+function CatalogTableFilterBar({
+  filterId,
+  sectionScopeId,
+  items,
+  onFilterChange,
+  onSectionScopeChange,
+}: {
+  filterId: OverviewFilterId;
+  sectionScopeId: string | null;
+  items: CatalogItem[];
+  onFilterChange: (id: OverviewFilterId) => void;
+  onSectionScopeChange: (id: string | null) => void;
+}) {
+  const secondaryFilterIds = useMemo(
+    () => Array.from(new Set(CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids)))
+      .filter((id): id is OverviewFilterId => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId)),
+    [],
+  );
+  const [addedFilterIds, setAddedFilterIds] = useState<OverviewFilterId[]>(() =>
+    secondaryFilterIds.includes(filterId) ? [filterId] : [],
+  );
+  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
+  const countByFilter = (id: OverviewFilterId) => getOverviewItems(id, items)
+    .filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
+
+  useEffect(() => {
+    if (!secondaryFilterIds.includes(filterId)) return;
+    setAddedFilterIds((current) => current.includes(filterId) ? current : [...current, filterId]);
+  }, [filterId, secondaryFilterIds]);
+
+  const moreFilterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
+    ...group,
+    ids: group.ids.filter(
+      (id): id is OverviewFilterId => id !== "sections"
+        && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId)
+        && !addedFilterIds.includes(id as OverviewFilterId),
+    ),
+  })).filter((group) => group.ids.length > 0);
+  const visibleFilterIds = [...HYBRID_PRIMARY_FILTER_IDS, ...addedFilterIds];
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-2">
+      <div className="mr-1 shrink-0">
+        <CatalogScopeSelect
+          value={sectionScopeId}
+          onChange={onSectionScopeChange}
+          onReset={() => onSectionScopeChange(null)}
+        />
+      </div>
+      {visibleFilterIds.map((id) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onFilterChange(id)}
+          className={cn(
+            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            filterId === id
+              ? "bg-[#292524] text-white"
+              : "border border-[#e7e5e4] bg-white text-[#57534d] hover:bg-[#f5f5f4]",
+          )}
+        >
+          <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+          <span className={cn(
+            "tabular-nums",
+            filterId === id ? "text-white/65" : "text-[#a8a29e]",
+          )}>
+            {countByFilter(id)}
+          </span>
+        </button>
+      ))}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span>Ещё</span>
+            <CaretDown size={12} weight="bold" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          <div className="max-h-[360px] overflow-y-auto">
+            {moreFilterGroups.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                {group.ids.map((id) => (
+                  <DropdownMenu.Item
+                    key={id}
+                    onSelect={() => {
+                      setAddedFilterIds((current) => current.includes(id) ? current : [...current, id]);
+                      onFilterChange(id);
+                    }}
+                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                    <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                  </DropdownMenu.Item>
+                ))}
+              </div>
+            ))}
+          </div>
+        </DropdownContent>
+      </DropdownMenu.Root>
+    </div>
+  );
+}
+
 function DescriptionQueueRow({
   item,
   selected,
@@ -12304,6 +12648,9 @@ function OverviewWorkspace({
   onPendingOpenHandled,
   tableOpenSignal,
   positionsWorkspaceMode,
+  embedded = false,
+  tableHeader,
+  onActiveItemChange,
 }: {
   filterId: OverviewFilterId;
   createdItems: CatalogItem[];
@@ -12321,6 +12668,9 @@ function OverviewWorkspace({
   onPendingOpenHandled?: () => void;
   tableOpenSignal: number;
   positionsWorkspaceMode: PositionsWorkspaceMode;
+  embedded?: boolean;
+  tableHeader?: ReactNode;
+  onActiveItemChange?: (id: string | null) => void;
 }) {
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
@@ -12379,6 +12729,9 @@ function OverviewWorkspace({
   const [feedback, setFeedback] = useState("");
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    onActiveItemChange?.(queue?.currentId ?? null);
+  }, [onActiveItemChange, queue?.currentId]);
   useEffect(() => {
     if (!tableHighlightId) return;
     const timer = window.setTimeout(() => setTableHighlightId(null), 2600);
@@ -13161,13 +13514,15 @@ function OverviewWorkspace({
       orderedIds: queueOrderedItemIds,
       sectionId: queue.snapshot.sectionScopeId ?? undefined,
       snapshot: queue.snapshot,
-      returnContext: { label: `Назад к выборке «${getFilterPanelTitle(queue.snapshot.filterId)}»` },
+      returnContext: {
+        label: `Назад к результатам · ${HYBRID_PRIMARY_FILTER_LABELS[queue.snapshot.filterId]} · ${Math.max(1, queueOrderedItemIds.indexOf(currentItem.id) + 1)} из ${queueOrderedItemIds.length}`,
+      },
       revision: catalogRevision,
     } : null;
     return (
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
         <div className="flex min-h-0 flex-1">
-          <UnifiedFlatCatalogPanel
+          {!embedded && <UnifiedFlatCatalogPanel
             filterId={editorFirstEnabled ? workspaceFilterId : queue.snapshot.filterId}
             scopeSectionId={editorFirstEnabled ? workspaceSectionScopeId : queue.snapshot.sectionScopeId}
             allItems={items}
@@ -13185,7 +13540,7 @@ function OverviewWorkspace({
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item) => requestCreateNavigation(() => selectQueueItem(item.id))}
-          />
+          />}
           <div className={editorFirstEnabled ? "flex min-w-0 flex-1 flex-col overflow-hidden" : "contents"}>
           {editorFirstEnabled && (
             <PositionsWorkspaceViewSwitcher
@@ -13290,7 +13645,7 @@ function OverviewWorkspace({
     return (
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
         <div className="flex min-h-0 flex-1">
-          <UnifiedFlatCatalogPanel
+          {!embedded && <UnifiedFlatCatalogPanel
             filterId={workspaceFilterId}
             scopeSectionId={workspaceSectionScopeId}
             allItems={items}
@@ -13304,7 +13659,7 @@ function OverviewWorkspace({
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item) => startDescriptionQueue(item, workspaceFilterId)}
-          />
+          />}
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <PositionsWorkspaceViewSwitcher value={editorFirstView} onChange={setEditorFirstView} />
             <EditorFirstPositionEmptyState />
@@ -13317,7 +13672,7 @@ function OverviewWorkspace({
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
-        <UnifiedFlatCatalogPanel
+        {!embedded && <UnifiedFlatCatalogPanel
           filterId={workspaceFilterId}
           scopeSectionId={workspaceSectionScopeId}
           allItems={items}
@@ -13332,7 +13687,7 @@ function OverviewWorkspace({
           onFilterChange={openPanelFilter}
           onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, workspaceFilterId)}
-        />
+        />}
         <div className={editorFirstEnabled ? "flex min-w-0 flex-1 flex-col overflow-hidden" : "contents"}>
         {editorFirstEnabled && (
           <PositionsWorkspaceViewSwitcher
@@ -13351,6 +13706,22 @@ function OverviewWorkspace({
           className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
         >
           <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
+            {tableHeader}
+            {embedded && (
+              <CatalogTableFilterBar
+                filterId={workspaceFilterId}
+                sectionScopeId={workspaceSectionScopeId}
+                items={items}
+                onFilterChange={(id) => {
+                  clearSelection();
+                  setWorkspaceFilterId(id);
+                }}
+                onSectionScopeChange={(id) => {
+                  clearSelection();
+                  setWorkspaceSectionScopeId(id);
+                }}
+              />
+            )}
             <div className="pt-3">
               <OverviewStatusBar
                 filterId={workspaceFilterId}
@@ -13469,6 +13840,7 @@ function RecommendationsContextWorkspace() {
 export function CatalogWorkspace({
   catalogPhase,
   catalogTab,
+  stopListActive,
   viewMode,
   sectionScopeId,
   resetSignal,
@@ -13687,12 +14059,21 @@ export function CatalogWorkspace({
     <PopulatedWorkspace
       sections={sections}
       createdItems={createdItems}
+      filterId={viewMode === "sections" ? "quick:all" : viewMode}
       scopeSectionId={sectionScopeId}
+      query={flatQuery}
       resetSignal={resetSignal}
       initialSelectedItemId={retainedItemId}
       initialHighlightItemId={retainedStructureHighlightItemId}
       initialSelectedSectionId={retainedSectionId}
       initialReturnContext={retainedStructureContext}
+      pendingOpen={pendingOpen}
+      tableOpenSignal={overviewTableOpenSignal}
+      onFilterChange={(id) => {
+        onViewModeChange(id);
+        onOverviewFilterChange(id);
+      }}
+      onQueryChange={setFlatQuery}
       onScopeChange={onSectionScopeChange}
       onOpenSectionInOverview={(sectionId) => {
         setFlatQuery("");
@@ -13704,6 +14085,11 @@ export function CatalogWorkspace({
         onOverviewFilterChange("quick:all");
         onCatalogTabChange("overview");
       }}
+      onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
+      onPendingOpenHandled={() => {
+        if (pendingOpen?.mode !== "create") setPendingOpen(null);
+      }}
+      onCreateClosed={() => setPendingOpen(null)}
     />
   ) : (
     <EmptyCatalog
@@ -13713,12 +14099,12 @@ export function CatalogWorkspace({
   );
   const workspace = catalogPhase === "empty" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
+    ) : catalogTab === "upsell" ? (
+      <RecommendationsContextWorkspace />
+    ) : stopListActive ? (
+      overviewWorkspace
     ) : (
-      <>
-        {catalogTab === "overview" && overviewWorkspace}
-        {catalogTab === "sections" && structureWorkspace}
-        {catalogTab === "upsell" && <RecommendationsContextWorkspace />}
-      </>
+      structureWorkspace
     );
 
   return (

@@ -537,6 +537,7 @@ function AuthenticatedShell() {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>(() =>
     initialCatalogCreate ? "overview" : initialCatalogContext?.tab ?? "sections",
   );
+  const [catalogStopListActive, setCatalogStopListActive] = useState(false);
   const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
     initialCatalogContext?.tab === "overview" ? initialCatalogContext.filterId : "quick:all",
   );
@@ -577,6 +578,7 @@ function AuthenticatedShell() {
   // от вкладки/фильтра/выбранной позиции каталога.
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
+    setCatalogStopListActive(false);
     setCatalogViewMode(mode);
     if (mode === "sections") {
       setCatalogTab("sections");
@@ -595,6 +597,7 @@ function AuthenticatedShell() {
   };
   const changeCatalogTab = (next: CatalogTab) => {
     requestCatalogNavigation(() => {
+      setCatalogStopListActive(false);
       setCatalogTab(next);
       if (next === "overview") {
         const nextFilter = catalogViewMode === "sections"
@@ -610,14 +613,20 @@ function AuthenticatedShell() {
   };
   const catalogPrimaryTab: CatalogPrimaryTab = catalogTab === "upsell"
     ? "upsell"
-    : catalogTab === "overview" && catalogViewMode === "status:stop"
+    : catalogStopListActive
       ? "stop-list"
-      : catalogTab === "sections"
-        ? "sections"
-        : "overview";
+      : "sections";
   const changeCatalogPrimaryTab = (next: CatalogPrimaryTab) => {
     if (next === "sections") {
-      changeCatalogTab("sections");
+      requestCatalogNavigation(() => {
+        const restoredFilter = catalogViewMode === "status:stop"
+          ? lastNonStopCatalogFilterRef.current
+          : catalogViewMode === "sections" ? "quick:all" : catalogViewMode;
+        setCatalogTab("overview");
+        setCatalogStopListActive(false);
+        setCatalogViewMode(restoredFilter);
+        setCatalogOverviewFilterId(restoredFilter);
+      });
       return;
     }
     if (next === "overview") {
@@ -634,11 +643,13 @@ function AuthenticatedShell() {
       return;
     }
     if (next === "upsell") {
+      setCatalogStopListActive(false);
       changeCatalogTab("upsell");
       return;
     }
     if (next === "stop-list") {
       requestCatalogNavigation(() => {
+        setCatalogStopListActive(true);
         setCatalogTab("overview");
         setCatalogViewMode("status:stop");
         setCatalogOverviewFilterId("status:stop");
@@ -971,6 +982,7 @@ function AuthenticatedShell() {
           selectedDishId={selectedDishId}
           catalogPhase={catalogPhase}
           catalogTab={catalogTab}
+          stopListActive={catalogStopListActive}
           viewMode={catalogViewMode}
           sectionScopeId={catalogSectionScopeId}
           resetSignal={catalogResetSignal}
