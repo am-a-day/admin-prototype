@@ -52,7 +52,9 @@ import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace"
 import {
   CatalogTabs,
   CatalogWorkspace,
+  type CatalogCreateNavigationGuard,
   type CatalogPhase,
+  type CatalogReturnContext,
   type CatalogTab,
   type CatalogViewMode,
   type OverviewFilterId,
@@ -67,6 +69,14 @@ import type { TrainingActiveSession, TrainingTab } from "@/features/training/tra
 
 type PageMeta = { title: string; description?: string; showLanguage?: boolean };
 type SidebarPreference = "expanded" | "collapsed" | null;
+
+function getCatalogHistoryContext(state: unknown = window.history.state): CatalogReturnContext | null {
+  if (!state || typeof state !== "object") return null;
+  const context = (state as Record<string, unknown>).taskoCatalogContext;
+  if (!context || typeof context !== "object" || !("tab" in context)) return null;
+  const tab = (context as { tab?: unknown }).tab;
+  return tab === "sections" || tab === "overview" ? context as CatalogReturnContext : null;
+}
 
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
 const CATALOG_PHASE_STORAGE_KEY = catalogStorageKey("phase");
@@ -496,6 +506,10 @@ function AuthenticatedShell() {
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
+  const initialCatalogParams = new URLSearchParams(window.location.search);
+  const initialCatalogCreate = initialStorefrontRoute.storeTab === "catalog" && initialCatalogParams.get("createPosition") === "1";
+  const initialCatalogContext = getCatalogHistoryContext();
+  const initialCatalogSectionId = initialCatalogParams.get("sectionId");
   const [section, setSection] = useState<SectionId>(isInitialTrainingRoute ? "training" : "storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>(initialStorefrontRoute.storeTab);
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>(initialStorefrontRoute.aboutTab);
@@ -517,12 +531,27 @@ function AuthenticatedShell() {
     if (stored === "empty" || stored === "has-sections" || stored === "has-items") return stored;
     return account?.workspace.firstEntry ? "empty" : "has-items";
   });
-  const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
-  const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>("status:active");
-  const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("sections");
-  const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(null);
+  const [catalogTab, setCatalogTab] = useState<CatalogTab>(() =>
+    initialCatalogCreate ? "overview" : initialCatalogContext?.tab ?? "sections",
+  );
+  const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
+    initialCatalogContext?.tab === "overview" ? initialCatalogContext.filterId : "status:active",
+  );
+  const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>(() =>
+    initialCatalogContext?.tab === "overview"
+      ? initialCatalogContext.filterId
+      : initialCatalogCreate ? "quick:all" : "sections",
+  );
+  const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(() =>
+    initialCatalogCreate
+      ? initialCatalogSectionId
+      : initialCatalogContext?.tab === "overview"
+        ? initialCatalogContext.sectionScopeId
+        : initialCatalogContext?.sectionId ?? null,
+  );
   const [catalogResetSignal] = useState(0);
-  const catalogCreateNavigationGuardRef = useRef<((next: CatalogTab, continueNavigation: () => void) => boolean) | null>(null);
+  const catalogCreateNavigationGuardRef = useRef<CatalogCreateNavigationGuard | null>(null);
+  const skipNextCatalogPopGuardRef = useRef(false);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
   const updateCatalogPhase = (next: CatalogPhase) => {
     setCatalogPhase(next);
@@ -560,16 +589,11 @@ function AuthenticatedShell() {
         }
       }
     };
-    if (catalogCreateNavigationGuardRef.current && !catalogCreateNavigationGuardRef.current(next, continueNavigation)) return;
-    setCatalogTab(next);
-    if (next === "overview") {
-      if (catalogViewMode === "sections") {
-        setCatalogViewMode("quick:all");
-        setCatalogOverviewFilterId("quick:all");
-      } else {
-        setCatalogOverviewFilterId(catalogViewMode);
-      }
+    if (catalogCreateNavigationGuardRef.current) {
+      catalogCreateNavigationGuardRef.current.request(continueNavigation);
+      return;
     }
+    continueNavigation();
   };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -611,25 +635,26 @@ function AuthenticatedShell() {
   };
 
   // Hover-flyout: в свёрнутом сайдборе на десктопе наведение временно раскрывает
-  // навигацию поверх контента, не сдвигая layout. Задержки — hover intent.
+  // навигацию поверх контента, не сдвигая layout. Hover работает только на мыши.
   const [flyoutOpen, setFlyoutOpen] = useState(false);
-  const flyoutTimer = useRef<number | null>(null);
-  const pointerX = useRef<number>(Number.POSITIVE_INFINITY);
+  const [canHoverSidebar, setCanHoverSidebar] = useState(() =>
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches,
+  );
   useEffect(() => {
-    const onPointerMove = (event: PointerEvent) => {
-      pointerX.current = event.clientX;
-    };
-
-    document.addEventListener("pointermove", onPointerMove);
-    return () => document.removeEventListener("pointermove", onPointerMove);
+    const media = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setCanHoverSidebar(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
-  const scheduleFlyout = (open: boolean, delay: number) => {
-    if (flyoutTimer.current) window.clearTimeout(flyoutTimer.current);
-    flyoutTimer.current = window.setTimeout(() => {
-      if (!open && desktopRail && pointerX.current <= 192) return;
-      setFlyoutOpen(open);
-    }, delay);
-  };
+  const autoHoverRail = desktopRail && canHoverSidebar;
+  useEffect(() => {
+    if (!autoHoverRail) setFlyoutOpen(false);
+  }, [autoHoverRail]);
+  useEffect(() => {
+    if (!desktopRail && flyoutOpen) setFlyoutOpen(false);
+  }, [desktopRail, flyoutOpen]);
+
   const pinSidebar = () => {
     setPreference("expanded");
     setFlyoutOpen(false);
@@ -637,19 +662,6 @@ function AuthenticatedShell() {
   const unpinSidebar = () => {
     setPreference("collapsed");
   };
-  useEffect(() => {
-    if (!desktopRail && flyoutOpen) setFlyoutOpen(false);
-  }, [desktopRail, flyoutOpen]);
-  useEffect(() => {
-    if (!desktopRail || !flyoutOpen) return;
-
-    const onPointerMove = () => {
-      scheduleFlyout(pointerX.current <= 192, pointerX.current <= 192 ? 0 : 150);
-    };
-
-    document.addEventListener("pointermove", onPointerMove);
-    return () => document.removeEventListener("pointermove", onPointerMove);
-  }, [desktopRail, flyoutOpen]);
 
   const setRecommendationText = (key: keyof RecommendationTexts, value: string) =>
     setRecommendationTexts((prev) => ({ ...prev, [key]: value }));
@@ -782,10 +794,27 @@ function AuthenticatedShell() {
     setPreviewScenario(null);
   };
 
-  const guardedNavigate = (next: SectionId, tab: string) => navigate(next, tab);
+  const guardedNavigate = (next: SectionId, tab: string) => {
+    const continueNavigation = () => navigate(next, tab);
+    if (catalogCreateNavigationGuardRef.current) {
+      catalogCreateNavigationGuardRef.current.request(continueNavigation);
+      return;
+    }
+    continueNavigation();
+  };
 
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
+      const createGuard = catalogCreateNavigationGuardRef.current;
+      if (createGuard && !skipNextCatalogPopGuardRef.current) {
+        window.history.pushState(createGuard.location.state, "", createGuard.location.url);
+        createGuard.requestBack(() => {
+          skipNextCatalogPopGuardRef.current = true;
+          window.history.back();
+        });
+        return;
+      }
+      if (skipNextCatalogPopGuardRef.current) skipNextCatalogPopGuardRef.current = false;
       if (isTrainingPath(window.location.pathname)) {
         setSection("training");
         setTrainingTab(getInitialTrainingTab());
@@ -797,6 +826,26 @@ function AuthenticatedShell() {
       setSection("storefront");
       setStoreTab(route.storeTab);
       setStoreAboutTab(route.aboutTab);
+      if (route.storeTab === "catalog") {
+        const params = new URLSearchParams(window.location.search);
+        const createOpen = params.get("createPosition") === "1";
+        const context = getCatalogHistoryContext(event.state);
+        if (createOpen) {
+          setCatalogTab("overview");
+          setCatalogViewMode(context?.tab === "overview" ? context.filterId : "quick:all");
+          setCatalogOverviewFilterId(context?.tab === "overview" ? context.filterId : "quick:all");
+          setCatalogSectionScopeId(params.get("sectionId"));
+        } else if (context?.tab === "overview") {
+          setCatalogTab("overview");
+          setCatalogViewMode(context.filterId);
+          setCatalogOverviewFilterId(context.filterId);
+          setCatalogSectionScopeId(context.sectionScopeId);
+        } else if (context?.tab === "sections") {
+          setCatalogTab("sections");
+          setCatalogViewMode("sections");
+          setCatalogSectionScopeId(context.sectionId);
+        }
+      }
       setPreviewScenario(
         route.storeTab === "about" && route.aboutTab === "info" ? "about" : null,
       );
@@ -987,8 +1036,8 @@ function AuthenticatedShell() {
             "relative z-30 flex shrink-0 flex-col transition-[width] duration-300 ease-out",
             inlineSidebarMode === "rail" ? "w-[46px]" : "w-48",
           )}
-          onMouseEnter={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
-          onMouseMove={desktopRail ? () => scheduleFlyout(true, 0) : undefined}
+          onMouseEnter={autoHoverRail ? () => setFlyoutOpen(true) : undefined}
+          onMouseLeave={autoHoverRail ? () => setFlyoutOpen(false) : undefined}
         >
           <div className={cn("flex min-h-0 flex-1 flex-col", desktopRail && flyoutOpen && "pointer-events-none")}>
             <Sidebar
@@ -1008,11 +1057,9 @@ function AuthenticatedShell() {
           {desktopRail && (
             <div
               className={cn(
-                "fixed inset-y-0 left-0 z-40 overflow-hidden transition-[width] duration-150 ease-out",
+                "fixed inset-y-0 left-0 z-40 overflow-hidden transition-[width,left,right] duration-100 delay-0 ease-linear",
                 flyoutOpen ? "z-[80] w-48 pointer-events-auto shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
               )}
-              onMouseEnter={() => scheduleFlyout(true, 0)}
-              onMouseLeave={() => scheduleFlyout(false, 150)}
             >
               <div className="flex h-full w-48 flex-col bg-[#fbf9f6]">
                 <FullSidebar
