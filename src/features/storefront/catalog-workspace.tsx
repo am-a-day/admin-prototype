@@ -5000,7 +5000,6 @@ function PositionEditor({
   onRequestPermanentDelete,
   breadcrumb,
   headerMeta,
-  headerContext,
   onDescriptionChange,
   onMediaAdded,
   onDraftChange,
@@ -5036,7 +5035,6 @@ function PositionEditor({
   onRequestPermanentDelete: (item: CatalogItem) => void;
   breadcrumb?: ReactNode;
   headerMeta?: ReactNode;
-  headerContext?: ReactNode;
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
   onDraftChange?: (patch: Partial<CatalogItem>) => void;
@@ -5237,26 +5235,21 @@ function PositionEditor({
             </div>
           ) : breadcrumb ? (
             // «Позиции»: одна строка — breadcrumb вместо отдельного крупного заголовка позиции.
-            <div className="pb-2 pt-5">
-              <div className="flex items-center gap-2">
-                {onBackEdit && (
-                  <Tooltip label="Назад" side="bottom" delayDuration={250}>
-                    <button
-                      type="button"
-                      onClick={onBackEdit}
-                      aria-label="Назад"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                    >
-                      <ArrowLeft size={17} weight="bold" />
-                    </button>
-                  </Tooltip>
-                )}
-                <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
-                {positionActions}
-              </div>
-              {headerContext && (
-                <div className="mt-1.5 min-w-0">{headerContext}</div>
+            <div className="flex items-center gap-2 pb-2 pt-5">
+              {onBackEdit && (
+                <Tooltip label="Назад" side="bottom" delayDuration={250}>
+                  <button
+                    type="button"
+                    onClick={onBackEdit}
+                    aria-label="Назад"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <ArrowLeft size={17} weight="bold" />
+                  </button>
+                </Tooltip>
               )}
+              <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
+              {positionActions}
             </div>
           ) : (
             <div className="flex items-center gap-2 pb-2 pt-6">
@@ -5409,16 +5402,22 @@ function CatalogPickerContent({
   children,
   align = "start",
   className,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }) {
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
         className={cn(
           "z-[100002] w-[300px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none",
           className,
@@ -5427,6 +5426,104 @@ function CatalogPickerContent({
         {children}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
+  );
+}
+
+function StructuralSectionCrumb({
+  section,
+  siblings,
+  compact,
+  onOpenSection,
+  onRevealSection,
+}: {
+  section: CatalogSectionCrumb;
+  siblings: TreeSection[];
+  compact: boolean;
+  onOpenSection: (id: string) => void;
+  onRevealSection: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const openTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const clearOpenTimer = () => {
+    if (openTimerRef.current != null) window.clearTimeout(openTimerRef.current);
+    openTimerRef.current = null;
+  };
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  const scheduleOpen = () => {
+    clearCloseTimer();
+    if (open) return;
+    clearOpenTimer();
+    openTimerRef.current = window.setTimeout(() => setOpen(true), 275);
+  };
+  const scheduleClose = () => {
+    clearOpenTimer();
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), 180);
+  };
+
+  useEffect(() => () => {
+    clearOpenTimer();
+    clearCloseTimer();
+  }, []);
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          title={section.name}
+          onClick={() => onOpenSection(section.id)}
+          onPointerDown={(event) => event.preventDefault()}
+          onMouseEnter={scheduleOpen}
+          onMouseLeave={scheduleClose}
+          className={cn(
+            "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            compact ? "max-w-[100px]" : "max-w-[150px]",
+          )}
+        >
+          {section.name}
+        </button>
+      </DropdownMenu.Trigger>
+      <CatalogPickerContent
+        className="w-[260px]"
+        onMouseEnter={() => {
+          clearOpenTimer();
+          clearCloseTimer();
+        }}
+        onMouseLeave={scheduleClose}
+      >
+        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
+          Соседние разделы
+        </div>
+        <div className="max-h-[260px] overflow-y-auto py-0.5">
+          {siblings.map((sibling) => (
+            <DropdownMenu.Item
+              key={sibling.id}
+              onSelect={() => onOpenSection(sibling.id)}
+              className={cn(
+                "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                sibling.id === section.id ? "bg-[#f5f5f4] font-medium text-[#292524]" : "text-[#57534d]",
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">{sibling.name}</span>
+              {sibling.id === section.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
+            </DropdownMenu.Item>
+          ))}
+        </div>
+        <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+        <DropdownMenu.Item
+          onSelect={() => onRevealSection(section.id)}
+          className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+        >
+          <List size={15} />
+          Показать в дереве
+        </DropdownMenu.Item>
+      </CatalogPickerContent>
+    </DropdownMenu.Root>
   );
 }
 
@@ -5448,6 +5545,9 @@ function StructuralPositionBreadcrumb({
   onOpenPosition: (id: string) => void;
 }) {
   const [positionQuery, setPositionQuery] = useState("");
+  const [positionMenuOpen, setPositionMenuOpen] = useState(false);
+  const positionOpenTimerRef = useRef<number | null>(null);
+  const positionCloseTimerRef = useRef<number | null>(null);
   const sectionPath = getCatalogSectionPathFromSections(item.sectionId, sections);
   const sectionsByParent = new Map<string, TreeSection[]>();
   sections.forEach((section) => {
@@ -5467,7 +5567,30 @@ function StructuralPositionBreadcrumb({
   const visibleStructuralItems = normalizedPositionQuery
     ? structuralItems.filter((candidate) => candidate.title.toLocaleLowerCase().includes(normalizedPositionQuery))
     : structuralItems;
-  const crumbButton = "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10";
+  const clearPositionOpenTimer = () => {
+    if (positionOpenTimerRef.current != null) window.clearTimeout(positionOpenTimerRef.current);
+    positionOpenTimerRef.current = null;
+  };
+  const clearPositionCloseTimer = () => {
+    if (positionCloseTimerRef.current != null) window.clearTimeout(positionCloseTimerRef.current);
+    positionCloseTimerRef.current = null;
+  };
+  const schedulePositionOpen = () => {
+    clearPositionCloseTimer();
+    if (positionMenuOpen) return;
+    clearPositionOpenTimer();
+    positionOpenTimerRef.current = window.setTimeout(() => setPositionMenuOpen(true), 275);
+  };
+  const schedulePositionClose = () => {
+    clearPositionOpenTimer();
+    clearPositionCloseTimer();
+    positionCloseTimerRef.current = window.setTimeout(() => setPositionMenuOpen(false), 180);
+  };
+
+  useEffect(() => () => {
+    clearPositionOpenTimer();
+    clearPositionCloseTimer();
+  }, []);
 
   return (
     <nav aria-label="Положение позиции в каталоге" className="flex min-w-0 items-center gap-1">
@@ -5477,54 +5600,49 @@ function StructuralPositionBreadcrumb({
         return (
           <Fragment key={section.id}>
             {index > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  title={section.name}
-                  className={cn(crumbButton, index < sectionPath.length - 1 ? "max-w-[100px]" : "max-w-[150px]")}
-                >
-                  {section.name}
-                </button>
-              </DropdownMenu.Trigger>
-              <CatalogPickerContent className="w-[260px]">
-                <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
-                  Соседние разделы
-                </div>
-                <div className="max-h-[260px] overflow-y-auto py-0.5">
-                  {siblings.map((sibling) => (
-                    <DropdownMenu.Item
-                      key={sibling.id}
-                      onSelect={() => onOpenSection(sibling.id)}
-                      className={cn(
-                        "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
-                        sibling.id === section.id ? "bg-[#f5f5f4] font-medium text-[#292524]" : "text-[#57534d]",
-                      )}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{sibling.name}</span>
-                      {sibling.id === section.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-                    </DropdownMenu.Item>
-                  ))}
-                </div>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                <DropdownMenu.Item
-                  onSelect={() => onRevealSection(section.id)}
-                  className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
-                >
-                  <List size={15} />
-                  Показать в дереве
-                </DropdownMenu.Item>
-              </CatalogPickerContent>
-            </DropdownMenu.Root>
+            <StructuralSectionCrumb
+              section={section}
+              siblings={siblings}
+              compact={index < sectionPath.length - 1}
+              onOpenSection={onOpenSection}
+              onRevealSection={onRevealSection}
+            />
           </Fragment>
         );
       })}
       {sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setPositionQuery(""); }}>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" title={item.title} className={cn(crumbButton, "flex-1 text-[#292524]")}>{item.title}</button>
-        </DropdownMenu.Trigger>
-        <CatalogPickerContent align="end" className="w-[320px]">
+      <DropdownMenu.Root
+        open={positionMenuOpen}
+        onOpenChange={(open) => {
+          setPositionMenuOpen(open);
+          if (!open) setPositionQuery("");
+        }}
+      >
+        <div
+          className="flex min-w-0 flex-1 items-center"
+          onMouseEnter={schedulePositionOpen}
+          onMouseLeave={schedulePositionClose}
+        >
+          <span title={item.title} className="min-w-0 flex-1 truncate px-1 py-0.5 text-[13px] font-medium text-[#292524]">{item.title}</span>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Открыть позиции раздела"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <CaretDown size={12} weight="bold" />
+            </button>
+          </DropdownMenu.Trigger>
+        </div>
+        <CatalogPickerContent
+          align="end"
+          className="w-[320px]"
+          onMouseEnter={() => {
+            clearPositionOpenTimer();
+            clearPositionCloseTimer();
+          }}
+          onMouseLeave={schedulePositionClose}
+        >
           <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
             Позиции раздела · {structuralItems.length}
           </div>
@@ -5566,12 +5684,26 @@ function StructuralPositionBreadcrumb({
   );
 }
 
-function PositionQueueContext({
+function PositionQueueReturnLink({ filterLabel, onBack }: { filterLabel: string; onBack: () => void }) {
+  return (
+    <Tooltip label="Вернуться к результатам" side="bottom" delayDuration={250}>
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex h-7 max-w-[150px] shrink-0 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <ArrowLeft size={13} weight="bold" />
+        <span className="truncate">{filterLabel}</span>
+      </button>
+    </Tooltip>
+  );
+}
+
+function PositionQueueControls({
   filterLabel,
   itemIds,
   currentId,
   itemsById,
-  onBack,
   onSelect,
   previousId,
   nextId,
@@ -5580,7 +5712,6 @@ function PositionQueueContext({
   itemIds: string[];
   currentId: string;
   itemsById: Record<string, CatalogItem>;
-  onBack: () => void;
   onSelect: (id: string) => void;
   previousId: string | null;
   nextId: string | null;
@@ -5593,23 +5724,13 @@ function PositionQueueContext({
     : itemIds;
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-[#fafaf9] px-1.5 py-1">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        <ArrowLeft size={13} weight="bold" />
-        <span>К результатам</span>
-      </button>
-      <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#44403b]" title={filterLabel}>{filterLabel}</span>
+    <div className="flex shrink-0 items-center gap-1">
       <DropdownMenu.Root onOpenChange={(open) => { if (!open) setQuery(""); }}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label={`Открыть очередь, ${Math.max(0, queueIndex + 1)} из ${itemIds.length}`}
-            className="inline-flex h-7 shrink-0 items-center rounded-[7px] px-2 text-[12px] tabular-nums text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-7 shrink-0 items-center rounded-[7px] px-2 text-[12px] tabular-nums text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             {Math.max(0, queueIndex + 1)} из {itemIds.length}
           </button>
@@ -5659,7 +5780,7 @@ function PositionQueueContext({
           disabled={!previousId}
           aria-label="Предыдущая позиция в выборке"
           title="Предыдущая позиция"
-          className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <CaretLeft size={14} weight="bold" />
         </button>
@@ -5669,7 +5790,7 @@ function PositionQueueContext({
           disabled={!nextId}
           aria-label="Следующая позиция в выборке"
           title="Следующая позиция"
-          className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <CaretRight size={14} weight="bold" />
         </button>
@@ -5837,25 +5958,35 @@ function PositionEditorHost({
       }}
       forcedEditorTab={editorContext.tab}
       focusAnchor={editorContext.anchor}
-      showStopQuickAction={!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId)}
+      showStopQuickAction={intent.origin !== "positions" && (!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId))}
       breadcrumb={(
-        <StructuralPositionBreadcrumb
-          item={item}
-          sections={structureSections}
-          allItems={items}
-          positionOrderBySection={positionOrderBySection}
-          onOpenSection={onOpenStructuralSection ?? (() => {})}
-          onRevealSection={onRevealStructuralSection ?? onOpenStructuralSection ?? (() => {})}
-          onOpenPosition={onOpenStructuralItem ?? onCurrentIdChange}
-        />
+        <div className="flex min-w-0 items-center gap-1">
+          {intent.origin === "positions" && intent.snapshot && (
+            <>
+              <PositionQueueReturnLink
+                filterLabel={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+                onBack={onClose}
+              />
+              <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
+            </>
+          )}
+          <StructuralPositionBreadcrumb
+            item={item}
+            sections={structureSections}
+            allItems={items}
+            positionOrderBySection={positionOrderBySection}
+            onOpenSection={onOpenStructuralSection ?? (() => {})}
+            onRevealSection={onRevealStructuralSection ?? onOpenStructuralSection ?? (() => {})}
+            onOpenPosition={onOpenStructuralItem ?? onCurrentIdChange}
+          />
+        </div>
       )}
-      headerContext={intent.origin === "positions" && intent.snapshot ? (
-        <PositionQueueContext
+      headerMeta={intent.origin === "positions" && intent.snapshot ? (
+        <PositionQueueControls
           filterLabel={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
           itemIds={currentSelectionIds}
           currentId={intent.currentId}
           itemsById={itemsById}
-          onBack={onClose}
           onSelect={onCurrentIdChange}
           previousId={previousQueueId}
           nextId={nextQueueId}
@@ -8870,7 +9001,7 @@ function PopulatedWorkspace({
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
-  const [editorSource, setEditorSource] = useState<"tree" | "table" | null>(null);
+  const [editorSource, setEditorSource] = useState<"tree" | "table" | "breadcrumb" | null>(null);
   const [unifiedTableOpenSignal, setUnifiedTableOpenSignal] = useState(0);
   const [treeContentMode, setTreeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
@@ -9219,6 +9350,14 @@ function PopulatedWorkspace({
       url.searchParams.set("positionId", id);
       window.history.replaceState(null, "", url);
     }
+  };
+  const openItemFromEditorBreadcrumb = (id: string) => {
+    if (!allItems.some((item) => item.id === id)) return;
+    setSelectedItemId(id);
+    setEditorSource("breadcrumb");
+    setActiveEditorItemId(id);
+    setEditing(true);
+    rememberItem(id);
   };
   // В эксперименте раздел открывает список слева, но не выбирает позицию за пользователя.
   const selectSectionInEditor = (id: string) => {
@@ -10662,7 +10801,7 @@ function PopulatedWorkspace({
         onRequestPermanentDelete={requestPermanentDelete}
         structureSections={allSections}
         positionOrderBySection={positionOrderBySection}
-        onOpenStructuralItem={openItem}
+        onOpenStructuralItem={openItemFromEditorBreadcrumb}
         onOpenStructuralSection={openSectionFromEditorBreadcrumb}
         onRevealStructuralSection={revealSectionFromEditorBreadcrumb}
       />
@@ -10797,7 +10936,7 @@ function PopulatedWorkspace({
       onActiveItemChange={handleOverviewActiveItemChange}
       structureSections={allSections}
       structuralPositionOrderBySection={positionOrderBySection}
-      onOpenStructuralItem={openItem}
+      onOpenStructuralItem={openItemFromEditorBreadcrumb}
       onOpenStructuralSection={openSectionFromEditorBreadcrumb}
       onRevealStructuralSection={revealSectionFromEditorBreadcrumb}
     />
@@ -10998,7 +11137,7 @@ function PopulatedWorkspace({
             <UnifiedCatalogSelectionState />
           )
         ) : editorNavMode === "unified" ? (
-          editorSource === "tree" && selectedItem
+          (editorSource === "tree" || editorSource === "breadcrumb") && selectedItem
             ? renderPositionEditor(selectedItem)
             : section && sectionEditorTab !== "composition"
               ? renderUnifiedSectionSettings()
@@ -11112,9 +11251,27 @@ const TABLE_COL = {
   weight: "w-[58px]",
   kbju: "w-[62px]",
   translation: "w-[80px]",
+  section: "w-[120px]",
   price: "w-[82px]",
   kebab: "w-[36px]",
 };
+type OptionalTableColumn = "kbju" | "translation" | "section";
+type TableColumnVisibility = Record<OptionalTableColumn, boolean>;
+const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v1");
+const DEFAULT_TABLE_COLUMN_VISIBILITY: TableColumnVisibility = {
+  kbju: true,
+  translation: true,
+  section: false,
+};
+
+function readTableColumnVisibility(): TableColumnVisibility {
+  const stored = readJsonRecord<Partial<TableColumnVisibility>>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
+  return {
+    kbju: stored.kbju ?? DEFAULT_TABLE_COLUMN_VISIBILITY.kbju,
+    translation: stored.translation ?? DEFAULT_TABLE_COLUMN_VISIBILITY.translation,
+    section: stored.section ?? DEFAULT_TABLE_COLUMN_VISIBILITY.section,
+  };
+}
 
 function TableCheckbox({
   ariaLabel,
@@ -11174,6 +11331,7 @@ function TableHeaderRow({
   onSelectAll,
   priceSort,
   onPriceSortChange,
+  columnVisibility,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -11183,12 +11341,14 @@ function TableHeaderRow({
   onSelectAll: (checked: boolean) => void;
   priceSort: PriceSortDirection;
   onPriceSortChange: () => void;
+  columnVisibility: TableColumnVisibility;
 }) {
-  const labels: [string, string][] = [
+  const labels: [string, string, boolean?][] = [
     ["Описание", TABLE_COL.description],
     ["Вес", TABLE_COL.weight],
-    ["КБЖУ", TABLE_COL.kbju],
-    ["Перевод", TABLE_COL.translation],
+    ["КБЖУ", TABLE_COL.kbju, columnVisibility.kbju],
+    ["Перевод", TABLE_COL.translation, columnVisibility.translation],
+    ["Раздел", TABLE_COL.section, columnVisibility.section],
   ];
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
@@ -11216,7 +11376,7 @@ function TableHeaderRow({
           </div>
         )}
       </div>
-      {labels.map(([label, width]) => (
+      {labels.filter(([, , visible = true]) => visible).map(([label, width]) => (
         <span
           key={label}
           className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", width)}
@@ -11521,6 +11681,7 @@ function AuditDishRow({
   onSelectedChange,
   compositionMode,
   highlighted,
+  columnVisibility,
 }: {
   item: CatalogItem;
   onAction: (item: CatalogItem, action: string) => void;
@@ -11529,6 +11690,7 @@ function AuditDishRow({
   onSelectedChange: (id: string, selected: boolean) => void;
   compositionMode?: boolean;
   highlighted?: boolean;
+  columnVisibility: TableColumnVisibility;
 }) {
   // В составе раздела: обычный клик по основной зоне открывает позицию во
   // вкладке «Позиции»; в активном режиме мультивыбора — переключает выделение.
@@ -11583,20 +11745,6 @@ function AuditDishRow({
               {item.title}
             </span>
             {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
-            {!compositionMode && (
-              <button
-                type="button"
-                title={`Открыть раздел «${item.sectionName}»`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onAction(item, "Открыть в разделе");
-                }}
-                onKeyDown={(event) => event.stopPropagation()}
-                className="max-w-[120px] shrink-0 truncate rounded-[5px] px-1 py-0.5 text-[11px] font-normal text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                {item.sectionName}
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -11616,24 +11764,44 @@ function AuditDishRow({
           <span className="text-[#a6a09b]">—</span>
         )}
       </span>
-      <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
-        <AuditDot
-          state={kbjuState}
-          title={
-            kbjuState === "missing"
-              ? "Нет КБЖУ"
-              : kbjuState === "partial"
-                ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)`
-                : "КБЖУ (на 100 г) заполнено"
-          }
-        />
-      </span>
-      <span
-        className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)}
-        title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}
-      >
-        {item.translationFilledCount}/{item.translationTotalCount}
-      </span>
+      {columnVisibility.kbju && (
+        <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
+          <AuditDot
+            state={kbjuState}
+            title={
+              kbjuState === "missing"
+                ? "Нет КБЖУ"
+                : kbjuState === "partial"
+                  ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)`
+                  : "КБЖУ (на 100 г) заполнено"
+            }
+          />
+        </span>
+      )}
+      {columnVisibility.translation && (
+        <span
+          className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)}
+          title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}
+        >
+          {item.translationFilledCount}/{item.translationTotalCount}
+        </span>
+      )}
+      {columnVisibility.section && (
+        <span className={cn("flex shrink-0 items-center px-2", TABLE_COL.section)}>
+          <button
+            type="button"
+            title={`Открыть раздел «${item.sectionName}»`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction(item, "Открыть в разделе");
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+            className="min-w-0 truncate rounded-[5px] px-1 py-0.5 text-left text-[12px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            {item.sectionName}
+          </button>
+        </span>
+      )}
       <span
         className={cn(
           "flex shrink-0 flex-col items-center justify-center px-3 text-[13px] leading-5 text-[#292524]",
@@ -11698,6 +11866,7 @@ function VirtualizedAuditRows({
   onAction,
   compositionMode,
   highlightItemId,
+  columnVisibility,
 }: {
   items: CatalogItem[];
   selectedIds: Set<string>;
@@ -11707,6 +11876,7 @@ function VirtualizedAuditRows({
   onAction: (item: CatalogItem, action: string) => void;
   compositionMode?: boolean;
   highlightItemId?: string | null;
+  columnVisibility: TableColumnVisibility;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectionMode]);
@@ -11742,6 +11912,7 @@ function VirtualizedAuditRows({
               onAction={onAction}
               compositionMode={compositionMode}
               highlighted={highlightItemId != null && item.id === highlightItemId}
+              columnVisibility={columnVisibility}
             />
           </div>
         );
@@ -12140,170 +12311,140 @@ function CatalogTableFilterBar({
   sectionScopeId,
   items,
   onFilterChange,
+  columnVisibility,
+  onColumnVisibilityChange,
 }: {
   filterId: OverviewFilterId;
   sectionScopeId: string | null;
   items: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
+  columnVisibility: TableColumnVisibility;
+  onColumnVisibilityChange: (column: OptionalTableColumn, visible: boolean) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const scrollContentRef = useRef<HTMLDivElement | null>(null);
-  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
-  const secondaryFilterIds = useMemo(
-    () => Array.from(new Set(CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids)))
-      .filter((id): id is OverviewFilterId => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId)),
-    [],
-  );
-  const [addedFilterIds, setAddedFilterIds] = useState<OverviewFilterId[]>(() =>
-    secondaryFilterIds.includes(filterId) ? [filterId] : [],
-  );
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
   const countByFilter = (id: OverviewFilterId) => getOverviewItems(id, items)
     .filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
-
-  useEffect(() => {
-    if (!secondaryFilterIds.includes(filterId)) return;
-    setAddedFilterIds((current) => current.includes(filterId) ? current : [...current, filterId]);
-  }, [filterId, secondaryFilterIds]);
-
-  const moreFilterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
+  const filterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
     ...group,
     ids: group.ids.filter(
-      (id): id is OverviewFilterId => id !== "sections"
-        && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId)
-        && !addedFilterIds.includes(id as OverviewFilterId),
+      (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all",
     ),
   })).filter((group) => group.ids.length > 0);
-  const visibleFilterIds = [...HYBRID_PRIMARY_FILTER_IDS, ...addedFilterIds]
-    .filter((id) => sectionScopeId !== null || id !== "quick:all");
-
-  const updateScrollEdges = useCallback(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
-    setScrollEdges({
-      left: node.scrollLeft > 2,
-      right: node.scrollLeft < maxScrollLeft - 2,
-    });
-  }, []);
-
-  useEffect(() => {
-    const node = scrollRef.current;
-    const content = scrollContentRef.current;
-    if (!node || !content) return;
-    const observer = new ResizeObserver(updateScrollEdges);
-    observer.observe(node);
-    observer.observe(content);
-    node.addEventListener("scroll", updateScrollEdges, { passive: true });
-    const frame = window.requestAnimationFrame(updateScrollEdges);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      node.removeEventListener("scroll", updateScrollEdges);
-      observer.disconnect();
-    };
-  }, [updateScrollEdges]);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(updateScrollEdges);
-    return () => window.cancelAnimationFrame(frame);
-  }, [addedFilterIds, sectionScopeId, updateScrollEdges]);
-
-  const scrollFilters = (direction: -1 | 1) => {
-    const node = scrollRef.current;
-    if (!node) return;
-    node.scrollBy({
-      left: direction * Math.max(240, Math.round(node.clientWidth * 0.62)),
-      behavior: "smooth",
-    });
-  };
+  const activeFilterId = filterId === "quick:all" ? null : filterId;
 
   return (
-    <div className="relative min-w-0" data-catalog-quick-filters>
-      <div
-        ref={scrollRef}
-        className="min-w-0 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        <div ref={scrollContentRef} className="flex w-max min-w-full items-center gap-1.5 py-2">
-          {visibleFilterIds.map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onFilterChange(id)}
-              aria-pressed={filterId === id}
-              className={cn(
-                "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                filterId === id
-                  ? "border-[#d8d5d0] bg-[#f3f3ed] text-[#292524] shadow-[0_1px_2px_rgba(41,37,36,0.04)]"
-                  : "border-[#e7e5e4] bg-white text-[#57534d] hover:bg-[#f5f5f4]",
-              )}
-            >
-              {filterId === id && <Check size={12} weight="bold" className="shrink-0 text-[#79716b]" />}
-              <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-              <span className="tabular-nums text-[#9b948e]">
-                {countByFilter(id)}
-              </span>
-            </button>
-          ))}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span>Ещё</span>
-                <CaretDown size={12} weight="bold" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              <div className="max-h-[360px] overflow-y-auto">
-                {moreFilterGroups.map((group, groupIndex) => (
-                  <div key={group.label}>
-                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                    {group.ids.map((id) => (
-                      <DropdownMenu.Item
-                        key={id}
-                        onSelect={() => {
-                          setAddedFilterIds((current) => current.includes(id) ? current : [...current, id]);
-                          onFilterChange(id);
-                        }}
-                        className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                        <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                      </DropdownMenu.Item>
-                    ))}
-                  </div>
+    <div className="flex min-w-0 items-center gap-2 py-2" data-catalog-quick-filters>
+      <DropdownMenu.Root open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <FunnelSimple size={14} />
+            <span>Все фильтры</span>
+            <CaretDown size={12} weight="bold" className="text-[#79716b]" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="start">
+          <div className="max-h-[380px] min-w-[280px] overflow-y-auto">
+            {filterGroups.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                {group.ids.map((id) => (
+                  <DropdownMenu.CheckboxItem
+                    key={id}
+                    checked={filterId === id}
+                    onCheckedChange={() => onFilterChange(id)}
+                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
+                      <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                    <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                  </DropdownMenu.CheckboxItem>
                 ))}
               </div>
-            </DropdownContent>
-          </DropdownMenu.Root>
+            ))}
+          </div>
+        </DropdownContent>
+      </DropdownMenu.Root>
+      <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex w-max min-w-full items-center gap-1.5">
+          {activeFilterId && (
+            <div className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-[#d8d5d0] bg-[#f3f3ed] text-[12px] font-medium text-[#292524] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8]">
+              <button
+                type="button"
+                onClick={() => setFilterMenuOpen(true)}
+                className="inline-flex h-full items-center gap-1.5 rounded-l-[7px] pl-2.5 pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <span>{HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]}</span>
+                <span className="tabular-nums text-[#9b948e]">{countByFilter(activeFilterId)}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]}»`}
+                onClick={() => {
+                  onFilterChange("quick:all");
+                }}
+                className="mr-1 flex h-5 w-5 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <X size={12} weight="bold" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
-      {scrollEdges.left && (
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-11 items-center bg-gradient-to-r from-[#fbfbf9] via-[#fbfbf9]/95 to-transparent">
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            onClick={() => scrollFilters(-1)}
-            aria-label="Показать предыдущие фильтры"
-            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] shadow-sm transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <CaretLeft size={13} weight="bold" />
+            <List size={14} />
+            <span>Колонки</span>
+            <CaretDown size={12} weight="bold" className="text-[#79716b]" />
           </button>
-        </div>
-      )}
-      {scrollEdges.right && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-end bg-gradient-to-l from-[#fbfbf9] via-[#fbfbf9]/95 to-transparent">
-          <button
-            type="button"
-            onClick={() => scrollFilters(1)}
-            aria-label="Показать следующие фильтры"
-            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] shadow-sm transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <CaretRight size={13} weight="bold" />
-          </button>
-        </div>
-      )}
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Постоянные</DropdownMenu.Label>
+          {["Чекбокс", "Позиция", "Описание", "Вес", "Цена", "More"].map((label) => (
+            <DropdownMenu.CheckboxItem
+              key={label}
+              checked
+              disabled
+              className="flex h-8 select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#78716c] outline-none opacity-70"
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-[#f5f5f4]">
+                <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
+              </span>
+              {label}
+            </DropdownMenu.CheckboxItem>
+          ))}
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Опциональные</DropdownMenu.Label>
+          {([
+            ["kbju", "КБЖУ"],
+            ["translation", "Перевод"],
+            ["section", "Раздел"],
+          ] as Array<[OptionalTableColumn, string]>).map(([column, label]) => (
+            <DropdownMenu.CheckboxItem
+              key={column}
+              checked={columnVisibility[column]}
+              onCheckedChange={(checked) => onColumnVisibilityChange(column, checked === true)}
+              onSelect={(event) => event.preventDefault()}
+              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
+                <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
+              </span>
+              {label}
+            </DropdownMenu.CheckboxItem>
+          ))}
+        </DropdownContent>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -13140,6 +13281,7 @@ function OverviewWorkspace({
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [columnVisibility, setColumnVisibility] = useState<TableColumnVisibility>(readTableColumnVisibility);
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
   const suppressActiveItemChangeRef = useRef(false);
@@ -13155,6 +13297,9 @@ function OverviewWorkspace({
     const timer = window.setTimeout(() => setTableHighlightId(null), 2600);
     return () => window.clearTimeout(timer);
   }, [tableHighlightId]);
+  useEffect(() => {
+    writeJsonRecord(CATALOG_TABLE_COLUMNS_STORAGE_KEY, columnVisibility);
+  }, [columnVisibility]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
@@ -14136,13 +14281,20 @@ function OverviewWorkspace({
           }}
           className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
         >
-          <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
+          <div className={cn(
+            "mx-auto w-full",
+            columnVisibility.section ? "max-w-[920px] min-w-[850px]" : "max-w-[800px] min-w-[730px]",
+          )}>
             {tableHeader}
             {embedded && (
               <CatalogTableFilterBar
                 filterId={workspaceFilterId}
                 sectionScopeId={workspaceSectionScopeId}
                 items={items}
+                columnVisibility={columnVisibility}
+                onColumnVisibilityChange={(column, visible) => {
+                  setColumnVisibility((current) => ({ ...current, [column]: visible }));
+                }}
                 onFilterChange={(id) => {
                   clearSelection();
                   setWorkspaceFilterId(id);
@@ -14196,6 +14348,7 @@ function OverviewWorkspace({
                     onSelectAll={setVisibleSelected}
                     priceSort={workspacePriceSort}
                     onPriceSortChange={handlePriceSortChange}
+                    columnVisibility={columnVisibility}
                   />
                   <div className="pt-2">
                     {selectedIds.size > 0 && (
@@ -14224,6 +14377,7 @@ function OverviewWorkspace({
                       onSelectedChange={setItemSelected}
                       onAction={prepareRowAction}
                       highlightItemId={tableHighlightId}
+                      columnVisibility={columnVisibility}
                     />
                   </div>
                   {bulkDialog && (
