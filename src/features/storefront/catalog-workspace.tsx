@@ -44,6 +44,7 @@ import {
   ArrowCounterClockwise,
   ArrowLeft,
   CaretDown,
+  CaretLeft,
   CaretRight,
   CaretUp,
   Check,
@@ -5240,7 +5241,7 @@ function PositionEditor({
                   </button>
                 </Tooltip>
               )}
-              <div className="min-w-0 flex-1">{breadcrumb}</div>
+              <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
               {positionActions}
             </div>
           ) : (
@@ -5392,6 +5393,7 @@ function PositionEditor({
 
 function PositionEditorHost({
   intent,
+  onCurrentIdChange,
   onClose,
   onFeedback,
   onRequestPermanentDelete,
@@ -5431,16 +5433,15 @@ function PositionEditorHost({
   const editorContext = intent.origin === "positions" && intent.snapshot
     ? getQueueEditorContext(intent.snapshot.entryFilterId)
     : { tab: "basic" as EditorTab, anchor: undefined };
-  const currentSelectionIds = intent.snapshot
-    ? getQueueItemIds(
-        intent.snapshot.filterId,
-        items,
-        intent.snapshot.query,
-        intent.snapshot.sectionScopeId,
-        intent.snapshot.sort,
-      )
-    : intent.orderedIds;
+  const existingItemIds = new Set(items.map((candidate) => candidate.id));
+  const currentSelectionIds = (intent.snapshot?.itemIds ?? intent.orderedIds)
+    .filter((id) => existingItemIds.has(id));
   const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
+  const queueIndex = currentSelectionIds.indexOf(intent.currentId);
+  const previousQueueId = queueIndex > 0 ? currentSelectionIds[queueIndex - 1] : null;
+  const nextQueueId = queueIndex >= 0 && queueIndex < currentSelectionIds.length - 1
+    ? currentSelectionIds[queueIndex + 1]
+    : null;
 
   useEffect(() => {
     writeCatalogUpsellState(upsellByItem);
@@ -5540,15 +5541,62 @@ function PositionEditorHost({
       forcedEditorTab={editorContext.tab}
       focusAnchor={editorContext.anchor}
       showStopQuickAction={!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId)}
+      headerMeta={intent.origin === "positions" && intent.snapshot ? (
+        <span className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => previousQueueId && onCurrentIdChange(previousQueueId)}
+            disabled={!previousQueueId}
+            aria-label="Предыдущая позиция в выборке"
+            title="Предыдущая позиция"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretLeft size={14} weight="bold" />
+          </button>
+          <button
+            type="button"
+            onClick={() => nextQueueId && onCurrentIdChange(nextQueueId)}
+            disabled={!nextQueueId}
+            aria-label="Следующая позиция в выборке"
+            title="Следующая позиция"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretRight size={14} weight="bold" />
+          </button>
+        </span>
+      ) : undefined}
       breadcrumb={
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
-        >
-          <ArrowLeft size={14} />
-          <span className="truncate">{intent.returnContext.label}</span>
-        </button>
+        intent.origin === "positions" && intent.snapshot ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <ArrowLeft size={13} weight="bold" />
+              <span>К результатам</span>
+            </button>
+            <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
+            <span
+              className="min-w-0 truncate text-[12px] font-medium text-[#44403b]"
+              title={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+            >
+              {HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+            </span>
+            <span className="shrink-0 text-[12px] tabular-nums text-[#8f8882]">
+              {Math.max(0, queueIndex + 1)} из {currentSelectionIds.length}
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
+          >
+            <ArrowLeft size={14} />
+            <span className="truncate">{intent.returnContext.label}</span>
+          </button>
+        )
       }
       />
     </div>
@@ -11802,14 +11850,15 @@ function CatalogTableFilterBar({
   sectionScopeId,
   items,
   onFilterChange,
-  onSectionScopeChange,
 }: {
   filterId: OverviewFilterId;
   sectionScopeId: string | null;
   items: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
-  onSectionScopeChange: (id: string | null) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
   const secondaryFilterIds = useMemo(
     () => Array.from(new Set(CATALOG_VIEW_MODE_GROUPS.flatMap((group) => group.ids)))
       .filter((id): id is OverviewFilterId => id !== "sections" && !HYBRID_PRIMARY_FILTER_IDS.includes(id as OverviewFilterId)),
@@ -11835,72 +11884,136 @@ function CatalogTableFilterBar({
         && !addedFilterIds.includes(id as OverviewFilterId),
     ),
   })).filter((group) => group.ids.length > 0);
-  const visibleFilterIds = [...HYBRID_PRIMARY_FILTER_IDS, ...addedFilterIds];
+  const visibleFilterIds = [...HYBRID_PRIMARY_FILTER_IDS, ...addedFilterIds]
+    .filter((id) => sectionScopeId !== null || id !== "quick:all");
+
+  const updateScrollEdges = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+    setScrollEdges({
+      left: node.scrollLeft > 2,
+      right: node.scrollLeft < maxScrollLeft - 2,
+    });
+  }, []);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    const content = scrollContentRef.current;
+    if (!node || !content) return;
+    const observer = new ResizeObserver(updateScrollEdges);
+    observer.observe(node);
+    observer.observe(content);
+    node.addEventListener("scroll", updateScrollEdges, { passive: true });
+    const frame = window.requestAnimationFrame(updateScrollEdges);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      node.removeEventListener("scroll", updateScrollEdges);
+      observer.disconnect();
+    };
+  }, [updateScrollEdges]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(updateScrollEdges);
+    return () => window.cancelAnimationFrame(frame);
+  }, [addedFilterIds, sectionScopeId, updateScrollEdges]);
+
+  const scrollFilters = (direction: -1 | 1) => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollBy({
+      left: direction * Math.max(240, Math.round(node.clientWidth * 0.62)),
+      behavior: "smooth",
+    });
+  };
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-2">
-      <div className="mr-1 shrink-0">
-        <CatalogScopeSelect
-          value={sectionScopeId}
-          onChange={onSectionScopeChange}
-          onReset={() => onSectionScopeChange(null)}
-        />
-      </div>
-      {visibleFilterIds.map((id) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => onFilterChange(id)}
-          className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            filterId === id
-              ? "bg-[#292524] text-white"
-              : "border border-[#e7e5e4] bg-white text-[#57534d] hover:bg-[#f5f5f4]",
-          )}
-        >
-          <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-          <span className={cn(
-            "tabular-nums",
-            filterId === id ? "text-white/65" : "text-[#a8a29e]",
-          )}>
-            {countByFilter(id)}
-          </span>
-        </button>
-      ))}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <span>Ещё</span>
-            <CaretDown size={12} weight="bold" />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownContent align="end">
-          <div className="max-h-[360px] overflow-y-auto">
-            {moreFilterGroups.map((group, groupIndex) => (
-              <div key={group.label}>
-                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                {group.ids.map((id) => (
-                  <DropdownMenu.Item
-                    key={id}
-                    onSelect={() => {
-                      setAddedFilterIds((current) => current.includes(id) ? current : [...current, id]);
-                      onFilterChange(id);
-                    }}
-                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                    <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                  </DropdownMenu.Item>
+    <div className="relative min-w-0" data-catalog-quick-filters>
+      <div
+        ref={scrollRef}
+        className="min-w-0 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <div ref={scrollContentRef} className="flex w-max min-w-full items-center gap-1.5 py-2">
+          {visibleFilterIds.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onFilterChange(id)}
+              aria-pressed={filterId === id}
+              className={cn(
+                "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                filterId === id
+                  ? "border-[#d8d5d0] bg-[#f3f3ed] text-[#292524] shadow-[0_1px_2px_rgba(41,37,36,0.04)]"
+                  : "border-[#e7e5e4] bg-white text-[#57534d] hover:bg-[#f5f5f4]",
+              )}
+            >
+              {filterId === id && <Check size={12} weight="bold" className="shrink-0 text-[#79716b]" />}
+              <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+              <span className="tabular-nums text-[#9b948e]">
+                {countByFilter(id)}
+              </span>
+            </button>
+          ))}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <span>Ещё</span>
+                <CaretDown size={12} weight="bold" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              <div className="max-h-[360px] overflow-y-auto">
+                {moreFilterGroups.map((group, groupIndex) => (
+                  <div key={group.label}>
+                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                    {group.ids.map((id) => (
+                      <DropdownMenu.Item
+                        key={id}
+                        onSelect={() => {
+                          setAddedFilterIds((current) => current.includes(id) ? current : [...current, id]);
+                          onFilterChange(id);
+                        }}
+                        className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                        <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                      </DropdownMenu.Item>
+                    ))}
+                  </div>
                 ))}
               </div>
-            ))}
-          </div>
-        </DropdownContent>
-      </DropdownMenu.Root>
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </div>
+      </div>
+      {scrollEdges.left && (
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-11 items-center bg-gradient-to-r from-[#fbfbf9] via-[#fbfbf9]/95 to-transparent">
+          <button
+            type="button"
+            onClick={() => scrollFilters(-1)}
+            aria-label="Показать предыдущие фильтры"
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] shadow-sm transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretLeft size={13} weight="bold" />
+          </button>
+        </div>
+      )}
+      {scrollEdges.right && (
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-end bg-gradient-to-l from-[#fbfbf9] via-[#fbfbf9]/95 to-transparent">
+          <button
+            type="button"
+            onClick={() => scrollFilters(1)}
+            aria-label="Показать следующие фильтры"
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] shadow-sm transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretRight size={13} weight="bold" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -13472,23 +13585,12 @@ function OverviewWorkspace({
       : items.find((item) => item.id === queue.currentId) ?? null
     : null;
   const queueIsCreating = Boolean(queueCurrentItem && creationItemId === queueCurrentItem.id && draftItem);
-  const queueLiveItemIds = queue
-    ? getQueueItemIds(
-        queue.snapshot.filterId,
-        items,
-        queue.snapshot.query,
-        queue.snapshot.sectionScopeId,
-        queue.snapshot.sort,
-      )
-    : [];
-  const queueLiveItemIdSet = new Set(queueLiveItemIds);
-  const queueOrderedItemIds = queue
-    ? [
-        ...queue.snapshot.itemIds.filter((id) => queueLiveItemIdSet.has(id)),
-        ...queueLiveItemIds.filter((id) => !queue.snapshot.itemIds.includes(id)),
-      ]
-    : [];
   const itemsById = new Map(items.map((item) => [item.id, item]));
+  // Очередь — снимок таблицы в момент открытия. Изменение позиции не должно
+  // перестраивать порядок или выбрасывать её из навигации активного аудита.
+  const queueOrderedItemIds = queue
+    ? queue.snapshot.itemIds.filter((id) => itemsById.has(id))
+    : [];
   const queuePanelItems = queueOrderedItemIds
     .map((id) => itemsById.get(id))
     .filter((item): item is CatalogItem => Boolean(item));
@@ -13699,6 +13801,7 @@ function OverviewWorkspace({
         )}
         <div
           ref={scrollContainerRef}
+          data-catalog-results-scroll
           onScroll={(event) => {
             if (editorFirstEnabled) setEditorFirstTableScrollTop(event.currentTarget.scrollTop);
             else setOverviewScrollTop(event.currentTarget.scrollTop);
@@ -13715,10 +13818,6 @@ function OverviewWorkspace({
                 onFilterChange={(id) => {
                   clearSelection();
                   setWorkspaceFilterId(id);
-                }}
-                onSectionScopeChange={(id) => {
-                  clearSelection();
-                  setWorkspaceSectionScopeId(id);
                 }}
               />
             )}
