@@ -55,6 +55,7 @@ import {
   CatalogWorkspace,
   type CatalogCreateNavigationGuard,
   type CatalogPhase,
+  type CatalogPrimaryTab,
   type CatalogReturnContext,
   type CatalogTab,
   type CatalogViewMode,
@@ -536,8 +537,11 @@ function AuthenticatedShell() {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>(() =>
     initialCatalogCreate ? "overview" : initialCatalogContext?.tab ?? "sections",
   );
-  const [, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
-    initialCatalogContext?.tab === "overview" ? initialCatalogContext.filterId : "status:active",
+  const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
+    initialCatalogContext?.tab === "overview" ? initialCatalogContext.filterId : "quick:all",
+  );
+  const lastNonStopCatalogFilterRef = useRef<OverviewFilterId>(
+    catalogOverviewFilterId === "status:stop" ? "quick:all" : catalogOverviewFilterId,
   );
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>(() =>
     initialCatalogContext?.tab === "overview"
@@ -574,28 +578,64 @@ function AuthenticatedShell() {
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
     setCatalogViewMode(mode);
-    if (mode !== "sections") {
-      setCatalogTab("overview");
-      setCatalogOverviewFilterId(mode);
-    }
-  };
-  const changeCatalogTab = (next: CatalogTab) => {
-    const continueNavigation = () => {
-      setCatalogTab(next);
-      if (next === "overview") {
-        if (catalogViewMode === "sections") {
-          setCatalogViewMode("quick:all");
-          setCatalogOverviewFilterId("quick:all");
-        } else {
-          setCatalogOverviewFilterId(catalogViewMode);
-        }
-      }
-    };
-    if (catalogCreateNavigationGuardRef.current) {
-      catalogCreateNavigationGuardRef.current.request(continueNavigation);
+    if (mode === "sections") {
+      setCatalogTab("sections");
       return;
     }
-    continueNavigation();
+    setCatalogTab("overview");
+    setCatalogOverviewFilterId(mode);
+    if (mode !== "status:stop") lastNonStopCatalogFilterRef.current = mode;
+  };
+  const requestCatalogNavigation = (navigate: () => void) => {
+    if (catalogCreateNavigationGuardRef.current) {
+      catalogCreateNavigationGuardRef.current.request(navigate);
+      return;
+    }
+    navigate();
+  };
+  const changeCatalogTab = (next: CatalogTab) => {
+    requestCatalogNavigation(() => {
+      setCatalogTab(next);
+      if (next === "overview") {
+        const nextFilter = catalogViewMode === "sections"
+          ? lastNonStopCatalogFilterRef.current
+          : catalogViewMode;
+        setCatalogViewMode(nextFilter);
+        setCatalogOverviewFilterId(nextFilter);
+        if (nextFilter !== "status:stop") lastNonStopCatalogFilterRef.current = nextFilter;
+      } else if (next === "sections") {
+        setCatalogViewMode("sections");
+      }
+    });
+  };
+  const catalogPrimaryTab: CatalogPrimaryTab = catalogTab === "upsell"
+    ? "upsell"
+    : catalogTab === "overview" && catalogViewMode === "status:stop"
+      ? "stop-list"
+      : "catalog";
+  const changeCatalogPrimaryTab = (next: CatalogPrimaryTab) => {
+    if (next === "upsell") {
+      changeCatalogTab("upsell");
+      return;
+    }
+    if (next === "stop-list") {
+      requestCatalogNavigation(() => {
+        setCatalogTab("overview");
+        setCatalogViewMode("status:stop");
+        setCatalogOverviewFilterId("status:stop");
+      });
+      return;
+    }
+    if (catalogViewMode === "status:stop") {
+      requestCatalogNavigation(() => {
+        const restoredFilter = lastNonStopCatalogFilterRef.current;
+        setCatalogTab("overview");
+        setCatalogViewMode(restoredFilter);
+        setCatalogOverviewFilterId(restoredFilter);
+      });
+      return;
+    }
+    changeCatalogTab(catalogViewMode === "sections" ? "sections" : "overview");
   };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -915,6 +955,7 @@ function AuthenticatedShell() {
           onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
           onCatalogTabChange={setCatalogTab}
+          onCatalogViewChange={(view) => changeCatalogTab(view === "tree" ? "sections" : "overview")}
           onRegisterCreateNavigationGuard={(guard) => {
             catalogCreateNavigationGuardRef.current = guard;
           }}
@@ -1118,7 +1159,7 @@ function AuthenticatedShell() {
                 <div className={cn(isAboutPage ? "min-w-0 flex-1" : "shrink-0")}>
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && catalogPhase !== "empty" && (
-                    <CatalogTabs value={catalogTab} onChange={changeCatalogTab} />
+                    <CatalogTabs value={catalogPrimaryTab} onChange={changeCatalogPrimaryTab} />
                   )}
                   {isAboutPage && (
                     <AboutTabs

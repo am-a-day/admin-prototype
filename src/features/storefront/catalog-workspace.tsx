@@ -39,6 +39,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Archive,
   Asterisk,
+  ArrowsOut,
   ArrowsOutCardinal,
   ArrowCounterClockwise,
   ArrowLeft,
@@ -79,6 +80,7 @@ import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
@@ -632,11 +634,11 @@ function PragmaticTreeInsertionTarget({
 export type CatalogPhase = "empty" | "has-sections" | "has-items";
 
 export type CatalogTab = "sections" | "overview" | "upsell";
-const CATALOG_TABS: { id: CatalogTab; label: string; count?: number }[] = [
-  { id: "sections", label: "Структура" },
-  // Общий счётчик каталога живёт в верхнем табе; полный каталог, не зависит от scope/фильтра.
-  { id: "overview", label: "Позиции", count: catalogItems.length },
+export type CatalogPrimaryTab = "catalog" | "upsell" | "stop-list";
+const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
+  { id: "catalog", label: "Каталог" },
   { id: "upsell", label: "Рекомендации" },
+  { id: "stop-list", label: "Стоп-лист" },
 ];
 
 const CATALOG_CREATED_ITEMS_STORAGE_KEY = catalogStorageKey("createdItems");
@@ -668,23 +670,19 @@ export function CatalogTabs({
   value,
   onChange,
 }: {
-  value: CatalogTab;
-  onChange: (t: CatalogTab) => void;
+  value: CatalogPrimaryTab;
+  onChange: (tab: CatalogPrimaryTab) => void;
 }) {
-  const [createdItemsVersion, setCreatedItemsVersion] = useState(0);
-  useEffect(() => {
-    const onCreatedItemsChange = () => setCreatedItemsVersion((version) => version + 1);
-    window.addEventListener(CATALOG_CREATED_ITEMS_EVENT, onCreatedItemsChange);
-    return () => window.removeEventListener(CATALOG_CREATED_ITEMS_EVENT, onCreatedItemsChange);
-  }, []);
-  void createdItemsVersion;
-  const itemCount = catalogItems.length + readCreatedCatalogItems().length;
+  const { items } = useCatalogStore();
+  const stopCount = items.filter((item) => item.status === "stopped").length;
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+    <div role="tablist" aria-label="Разделы каталога" className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
       {CATALOG_TABS.map((t) => (
         <button
           key={t.id}
           type="button"
+          role="tab"
+          aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
             "rounded-lg px-2.5 py-1 text-[12px] transition",
@@ -694,14 +692,50 @@ export function CatalogTabs({
           )}
         >
           <span>{t.label}</span>
-          {t.id === "overview" && (
+          {t.id === "stop-list" && (
             <span className={cn(
               "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
               value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
             )}>
-              {itemCount}
+              {stopCount}
             </span>
           )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CatalogViewSwitcher({
+  value,
+  onChange,
+}: {
+  value: "tree" | "table";
+  onChange: (view: "tree" | "table") => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Представление каталога"
+      className="inline-flex h-7 items-center rounded-[8px] bg-[#efefea] p-0.5"
+    >
+      {([
+        { id: "tree" as const, label: "По разделам" },
+        { id: "table" as const, label: "Таблица" },
+      ]).map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          aria-pressed={value === option.id}
+          onClick={() => onChange(option.id)}
+          className={cn(
+            "flex h-6 items-center rounded-[6px] px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            value === option.id
+              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
+              : "text-[#79716b] hover:text-[#44403b]",
+          )}
+        >
+          {option.label}
         </button>
       ))}
     </div>
@@ -761,6 +795,7 @@ type CatalogWorkspaceProps = {
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
+  onCatalogViewChange: (view: "tree" | "table") => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
@@ -1454,6 +1489,24 @@ type EditorFirstPositionsState = {
 };
 
 const EDITOR_FIRST_POSITIONS_STORAGE_KEY = catalogStorageKey("positionsWorkspace.editorFirst.v1");
+const OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY = catalogStorageKey("overviewWorkspace.context.v1");
+
+type OverviewWorkspaceContext = {
+  panelQuery: string;
+  priceSort: PriceSortDirection;
+  scrollTop: number;
+  sectionScopeId: string | null;
+};
+
+function readOverviewWorkspaceContext(): OverviewWorkspaceContext {
+  const stored = readJsonRecord<Partial<OverviewWorkspaceContext>>(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, {});
+  return {
+    panelQuery: typeof stored.panelQuery === "string" ? stored.panelQuery : "",
+    priceSort: stored.priceSort === "asc" || stored.priceSort === "desc" ? stored.priceSort : "none",
+    scrollTop: typeof stored.scrollTop === "number" ? stored.scrollTop : 0,
+    sectionScopeId: typeof stored.sectionScopeId === "string" ? stored.sectionScopeId : null,
+  };
+}
 
 function readEditorFirstPositionsState(): EditorFirstPositionsState {
   const stored = readJsonRecord<Partial<EditorFirstPositionsState>>(EDITOR_FIRST_POSITIONS_STORAGE_KEY, {});
@@ -2686,6 +2739,17 @@ const CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY = catalogStorageKey("sections.ed
 const CATALOG_SECTION_TREE_QUERY_STORAGE_KEY = catalogStorageKey("sections.treeQuery");
 const CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY = catalogStorageKey("sections.treeExpanded");
 const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("sections.treeScrollTop");
+const CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY = catalogStorageKey("sections.treeContent");
+type CatalogTreeContentMode = "sections-and-positions" | "sections-only";
+
+function readCatalogTreeContentMode(): CatalogTreeContentMode {
+  return readJsonRecord<CatalogTreeContentMode>(
+    CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY,
+    "sections-and-positions",
+  ) === "sections-only"
+    ? "sections-only"
+    : "sections-and-positions";
+}
 const CATALOG_RECENT_POSITION_LIMIT = 5;
 const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
   ru: "Например, Хит",
@@ -5342,12 +5406,14 @@ function PositionEditorHost({
   onClose,
   onFeedback,
   onRequestPermanentDelete,
+  onRevealItem,
 }: {
   intent: OpenPositionIntent;
   onCurrentIdChange: (id: string) => void;
   onClose: () => void;
   onFeedback?: (message: string) => void;
   onRequestPermanentDelete?: (item: CatalogItem) => void;
+  onRevealItem?: (item: CatalogItem) => void;
 }) {
   const {
     items,
@@ -5432,8 +5498,17 @@ function PositionEditorHost({
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {outsideCurrentSelection && (
-        <div className="mx-6 mt-4 shrink-0 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2 text-[12px] leading-5 text-[#79716b]">
-          Позиция больше не входит в текущую выборку
+        <div className="mx-6 mt-4 flex shrink-0 items-center gap-3 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2 text-[12px] leading-5 text-[#79716b]">
+          <span className="min-w-0 flex-1">Открытая позиция скрыта текущими фильтрами</span>
+          {onRevealItem && (
+            <button
+              type="button"
+              onClick={() => onRevealItem(item)}
+              className="shrink-0 rounded-[7px] px-2 py-1 font-medium text-[#44403b] transition hover:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
       )}
       <PositionEditor
@@ -5902,12 +5977,14 @@ function UnifiedCatalogTreePanel({
   sectionEditingEnabled,
   includeArchived,
   showPositions = true,
+  treeContentMode = "sections-and-positions",
   positionOrderBySection,
   onSelectSection,
   onSelectItem,
   onScopeChange,
   onCreateSection,
   onAddPositionToSection,
+  onTreeContentModeChange,
   createSectionButtonRef,
   revealSectionId,
   onSectionAction,
@@ -5923,12 +6000,14 @@ function UnifiedCatalogTreePanel({
   sectionEditingEnabled: boolean;
   includeArchived: boolean;
   showPositions?: boolean;
+  treeContentMode?: CatalogTreeContentMode;
   positionOrderBySection: Record<string, string[]>;
   onSelectSection: (id: string) => void;
   onSelectItem: (id: string) => void;
   onScopeChange: (id: string | null) => void;
   onCreateSection: () => void;
   onAddPositionToSection: (sectionId: string) => void;
+  onTreeContentModeChange?: (mode: CatalogTreeContentMode) => void;
   createSectionButtonRef?: RefObject<HTMLButtonElement | null>;
   revealSectionId?: string | null;
   onSectionAction: (section: TreeSection, action: string) => void;
@@ -6862,7 +6941,7 @@ function UnifiedCatalogTreePanel({
 
   return (
     <aside
-      className="relative flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6"
+      className="relative flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-3"
     >
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-[30px] min-w-0 items-center justify-between gap-4">
@@ -6876,6 +6955,17 @@ function UnifiedCatalogTreePanel({
             Добавить
           </CatalogActionButton>
         </div>
+        {onTreeContentModeChange && (
+          <label className="flex h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea]">
+            <span>Показывать позиции</span>
+            <Switch
+              checked={treeContentMode === "sections-and-positions"}
+              onCheckedChange={(checked) => onTreeContentModeChange(checked ? "sections-and-positions" : "sections-only")}
+              aria-label="Показывать позиции"
+              className="data-[state=checked]:bg-[#57534d]"
+            />
+          </label>
+        )}
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />
           <input
@@ -6898,7 +6988,9 @@ function UnifiedCatalogTreePanel({
       >
         <div className="space-y-0.5">{renderSectionList(treeSections, null, 0)}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
-          <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы и позиции не найдены</p>
+          <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">
+            {showPositions ? "Разделы и позиции не найдены" : "Разделы не найдены"}
+          </p>
         )}
       </div>
     </aside>
@@ -7161,7 +7253,6 @@ function SubsectionList({
 function SectionEditor({
   section,
   childSections,
-  compositionTitle,
   compositionItems,
   compositionQuery,
   scrollTop,
@@ -7192,7 +7283,6 @@ function SectionEditor({
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
-  compositionTitle: string;
   compositionItems: CatalogItem[];
   compositionQuery: string;
   scrollTop: number;
@@ -7260,7 +7350,7 @@ function SectionEditor({
         className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-6 pt-0"
       >
         <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
-          <div className="flex items-center gap-2 pb-2 pt-6">
+          <div className="flex items-center gap-2 pb-2 pt-3">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
                 <button
@@ -7308,31 +7398,43 @@ function SectionEditor({
           </div>
           <div className="space-y-2">
             <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-              <div className="flex items-center gap-2 px-3">
-                {([
-                  { id: "composition", label: hasChildSections ? "Подразделы" : "Позиции" },
-                  { id: "basic", label: "Настройки раздела" },
-                  { id: "availability", label: "Доступность" },
-                ] as const).map((tab) => (
+              <div className="flex items-center justify-between gap-3 px-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  {([
+                    { id: "composition", label: hasChildSections ? "Подразделы" : "Позиции" },
+                    { id: "basic", label: "Настройки раздела" },
+                    { id: "availability", label: "Доступность" },
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => onTabChange(tab.id)}
+                      className={cn(
+                        "flex items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
+                        activeTab === tab.id
+                          ? "border-[#1c1917] font-medium text-[#1c1917]"
+                          : "border-transparent text-[#79716b] hover:text-[#44403b]",
+                      )}
+                    >
+                      {tab.label}
+                      {tab.id === "composition" && (
+                        <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
+                          {hasChildSections ? childSections.length : compositionItems.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {!hasChildSections && (
                   <button
-                    key={tab.id}
                     type="button"
-                    onClick={() => onTabChange(tab.id)}
-                    className={cn(
-                      "flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
-                      activeTab === tab.id
-                        ? "border-[#1c1917] font-medium text-[#1c1917]"
-                        : "border-transparent text-[#79716b] hover:text-[#44403b]",
-                    )}
+                    onClick={onOpenInPositions}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    {tab.label}
-                    {tab.id === "composition" && (
-                      <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                        {hasChildSections ? childSections.length : compositionItems.length}
-                      </span>
-                    )}
+                    <ArrowsOut size={14} weight="regular" />
+                    Открыть в таблице
                   </button>
-                ))}
+                )}
               </div>
               <div className="border-t border-[#e7e5e4]">
             {activeTab === "composition" ? (
@@ -7347,22 +7449,12 @@ function SectionEditor({
                 />
               </section>
             ) : (
-              <section className="px-3 pb-3 pt-3">
-                <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-[13px] font-medium text-[#292524]">{compositionTitle}</div>
-                  <button
-                    type="button"
-                    onClick={onOpenInPositions}
-                    className="shrink-0 rounded-[6px] px-1.5 py-1 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    К списку позиций →
-                  </button>
-                </div>
+              <section className="px-3 pb-3">
                 {compositionItems.length === 0 && !compositionQuery.trim() ? (
                   <div className="py-1">
                     <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
                       <p className="text-[13px] font-medium text-[#44403b]">В этом разделе пока нет позиций</p>
-                      <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Создайте новую позицию — она откроется в полном редакторе во вкладке «Позиции» и будет привязана к этому разделу.</p>
+                      <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Создайте новую позицию — она откроется здесь в полном редакторе и будет привязана к этому разделу.</p>
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         <CatalogActionButton
                           onClick={onAddPosition}
@@ -8268,7 +8360,6 @@ function PopulatedWorkspace({
   initialSelectedSectionId,
   initialReturnContext,
   onScopeChange,
-  onEditPositionInOverview,
   onOpenSectionInOverview,
 }: {
   sections: TreeSection[];
@@ -8281,18 +8372,6 @@ function PopulatedWorkspace({
   initialSelectedSectionId: string | null;
   initialReturnContext?: StructureReturnContext | null;
   onScopeChange: (id: string | null) => void;
-  onEditPositionInOverview: (
-    positionId: string,
-    section: {
-      sectionId: string;
-      sectionName: string;
-      positionIds: string[];
-      sectionPath?: CatalogSectionCrumb[];
-      returnContext?: StructureReturnContext;
-    },
-    newItem?: CatalogItem,
-    mode?: PositionEditorMode,
-  ) => void;
   onOpenSectionInOverview: (sectionId: string) => void;
 }) {
   const { contentLanguage } = useAppSettings();
@@ -8305,6 +8384,8 @@ function PopulatedWorkspace({
     moveItem: moveCatalogItem,
     setItemStatus: setCatalogItemStatus,
     replaceItemOrder: replaceCatalogItemOrder,
+    activeEditorItemId,
+    setActiveEditorItemId,
     revision: catalogRevision,
   } = useCatalogStore();
   const sourceCatalogItems = catalogStoreItems;
@@ -8339,10 +8420,13 @@ function PopulatedWorkspace({
     ?? (initialSelectedSectionId && catalogSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
     ?? (storedActiveSectionId && catalogSections.some((section) => section.id === storedActiveSectionId) ? storedActiveSectionId : null)
     ?? firstTopLevelSectionId;
-  const firstItemId = editorNavMode === "entity" || editorNavMode === "unified" ? retainedItem?.id ?? directItem?.id ?? null : preferredItemId;
+  const firstItemId = editorNavMode === "entity" || editorNavMode === "unified"
+    ? activeEditorItemId ?? retainedItem?.id ?? directItem?.id ?? null
+    : preferredItemId;
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
+  const [treeContentMode, setTreeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
@@ -8492,19 +8576,6 @@ function PopulatedWorkspace({
   const sectionTableItems = sectionTablePriceSort === "none"
     ? orderSectionItems(sectionTableSearchedItems, selectedSectionId ? positionOrderBySection[selectedSectionId] : undefined)
     : sortItemsByPrice(sectionTableSearchedItems, sectionTablePriceSort);
-  const sectionTableTitle = section
-    ? `Позиции в этом разделе · ${sectionTableItems.length}`
-    : "Позиции в этом разделе";
-  const getStructureReturnContext = (sectionId: string): StructureReturnContext => ({
-    tab: "sections",
-    sectionId,
-    sectionEditorTab,
-    treeQuery: readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""),
-    treeExpanded: readJsonRecord<Record<string, boolean>>(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, {}),
-    treeScrollTop: readJsonRecord<number>(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, 0),
-    compositionQuery: sectionTableQuery,
-    workspaceScrollTop: sectionEditorScrollTop,
-  });
   const directChildSections = section
     ? allSections
         .filter((candidate) => (candidate.parentId ?? null) === section.id)
@@ -8606,6 +8677,10 @@ function PopulatedWorkspace({
   }, [selectedSectionId]);
 
   useEffect(() => {
+    writeJsonRecord(CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY, treeContentMode);
+  }, [treeContentMode]);
+
+  useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY, sectionEditorTab);
   }, [sectionEditorTab]);
 
@@ -8644,6 +8719,7 @@ function PopulatedWorkspace({
   const openSectionEditor = (id: string) => {
     setSelectedSectionId(id);
     setSelectedItemId(null);
+    setActiveEditorItemId(null);
     setSelectedIds(new Set());
     setEditing(false);
     setSectionEditorTab("composition");
@@ -8661,6 +8737,7 @@ function PopulatedWorkspace({
     const targetItem = allItems.find((item) => item.id === id);
     if (targetItem) setSelectedSectionId(targetItem.sectionId);
     setSelectedItemId(id);
+    setActiveEditorItemId(id);
     setEditing(true);
     rememberItem(id);
     if (editorNavMode === "entity") {
@@ -8685,6 +8762,7 @@ function PopulatedWorkspace({
 
   const openSectionOverview = () => {
     setSelectedItemId(null);
+    setActiveEditorItemId(null);
     setEditing(false);
     setSelectedIds(new Set());
   };
@@ -9517,27 +9595,32 @@ function PopulatedWorkspace({
       setFeedback(restriction);
       return;
     }
-    const draft = makeDraftItem(targetSection);
+    const draft = {
+      ...makeDraftItem(targetSection),
+      id: createRealPositionId(),
+      title: "Новая позиция",
+    };
     addCatalogItem(draft);
-    setSelectedSectionId(sectionId);
-    setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
-    // Новая позиция создаётся с привязкой к разделу и открывается в полном
-    // редакторе вкладки «Позиции»; отдельной сокращённой формы в «Разделах» нет.
-    onEditPositionInOverview(
-      draft.id,
-      {
-        sectionId,
-        sectionName: targetSection.name,
-        positionIds: sectionTableItems.map((it) => it.id),
-        returnContext: getStructureReturnContext(sectionId),
-        sectionPath: findSectionPath(allSectionTree, sectionId)
-          .map((id) => allSections.find((candidate) => candidate.id === id))
-          .filter((candidate): candidate is TreeSection => Boolean(candidate))
-          .map((candidate) => ({ id: candidate.id, name: candidate.name })),
-      },
+    writeCreatedCatalogItems([
       draft,
-      "create",
-    );
+      ...readCreatedCatalogItems().filter((item) => item.id !== draft.id),
+    ]);
+    setSelectedSectionId(sectionId);
+    setSelectedItemId(draft.id);
+    setActiveEditorItemId(draft.id);
+    setEditing(true);
+    // Radix закрывает контекстное меню после onSelect; повторяем выбор на
+    // следующем кадре, чтобы завершающий клик по строке раздела не закрыл редактор.
+    window.requestAnimationFrame(() => {
+      setSelectedSectionId(sectionId);
+      setSelectedItemId(draft.id);
+      setActiveEditorItemId(draft.id);
+      setEditing(true);
+    });
+    setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
+    writeRecentPositionId(draft.id, [...allItems, draft]);
+    registerChange("catalog");
+    setFeedback("Позиция создана в выбранном разделе");
   };
   const addPosition = () => {
     if (selectedSectionId) addPositionToSection(selectedSectionId);
@@ -9973,6 +10056,7 @@ function PopulatedWorkspace({
         onClose={() => {
           setHighlightItemId(item.id);
           setSelectedItemId(null);
+          setActiveEditorItemId(null);
           setEditing(false);
         }}
         onFeedback={setFeedback}
@@ -9992,13 +10076,15 @@ function PopulatedWorkspace({
             selectedItemId={selectedItemId}
             sectionEditingEnabled
             includeArchived={editorNavMode === "entity"}
-            showPositions
+            showPositions={treeContentMode === "sections-and-positions"}
+            treeContentMode={treeContentMode}
             positionOrderBySection={positionOrderBySection}
             onSelectSection={handleTreeSelectSection}
             onSelectItem={openItem}
             onScopeChange={onScopeChange}
             onCreateSection={() => openSectionCreation()}
             onAddPositionToSection={addPositionToSection}
+            onTreeContentModeChange={setTreeContentMode}
             createSectionButtonRef={createSectionButtonRef}
             revealSectionId={revealSectionId}
             onSectionAction={handleUnifiedSectionAction}
@@ -10063,7 +10149,6 @@ function PopulatedWorkspace({
               section={section}
               childSections={directChildSections}
               highlightItemId={highlightItemId}
-              compositionTitle={sectionTableTitle}
               compositionItems={sectionTableItems}
               compositionQuery={sectionTableQuery}
               scrollTop={sectionEditorScrollTop}
@@ -11688,7 +11773,7 @@ function UnifiedFlatCatalogPanel({
   })).filter((group) => group.ids.length > 0);
 
   return (
-    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-6">
+    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-3">
       <div className="shrink-0 px-2 pb-5">
         <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         <div className="mt-3 flex flex-col gap-0.5">
@@ -11910,7 +11995,7 @@ function CreatePositionSectionLink({
 }) {
   const section = sectionPath.at(-1);
   if (!section) return null;
-  const fullPath = ["Разделы", ...sectionPath.map((candidate) => candidate.name)].join(" / ");
+  const fullPath = ["По разделам", ...sectionPath.map((candidate) => candidate.name)].join(" / ");
   return (
     <>
       <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">·</span>
@@ -12088,9 +12173,11 @@ function OverviewWorkspace({
     deleteItem,
     setItemStatus,
     setAutosaveStatus,
+    setActiveEditorItemId,
     revision: catalogRevision,
   } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
+  const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext());
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
     ? restoreEditorFirstQueue(initialEditorFirstState, initialWorkspaceItems)
@@ -12122,11 +12209,12 @@ function OverviewWorkspace({
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const pendingCreateNavigationRef = useRef<(() => void) | null>(null);
-  const [panelQuery, setPanelQuery] = useState("");
+  const [panelQuery, setPanelQuery] = useState(initialOverviewContext.panelQuery);
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [descriptionSaveStateById, setDescriptionSaveStateById] = useState<Record<string, DescriptionSaveStatus>>({});
-  const [priceSort, setPriceSort] = useState<PriceSortDirection>("none");
+  const [priceSort, setPriceSort] = useState<PriceSortDirection>(initialOverviewContext.priceSort);
+  const [overviewScrollTop, setOverviewScrollTop] = useState(initialOverviewContext.scrollTop);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
@@ -12141,11 +12229,26 @@ function OverviewWorkspace({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = initialOverviewContext.scrollTop;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialOverviewContext.scrollTop]);
   const workspaceFilterId = editorFirstEnabled ? editorFirstFilterId : filterId;
   const workspaceSectionScopeId = editorFirstEnabled ? editorFirstSectionScopeId : sectionScopeId;
   const workspaceQuery = editorFirstEnabled ? editorFirstQuery : query;
   const workspacePriceSort = editorFirstEnabled ? editorFirstPriceSort : priceSort;
   const workspacePanelQuery = editorFirstEnabled ? editorFirstQuery : panelQuery;
+  useEffect(() => {
+    writeJsonRecord(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, {
+      panelQuery,
+      priceSort,
+      scrollTop: overviewScrollTop,
+      sectionScopeId: workspaceSectionScopeId,
+    });
+  }, [overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
   const setWorkspaceFilterId = (id: OverviewFilterId) => {
     if (editorFirstEnabled) setEditorFirstFilterId(id);
     else onFilterChange(id);
@@ -12346,37 +12449,6 @@ function OverviewWorkspace({
     sort: snapshotPriceSort,
     entryFromSection: false,
   });
-  const startCreateFromOverview = () => {
-    const draft = makeDraftItem(scopeSection);
-    const returnContext: CatalogReturnContext = {
-      tab: "overview",
-      filterId: workspaceFilterId,
-      sectionScopeId: workspaceSectionScopeId,
-      tableQuery: workspaceQuery,
-      panelQuery: workspacePanelQuery,
-      sort: workspacePriceSort,
-      scrollTop: scrollContainerRef.current?.scrollTop ?? 0,
-    };
-    const snapshot = buildQueueSnapshot(
-      workspaceFilterId,
-      draft.id,
-      workspacePanelQuery,
-      workspaceSectionScopeId,
-      returnContext.scrollTop,
-      workspacePriceSort,
-    );
-    snapshot.itemIds = [draft.id, ...snapshot.itemIds.filter((id) => id !== draft.id)];
-    snapshot.returnContext = returnContext;
-    snapshot.sectionPath = getCatalogSectionPath(draft.sectionId === "no-section" ? null : draft.sectionId);
-    setSelectedIds(new Set());
-    setDraftItem(draft);
-    setCreationItemId(draft.id);
-    setDraftDirty(false);
-    setActivePositionId(draft.id);
-    setQueue({ snapshot, currentId: draft.id });
-    if (editorFirstEnabled) setEditorFirstView("editor");
-    pushCatalogCreateHistory(draft.sectionId === "no-section" ? null : draft.sectionId, returnContext);
-  };
   const startDescriptionQueue = (item: CatalogItem, nextFilterId: AuditQueueFilterId) => {
     rememberOpenedPosition(item.id);
     const nextSnapshot = buildQueueSnapshot(
@@ -12476,6 +12548,7 @@ function OverviewWorkspace({
     }
     if (editorFirstEnabled) setEditorFirstView("table");
     else setQueue(null);
+    setActiveEditorItemId(null);
     setBulkDialog(null);
     clearSelection();
   };
@@ -12791,15 +12864,6 @@ function OverviewWorkspace({
   }, [workspaceSectionScopeId]);
 
   useEffect(() => {
-    setQueue((current) => {
-      if (!current) return current;
-      if (editorFirstEnabled) return current;
-      if (current.snapshot.filterId === workspaceFilterId && current.snapshot.sectionScopeId === workspaceSectionScopeId) return current;
-      return null;
-    });
-  }, [editorFirstEnabled, workspaceFilterId, workspaceSectionScopeId]);
-
-  useEffect(() => {
     const visibleIdSet = new Set(visibleIds);
     setSelectedIds((current) => {
       const next = new Set([...current].filter((id) => visibleIdSet.has(id)));
@@ -12959,7 +13023,6 @@ function OverviewWorkspace({
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item) => requestCreateNavigation(() => selectQueueItem(item.id))}
-            onCreatePosition={isCreating ? undefined : startCreateFromOverview}
           />
           <div className={editorFirstEnabled ? "flex min-w-0 flex-1 flex-col overflow-hidden" : "contents"}>
           {editorFirstEnabled && (
@@ -13029,6 +13092,13 @@ function OverviewWorkspace({
               onCurrentIdChange={selectQueueItem}
               onClose={returnToOrigin}
               onFeedback={showFeedback}
+              onRevealItem={(item) => {
+                setWorkspaceFilterId("quick:all");
+                setWorkspaceSectionScopeId(item.sectionId);
+                setWorkspaceQuery("");
+                if (!editorFirstEnabled) setPanelQuery("");
+                rebrowse("quick:all", item.sectionId);
+              }}
             />
           ) : (
             <DescriptionQueueComplete filterId={queue.snapshot.filterId} onBack={returnToOverview} />
@@ -13072,7 +13142,6 @@ function OverviewWorkspace({
             onFilterChange={openPanelFilter}
             onSectionScopeChange={openPanelSectionScope}
             onSelectItem={(item) => startDescriptionQueue(item, workspaceFilterId)}
-            onCreatePosition={startCreateFromOverview}
           />
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <PositionsWorkspaceViewSwitcher value={editorFirstView} onChange={setEditorFirstView} />
@@ -13101,7 +13170,6 @@ function OverviewWorkspace({
           onFilterChange={openPanelFilter}
           onSectionScopeChange={openPanelSectionScope}
           onSelectItem={(item) => startDescriptionQueue(item, workspaceFilterId)}
-          onCreatePosition={startCreateFromOverview}
         />
         <div className={editorFirstEnabled ? "flex min-w-0 flex-1 flex-col overflow-hidden" : "contents"}>
         {editorFirstEnabled && (
@@ -13114,11 +13182,14 @@ function OverviewWorkspace({
         )}
         <div
           ref={scrollContainerRef}
-          onScroll={editorFirstEnabled ? (event) => setEditorFirstTableScrollTop(event.currentTarget.scrollTop) : undefined}
+          onScroll={(event) => {
+            if (editorFirstEnabled) setEditorFirstTableScrollTop(event.currentTarget.scrollTop);
+            else setOverviewScrollTop(event.currentTarget.scrollTop);
+          }}
           className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
         >
           <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
-            <div className="pt-5">
+            <div className="pt-3">
               <OverviewStatusBar
                 filterId={workspaceFilterId}
               />
@@ -13243,9 +13314,11 @@ export function CatalogWorkspace({
   onViewModeChange,
   onSectionScopeChange,
   onCatalogTabChange,
+  onCatalogViewChange,
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
+  const { activeEditorItemId, items: sharedCatalogItems } = useCatalogStore();
   const positionsWorkspaceMode: PositionsWorkspaceMode =
     new URLSearchParams(window.location.search).get("positionsWorkspace") === "editor-first"
       ? "editor-first"
@@ -13282,31 +13355,6 @@ export function CatalogWorkspace({
     window.addEventListener("popstate", handleCreateRoutePopState);
     return () => window.removeEventListener("popstate", handleCreateRoutePopState);
   }, []);
-  const openPositionFromSection = (
-    positionId: string,
-    section: {
-      sectionId: string;
-      sectionName: string;
-      positionIds: string[];
-      sectionPath?: CatalogSectionCrumb[];
-      returnContext?: StructureReturnContext;
-    },
-    newItem?: CatalogItem,
-    mode?: PositionEditorMode,
-  ) => {
-    const returnContext: StructureReturnContext = section.returnContext ?? {
-      tab: "sections",
-      sectionId: section.sectionId,
-    };
-    // Атомарно: редактор строится из pendingOpen на маунте (scope=раздел, «Все позиции»),
-    // а parent-state приводим в соответствие, чтобы никакой прошлый фильтр не всплыл.
-    setPendingOpen({ id: positionId, item: newItem, section, mode, returnContext });
-    if (mode === "create") pushCatalogCreateHistory(section.sectionId, returnContext);
-    onSectionScopeChange(section.sectionId);
-    onViewModeChange("quick:all");
-    onOverviewFilterChange("quick:all");
-    onCatalogTabChange("overview");
-  };
   const sections: TreeSection[] =
     catalogPhase === "empty"
       ? []
@@ -13314,6 +13362,7 @@ export function CatalogWorkspace({
         ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
         : buildSectionTree(catalogSections);
   const [flatQuery, setFlatQuery] = useState("");
+  const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
   const [overviewTableOpenSignal, setOverviewTableOpenSignal] = useState(0);
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
   // Синхронизация вкладок: при переходе «Позиции → Разделы» с выбранным разделом —
@@ -13326,9 +13375,42 @@ export function CatalogWorkspace({
     const prevTab = prevCatalogTabRef.current;
     prevCatalogTabRef.current = catalogTab;
     if (catalogTab === "sections" && prevTab !== "sections") {
-      setRetainedSectionId(sectionScopeId);
+      const activeItem = activeEditorItemId
+        ? sharedCatalogItems.find((item) => item.id === activeEditorItemId) ?? null
+        : null;
+      setRetainedItemId(activeItem?.id ?? null);
+      setRetainedSectionId(activeItem?.sectionId ?? sectionScopeId);
+      if (activeItem) onSectionScopeChange(activeItem.sectionId);
     }
-  }, [catalogTab, sectionScopeId]);
+    if (catalogTab === "overview" && prevTab === "sections") {
+      const restoredOverviewScopeId = overviewSectionScopeRef.current;
+      const restoredOverviewContext = readOverviewWorkspaceContext();
+      onSectionScopeChange(restoredOverviewScopeId);
+      if (!activeEditorItemId) return;
+      const activeItem = sharedCatalogItems.find((item) => item.id === activeEditorItemId) ?? null;
+      if (!activeItem) return;
+      setPendingOpen({
+        id: activeItem.id,
+        section: {
+          sectionId: activeItem.sectionId,
+          sectionName: activeItem.sectionName,
+          positionIds: sharedCatalogItems
+            .filter((item) => item.sectionId === activeItem.sectionId)
+            .map((item) => item.id),
+          sectionPath: getCatalogSectionPath(activeItem.sectionId),
+        },
+        returnContext: {
+          tab: "overview",
+          filterId: viewMode === "sections" ? "quick:all" : viewMode,
+          sectionScopeId: restoredOverviewScopeId,
+          tableQuery: flatQuery,
+          panelQuery: restoredOverviewContext.panelQuery,
+          sort: restoredOverviewContext.priceSort,
+          scrollTop: restoredOverviewContext.scrollTop,
+        },
+      });
+    }
+  }, [activeEditorItemId, catalogTab, flatQuery, onSectionScopeChange, sectionScopeId, sharedCatalogItems, viewMode]);
   useEffect(() => {
     if (catalogTab === "sections" && retainedStructureContext) setRetainedStructureContext(null);
   }, [catalogTab, retainedStructureContext]);
@@ -13360,6 +13442,17 @@ export function CatalogWorkspace({
     onViewModeChange("sections");
     onCatalogTabChange("sections");
   };
+  const handleCatalogViewChange = (view: "tree" | "table") => {
+    if (view === "tree") {
+      const activeItem = activeEditorItemId
+        ? sharedCatalogItems.find((item) => item.id === activeEditorItemId) ?? null
+        : null;
+      setRetainedItemId(activeItem?.id ?? null);
+      setRetainedSectionId(activeItem?.sectionId ?? sectionScopeId);
+      if (activeItem) onSectionScopeChange(activeItem.sectionId);
+    }
+    onCatalogViewChange(view);
+  };
   const overviewWorkspace = catalogPhase === "empty" ? null : (
     <OverviewWorkspace
       filterId={viewMode === "sections" ? "quick:all" : viewMode}
@@ -13369,7 +13462,10 @@ export function CatalogWorkspace({
         onOverviewFilterChange(id);
       }}
       sectionScopeId={sectionScopeId}
-      onSectionScopeChange={onSectionScopeChange}
+      onSectionScopeChange={(id) => {
+        overviewSectionScopeRef.current = id;
+        onSectionScopeChange(id);
+      }}
       query={flatQuery}
       onQueryChange={setFlatQuery}
       onReturnToSections={returnToSections}
@@ -13400,11 +13496,11 @@ export function CatalogWorkspace({
       initialSelectedSectionId={retainedSectionId}
       initialReturnContext={retainedStructureContext}
       onScopeChange={onSectionScopeChange}
-      onEditPositionInOverview={openPositionFromSection}
       onOpenSectionInOverview={(sectionId) => {
         setFlatQuery("");
         setRetainedSectionId(sectionId);
         setOverviewTableOpenSignal((signal) => signal + 1);
+        overviewSectionScopeRef.current = sectionId;
         onSectionScopeChange(sectionId);
         onViewModeChange("quick:all");
         onOverviewFilterChange("quick:all");
@@ -13421,7 +13517,7 @@ export function CatalogWorkspace({
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : (
       <>
-        <div className={catalogTab === "overview" ? "contents" : "hidden"}>{overviewWorkspace}</div>
+        {catalogTab === "overview" && overviewWorkspace}
         {catalogTab === "sections" && structureWorkspace}
         {catalogTab === "upsell" && <RecommendationsContextWorkspace />}
       </>
@@ -13429,8 +13525,18 @@ export function CatalogWorkspace({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
-        {workspace}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
+        {catalogPhase !== "empty" && catalogTab !== "upsell" && (
+          <div className="flex h-8 shrink-0 items-center border-b border-[#e7e5e4] bg-[#fbfbf9] px-2">
+            <CatalogViewSwitcher
+              value={catalogTab === "overview" ? "table" : "tree"}
+              onChange={handleCatalogViewChange}
+            />
+          </div>
+        )}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {workspace}
+        </div>
       </div>
       {sectionDialogOpen && (
         <CreateSectionDialog
