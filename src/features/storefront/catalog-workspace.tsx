@@ -10685,6 +10685,14 @@ function getCompositionRowStatusLabel(item: CatalogItem) {
   return null;
 }
 
+function getCompositionRowStatusClassName(item: CatalogItem) {
+  if (item.status === "archive") return "bg-[#e7e5e4] text-[#78716c]";
+  if (item.status === "stopped") return "bg-[#ffedd4] text-[#c2410c]";
+  if (item.scheduled) return "bg-[#fef3c7] text-[#a16207]";
+  if (item.status === "coming-soon") return "bg-[#f1f1ea] text-[#79716b]";
+  return "";
+}
+
 function AuditDishRow({
   item,
   onAction,
@@ -10938,6 +10946,7 @@ function CompositionRow({
       {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
+          data-composition-row={item.id}
           style={style}
           role="button"
           tabIndex={0}
@@ -10952,8 +10961,8 @@ function CompositionRow({
             onItemAction(item, "Открыть позицию");
           }}
           className={cn(
-            "group relative flex min-h-14 cursor-pointer items-center gap-1 rounded-[10px] border pl-0.5 pr-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            "border-transparent hover:bg-[#faf9f7]",
+            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-hidden border-b border-[#f0efe9] pl-0.5 pr-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            "hover:bg-[#faf9f7]",
             highlightItemId != null && item.id === highlightItemId && "bg-[#fff7d6]",
             isDragging && "opacity-0",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
@@ -10966,32 +10975,46 @@ function CompositionRow({
             dragProps={dragProps}
             disabledTooltip="Очистите поиск, чтобы изменить порядок"
           />
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left">
-            <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
-            <span className="min-w-0 flex-1">
-              <span className={cn("block truncate text-[13px] leading-5 transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2", archived ? "text-[#8a8179]" : "text-[#292524]")}>
-                {item.title}
-              </span>
-              {(item.weightLabel || status) && (
-                <span className="block truncate text-[12px] leading-4 text-[#a6a09b]">
-                  {[item.weightLabel, status].filter(Boolean).join(" · ")}
-                </span>
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-6 w-6 rounded-[6px]" />
+            <span
+              data-composition-title
+              className={cn(
+                "min-w-0 flex-1 truncate whitespace-nowrap text-[13px] leading-5 transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2",
+                archived ? "text-[#8a8179]" : "text-[#292524]",
               )}
+              title={item.title}
+            >
+              {item.title}
             </span>
-          </div>
-          <div className="flex w-[88px] shrink-0 flex-col items-end justify-center pr-1 tabular-nums">
-            <span className="whitespace-nowrap text-[13px] font-medium leading-4 text-[#292524]">
-              {formatPrice(salePrice ?? item.price)}
-            </span>
-            {salePrice != null && (
-              <span className="whitespace-nowrap text-[11px] leading-4 text-[#a6a09b] line-through">
-                {formatPrice(item.price)}
+            {item.weightLabel && (
+              <span data-composition-weight className="shrink-0 whitespace-nowrap text-[11px] leading-4 text-[#79716b]">
+                {item.weightLabel}
+              </span>
+            )}
+            {status && (
+              <span data-composition-status className={cn(
+                "inline-flex h-4 shrink-0 items-center whitespace-nowrap rounded-[4px] px-1.5 text-[10px] font-medium leading-4",
+                getCompositionRowStatusClassName(item),
+              )}>
+                {status}
               </span>
             )}
           </div>
+          <div className="flex shrink-0 items-center justify-end gap-2 tabular-nums">
+            {salePrice != null && (
+              <span data-composition-old-price className="whitespace-nowrap text-[12px] font-normal leading-4 text-[#a8a29e] line-through">
+                {formatPrice(item.price)}
+              </span>
+            )}
+            <span data-composition-current-price className="min-w-[68px] whitespace-nowrap text-right text-[13px] font-normal leading-5 text-[#79716b]">
+              {formatPrice(salePrice ?? item.price)}
+            </span>
+          </div>
           <span
             data-no-dnd
-            className="flex w-7 shrink-0 items-center justify-center opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+            data-composition-more
+            className="flex w-8 shrink-0 items-center justify-center"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -11025,7 +11048,7 @@ function SectionCompositionList({
       items={items.map((item) => catalogDndId("item", item.id))}
       strategy={verticalListSortingStrategy}
     >
-      <div className="flex flex-col gap-0.5 py-1">
+      <div className="flex flex-col py-1">
         {items.map((item) => (
           <CompositionRow
             key={item.id}
