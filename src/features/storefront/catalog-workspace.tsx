@@ -1405,8 +1405,15 @@ function getCatalogReturnContextFromHistory(): CatalogReturnContext | null {
 }
 
 function getCatalogSectionPath(sectionId: string | null): CatalogSectionCrumb[] {
+  return getCatalogSectionPathFromSections(sectionId, catalogSections);
+}
+
+function getCatalogSectionPathFromSections(
+  sectionId: string | null,
+  sections: Pick<TreeSection, "id" | "name" | "parentId">[],
+): CatalogSectionCrumb[] {
   if (!sectionId) return [];
-  const byId = new Map(catalogSections.map((section) => [section.id, section]));
+  const byId = new Map(sections.map((section) => [section.id, section]));
   const path: CatalogSectionCrumb[] = [];
   const visited = new Set<string>();
   let current = byId.get(sectionId) ?? null;
@@ -4993,6 +5000,7 @@ function PositionEditor({
   onRequestPermanentDelete,
   breadcrumb,
   headerMeta,
+  headerContext,
   onDescriptionChange,
   onMediaAdded,
   onDraftChange,
@@ -5028,6 +5036,7 @@ function PositionEditor({
   onRequestPermanentDelete: (item: CatalogItem) => void;
   breadcrumb?: ReactNode;
   headerMeta?: ReactNode;
+  headerContext?: ReactNode;
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
   onDraftChange?: (patch: Partial<CatalogItem>) => void;
@@ -5228,21 +5237,26 @@ function PositionEditor({
             </div>
           ) : breadcrumb ? (
             // «Позиции»: одна строка — breadcrumb вместо отдельного крупного заголовка позиции.
-            <div className="flex items-center gap-2 pb-2 pt-5">
-              {onBackEdit && (
-                <Tooltip label="Назад" side="bottom" delayDuration={250}>
-                  <button
-                    type="button"
-                    onClick={onBackEdit}
-                    aria-label="Назад"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <ArrowLeft size={17} weight="bold" />
-                  </button>
-                </Tooltip>
+            <div className="pb-2 pt-5">
+              <div className="flex items-center gap-2">
+                {onBackEdit && (
+                  <Tooltip label="Назад" side="bottom" delayDuration={250}>
+                    <button
+                      type="button"
+                      onClick={onBackEdit}
+                      aria-label="Назад"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    >
+                      <ArrowLeft size={17} weight="bold" />
+                    </button>
+                  </Tooltip>
+                )}
+                <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
+                {positionActions}
+              </div>
+              {headerContext && (
+                <div className="mt-1.5 min-w-0">{headerContext}</div>
               )}
-              <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
-              {positionActions}
             </div>
           ) : (
             <div className="flex items-center gap-2 pb-2 pt-6">
@@ -5391,6 +5405,279 @@ function PositionEditor({
   );
 }
 
+function CatalogPickerContent({
+  children,
+  align = "start",
+  className,
+}: {
+  children: ReactNode;
+  align?: "start" | "center" | "end";
+  className?: string;
+}) {
+  return (
+    <DropdownMenu.Portal>
+      <DropdownMenu.Content
+        align={align}
+        sideOffset={6}
+        className={cn(
+          "z-[100002] w-[300px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none",
+          className,
+        )}
+      >
+        {children}
+      </DropdownMenu.Content>
+    </DropdownMenu.Portal>
+  );
+}
+
+function StructuralPositionBreadcrumb({
+  item,
+  sections,
+  allItems,
+  positionOrderBySection,
+  onOpenSection,
+  onRevealSection,
+  onOpenPosition,
+}: {
+  item: CatalogItem;
+  sections: TreeSection[];
+  allItems: CatalogItem[];
+  positionOrderBySection: Record<string, string[]>;
+  onOpenSection: (id: string) => void;
+  onRevealSection: (id: string) => void;
+  onOpenPosition: (id: string) => void;
+}) {
+  const [positionQuery, setPositionQuery] = useState("");
+  const sectionPath = getCatalogSectionPathFromSections(item.sectionId, sections);
+  const sectionsByParent = new Map<string, TreeSection[]>();
+  sections.forEach((section) => {
+    const parentKey = section.parentId ?? "__root__";
+    const siblings = sectionsByParent.get(parentKey) ?? [];
+    siblings.push(section);
+    sectionsByParent.set(parentKey, siblings);
+  });
+  sectionsByParent.forEach((siblings) => siblings.sort((left, right) =>
+    (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"),
+  ));
+  const structuralItems = orderSectionItems(
+    allItems.filter((candidate) => candidate.sectionId === item.sectionId),
+    positionOrderBySection[item.sectionId],
+  );
+  const normalizedPositionQuery = positionQuery.trim().toLocaleLowerCase();
+  const visibleStructuralItems = normalizedPositionQuery
+    ? structuralItems.filter((candidate) => candidate.title.toLocaleLowerCase().includes(normalizedPositionQuery))
+    : structuralItems;
+  const crumbButton = "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10";
+
+  return (
+    <nav aria-label="Положение позиции в каталоге" className="flex min-w-0 items-center gap-1">
+      {sectionPath.map((section, index) => {
+        const sectionNode = sections.find((candidate) => candidate.id === section.id);
+        const siblings = sectionsByParent.get(sectionNode?.parentId ?? "__root__") ?? [];
+        return (
+          <Fragment key={section.id}>
+            {index > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  title={section.name}
+                  className={cn(crumbButton, index < sectionPath.length - 1 ? "max-w-[100px]" : "max-w-[150px]")}
+                >
+                  {section.name}
+                </button>
+              </DropdownMenu.Trigger>
+              <CatalogPickerContent className="w-[260px]">
+                <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
+                  Соседние разделы
+                </div>
+                <div className="max-h-[260px] overflow-y-auto py-0.5">
+                  {siblings.map((sibling) => (
+                    <DropdownMenu.Item
+                      key={sibling.id}
+                      onSelect={() => onOpenSection(sibling.id)}
+                      className={cn(
+                        "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                        sibling.id === section.id ? "bg-[#f5f5f4] font-medium text-[#292524]" : "text-[#57534d]",
+                      )}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{sibling.name}</span>
+                      {sibling.id === section.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
+                    </DropdownMenu.Item>
+                  ))}
+                </div>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                <DropdownMenu.Item
+                  onSelect={() => onRevealSection(section.id)}
+                  className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+                >
+                  <List size={15} />
+                  Показать в дереве
+                </DropdownMenu.Item>
+              </CatalogPickerContent>
+            </DropdownMenu.Root>
+          </Fragment>
+        );
+      })}
+      {sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
+      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setPositionQuery(""); }}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" title={item.title} className={cn(crumbButton, "flex-1 text-[#292524]")}>{item.title}</button>
+        </DropdownMenu.Trigger>
+        <CatalogPickerContent align="end" className="w-[320px]">
+          <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
+            Позиции раздела · {structuralItems.length}
+          </div>
+          {structuralItems.length > 8 && (
+            <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-[#fafaf9] px-2.5">
+              <MagnifyingGlass size={14} className="shrink-0 text-[#a8a29e]" />
+              <input
+                value={positionQuery}
+                onChange={(event) => setPositionQuery(event.target.value)}
+                onKeyDown={(event) => event.stopPropagation()}
+                placeholder="Найти позицию"
+                aria-label="Поиск по позициям раздела"
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+              />
+            </label>
+          )}
+          <div className="max-h-[320px] overflow-y-auto py-0.5">
+            {visibleStructuralItems.map((candidate) => (
+              <DropdownMenu.Item
+                key={candidate.id}
+                onSelect={() => onOpenPosition(candidate.id)}
+                className={cn(
+                  "flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                  candidate.id === item.id && "bg-[#f5f5f4] font-medium",
+                )}
+              >
+                <CatalogThumbnail src={candidate.thumbnailUrl} kind="item" className="h-7 w-7" />
+                <span className="min-w-0 flex-1 truncate text-[#44403b]">{candidate.title}</span>
+                {candidate.id === item.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
+              </DropdownMenu.Item>
+            ))}
+            {visibleStructuralItems.length === 0 && (
+              <div className="px-2.5 py-3 text-[12px] text-[#79716b]">Ничего не найдено</div>
+            )}
+          </div>
+        </CatalogPickerContent>
+      </DropdownMenu.Root>
+    </nav>
+  );
+}
+
+function PositionQueueContext({
+  filterLabel,
+  itemIds,
+  currentId,
+  itemsById,
+  onBack,
+  onSelect,
+  previousId,
+  nextId,
+}: {
+  filterLabel: string;
+  itemIds: string[];
+  currentId: string;
+  itemsById: Record<string, CatalogItem>;
+  onBack: () => void;
+  onSelect: (id: string) => void;
+  previousId: string | null;
+  nextId: string | null;
+}) {
+  const [query, setQuery] = useState("");
+  const queueIndex = itemIds.indexOf(currentId);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleIds = normalizedQuery
+    ? itemIds.filter((id) => itemsById[id]?.title.toLocaleLowerCase().includes(normalizedQuery))
+    : itemIds;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-[#fafaf9] px-1.5 py-1">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <ArrowLeft size={13} weight="bold" />
+        <span>К результатам</span>
+      </button>
+      <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#44403b]" title={filterLabel}>{filterLabel}</span>
+      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setQuery(""); }}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Открыть очередь, ${Math.max(0, queueIndex + 1)} из ${itemIds.length}`}
+            className="inline-flex h-7 shrink-0 items-center rounded-[7px] px-2 text-[12px] tabular-nums text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            {Math.max(0, queueIndex + 1)} из {itemIds.length}
+          </button>
+        </DropdownMenu.Trigger>
+        <CatalogPickerContent align="end" className="w-[320px]">
+          <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
+            {filterLabel} · {itemIds.length}
+          </div>
+          <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-[#fafaf9] px-2.5">
+            <MagnifyingGlass size={14} className="shrink-0 text-[#a8a29e]" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.stopPropagation()}
+              placeholder="Найти в очереди"
+              aria-label="Поиск по сохранённой очереди"
+              className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
+            />
+          </label>
+          <div className="max-h-[320px] overflow-y-auto py-0.5">
+            {visibleIds.map((id) => {
+              const candidate = itemsById[id];
+              if (!candidate) return null;
+              return (
+                <DropdownMenu.Item
+                  key={id}
+                  onSelect={() => onSelect(id)}
+                  className={cn(
+                    "flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                    id === currentId && "bg-[#f5f5f4] font-medium",
+                  )}
+                >
+                  <CatalogThumbnail src={candidate.thumbnailUrl} kind="item" className="h-7 w-7" />
+                  <span className="min-w-0 flex-1 truncate text-[#44403b]">{candidate.title}</span>
+                  {id === currentId && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
+                </DropdownMenu.Item>
+              );
+            })}
+            {visibleIds.length === 0 && <div className="px-2.5 py-3 text-[12px] text-[#79716b]">Ничего не найдено</div>}
+          </div>
+        </CatalogPickerContent>
+      </DropdownMenu.Root>
+      <span className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => previousId && onSelect(previousId)}
+          disabled={!previousId}
+          aria-label="Предыдущая позиция в выборке"
+          title="Предыдущая позиция"
+          className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <CaretLeft size={14} weight="bold" />
+        </button>
+        <button
+          type="button"
+          onClick={() => nextId && onSelect(nextId)}
+          disabled={!nextId}
+          aria-label="Следующая позиция в выборке"
+          title="Следующая позиция"
+          className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <CaretRight size={14} weight="bold" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function PositionEditorHost({
   intent,
   onCurrentIdChange,
@@ -5398,6 +5685,11 @@ function PositionEditorHost({
   onFeedback,
   onRequestPermanentDelete,
   onRevealItem,
+  structureSections = catalogSections,
+  positionOrderBySection = {},
+  onOpenStructuralItem,
+  onOpenStructuralSection,
+  onRevealStructuralSection,
 }: {
   intent: OpenPositionIntent;
   onCurrentIdChange: (id: string) => void;
@@ -5405,6 +5697,11 @@ function PositionEditorHost({
   onFeedback?: (message: string) => void;
   onRequestPermanentDelete?: (item: CatalogItem) => void;
   onRevealItem?: (item: CatalogItem) => void;
+  structureSections?: TreeSection[];
+  positionOrderBySection?: Record<string, string[]>;
+  onOpenStructuralItem?: (id: string) => void;
+  onOpenStructuralSection?: (id: string) => void;
+  onRevealStructuralSection?: (id: string) => void;
 }) {
   const {
     items,
@@ -5541,63 +5838,29 @@ function PositionEditorHost({
       forcedEditorTab={editorContext.tab}
       focusAnchor={editorContext.anchor}
       showStopQuickAction={!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId)}
-      headerMeta={intent.origin === "positions" && intent.snapshot ? (
-        <span className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => previousQueueId && onCurrentIdChange(previousQueueId)}
-            disabled={!previousQueueId}
-            aria-label="Предыдущая позиция в выборке"
-            title="Предыдущая позиция"
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <CaretLeft size={14} weight="bold" />
-          </button>
-          <button
-            type="button"
-            onClick={() => nextQueueId && onCurrentIdChange(nextQueueId)}
-            disabled={!nextQueueId}
-            aria-label="Следующая позиция в выборке"
-            title="Следующая позиция"
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <CaretRight size={14} weight="bold" />
-          </button>
-        </span>
+      breadcrumb={(
+        <StructuralPositionBreadcrumb
+          item={item}
+          sections={structureSections}
+          allItems={items}
+          positionOrderBySection={positionOrderBySection}
+          onOpenSection={onOpenStructuralSection ?? (() => {})}
+          onRevealSection={onRevealStructuralSection ?? onOpenStructuralSection ?? (() => {})}
+          onOpenPosition={onOpenStructuralItem ?? onCurrentIdChange}
+        />
+      )}
+      headerContext={intent.origin === "positions" && intent.snapshot ? (
+        <PositionQueueContext
+          filterLabel={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+          itemIds={currentSelectionIds}
+          currentId={intent.currentId}
+          itemsById={itemsById}
+          onBack={onClose}
+          onSelect={onCurrentIdChange}
+          previousId={previousQueueId}
+          nextId={nextQueueId}
+        />
       ) : undefined}
-      breadcrumb={
-        intent.origin === "positions" && intent.snapshot ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <ArrowLeft size={13} weight="bold" />
-              <span>К результатам</span>
-            </button>
-            <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
-            <span
-              className="min-w-0 truncate text-[12px] font-medium text-[#44403b]"
-              title={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
-            >
-              {HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
-            </span>
-            <span className="shrink-0 text-[12px] tabular-nums text-[#8f8882]">
-              {Math.max(0, queueIndex + 1)} из {currentSelectionIds.length}
-            </span>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#57534d] transition hover:text-[#292524]"
-          >
-            <ArrowLeft size={14} />
-            <span className="truncate">{intent.returnContext.label}</span>
-          </button>
-        )
-      }
       />
     </div>
   );
@@ -10354,6 +10617,23 @@ function PopulatedWorkspace({
     return () => window.clearTimeout(timeout);
   }, [treeMoveUndo]);
 
+  const openSectionFromEditorBreadcrumb = (sectionId: string) => {
+    setSelectedSectionId(sectionId);
+    onScopeChange(sectionId);
+    setSelectedItemId(null);
+    setEditorSource(null);
+    setActiveEditorItemId(null);
+    setSelectedIds(new Set());
+    setEditing(false);
+    setSectionEditorTab("composition");
+  };
+
+  const revealSectionFromEditorBreadcrumb = (sectionId: string) => {
+    openSectionFromEditorBreadcrumb(sectionId);
+    setRevealSectionId(null);
+    window.requestAnimationFrame(() => setRevealSectionId(sectionId));
+  };
+
   const renderPositionEditor = (item: CatalogItem) => {
     const orderedIds = orderSectionItems(
       allItems.filter((candidate) => candidate.sectionId === item.sectionId),
@@ -10380,6 +10660,11 @@ function PopulatedWorkspace({
         }}
         onFeedback={setFeedback}
         onRequestPermanentDelete={requestPermanentDelete}
+        structureSections={allSections}
+        positionOrderBySection={positionOrderBySection}
+        onOpenStructuralItem={openItem}
+        onOpenStructuralSection={openSectionFromEditorBreadcrumb}
+        onRevealStructuralSection={revealSectionFromEditorBreadcrumb}
       />
     );
   };
@@ -10510,6 +10795,11 @@ function PopulatedWorkspace({
       embedded
       tableHeader={tableHeader}
       onActiveItemChange={handleOverviewActiveItemChange}
+      structureSections={allSections}
+      structuralPositionOrderBySection={positionOrderBySection}
+      onOpenStructuralItem={openItem}
+      onOpenStructuralSection={openSectionFromEditorBreadcrumb}
+      onRevealStructuralSection={revealSectionFromEditorBreadcrumb}
     />
   );
 
@@ -10573,7 +10863,7 @@ function PopulatedWorkspace({
             allPositionsSelected={selectedSectionId === null}
             scopeSectionId={scopeSectionId}
             selectedSectionId={selectedSectionId}
-            selectedItemId={selectedItemId}
+            selectedItemId={editorSource === "tree" ? selectedItemId : null}
             sectionEditingEnabled
             includeArchived={editorNavMode === "entity" || editorNavMode === "unified"}
             showPositions={treeContentMode === "sections-and-positions"}
@@ -12764,6 +13054,11 @@ function OverviewWorkspace({
   embedded = false,
   tableHeader,
   onActiveItemChange,
+  structureSections,
+  structuralPositionOrderBySection,
+  onOpenStructuralItem,
+  onOpenStructuralSection,
+  onRevealStructuralSection,
 }: {
   filterId: OverviewFilterId;
   createdItems: CatalogItem[];
@@ -12784,6 +13079,11 @@ function OverviewWorkspace({
   embedded?: boolean;
   tableHeader?: ReactNode;
   onActiveItemChange?: (id: string | null) => void;
+  structureSections?: TreeSection[];
+  structuralPositionOrderBySection?: Record<string, string[]>;
+  onOpenStructuralItem?: (id: string) => void;
+  onOpenStructuralSection?: (id: string) => void;
+  onRevealStructuralSection?: (id: string) => void;
 }) {
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
@@ -12842,7 +13142,12 @@ function OverviewWorkspace({
   const [feedback, setFeedback] = useState("");
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
+  const suppressActiveItemChangeRef = useRef(false);
   useEffect(() => {
+    if (suppressActiveItemChangeRef.current) {
+      suppressActiveItemChangeRef.current = false;
+      return;
+    }
     onActiveItemChange?.(queue?.currentId ?? null);
   }, [onActiveItemChange, queue?.currentId]);
   useEffect(() => {
@@ -13377,6 +13682,24 @@ function OverviewWorkspace({
     setQueue((current) => current ? { ...current, currentId: id } : current);
     if (editorFirstEnabled) setEditorFirstView("editor");
   };
+  const openStructuralItemFromQueue = (id: string) => {
+    suppressActiveItemChangeRef.current = true;
+    setQueue(null);
+    setActivePositionId(null);
+    onOpenStructuralItem?.(id);
+  };
+  const openStructuralSectionFromQueue = (id: string) => {
+    suppressActiveItemChangeRef.current = true;
+    setQueue(null);
+    setActivePositionId(null);
+    onOpenStructuralSection?.(id);
+  };
+  const revealStructuralSectionFromQueue = (id: string) => {
+    suppressActiveItemChangeRef.current = true;
+    setQueue(null);
+    setActivePositionId(null);
+    onRevealStructuralSection?.(id);
+  };
   const saveDescription = (item: CatalogItem, value: string) => {
     window.clearTimeout(descriptionSaveTimersRef.current[item.id]);
     setDescriptionSaveStateById((current) => ({ ...current, [item.id]: "saving" }));
@@ -13711,6 +14034,11 @@ function OverviewWorkspace({
               onCurrentIdChange={selectQueueItem}
               onClose={returnToOrigin}
               onFeedback={showFeedback}
+              structureSections={structureSections}
+              positionOrderBySection={structuralPositionOrderBySection}
+              onOpenStructuralItem={openStructuralItemFromQueue}
+              onOpenStructuralSection={openStructuralSectionFromQueue}
+              onRevealStructuralSection={revealStructuralSectionFromQueue}
               onRevealItem={(item) => {
                 setWorkspaceFilterId("quick:all");
                 setWorkspaceSectionScopeId(item.sectionId);
