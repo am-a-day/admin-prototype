@@ -167,7 +167,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
   "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
-  "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
+  "storefront:upsell":     { title: "Допродажи",          description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
   "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
   "management:order-settings": { title: "Настройка заказов", description: "Доставка, самовывоз и способы оплаты.", showLanguage: true },
@@ -951,6 +951,20 @@ function AuthenticatedShell() {
           setRecommendationText={setRecommendationText}
           setUpsellSurface={setUpsellSurface}
           setUpsellFocused={setUpsellFocused}
+          onOpenPosition={(id) => {
+            requestCatalogNavigation(() => {
+              const target = itemsById[id];
+              const url = new URL(window.location.href);
+              url.searchParams.set("positionId", id);
+              if (target?.sectionId) url.searchParams.set("sectionId", target.sectionId);
+              url.searchParams.delete("createPosition");
+              window.history.pushState(null, "", url);
+              setCatalogTab("overview");
+              setCatalogViewMode("quick:all");
+              setCatalogOverviewFilterId("quick:all");
+              setCatalogSectionScopeId(target?.sectionId ?? null);
+            });
+          }}
         />
       ) : (
         <CatalogWorkspace
@@ -1060,7 +1074,7 @@ function AuthenticatedShell() {
       ? "catalog-empty"
       : previewScenario;
 
-  // When on catalog's Рекомендации tab, preview should show upsell screen
+  // When on catalog's Допродажи tab, preview should show upsell screen
   const effectiveActiveTab: StoreTabId | ManageTabId | AnalyticsTabId | null =
     isCatalogPage && catalogTab === "upsell" ? "upsell" :
     isTrainingPage ? null :

@@ -20,6 +20,7 @@ import {
   type SectionId,
   type StoreTabId,
   type UpsellSurface,
+  type Dish,
 } from "@/data/mock-data";
 import {
   PhoneAboutDrawer,
@@ -42,7 +43,13 @@ import {
   type PreviewTab,
 } from "@/components/preview/phone-screens";
 import { useOrderRouting } from "@/contexts/order-routing-context";
-import type { CatalogItem } from "@/data/catalog";
+import { formatPrice, type CatalogItem } from "@/data/catalog";
+import { useCatalogStore } from "@/contexts/catalog-store-context";
+import {
+  CATALOG_UPSELL_CHANGE_EVENT,
+  readCatalogUpsellState,
+  resolveRecommendationIds,
+} from "@/lib/catalog-upsell";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -94,6 +101,7 @@ export function PhonePreview({
   } = useAppSettings();
   const { routes } = useOrderRouting();
   const { publishPhase } = usePublish();
+  const { items: catalogItems } = useCatalogStore();
   const { emptyVitrine } = usePreviewDemo();
   const { account } = useMockAuth();
   const { stage } = useVitrineLaunch();
@@ -111,6 +119,13 @@ export function PhonePreview({
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [upsellRevision, setUpsellRevision] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setUpsellRevision((value) => value + 1);
+    window.addEventListener(CATALOG_UPSELL_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(CATALOG_UPSELL_CHANGE_EVENT, refresh);
+  }, []);
 
   // При возврате на админ-вкладку «Главная» сбрасываем состояние навигации превью.
   useEffect(() => {
@@ -123,9 +138,33 @@ export function PhonePreview({
 
   const dish = getDish(selectedDishId);
   const recommended = getRecommendedDishes(dish);
+  const toPreviewDish = (item: CatalogItem, index = 0): Dish => ({
+    id: item.id,
+    name: item.title,
+    category: item.sectionName,
+    price: formatPrice(item.priceWithSale ?? item.price),
+    weight: item.weightLabel ?? "",
+    description: item.description,
+    accent: ["from-amber-50 to-orange-100", "from-emerald-50 to-lime-100", "from-violet-50 to-fuchsia-100", "from-sky-50 to-cyan-100"][index % 4],
+    emoji: "🍽️",
+    recommendations: [],
+    stop: item.status === "stopped",
+  });
+  // The revision is intentionally read here: a same-tab custom event refreshes
+  // the phone immediately while the shared upsell editor writes local storage.
+  void upsellRevision;
+  const storedUpsell = readCatalogUpsellState();
+  const catalogPreviewDish = catalogItem ? toPreviewDish(catalogItem) : null;
+  const catalogRecommended = catalogItem
+    ? resolveRecommendationIds(catalogItem, catalogItems, storedUpsell[catalogItem.id])
+        .map((id) => catalogItems.find((item) => item.id === id))
+        .filter((item): item is CatalogItem => Boolean(item) && item!.status === "active" && item!.displayMode === "full")
+        .map(toPreviewDish)
+    : [];
   // Чтобы блок рекомендаций в превью не был пустым — fallback на промо-позиции.
-  const recItems =
-    recommended.length > 0
+  const recItems = catalogPreviewDish
+    ? catalogRecommended
+    : recommended.length > 0
       ? recommended
       : promotedDishIds
           .map((id) => dishes.find((d) => d.id === id))
@@ -224,7 +263,7 @@ export function PhonePreview({
       screen = (
         <PhoneCart
           title={recommendationTexts.cart}
-          dish={dish}
+          dish={catalogPreviewDish ?? dish}
           recommended={recItems}
           onRecommendations={onNavUpsell}
         />
@@ -260,7 +299,7 @@ export function PhonePreview({
       screen = (
         <PhoneCart
           title={recommendationTexts.cart}
-          dish={dish}
+          dish={catalogPreviewDish ?? dish}
           recommended={recItems}
           highlight={highlightUpsell}
         />
@@ -268,7 +307,7 @@ export function PhonePreview({
     } else {
       screen = (
         <PhoneDish
-          dish={dish}
+          dish={catalogPreviewDish ?? dish}
           recommended={recItems}
           title={recommendationTexts.dish}
           highlight={highlightUpsell}

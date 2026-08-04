@@ -91,6 +91,14 @@ import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/cat
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
+import {
+  CATALOG_UPSELL_STORAGE_KEY,
+  resolveRecommendationIds,
+  writeCatalogUpsellState,
+  type CatalogItemUpsellState,
+  type CatalogLocalizedValue,
+  type CatalogUpsellStateByItem,
+} from "@/lib/catalog-upsell";
 
 /** dnd-kit остаётся у плоского списка позиций: спокойная анимация ~200мс,
  * отключается при prefers-reduced-motion. Дерево разделов использует Pragmatic DnD. */
@@ -293,7 +301,7 @@ type PragmaticTreeInvalidFeedback = {
   mode: "dwell" | "drop";
 } | null;
 
-const PRAGMATIC_TREE_INVALID_TOOLTIP_DELAY_MS = 700;
+const PRAGMATIC_TREE_INVALID_TOOLTIP_DELAY_MS = 250;
 const PRAGMATIC_TREE_INVALID_DROP_HOLD_MS = 1500;
 const PRAGMATIC_TREE_INDICATOR_DELAY_MS = 225;
 const PRAGMATIC_TREE_AUTO_EXPAND_DELAY_MS = 650;
@@ -377,6 +385,12 @@ function validateCatalogTreeDrop(
   ) {
     return { valid: false, reason: "Раздел нельзя переместить в собственный подраздел" };
   }
+  // Перестановка между непосредственными соседями не меняет структуру уровня.
+  // Поэтому уже существующие (в том числе скрытые в UI) данные родителя не
+  // должны превращать обычную сортировку в новую попытку смешивания типов.
+  if (intent.type === "between" && targetParentId === source.parentId) {
+    return { valid: true };
+  }
   if (
     source.kind === "section"
     && targetParentId !== null
@@ -444,6 +458,10 @@ function PragmaticTreeDraggableRow({
   disabled,
   insideTargetSectionId,
   getInsideTargetData,
+  siblingParentId,
+  siblingIndex,
+  siblingDepth,
+  getBetweenTargetData,
   children,
 }: {
   data: PragmaticTreeDragData;
@@ -453,6 +471,15 @@ function PragmaticTreeDraggableRow({
     source: PragmaticTreeDragData,
     targetSectionId: string,
     autoExpandEligible: boolean,
+  ) => PragmaticTreeDropTargetData;
+  siblingParentId?: string | null;
+  siblingIndex?: number;
+  siblingDepth?: number;
+  getBetweenTargetData?: (
+    source: PragmaticTreeDragData,
+    targetParentId: string | null,
+    targetIndex: number,
+    depth: number,
   ) => PragmaticTreeDropTargetData;
   children: (args: {
     setNodeRef: (element: HTMLDivElement | null) => void;
@@ -510,6 +537,30 @@ function PragmaticTreeDraggableRow({
         canDrop: ({ source }) => isPragmaticTreeDragData(source.data),
         getData: ({ source, input, element }) => {
           const rect = element.getBoundingClientRect();
+          const edgeSize = rect.height * 0.25;
+          if (
+            getBetweenTargetData
+            && siblingParentId !== undefined
+            && siblingIndex !== undefined
+            && siblingDepth !== undefined
+          ) {
+            if (input.clientY <= rect.top + edgeSize) {
+              return getBetweenTargetData(
+                source.data as PragmaticTreeDragData,
+                siblingParentId,
+                siblingIndex,
+                siblingDepth,
+              );
+            }
+            if (input.clientY >= rect.bottom - edgeSize) {
+              return getBetweenTargetData(
+                source.data as PragmaticTreeDragData,
+                siblingParentId,
+                siblingIndex + 1,
+                siblingDepth,
+              );
+            }
+          }
           const disclosureWidth = 30;
           const verticalInset = Math.min(8, rect.height * 0.25);
           const autoExpandEligible = input.clientX >= rect.left + disclosureWidth
@@ -532,8 +583,12 @@ function PragmaticTreeDraggableRow({
     data.parentId,
     data.title,
     disabled,
+    getBetweenTargetData,
     getInsideTargetData,
     insideTargetSectionId,
+    siblingDepth,
+    siblingIndex,
+    siblingParentId,
   ]);
 
   const dragProps = {
@@ -638,7 +693,7 @@ export type CatalogPrimaryTab = "sections" | "overview" | "upsell" | "stop-list"
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
   { id: "sections", label: "По разделам" },
   { id: "overview", label: "Таблица" },
-  { id: "upsell", label: "Рекомендации" },
+  { id: "upsell", label: "Допродажи" },
   { id: "stop-list", label: "Стоп-лист" },
 ];
 
@@ -824,11 +879,10 @@ function getSectionTreeStatusLabel(section: Pick<TreeSection, "status" | "visibi
 
 function getTreePositionOperationalStatus(item: CatalogItem) {
   if (item.status === "archive") return { label: "В архиве", className: "font-medium text-[#78716c]" };
-  if (item.status === "stopped") return { label: "На стопе", className: "font-medium text-[#b45309]" };
-  if (item.status === "coming-soon" || item.displayMode !== "full") {
-    return { label: "Не продаётся", className: "font-medium text-[#8a6b32]" };
+  if (item.status === "stopped" || item.status === "coming-soon") {
+    return { label: "На стопе", className: "font-medium text-[#8a6b32]" };
   }
-  return { label: "В продаже", className: "font-normal text-[#a8a29e]" };
+  return null;
 }
 
 function CatalogThumbnail({
@@ -1123,30 +1177,8 @@ const HYBRID_PRIMARY_FILTER_IDS: OverviewFilterId[] = [
   "status:archived",
   "quick:no-description",
   "quick:no-photo",
+  "quick:no-weight",
 ];
-const HYBRID_PRIMARY_AUDIT_FILTER_IDS = HYBRID_PRIMARY_FILTER_IDS.filter(
-  (id): id is OverviewFilterId => id !== "quick:all",
-);
-const HYBRID_MAX_QUICK_FILTERS = 4;
-
-function buildHybridQuickFilterIds(
-  counts: Record<OverviewFilterId, number>,
-  activeFilterId: OverviewFilterId,
-  secondaryFilterIds: OverviewFilterId[],
-) {
-  const activeSecondaryFilterId = secondaryFilterIds.includes(activeFilterId) ? activeFilterId : null;
-  const limit = activeSecondaryFilterId ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS;
-  const result = HYBRID_PRIMARY_AUDIT_FILTER_IDS
-    .filter((id) => counts[id] > 0 || id === activeFilterId)
-    .slice(0, limit);
-
-  for (const id of secondaryFilterIds) {
-    if (result.length >= limit) break;
-    if (id !== activeSecondaryFilterId && counts[id] > 0) result.push(id);
-  }
-
-  return result;
-}
 
 const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
   "quick:all": "Все позиции",
@@ -1311,7 +1343,17 @@ function CatalogViewModeSelect({
 
 function getSectionScopeIds(sectionId: string | null) {
   if (!sectionId) return null;
-  return new Set<string>([sectionId]);
+  const ids = new Set<string>([sectionId]);
+  let added = true;
+  while (added) {
+    added = false;
+    catalogSections.forEach((section) => {
+      if (!section.parentId || !ids.has(section.parentId) || ids.has(section.id)) return;
+      ids.add(section.id);
+      added = true;
+    });
+  }
+  return ids;
 }
 
 type AuditQueueFilterId = OverviewFilterId;
@@ -2392,8 +2434,9 @@ export function CatalogFiltersPanel({
   items: CatalogItem[];
 }) {
   const scopeSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
+  const scopeIds = getSectionScopeIds(sectionScopeId);
   const countByFilter = (id: OverviewFilterId) =>
-    getOverviewItems(id, items).filter((item) => !scopeSection || item.sectionId === scopeSection.id).length;
+    getOverviewItems(id, items).filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
   const groups: { title: string; rows: PanelRow[] }[] = [
     {
       title: "Позиции",
@@ -2473,7 +2516,8 @@ export function CatalogFiltersPanel({
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
           <div className="max-h-[320px] overflow-y-auto">
             {SECTIONS_WITH_ITEMS.map((section) => {
-              const count = getOverviewItems(selectedId, items).filter((item) => item.sectionId === section.id).length;
+              const sectionIds = getSectionScopeIds(section.id);
+              const count = getOverviewItems(selectedId, items).filter((item) => sectionIds?.has(item.sectionId)).length;
               return (
                 <DropdownActionItem key={section.id} onSelect={() => onSectionScopeChange(section.id)}>
                   <span className="flex w-full items-center gap-2">
@@ -2660,19 +2704,7 @@ type PreviousAvailabilityState = {
   status: CatalogItem["status"];
   scheduled: boolean;
 };
-type LocalizedValue = {
-  ru: string;
-  kk?: string;
-  en?: string;
-  sr?: string;
-};
-type CatalogItemUpsellState = {
-  recommendationIds?: string[];
-  sticker?: LocalizedValue | null;
-  tags?: LocalizedValue[];
-  keywords?: LocalizedValue[];
-};
-type CatalogUpsellStateByItem = Record<string, CatalogItemUpsellState>;
+type LocalizedValue = CatalogLocalizedValue;
 
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
@@ -2699,7 +2731,6 @@ const CATALOG_SECTION_DRAFT_STORAGE_KEY = catalogStorageKey("sectionDraftOverrid
 const CATALOG_SECTION_AVAILABILITY_STORAGE_KEY = catalogStorageKey("sectionAvailabilityMode");
 const CATALOG_SECTION_OUTSIDE_SCHEDULE_STORAGE_KEY = catalogStorageKey("sectionOutsideSchedule");
 const CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY = catalogStorageKey("sectionWeeklySchedule");
-const CATALOG_UPSELL_STORAGE_KEY = catalogStorageKey("upsellByItem");
 const CATALOG_POSITION_ORDER_STORAGE_KEY = catalogStorageKey("positionOrderBySection");
 const CATALOG_SECTION_ORDER_STORAGE_KEY = catalogStorageKey("sectionOrderByParent");
 const CATALOG_SECTION_PARENT_STORAGE_KEY = catalogStorageKey("sectionParentOverrides");
@@ -2709,6 +2740,7 @@ const CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY = catalogStorageKey("sections.edito
 const CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY = catalogStorageKey("sections.tableQuery");
 const CATALOG_SECTION_TABLE_PRICE_SORT_STORAGE_KEY = catalogStorageKey("sections.tablePriceSort");
 const CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY = catalogStorageKey("sections.editorScrollTop");
+const CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY = catalogStorageKey("sections.highlightItemId");
 const CATALOG_SECTION_TREE_QUERY_STORAGE_KEY = catalogStorageKey("sections.treeQuery");
 const CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY = catalogStorageKey("sections.treeExpanded");
 const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("sections.treeScrollTop");
@@ -2880,22 +2912,6 @@ function getLocalizedValueLabels(values: LocalizedValue[], language: LanguageCod
   return values
     .map((value) => getLocalizedValueLabel(value, language))
     .filter((value): value is string => Boolean(value));
-}
-
-function buildDefaultRecommendationIds(item: CatalogItem, items: CatalogItem[]) {
-  if (item.recommendationsCount <= 0) return [];
-  return items
-    .filter((candidate) => candidate.id !== item.id && candidate.status !== "archive")
-    .slice(0, item.recommendationsCount)
-    .map((candidate) => candidate.id);
-}
-
-function resolveRecommendationIds(
-  item: CatalogItem,
-  items: CatalogItem[],
-  state?: CatalogItemUpsellState,
-) {
-  return state?.recommendationIds ?? buildDefaultRecommendationIds(item, items);
 }
 
 function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number) {
@@ -4049,7 +4065,7 @@ function PromoAddButton({ label, onClick }: { label: string; onClick: () => void
   );
 }
 
-function PromoRecommendationsCard({
+export function PromoRecommendationsCard({
   item,
   allItems,
   upsell,
@@ -4171,7 +4187,7 @@ type PromoLocalizedDialogState =
   | { kind: "sticker"; index: 0 | null }
   | { kind: "tags" | "keywords"; index: number | null };
 
-function PromoTab({
+export function PromoTab({
   item,
   upsell,
   onChange,
@@ -5183,14 +5199,14 @@ function PositionEditor({
                 </h2>
                 {breadcrumb}
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 max-[1100px]:gap-1">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={onCancelCreate}
                   disabled={createSubmitting}
-                  className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50 max-[1100px]:px-1 max-[1100px]:text-[11px]"
+                  className="px-2.5 font-medium text-[#79716b] hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:ring-[#292524]/10"
                 >
                   Отменить
                 </Button>
@@ -5201,9 +5217,9 @@ function PositionEditor({
                   onClick={onCreatePosition}
                   disabled={createDisabled || createSubmitting}
                   aria-busy={createSubmitting}
-                  className="inline-flex h-8 min-w-[117px] items-center gap-2 rounded-[10px] bg-indigo-600 px-3 text-[14px] font-medium text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:opacity-50 max-[1100px]:min-w-0 max-[1100px]:gap-1 max-[1100px]:px-1.5 max-[1100px]:text-[11px]"
+                  className="gap-1.5 bg-indigo-600 px-2.5 font-medium text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:ring-indigo-600/25"
                 >
-                  {createSubmitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/45 border-t-white" />}
+                  {createSubmitting && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/45 border-t-white" />}
                   {createSubmitting ? "Создание…" : "Создать"}
                 </Button>
               </div>
@@ -5426,7 +5442,7 @@ function PositionEditorHost({
   const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_UPSELL_STORAGE_KEY, upsellByItem);
+    writeCatalogUpsellState(upsellByItem);
   }, [upsellByItem]);
 
   useEffect(() => writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem), [unavailableDisplayByItem]);
@@ -6617,23 +6633,25 @@ function UnifiedCatalogTreePanel({
                 {item.title}
               </TruncatedText>
             </div>
-            <span
-              data-tree-position-status={operationalStatus.label}
-              className={cn(
-                "ml-2 max-w-[78px] shrink-0 truncate whitespace-nowrap text-right text-[10px] leading-4",
-                operationalStatus.className,
-              )}
-              title={operationalStatus.label}
-            >
-              {operationalStatus.label}
-            </span>
+            {operationalStatus && (
+              <span
+                data-tree-position-status={operationalStatus.label}
+                className={cn(
+                  "ml-2 max-w-[78px] shrink-0 truncate whitespace-nowrap text-right text-[10px] leading-4",
+                  operationalStatus.className,
+                )}
+                title={operationalStatus.label}
+              >
+                {operationalStatus.label}
+              </span>
+            )}
           </div>
         )}
       </PragmaticTreeDraggableRow>
     );
   };
 
-  const renderSection = (section: TreeSection, depth = 0): ReactNode => {
+  const renderSection = (section: TreeSection, depth = 0, siblingIndex = 0): ReactNode => {
     if (normalizedQuery && !visibleSectionIds.has(section.id)) return null;
     const sectionItems = orderSectionItems(itemsBySection.get(section.id) ?? [], positionOrderBySection[section.id]);
     const visibleItems = normalizedQuery
@@ -6663,7 +6681,11 @@ function UnifiedCatalogTreePanel({
       (total, subtreeSection) => total + (directItemsBySection.get(subtreeSection.id)?.length ?? 0),
       0,
     );
+    const hasSubsections = (section.children?.length ?? 0) > 0;
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
+    const showSectionChevron = showPositions || hasSubsections;
+    const showDirectPositions = showPositions && !hasVisibleChildren;
+    const showExpandedContent = isExpanded && (hasVisibleChildren || showPositions);
     const parentAvailability = getParentAvailability(section, items, allFlatSections);
     const dragEnabled = !normalizedQuery && restrictedScopeSectionId !== section.id;
     const sectionDragData: PragmaticTreeDragData = {
@@ -6684,6 +6706,10 @@ function UnifiedCatalogTreePanel({
         disabled={!dragEnabled}
         insideTargetSectionId={section.id}
         getInsideTargetData={getInsideTargetData}
+        siblingParentId={parentId}
+        siblingIndex={siblingIndex}
+        siblingDepth={depth}
+        getBetweenTargetData={getInsertionTargetData}
       >
         {({ setNodeRef, dragProps, isDragging }) => (
           <>
@@ -6728,18 +6754,18 @@ function UnifiedCatalogTreePanel({
             </span>
           )}
           <span
-            data-tree-parent-indicator={futureParentIndicatorVisible
-              ? "future"
-              : invalidParentIndicatorVisible
-                ? "invalid"
-                : "existing"}
+            data-tree-parent-indicator={invalidParentIndicatorVisible
+              ? "invalid"
+              : futureParentIndicatorVisible
+                ? "future"
+                : showSectionChevron ? "existing" : "empty"}
             className="flex h-[11px] w-[11px] shrink-0 items-center justify-center"
           >
             {invalidParentIndicatorVisible ? (
               <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#dc2626]" aria-hidden="true">
                 <Prohibit size={12} weight="bold" />
               </span>
-            ) : (
+            ) : showSectionChevron ? (
               <button
                 type="button"
                 data-no-tree-drag
@@ -6762,7 +6788,11 @@ function UnifiedCatalogTreePanel({
                   )}
                 />
               </button>
-            )}
+            ) : futureParentIndicatorVisible ? (
+              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#a6a09b]" aria-hidden="true">
+                <CaretRight size={11} weight="fill" />
+              </span>
+            ) : null}
           </span>
           <div className="ml-1 flex min-w-0 flex-1 items-center gap-2">
             <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
@@ -6774,26 +6804,19 @@ function UnifiedCatalogTreePanel({
             </TruncatedText>
           </div>
           <div
-            className="relative ml-2 grid h-5 min-w-11 shrink-0 grid-cols-1 items-center justify-items-end"
+            className="ml-2 flex h-5 shrink-0 items-center justify-end"
             data-tree-section-trailing
           >
             <span
-              className={cn(
-                "col-start-1 row-start-1 flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[11px] leading-4 text-[#a8a29e] transition-opacity duration-100",
-                "group-hover:opacity-0 group-focus-visible:opacity-0 group-has-[:focus-visible]:opacity-0",
-              )}
+              className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[11px] leading-4 text-[#a8a29e] group-hover:hidden group-focus-visible:hidden group-has-[:focus-visible]:hidden"
             >
               {sectionStatusLabel && <span>{sectionStatusLabel}</span>}
               <span data-tree-section-count={sectionItemCount} className="min-w-4 text-right tabular-nums">
                 {sectionItemCount}
               </span>
             </span>
-            <span
-              className={cn(
-                "pointer-events-none col-start-1 row-start-1 flex shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100",
-                isDragging && "invisible",
-              )}
-            >
+            {!isDragging && (
+              <span className="hidden shrink-0 items-center justify-end gap-0.5 group-hover:flex group-focus-visible:flex group-has-[:focus-visible]:flex">
             <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
               <button
                 type="button"
@@ -6841,12 +6864,13 @@ function UnifiedCatalogTreePanel({
                 />
               </DropdownContent>
             </DropdownMenu.Root>
-            </span>
+              </span>
+            )}
           </div>
         </div>
-        {isExpanded && (
+        {showExpandedContent && (
           <div className="space-y-0.5 py-[1px] pl-5">
-            {showPositions && visibleItems.map((item, index) => (
+            {showDirectPositions && visibleItems.map((item, index) => (
               <Fragment key={item.id}>
                 <PragmaticTreeInsertionTarget
                   targetParentId={section.id}
@@ -6859,13 +6883,13 @@ function UnifiedCatalogTreePanel({
                 {renderPosition(item, section)}
               </Fragment>
             ))}
-            {(!showPositions || visibleItems.length === 0) && !hasVisibleChildren && !normalizedQuery && (
+            {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
               <div
                 data-tree-empty-state={section.id}
                 className="flex min-h-7 items-center px-1.5 py-1 text-[11px] leading-4 text-[#a8a29e]"
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {showPositions ? "Пока нет позиций" : "Нет подразделов"}
+                  Пока нет позиций
                 </span>
               </div>
             )}
@@ -6904,7 +6928,7 @@ function UnifiedCatalogTreePanel({
                 getTargetData={getInsertionTargetData}
               />
             )}
-            {renderSection(section, depth)}
+            {renderSection(section, depth, index)}
           </Fragment>
         ))}
         {withDropTargets && parentId === null && (
@@ -6937,17 +6961,6 @@ function UnifiedCatalogTreePanel({
             Добавить
           </CatalogActionButton>
         </div>
-        {onTreeContentModeChange && (
-          <label className="flex h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea]">
-            <span>Показывать позиции</span>
-            <Switch
-              checked={treeContentMode === "sections-and-positions"}
-              onCheckedChange={(checked) => onTreeContentModeChange(checked ? "sections-and-positions" : "sections-only")}
-              aria-label="Показывать позиции"
-              className="data-[state=checked]:bg-[#57534d]"
-            />
-          </label>
-        )}
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />
           <input
@@ -6968,6 +6981,17 @@ function UnifiedCatalogTreePanel({
         onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2"
       >
+        {onTreeContentModeChange && (
+          <label className="mb-2 flex h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea]">
+            <span>Показывать позиции</span>
+            <Switch
+              checked={treeContentMode === "sections-and-positions"}
+              onCheckedChange={(checked) => onTreeContentModeChange(checked ? "sections-and-positions" : "sections-only")}
+              aria-label="Показывать позиции"
+              className="data-[state=checked]:bg-[#57534d]"
+            />
+          </label>
+        )}
         <div className="space-y-0.5">{renderSectionList(treeSections, null, 0)}</div>
         {normalizedQuery && visibleSectionIds.size === 0 && (
           <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">
@@ -7135,6 +7159,7 @@ function SubsectionRow({
   dropTarget,
   dragActiveRef,
   onSelect,
+  onAction,
 }: {
   parentSectionId: string;
   section: TreeSection;
@@ -7142,8 +7167,8 @@ function SubsectionRow({
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   onSelect: (id: string) => void;
+  onAction: (section: TreeSection, action: string) => void;
 }) {
-  const status = getSectionTreeStatusLabel(section);
   const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
 
   return (
@@ -7165,7 +7190,7 @@ function SubsectionRow({
             onSelect(section.id);
           }}
           className={cn(
-            "group relative flex min-h-14 cursor-pointer items-center gap-1 border-b border-[#f0efe9] pl-0.5 pr-1.5 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-hidden border-b border-[#f0efe9] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
             isDragging && "opacity-0",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
@@ -7176,21 +7201,36 @@ function SubsectionRow({
             ariaLabel={`Изменить порядок подраздела ${section.name}`}
             dragProps={dragProps}
           />
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left">
-            <CatalogThumbnail src={section.imageUrl} kind="section" />
-            <TruncatedText className="flex-1 text-[13px] font-medium leading-5 text-[#44403b] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <CatalogThumbnail src={section.imageUrl} kind="section" className="h-6 w-6 rounded-[6px]" />
+            <TruncatedText className="flex-1 whitespace-nowrap text-[13px] font-medium leading-5 text-[#44403b] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
               {section.name}
             </TruncatedText>
           </div>
           <span className="shrink-0 whitespace-nowrap text-[12px] tabular-nums text-[#a8a29e]">
-            {itemCount} {plural(itemCount, "позиция", "позиции", "позиций")}
+            {itemCount}
           </span>
-          {status && (
-            <span className="shrink-0 whitespace-nowrap text-[11px] font-medium text-[#8a8179]">
-              {status}
-            </span>
-          )}
-          <CaretRight size={14} className="shrink-0 text-[#a8a29e]" />
+          <span
+            data-no-dnd
+            className="flex w-8 shrink-0 items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Действия с подразделом ${section.name}`}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <DotsThreeVertical size={18} weight="bold" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownContent align="end">
+                <SectionActionMenuContent section={section} onAction={(action) => onAction(section, action)} />
+              </DropdownContent>
+            </DropdownMenu.Root>
+          </span>
         </div>
       )}
     </CatalogDndRow>
@@ -7203,12 +7243,14 @@ function SubsectionList({
   dropTarget,
   dragActiveRef,
   onSelect,
+  onAction,
 }: {
   parentSectionId: string;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   onSelect: (id: string) => void;
+  onAction: (section: TreeSection, action: string) => void;
 }) {
   return (
     <SortableContext
@@ -7225,6 +7267,7 @@ function SubsectionList({
             dropTarget={dropTarget}
             dragActiveRef={dragActiveRef}
             onSelect={onSelect}
+            onAction={onAction}
           />
         ))}
       </div>
@@ -7251,6 +7294,7 @@ function SectionEditor({
   onAddPosition,
   onOpenInPositions,
   onSelectChildSection,
+  onChildSectionAction,
   positionCreateDisabledReason,
   subsectionCreateDisabledReason,
   onCompositionQueryChange,
@@ -7281,6 +7325,7 @@ function SectionEditor({
   onAddPosition: () => void;
   onOpenInPositions: () => void;
   onSelectChildSection: (id: string) => void;
+  onChildSectionAction: (section: TreeSection, action: string) => void;
   positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
   onCompositionQueryChange: (value: string) => void;
@@ -7331,7 +7376,7 @@ function SectionEditor({
         onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
         className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-6 pt-0"
       >
-        <div className="mx-auto w-full max-w-[800px] min-w-[730px]">
+        <div className="mx-auto w-full min-w-0 max-w-[800px]">
           <div className="flex items-center gap-2 pb-2 pt-3">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
@@ -7407,16 +7452,14 @@ function SectionEditor({
                     </button>
                   ))}
                 </div>
-                {!hasChildSections && (
-                  <button
-                    type="button"
-                    onClick={onOpenInPositions}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <ArrowsOut size={14} weight="regular" />
-                    Открыть в таблице
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={onOpenInPositions}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <ArrowsOut size={14} weight="regular" />
+                  Открыть в таблице
+                </button>
               </div>
               <div className="border-t border-[#e7e5e4]">
             {activeTab === "composition" ? (
@@ -7428,6 +7471,7 @@ function SectionEditor({
                   dropTarget={dropTarget}
                   dragActiveRef={dragActiveRef}
                   onSelect={onSelectChildSection}
+                  onAction={onChildSectionAction}
                 />
               </section>
             ) : (
@@ -8347,6 +8391,7 @@ function PopulatedWorkspace({
   scopeSectionId,
   resetSignal,
   initialSelectedItemId,
+  initialHighlightItemId,
   initialSelectedSectionId,
   initialReturnContext,
   onScopeChange,
@@ -8357,6 +8402,7 @@ function PopulatedWorkspace({
   scopeSectionId: string | null;
   resetSignal: number;
   initialSelectedItemId: string | null;
+  initialHighlightItemId?: string | null;
   /** Раздел, выбранный в «Позициях» на момент перехода сюда. Приоритетнее последнего
    * состояния дерева, но не выше прямой ссылки на раздел (?sectionId=). */
   initialSelectedSectionId: string | null;
@@ -8400,6 +8446,7 @@ function PopulatedWorkspace({
         ? "unified"
         : "entity";
   const directPositionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("positionId");
+  const directHighlightItemId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("highlightPositionId");
   const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
   const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
@@ -8433,13 +8480,31 @@ function PopulatedWorkspace({
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
-  const [revealSectionId, setRevealSectionId] = useState<string | null>(null);
+  const [revealSectionId, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
-  const [highlightItemId, setHighlightItemId] = useState<string | null>(initialSelectedItemId);
+  const [highlightItemId, setHighlightItemId] = useState<string | null>(() =>
+    initialHighlightItemId
+    ?? directHighlightItemId
+    ?? readJsonRecord<string | null>(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY, null)
+    ?? initialSelectedItemId,
+  );
+  useEffect(() => {
+    if (initialHighlightItemId) setHighlightItemId(initialHighlightItemId);
+  }, [initialHighlightItemId]);
+  useEffect(() => {
+    if (!directHighlightItemId) return;
+    setHighlightItemId(directHighlightItemId);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("highlightPositionId");
+    window.history.replaceState(window.history.state, "", url);
+  }, [directHighlightItemId]);
+  useEffect(() => {
+    window.localStorage.removeItem(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY);
+  }, []);
   useEffect(() => {
     if (!highlightItemId) return;
-    const timer = window.setTimeout(() => setHighlightItemId(null), 2600);
+    const timer = window.setTimeout(() => setHighlightItemId(null), 6000);
     return () => window.clearTimeout(timer);
   }, [highlightItemId]);
   const [previousAvailabilityByItem, setPreviousAvailabilityByItem] = useState<Record<string, PreviousAvailabilityState>>(() =>
@@ -10317,6 +10382,7 @@ function PopulatedWorkspace({
               onAddPosition={() => addPositionToSection(section.id)}
               onOpenInPositions={() => onOpenSectionInOverview(section.id)}
               onSelectChildSection={handleTreeSelectSection}
+              onChildSectionAction={handleUnifiedSectionAction}
               positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
               subsectionCreateDisabledReason={(() => {
                 const availability = getParentAvailability(section, allItems, allSections);
@@ -10821,6 +10887,7 @@ function AuditRowActionsMenu({ item, onAction, compositionMode }: { item: Catalo
         ) : (
           <>
             <DropdownActionItem onSelect={() => onAction("Открыть позицию")}>Открыть позицию</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onAction("Открыть в разделе")}>Открыть в разделе</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Редактировать")}>Редактировать</DropdownActionItem>
           </>
         )}
@@ -10935,13 +11002,27 @@ function AuditDishRow({
             onChange={(checked) => onSelectedChange(item.id, checked)}
           />
         </span>
-        <div className="flex min-w-0 items-center gap-[9px]">
+        <div className="flex min-w-0 flex-1 items-center gap-[9px]">
           <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="block max-w-full truncate text-left text-[13px] leading-4 text-[#292524] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="block min-w-0 flex-1 truncate text-left text-[13px] leading-4 text-[#292524] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
               {item.title}
             </span>
             {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
+            {!compositionMode && (
+              <button
+                type="button"
+                title={`Открыть раздел «${item.sectionName}»`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAction(item, "Открыть в разделе");
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                className="max-w-[120px] shrink-0 truncate rounded-[5px] px-1 py-0.5 text-[11px] font-normal text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                {item.sectionName}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -11821,21 +11902,9 @@ function UnifiedFlatCatalogPanel({
     return counts;
   }, [allFilterIds, allItems, scopeIds]);
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
-  const activeSecondaryFilterId = secondaryFilterIds.includes(filterId) ? filterId : null;
-  const secondaryRowReducedMotion = usePrefersReducedMotion();
-  const secondaryRowExitTimerRef = useRef<number | null>(null);
-  const secondaryRowFrameRef = useRef<number | null>(null);
-  const [renderedSecondaryFilterId, setRenderedSecondaryFilterId] = useState<OverviewFilterId | null>(
-    activeSecondaryFilterId,
+  const [addedFilterIds, setAddedFilterIds] = useState<OverviewFilterId[]>(() =>
+    secondaryFilterIds.includes(filterId) ? [filterId] : [],
   );
-  const [secondaryRowVisible, setSecondaryRowVisible] = useState(Boolean(activeSecondaryFilterId));
-  const [quickFilterIds, setQuickFilterIds] = useState<OverviewFilterId[]>(() =>
-    buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds),
-  );
-  const visibleQuickFilterIds = quickFilterIds
-    .filter((id) => id !== activeSecondaryFilterId)
-    .filter((id) => id !== renderedSecondaryFilterId)
-    .slice(0, activeSecondaryFilterId ? HYBRID_MAX_QUICK_FILTERS - 1 : HYBRID_MAX_QUICK_FILTERS);
   const emptyText = scope
     ? `В разделе «${scope.name}» нет позиций: ${HYBRID_PRIMARY_FILTER_LABELS[filterId].toLowerCase()}`
     : OVERVIEW_FILTER_META[filterId].emptyTitle;
@@ -11848,70 +11917,36 @@ function UnifiedFlatCatalogPanel({
     else setSearchOpen(true);
   };
   const openFilter = (id: OverviewFilterId) => {
+    if (id === "quick:all") setAddedFilterIds([]);
     if (id === filterId && onShowTable) {
       onShowTable();
       return;
     }
     onFilterChange(id);
   };
+  const addFilter = (id: OverviewFilterId) => {
+    setAddedFilterIds((current) => current.includes(id) ? current : [...current, id]);
+    onFilterChange(id);
+  };
 
   useEffect(() => {
     const previous = previousSelectionRef.current;
     const selectionChanged = previous.filterId !== filterId || previous.scopeSectionId !== scopeSectionId;
-    if (selectionChanged || !onShowTable) {
-      const next = buildHybridQuickFilterIds(filterCounts, filterId, secondaryFilterIds);
-      setQuickFilterIds((current) =>
-        current.length === next.length && current.every((id, index) => id === next[index]) ? current : next,
-      );
-    }
     if (selectionChanged) {
       onListQueryChange?.("");
       setSearchOpen(false);
     }
     previousSelectionRef.current = { filterId, scopeSectionId };
-  }, [filterCounts, filterId, onListQueryChange, onShowTable, scopeSectionId, secondaryFilterIds]);
+  }, [filterId, onListQueryChange, scopeSectionId]);
 
   useEffect(() => {
-    if (secondaryRowExitTimerRef.current != null) {
-      window.clearTimeout(secondaryRowExitTimerRef.current);
-      secondaryRowExitTimerRef.current = null;
-    }
-    if (secondaryRowFrameRef.current != null) {
-      window.cancelAnimationFrame(secondaryRowFrameRef.current);
-      secondaryRowFrameRef.current = null;
-    }
-
-    if (secondaryRowReducedMotion) {
-      setRenderedSecondaryFilterId(activeSecondaryFilterId);
-      setSecondaryRowVisible(Boolean(activeSecondaryFilterId));
+    if (filterId === "quick:all") {
+      setAddedFilterIds([]);
       return;
     }
-
-    if (activeSecondaryFilterId) {
-      setRenderedSecondaryFilterId(activeSecondaryFilterId);
-      secondaryRowFrameRef.current = window.requestAnimationFrame(() => {
-        setSecondaryRowVisible(true);
-        secondaryRowFrameRef.current = null;
-      });
-    } else {
-      setSecondaryRowVisible(false);
-      secondaryRowExitTimerRef.current = window.setTimeout(() => {
-        setRenderedSecondaryFilterId(null);
-        secondaryRowExitTimerRef.current = null;
-      }, 220);
-    }
-
-    return () => {
-      if (secondaryRowExitTimerRef.current != null) {
-        window.clearTimeout(secondaryRowExitTimerRef.current);
-        secondaryRowExitTimerRef.current = null;
-      }
-      if (secondaryRowFrameRef.current != null) {
-        window.cancelAnimationFrame(secondaryRowFrameRef.current);
-        secondaryRowFrameRef.current = null;
-      }
-    };
-  }, [activeSecondaryFilterId, secondaryRowReducedMotion]);
+    if (!secondaryFilterIds.includes(filterId)) return;
+    setAddedFilterIds((current) => current.includes(filterId) ? current : [...current, filterId]);
+  }, [filterId, secondaryFilterIds]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -11932,9 +11967,7 @@ function UnifiedFlatCatalogPanel({
       (id): id is OverviewFilterId =>
         id !== "sections"
         && secondaryFilterIds.includes(id as OverviewFilterId)
-        && id !== activeSecondaryFilterId
-        && id !== renderedSecondaryFilterId
-        && !visibleQuickFilterIds.includes(id),
+        && !addedFilterIds.includes(id),
     ),
   })).filter((group) => group.ids.length > 0);
 
@@ -11943,12 +11976,15 @@ function UnifiedFlatCatalogPanel({
       <div className="shrink-0 px-2 pb-5">
         <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         <div className="mt-3 flex flex-col gap-0.5">
-          <FilterPanelRow
-            row={{ id: "quick:all", label: HYBRID_PRIMARY_FILTER_LABELS["quick:all"], count: countByFilter("quick:all") }}
-            selected={filterId === "quick:all"}
-            onClick={() => openFilter("quick:all")}
-          />
-          {visibleQuickFilterIds.map((id) => (
+          {HYBRID_PRIMARY_FILTER_IDS.map((id) => (
+            <FilterPanelRow
+              key={id}
+              row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
+              selected={filterId === id}
+              onClick={() => openFilter(id)}
+            />
+          ))}
+          {addedFilterIds.map((id) => (
             <FilterPanelRow
               key={id}
               row={{ id, label: HYBRID_PRIMARY_FILTER_LABELS[id], count: countByFilter(id) }}
@@ -11957,50 +11993,6 @@ function UnifiedFlatCatalogPanel({
             />
           ))}
           <div className="flex flex-col">
-            <div
-              data-secondary-filter-row
-              data-state={activeSecondaryFilterId
-                ? secondaryRowVisible ? "open" : "entering"
-                : renderedSecondaryFilterId ? "exiting" : "closed"}
-              onTransitionEnd={(event) => {
-                if (
-                  event.propertyName !== "height"
-                  || activeSecondaryFilterId
-                  || secondaryRowVisible
-                  || !renderedSecondaryFilterId
-                ) return;
-                if (secondaryRowExitTimerRef.current != null) {
-                  window.clearTimeout(secondaryRowExitTimerRef.current);
-                  secondaryRowExitTimerRef.current = null;
-                }
-                setRenderedSecondaryFilterId(null);
-              }}
-              className={cn(
-                "overflow-hidden transition-[height,margin-bottom,opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
-                secondaryRowVisible
-                  ? "mb-0.5 h-[30px] translate-y-0 opacity-100"
-                  : "pointer-events-none mb-0 h-0 -translate-y-1 opacity-0",
-              )}
-              aria-hidden={!secondaryRowVisible}
-            >
-              {renderedSecondaryFilterId && (
-                <div
-                  key={renderedSecondaryFilterId}
-                  className="animate-in fade-in-0 slide-in-from-top-1 duration-[180ms] motion-reduce:animate-none"
-                >
-                  <FilterPanelRow
-                    row={{
-                      id: renderedSecondaryFilterId,
-                      label: HYBRID_PRIMARY_FILTER_LABELS[renderedSecondaryFilterId],
-                      count: countByFilter(renderedSecondaryFilterId),
-                    }}
-                    selected
-                    disabled={!secondaryRowVisible}
-                    onClick={() => openFilter(renderedSecondaryFilterId)}
-                  />
-                </div>
-              )}
-            </div>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -12024,7 +12016,7 @@ function UnifiedFlatCatalogPanel({
                       {group.ids.map((id) => (
                         <DropdownMenu.Item
                           key={id}
-                          onSelect={() => onFilterChange(id)}
+                          onSelect={() => addFilter(id)}
                           className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
                         >
                           <FunnelSimple size={16} weight="regular" className="shrink-0 text-[#57534d]" />
@@ -12221,7 +12213,7 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
   if (!target) return null;
   const section = pendingOpen.section;
   const baseIds = section
-    ? section.positionIds.filter((id) => items.some((candidate) => candidate.id === id))
+    ? getQueueItemIds("quick:all", items, "", section.sectionId, "none")
     : getQueueItemIds("quick:all", items, "", null, "none");
   const itemIds = section && !baseIds.includes(target.id) ? [...baseIds, target.id] : baseIds;
   const overviewReturn = pendingOpen.returnContext?.tab === "overview" ? pendingOpen.returnContext : null;
@@ -12322,7 +12314,7 @@ function OverviewWorkspace({
   onQueryChange: (value: string) => void;
   onReturnToSections: (openItemId: string | null) => void;
   onRestoreStructureContext: (context: StructureReturnContext, openItemId: string | null) => void;
-  onOpenSectionInSections: (sectionId: string | null) => void;
+  onOpenSectionInSections: (sectionId: string | null, highlightedItemId?: string | null) => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onCreateClosed?: () => void;
   pendingOpen?: PendingOpen | null;
@@ -12688,6 +12680,10 @@ function OverviewWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOpen]);
   const prepareRowAction = (item: CatalogItem, action: string) => {
+    if (action === "Открыть в разделе") {
+      onOpenSectionInSections(item.sectionId, item.id);
+      return;
+    }
     if (action === "Открыть позицию") {
       startTableQueue(item, workspaceFilterId);
       return;
@@ -13483,7 +13479,7 @@ export function CatalogWorkspace({
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
-  const { activeEditorItemId, items: sharedCatalogItems } = useCatalogStore();
+  const { activeEditorItemId, items: sharedCatalogItems, setActiveEditorItemId } = useCatalogStore();
   const positionsWorkspaceMode: PositionsWorkspaceMode =
     new URLSearchParams(window.location.search).get("positionsWorkspace") === "editor-first"
       ? "editor-first"
@@ -13493,6 +13489,35 @@ export function CatalogWorkspace({
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
   const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen());
+  const directPositionHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (catalogTab !== "overview" || pendingOpen) return;
+    const directPositionId = new URLSearchParams(window.location.search).get("positionId");
+    if (!directPositionId || directPositionHandledRef.current === directPositionId) return;
+    const directItem = sharedCatalogItems.find((item) => item.id === directPositionId);
+    if (!directItem) return;
+    directPositionHandledRef.current = directPositionId;
+    setPendingOpen({
+      id: directItem.id,
+      section: {
+        sectionId: directItem.sectionId,
+        sectionName: directItem.sectionName,
+        positionIds: sharedCatalogItems
+          .filter((item) => item.sectionId === directItem.sectionId)
+          .map((item) => item.id),
+        sectionPath: getCatalogSectionPath(directItem.sectionId),
+      },
+      returnContext: {
+        tab: "overview",
+        filterId: viewMode === "sections" ? "quick:all" : viewMode,
+        sectionScopeId,
+        tableQuery: "",
+        panelQuery: readOverviewWorkspaceContext().panelQuery,
+        sort: readOverviewWorkspaceContext().priceSort,
+        scrollTop: readOverviewWorkspaceContext().scrollTop,
+      },
+    });
+  }, [catalogTab, pendingOpen, sectionScopeId, sharedCatalogItems, viewMode]);
   const directCreateHistoryReadyRef = useRef(false);
   useEffect(() => {
     if (directCreateHistoryReadyRef.current) return;
@@ -13530,11 +13555,17 @@ export function CatalogWorkspace({
   const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
   const [overviewTableOpenSignal, setOverviewTableOpenSignal] = useState(0);
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
+  const [retainedStructureHighlightItemId, setRetainedStructureHighlightItemId] = useState<string | null>(null);
   // Синхронизация вкладок: при переходе «Позиции → Разделы» с выбранным разделом —
   // открыть и выделить тот же раздел; с «Все разделы» — оставить прежнее состояние
   // дерева нетронутым (PopulatedWorkspace сам восстановит его из localStorage).
   const [retainedSectionId, setRetainedSectionId] = useState<string | null>(null);
   const [retainedStructureContext, setRetainedStructureContext] = useState<StructureReturnContext | null>(null);
+  useEffect(() => {
+    if (catalogTab !== "sections" || !retainedStructureHighlightItemId) return;
+    const frame = window.requestAnimationFrame(() => setRetainedStructureHighlightItemId(null));
+    return () => window.cancelAnimationFrame(frame);
+  }, [catalogTab, retainedStructureHighlightItemId]);
   const prevCatalogTabRef = useRef(catalogTab);
   useEffect(() => {
     const prevTab = prevCatalogTabRef.current;
@@ -13624,7 +13655,19 @@ export function CatalogWorkspace({
       onQueryChange={setFlatQuery}
       onReturnToSections={returnToSections}
       onRestoreStructureContext={restoreStructureContext}
-      onOpenSectionInSections={(sectionId) => {
+      onOpenSectionInSections={(sectionId, highlightedItemId = null) => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("positionId");
+        if (highlightedItemId) url.searchParams.set("highlightPositionId", highlightedItemId);
+        else url.searchParams.delete("highlightPositionId");
+        if (sectionId) url.searchParams.set("sectionId", sectionId);
+        else url.searchParams.delete("sectionId");
+        window.history.replaceState(window.history.state, "", url);
+        if (highlightedItemId) writeJsonRecord(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY, highlightedItemId);
+        else window.localStorage.removeItem(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY);
+        setActiveEditorItemId(null);
+        setRetainedItemId(null);
+        setRetainedStructureHighlightItemId(highlightedItemId);
         setRetainedSectionId(sectionId);
         onSectionScopeChange(sectionId);
         onViewModeChange("sections");
@@ -13647,6 +13690,7 @@ export function CatalogWorkspace({
       scopeSectionId={sectionScopeId}
       resetSignal={resetSignal}
       initialSelectedItemId={retainedItemId}
+      initialHighlightItemId={retainedStructureHighlightItemId}
       initialSelectedSectionId={retainedSectionId}
       initialReturnContext={retainedStructureContext}
       onScopeChange={onSectionScopeChange}
