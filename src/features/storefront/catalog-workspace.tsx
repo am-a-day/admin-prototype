@@ -1,6 +1,15 @@
 import { Fragment, forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ChangeEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type Row as TableRow,
+  type Table as TanStackTable,
+  type Updater,
+  type VisibilityState,
+} from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   draggable,
@@ -80,6 +89,7 @@ import {
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Button } from "@/components/ui/button";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -5402,22 +5412,16 @@ function CatalogPickerContent({
   children,
   align = "start",
   className,
-  onMouseEnter,
-  onMouseLeave,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
 }) {
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
         className={cn(
           "z-[100002] w-[300px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none",
           className,
@@ -5442,44 +5446,13 @@ function StructuralSectionCrumb({
   onOpenSection: (id: string) => void;
   onRevealSection: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const openTimerRef = useRef<number | null>(null);
-  const closeTimerRef = useRef<number | null>(null);
-  const clearOpenTimer = () => {
-    if (openTimerRef.current != null) window.clearTimeout(openTimerRef.current);
-    openTimerRef.current = null;
-  };
-  const clearCloseTimer = () => {
-    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  };
-  const scheduleOpen = () => {
-    clearCloseTimer();
-    if (open) return;
-    clearOpenTimer();
-    openTimerRef.current = window.setTimeout(() => setOpen(true), 275);
-  };
-  const scheduleClose = () => {
-    clearOpenTimer();
-    clearCloseTimer();
-    closeTimerRef.current = window.setTimeout(() => setOpen(false), 180);
-  };
-
-  useEffect(() => () => {
-    clearOpenTimer();
-    clearCloseTimer();
-  }, []);
-
   return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger asChild>
+    <HoverCard openDelay={275} closeDelay={275}>
+      <HoverCardTrigger asChild>
         <button
           type="button"
           title={section.name}
           onClick={() => onOpenSection(section.id)}
-          onPointerDown={(event) => event.preventDefault()}
-          onMouseEnter={scheduleOpen}
-          onMouseLeave={scheduleClose}
           className={cn(
             "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
             compact ? "max-w-[100px]" : "max-w-[150px]",
@@ -5487,43 +5460,38 @@ function StructuralSectionCrumb({
         >
           {section.name}
         </button>
-      </DropdownMenu.Trigger>
-      <CatalogPickerContent
-        className="w-[260px]"
-        onMouseEnter={() => {
-          clearOpenTimer();
-          clearCloseTimer();
-        }}
-        onMouseLeave={scheduleClose}
-      >
+      </HoverCardTrigger>
+      <HoverCardContent className="w-[260px]">
         <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
           Соседние разделы
         </div>
         <div className="max-h-[260px] overflow-y-auto py-0.5">
           {siblings.map((sibling) => (
-            <DropdownMenu.Item
+            <button
+              type="button"
               key={sibling.id}
-              onSelect={() => onOpenSection(sibling.id)}
+              onClick={() => onOpenSection(sibling.id)}
               className={cn(
-                "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                 sibling.id === section.id ? "bg-[#f5f5f4] font-medium text-[#292524]" : "text-[#57534d]",
               )}
             >
               <span className="min-w-0 flex-1 truncate">{sibling.name}</span>
               {sibling.id === section.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-            </DropdownMenu.Item>
+            </button>
           ))}
         </div>
-        <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-        <DropdownMenu.Item
-          onSelect={() => onRevealSection(section.id)}
-          className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+        <div className="my-1 h-px bg-[#eceae7]" />
+        <button
+          type="button"
+          onClick={() => onRevealSection(section.id)}
+          className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] font-medium text-[#44403b] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <List size={15} />
           Показать в дереве
-        </DropdownMenu.Item>
-      </CatalogPickerContent>
-    </DropdownMenu.Root>
+        </button>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -5545,9 +5513,6 @@ function StructuralPositionBreadcrumb({
   onOpenPosition: (id: string) => void;
 }) {
   const [positionQuery, setPositionQuery] = useState("");
-  const [positionMenuOpen, setPositionMenuOpen] = useState(false);
-  const positionOpenTimerRef = useRef<number | null>(null);
-  const positionCloseTimerRef = useRef<number | null>(null);
   const sectionPath = getCatalogSectionPathFromSections(item.sectionId, sections);
   const sectionsByParent = new Map<string, TreeSection[]>();
   sections.forEach((section) => {
@@ -5567,31 +5532,6 @@ function StructuralPositionBreadcrumb({
   const visibleStructuralItems = normalizedPositionQuery
     ? structuralItems.filter((candidate) => candidate.title.toLocaleLowerCase().includes(normalizedPositionQuery))
     : structuralItems;
-  const clearPositionOpenTimer = () => {
-    if (positionOpenTimerRef.current != null) window.clearTimeout(positionOpenTimerRef.current);
-    positionOpenTimerRef.current = null;
-  };
-  const clearPositionCloseTimer = () => {
-    if (positionCloseTimerRef.current != null) window.clearTimeout(positionCloseTimerRef.current);
-    positionCloseTimerRef.current = null;
-  };
-  const schedulePositionOpen = () => {
-    clearPositionCloseTimer();
-    if (positionMenuOpen) return;
-    clearPositionOpenTimer();
-    positionOpenTimerRef.current = window.setTimeout(() => setPositionMenuOpen(true), 275);
-  };
-  const schedulePositionClose = () => {
-    clearPositionOpenTimer();
-    clearPositionCloseTimer();
-    positionCloseTimerRef.current = window.setTimeout(() => setPositionMenuOpen(false), 180);
-  };
-
-  useEffect(() => () => {
-    clearPositionOpenTimer();
-    clearPositionCloseTimer();
-  }, []);
-
   return (
     <nav aria-label="Положение позиции в каталоге" className="flex min-w-0 items-center gap-1">
       {sectionPath.map((section, index) => {
@@ -5611,18 +5551,8 @@ function StructuralPositionBreadcrumb({
         );
       })}
       {sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-      <DropdownMenu.Root
-        open={positionMenuOpen}
-        onOpenChange={(open) => {
-          setPositionMenuOpen(open);
-          if (!open) setPositionQuery("");
-        }}
-      >
-        <div
-          className="flex min-w-0 flex-1 items-center"
-          onMouseEnter={schedulePositionOpen}
-          onMouseLeave={schedulePositionClose}
-        >
+      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setPositionQuery(""); }}>
+        <div className="flex min-w-0 flex-1 items-center">
           <span title={item.title} className="min-w-0 flex-1 truncate px-1 py-0.5 text-[13px] font-medium text-[#292524]">{item.title}</span>
           <DropdownMenu.Trigger asChild>
             <button
@@ -5634,15 +5564,7 @@ function StructuralPositionBreadcrumb({
             </button>
           </DropdownMenu.Trigger>
         </div>
-        <CatalogPickerContent
-          align="end"
-          className="w-[320px]"
-          onMouseEnter={() => {
-            clearPositionOpenTimer();
-            clearPositionCloseTimer();
-          }}
-          onMouseLeave={schedulePositionClose}
-        >
+        <CatalogPickerContent align="end" className="w-[320px]">
           <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
             Позиции раздела · {structuralItems.length}
           </div>
@@ -11255,22 +11177,65 @@ const TABLE_COL = {
   price: "w-[82px]",
   kebab: "w-[36px]",
 };
-type OptionalTableColumn = "kbju" | "translation" | "section";
-type TableColumnVisibility = Record<OptionalTableColumn, boolean>;
+type CatalogInformationColumnId =
+  | "position"
+  | "section"
+  | "description"
+  | "weight"
+  | "kbju"
+  | "translation"
+  | "price";
+const CATALOG_INFORMATION_COLUMN_IDS: CatalogInformationColumnId[] = [
+  "position",
+  "section",
+  "description",
+  "weight",
+  "kbju",
+  "translation",
+  "price",
+];
+const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, string> = {
+  position: "Позиция",
+  section: "Раздел",
+  description: "Описание",
+  weight: "Вес",
+  kbju: "КБЖУ",
+  translation: "Перевод",
+  price: "Цена",
+};
 const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v1");
-const DEFAULT_TABLE_COLUMN_VISIBILITY: TableColumnVisibility = {
+const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
+  position: true,
+  description: true,
+  weight: true,
   kbju: true,
   translation: true,
   section: false,
+  price: true,
 };
 
-function readTableColumnVisibility(): TableColumnVisibility {
-  const stored = readJsonRecord<Partial<TableColumnVisibility>>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
-  return {
-    kbju: stored.kbju ?? DEFAULT_TABLE_COLUMN_VISIBILITY.kbju,
-    translation: stored.translation ?? DEFAULT_TABLE_COLUMN_VISIBILITY.translation,
-    section: stored.section ?? DEFAULT_TABLE_COLUMN_VISIBILITY.section,
-  };
+const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
+  { id: "selection", enableHiding: false },
+  { id: "position", accessorKey: "title" },
+  { id: "section", accessorKey: "sectionName" },
+  { id: "description", accessorKey: "hasDescription" },
+  { id: "weight", accessorKey: "weightLabel" },
+  { id: "kbju", accessorKey: "nutritionFilledCount" },
+  { id: "translation", accessorKey: "translationFilledCount" },
+  { id: "price", accessorKey: "price" },
+  { id: "actions", enableHiding: false },
+];
+
+function readTableColumnVisibility(): VisibilityState {
+  const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
+  const next = { ...DEFAULT_TABLE_COLUMN_VISIBILITY };
+  CATALOG_INFORMATION_COLUMN_IDS.forEach((columnId) => {
+    if (typeof stored[columnId] === "boolean") next[columnId] = stored[columnId];
+  });
+  if (!CATALOG_INFORMATION_COLUMN_IDS.some((columnId) => next[columnId] !== false)) {
+    next.position = true;
+  }
+  return next;
 }
 
 function TableCheckbox({
@@ -11331,7 +11296,7 @@ function TableHeaderRow({
   onSelectAll,
   priceSort,
   onPriceSortChange,
-  columnVisibility,
+  table,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -11341,76 +11306,82 @@ function TableHeaderRow({
   onSelectAll: (checked: boolean) => void;
   priceSort: PriceSortDirection;
   onPriceSortChange: () => void;
-  columnVisibility: TableColumnVisibility;
+  table: TanStackTable<CatalogItem>;
 }) {
-  const labels: [string, string, boolean?][] = [
-    ["Описание", TABLE_COL.description],
-    ["Вес", TABLE_COL.weight],
-    ["КБЖУ", TABLE_COL.kbju, columnVisibility.kbju],
-    ["Перевод", TABLE_COL.translation, columnVisibility.translation],
-    ["Раздел", TABLE_COL.section, columnVisibility.section],
-  ];
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
     <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
       <div className="flex min-h-9 items-center">
-      <div className="flex min-w-[320px] flex-1 items-center gap-2 pr-2">
-        <TableCheckbox
-          ariaLabel="Выбрать все видимые позиции"
-          checked={checked}
-          indeterminate={indeterminate}
-          onChange={onSelectAll}
-        />
-        {hideSearch ? (
-          <span className="min-w-0 flex-1 truncate text-[12px] leading-5 text-[#79716b]">Позиция</span>
-        ) : (
-          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
-            <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
-            <input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Найти позицию..."
-              className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
-            />
-          </div>
-        )}
-      </div>
-      {labels.filter(([, , visible = true]) => visible).map(([label, width]) => (
-        <span
-          key={label}
-          className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", width)}
-        >
-          {label}
-        </span>
-      ))}
-      <Tooltip label={priceSortTooltip} side="top">
-        <button
-          type="button"
-          onClick={onPriceSortChange}
-          aria-label={priceSortTooltip}
-          className={cn(
-            "flex h-8 shrink-0 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            TABLE_COL.price,
-            priceSort === "none" ? "text-[#79716b]" : "font-medium text-[#292524]",
-          )}
-        >
-          <span>Цена</span>
-          <span className="flex h-4 w-3 shrink-0 items-center justify-center">
-            {priceSort === "asc" ? (
-              <CaretUp size={11} weight="bold" />
-            ) : priceSort === "desc" ? (
-              <CaretDown size={11} weight="bold" />
-            ) : (
-              <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
-                <CaretUp size={8} weight="bold" />
-                <CaretDown size={8} weight="bold" className="-mt-1" />
+        {table.getVisibleLeafColumns().map((column) => {
+          if (!column.getIsVisible()) return null;
+          if (column.id === "selection") {
+            return (
+              <span key={column.id} className="flex h-full w-[26px] shrink-0 items-center">
+                <TableCheckbox
+                  ariaLabel="Выбрать все видимые позиции"
+                  checked={checked}
+                  indeterminate={indeterminate}
+                  onChange={onSelectAll}
+                />
               </span>
-            )}
-          </span>
-        </button>
-      </Tooltip>
-      <span className={cn("h-8 shrink-0", TABLE_COL.kebab)} />
+            );
+          }
+          if (column.id === "position") {
+            return hideSearch ? (
+              <span key={column.id} className="min-w-[260px] flex-1 truncate pr-2 text-[12px] leading-5 text-[#79716b]">Позиция</span>
+            ) : (
+              <div key={column.id} className="flex h-8 min-w-[260px] flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
+                <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
+                <input
+                  value={query}
+                  onChange={(event) => onQueryChange(event.target.value)}
+                  placeholder="Найти позицию..."
+                  className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
+                />
+              </div>
+            );
+          }
+          if (column.id === "price") {
+            return (
+              <Tooltip key={column.id} label={priceSortTooltip} side="top">
+                <button
+                  type="button"
+                  onClick={onPriceSortChange}
+                  aria-label={priceSortTooltip}
+                  className={cn(
+                    "flex h-8 shrink-0 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    TABLE_COL.price,
+                    priceSort === "none" ? "text-[#79716b]" : "font-medium text-[#292524]",
+                  )}
+                >
+                  <span>Цена</span>
+                  <span className="flex h-4 w-3 shrink-0 items-center justify-center">
+                    {priceSort === "asc" ? <CaretUp size={11} weight="bold" /> : priceSort === "desc" ? <CaretDown size={11} weight="bold" /> : (
+                      <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
+                        <CaretUp size={8} weight="bold" />
+                        <CaretDown size={8} weight="bold" className="-mt-1" />
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </Tooltip>
+            );
+          }
+          if (column.id === "actions") return <span key={column.id} className={cn("h-8 shrink-0", TABLE_COL.kebab)} />;
+          const widths: Record<string, string> = {
+            description: TABLE_COL.description,
+            weight: TABLE_COL.weight,
+            kbju: TABLE_COL.kbju,
+            translation: TABLE_COL.translation,
+            section: TABLE_COL.section,
+          };
+          return (
+            <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", widths[column.id])}>
+              {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -11674,24 +11645,23 @@ function getCompositionRowStatusClassName(item: CatalogItem) {
 }
 
 function AuditDishRow({
-  item,
+  row,
   onAction,
   selected,
   selectionMode,
   onSelectedChange,
   compositionMode,
   highlighted,
-  columnVisibility,
 }: {
-  item: CatalogItem;
+  row: TableRow<CatalogItem>;
   onAction: (item: CatalogItem, action: string) => void;
   selected: boolean;
   selectionMode: boolean;
   onSelectedChange: (id: string, selected: boolean) => void;
   compositionMode?: boolean;
   highlighted?: boolean;
-  columnVisibility: TableColumnVisibility;
 }) {
+  const item = row.original;
   // В составе раздела: обычный клик по основной зоне открывает позицию во
   // вкладке «Позиции»; в активном режиме мультивыбора — переключает выделение.
   const primaryClick = () => {
@@ -11724,106 +11694,93 @@ function AuditDishRow({
         highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span
-          className="flex h-full w-[18px] shrink-0 items-center"
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <TableCheckbox
-            ariaLabel={`Выбрать ${item.title}`}
-            checked={selected}
-            quiet
-            forceVisible={selectionMode}
-            onChange={(checked) => onSelectedChange(item.id, checked)}
-          />
-        </span>
-        <div className="flex min-w-0 flex-1 items-center gap-[9px]">
-          <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="block min-w-0 flex-1 truncate text-left text-[13px] leading-4 text-[#292524] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
-              {item.title}
-            </span>
-            {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
-          </div>
-        </div>
-      </div>
-      <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.description)}>
-        <AuditDot
-          state={item.hasDescription ? "filled" : "missing"}
-          title={item.hasDescription ? "Описание есть" : "Нет описания"}
-        />
-      </span>
-      <span
-        className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.weight)}
-        title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}
-      >
-        {item.weightLabel ? (
-          <span className="truncate whitespace-nowrap">{item.weightLabel}</span>
-        ) : (
-          <span className="text-[#a6a09b]">—</span>
-        )}
-      </span>
-      {columnVisibility.kbju && (
-        <span className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
-          <AuditDot
-            state={kbjuState}
-            title={
-              kbjuState === "missing"
-                ? "Нет КБЖУ"
-                : kbjuState === "partial"
-                  ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)`
-                  : "КБЖУ (на 100 г) заполнено"
-            }
-          />
-        </span>
-      )}
-      {columnVisibility.translation && (
-        <span
-          className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)}
-          title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}
-        >
-          {item.translationFilledCount}/{item.translationTotalCount}
-        </span>
-      )}
-      {columnVisibility.section && (
-        <span className={cn("flex shrink-0 items-center px-2", TABLE_COL.section)}>
-          <button
-            type="button"
-            title={`Открыть раздел «${item.sectionName}»`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onAction(item, "Открыть в разделе");
-            }}
-            onKeyDown={(event) => event.stopPropagation()}
-            className="min-w-0 truncate rounded-[5px] px-1 py-0.5 text-left text-[12px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            {item.sectionName}
-          </button>
-        </span>
-      )}
-      <span
-        className={cn(
-          "flex shrink-0 flex-col items-center justify-center px-3 text-[13px] leading-5 text-[#292524]",
-          TABLE_COL.price,
-        )}
-      >
-        {item.price === 0 && salePrice == null ? (
-          <span className="text-[#a6a09b]" title="Цена не указана">—</span>
-        ) : (
-          <span className="whitespace-nowrap">{formatPrice(salePrice ?? item.price)}</span>
-        )}
-        {salePrice != null && (
-          <span className="text-[11px] leading-3 text-[#a6a09b] line-through">{formatPrice(item.price)}</span>
-        )}
-      </span>
-      <span
-        className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)}
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} compositionMode={compositionMode} />
-      </span>
+      {row.getVisibleCells().map((cell) => {
+        if (!cell.column.getIsVisible()) return null;
+        switch (cell.column.id) {
+          case "selection":
+            return (
+              <span
+                key={cell.id}
+                className="flex h-full w-[26px] shrink-0 items-center"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <TableCheckbox
+                  ariaLabel={`Выбрать ${item.title}`}
+                  checked={selected}
+                  quiet
+                  forceVisible={selectionMode}
+                  onChange={(checked) => onSelectedChange(item.id, checked)}
+                />
+              </span>
+            );
+          case "position":
+            return (
+              <div key={cell.id} className="flex min-w-[260px] flex-1 items-center gap-[9px] pr-2">
+                <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
+                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span className="block min-w-0 flex-1 truncate text-left text-[13px] leading-4 text-[#292524] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+                    {item.title}
+                  </span>
+                  {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
+                </div>
+              </div>
+            );
+          case "description":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.description)}>
+                <AuditDot state={item.hasDescription ? "filled" : "missing"} title={item.hasDescription ? "Описание есть" : "Нет описания"} />
+              </span>
+            );
+          case "weight":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.weight)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
+                {item.weightLabel ? <span className="truncate whitespace-nowrap">{item.weightLabel}</span> : <span className="text-[#a6a09b]">—</span>}
+              </span>
+            );
+          case "kbju":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
+                <AuditDot state={kbjuState} title={kbjuState === "missing" ? "Нет КБЖУ" : kbjuState === "partial" ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)` : "КБЖУ (на 100 г) заполнено"} />
+              </span>
+            );
+          case "translation":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)} title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
+                {item.translationFilledCount}/{item.translationTotalCount}
+              </span>
+            );
+          case "section":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center px-2", TABLE_COL.section)}>
+                <button
+                  type="button"
+                  title={`Открыть раздел «${item.sectionName}»`}
+                  onClick={(event) => { event.stopPropagation(); onAction(item, "Открыть в разделе"); }}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  className="min-w-0 truncate rounded-[5px] px-1 py-0.5 text-left text-[12px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  {item.sectionName}
+                </button>
+              </span>
+            );
+          case "price":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 flex-col items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.price)}>
+                {item.price === 0 && salePrice == null ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(salePrice ?? item.price)}</span>}
+                {salePrice != null && <span className="text-[11px] leading-3 text-[#a6a09b] line-through">{formatPrice(item.price)}</span>}
+              </span>
+            );
+          case "actions":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} compositionMode={compositionMode} />
+              </span>
+            );
+          default:
+            return null;
+        }
+      })}
     </div>
   );
 }
@@ -11858,7 +11815,7 @@ function useVirtualScrollMargin(
 }
 
 function VirtualizedAuditRows({
-  items,
+  rows,
   selectedIds,
   selectionMode,
   scrollParentRef,
@@ -11866,9 +11823,8 @@ function VirtualizedAuditRows({
   onAction,
   compositionMode,
   highlightItemId,
-  columnVisibility,
 }: {
-  items: CatalogItem[];
+  rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
   selectionMode: boolean;
   scrollParentRef: RefObject<HTMLDivElement | null>;
@@ -11876,15 +11832,14 @@ function VirtualizedAuditRows({
   onAction: (item: CatalogItem, action: string) => void;
   compositionMode?: boolean;
   highlightItemId?: string | null;
-  columnVisibility: TableColumnVisibility;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [items.length, selectionMode]);
+  const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: rows.length,
     getScrollElement: () => scrollParentRef.current,
     estimateSize: () => AUDIT_ROW_HEIGHT,
-    getItemKey: (index) => items[index]?.id ?? index,
+    getItemKey: (index) => rows[index]?.id ?? index,
     overscan: 8,
     scrollMargin,
   });
@@ -11896,8 +11851,9 @@ function VirtualizedAuditRows({
       style={{ height: virtualizer.getTotalSize() }}
     >
       {virtualizer.getVirtualItems().map((virtualRow) => {
-        const item = items[virtualRow.index];
-        if (!item) return null;
+        const row = rows[virtualRow.index];
+        if (!row) return null;
+        const item = row.original;
         return (
           <div
             key={virtualRow.key}
@@ -11905,14 +11861,13 @@ function VirtualizedAuditRows({
             style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start - scrollMargin}px)` }}
           >
             <AuditDishRow
-              item={item}
+              row={row}
               selected={selectedIds.has(item.id)}
               selectionMode={selectionMode}
               onSelectedChange={onSelectedChange}
               onAction={onAction}
               compositionMode={compositionMode}
               highlighted={highlightItemId != null && item.id === highlightItemId}
-              columnVisibility={columnVisibility}
             />
           </div>
         );
@@ -12311,15 +12266,15 @@ function CatalogTableFilterBar({
   sectionScopeId,
   items,
   onFilterChange,
-  columnVisibility,
-  onColumnVisibilityChange,
+  table,
+  onResetColumns,
 }: {
   filterId: OverviewFilterId;
   sectionScopeId: string | null;
   items: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
-  columnVisibility: TableColumnVisibility;
-  onColumnVisibilityChange: (column: OptionalTableColumn, visible: boolean) => void;
+  table: TanStackTable<CatalogItem>;
+  onResetColumns: () => void;
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
@@ -12332,6 +12287,19 @@ function CatalogTableFilterBar({
     ),
   })).filter((group) => group.ids.length > 0);
   const activeFilterId = filterId === "quick:all" ? null : filterId;
+  const quickFilterIds = useMemo(() => {
+    const ordered: OverviewFilterId[] = [
+      "quick:no-description",
+      "status:stop",
+      "status:archived",
+      "quick:no-photo",
+      "quick:no-weight",
+    ];
+    if (activeFilterId && !ordered.includes(activeFilterId)) ordered.push(activeFilterId);
+    return ordered;
+  }, [activeFilterId]);
+  const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+  const visibleInformationColumnCount = informationColumns.filter((column) => column.getIsVisible()).length;
 
   return (
     <div className="flex min-w-0 items-center gap-2 py-2" data-catalog-quick-filters>
@@ -12339,7 +12307,7 @@ function CatalogTableFilterBar({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <FunnelSimple size={14} />
             <span>Все фильтры</span>
@@ -12373,35 +12341,50 @@ function CatalogTableFilterBar({
       </DropdownMenu.Root>
       <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max min-w-full items-center gap-1.5">
-          {activeFilterId && (
-            <div className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-[#d8d5d0] bg-[#f3f3ed] text-[12px] font-medium text-[#292524] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8]">
-              <button
-                type="button"
-                onClick={() => setFilterMenuOpen(true)}
-                className="inline-flex h-full items-center gap-1.5 rounded-l-[7px] pl-2.5 pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          {quickFilterIds.map((id) => {
+            const active = id === activeFilterId;
+            return (
+              <div
+                key={id}
+                className={cn(
+                  "inline-flex h-[30px] shrink-0 items-center rounded-[8px] border text-[12px] font-medium text-[#57534d] transition",
+                  active
+                    ? "border-[#d8d5d0] bg-[#f5f5f4] shadow-[0_1px_2px_rgba(41,37,36,0.04)] hover:bg-[#efefe8]"
+                    : "border-transparent bg-white hover:border-[#e7e5e4] hover:bg-[#fafaf9]",
+                )}
               >
-                <span>{HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]}</span>
-                <span className="tabular-nums text-[#9b948e]">{countByFilter(activeFilterId)}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]}»`}
-                onClick={() => {
-                  onFilterChange("quick:all");
-                }}
-                className="mr-1 flex h-5 w-5 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <X size={12} weight="bold" />
-              </button>
-            </div>
-          )}
+                <button
+                  type="button"
+                  onClick={() => active ? setFilterMenuOpen(true) : onFilterChange(id)}
+                  className={cn(
+                    "inline-flex h-full items-center gap-1.5 px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    active && "rounded-l-[7px] pr-1",
+                    !active && "rounded-[7px]",
+                  )}
+                >
+                  <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                  <span className="tabular-nums text-[#9b948e]">{countByFilter(id)}</span>
+                </button>
+                {active && (
+                  <button
+                    type="button"
+                    aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[id]}»`}
+                    onClick={() => onFilterChange("quick:all")}
+                    className="mr-1 flex h-5 w-5 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <X size={12} weight="bold" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <List size={14} />
             <span>Колонки</span>
@@ -12409,40 +12392,32 @@ function CatalogTableFilterBar({
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="end">
-          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Постоянные</DropdownMenu.Label>
-          {["Чекбокс", "Позиция", "Описание", "Вес", "Цена", "More"].map((label) => (
+          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
+          {informationColumns.map((column) => {
+            const isLastVisible = column.getIsVisible() && visibleInformationColumnCount === 1;
+            return (
             <DropdownMenu.CheckboxItem
-              key={label}
-              checked
-              disabled
-              className="flex h-8 select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#78716c] outline-none opacity-70"
-            >
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-[#f5f5f4]">
-                <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
-              </span>
-              {label}
-            </DropdownMenu.CheckboxItem>
-          ))}
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Опциональные</DropdownMenu.Label>
-          {([
-            ["kbju", "КБЖУ"],
-            ["translation", "Перевод"],
-            ["section", "Раздел"],
-          ] as Array<[OptionalTableColumn, string]>).map(([column, label]) => (
-            <DropdownMenu.CheckboxItem
-              key={column}
-              checked={columnVisibility[column]}
-              onCheckedChange={(checked) => onColumnVisibilityChange(column, checked === true)}
+              key={column.id}
+              checked={column.getIsVisible()}
+              disabled={isLastVisible}
+              onCheckedChange={(checked) => column.toggleVisibility(checked === true)}
               onSelect={(event) => event.preventDefault()}
-              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-[#f5f5f4]"
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
                 <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
               </span>
-              {label}
+              {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
             </DropdownMenu.CheckboxItem>
-          ))}
+            );
+          })}
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <DropdownMenu.Item
+            onSelect={onResetColumns}
+            className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+          >
+            Сбросить колонки
+          </DropdownMenu.Item>
         </DropdownContent>
       </DropdownMenu.Root>
     </div>
@@ -13281,7 +13256,14 @@ function OverviewWorkspace({
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [columnVisibility, setColumnVisibility] = useState<TableColumnVisibility>(readTableColumnVisibility);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
+  const handleColumnVisibilityChange = useCallback((updater: Updater<VisibilityState>) => {
+    setColumnVisibility((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      if (CATALOG_INFORMATION_COLUMN_IDS.some((columnId) => next[columnId] !== false)) return next;
+      return { ...next, position: true };
+    });
+  }, []);
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
   const suppressActiveItemChangeRef = useRef(false);
@@ -13358,6 +13340,14 @@ function OverviewWorkspace({
     [filtered, normalizedQuery],
   );
   const visible = useMemo(() => sortItemsByPrice(searched, workspacePriceSort), [searched, workspacePriceSort]);
+  const catalogTable = useReactTable({
+    data: visible,
+    columns: CATALOG_TABLE_COLUMN_DEFS,
+    state: { columnVisibility },
+    onColumnVisibilityChange: handleColumnVisibilityChange,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (item) => item.id,
+  });
   const normalizedPanelQuery = useMemo(() => workspacePanelQuery.trim().toLowerCase(), [workspacePanelQuery]);
   const panelItems = useMemo(
     () => normalizedPanelQuery
@@ -14283,7 +14273,7 @@ function OverviewWorkspace({
         >
           <div className={cn(
             "mx-auto w-full",
-            columnVisibility.section ? "max-w-[920px] min-w-[850px]" : "max-w-[800px] min-w-[730px]",
+            catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px] min-w-[850px]" : "max-w-[800px] min-w-[730px]",
           )}>
             {tableHeader}
             {embedded && (
@@ -14291,10 +14281,8 @@ function OverviewWorkspace({
                 filterId={workspaceFilterId}
                 sectionScopeId={workspaceSectionScopeId}
                 items={items}
-                columnVisibility={columnVisibility}
-                onColumnVisibilityChange={(column, visible) => {
-                  setColumnVisibility((current) => ({ ...current, [column]: visible }));
-                }}
+                table={catalogTable}
+                onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
                 onFilterChange={(id) => {
                   clearSelection();
                   setWorkspaceFilterId(id);
@@ -14348,7 +14336,7 @@ function OverviewWorkspace({
                     onSelectAll={setVisibleSelected}
                     priceSort={workspacePriceSort}
                     onPriceSortChange={handlePriceSortChange}
-                    columnVisibility={columnVisibility}
+                    table={catalogTable}
                   />
                   <div className="pt-2">
                     {selectedIds.size > 0 && (
@@ -14370,14 +14358,13 @@ function OverviewWorkspace({
                       </div>
                     )}
                     <VirtualizedAuditRows
-                      items={visible}
+                      rows={catalogTable.getRowModel().rows}
                       selectedIds={selectedIds}
                       selectionMode={selectedIds.size > 0}
                       scrollParentRef={scrollContainerRef}
                       onSelectedChange={setItemSelected}
                       onAction={prepareRowAction}
                       highlightItemId={tableHighlightId}
-                      columnVisibility={columnVisibility}
                     />
                   </div>
                   {bulkDialog && (
