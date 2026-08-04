@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useAppSettings } from "@/contexts/app-settings-context";
-import { useMockAuth, type WorkspaceLanguageStatus } from "@/contexts/mock-auth-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { LANGUAGES } from "@/data/languages";
 import { cn } from "@/lib/utils";
@@ -51,12 +51,6 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
   );
 }
 
-const STATUS_LABELS: Record<WorkspaceLanguageStatus, string> = {
-  empty: "Не заполнен",
-  partial: "Частично заполнен",
-  ready: "Готов к публикации",
-};
-
 export function PageLangSwitcher({
   onManageLanguages,
 }: {
@@ -82,25 +76,15 @@ export function PageLangSwitcher({
               key={language.code}
               type="button"
               onClick={() => setContentLanguage(language.code)}
-              title={`${language.label}${primary ? " · Основной язык" : ` · ${STATUS_LABELS[workspaceLanguage.status]}`}`}
+              title={`${language.label}${primary ? " · Основной язык" : ""}`}
               className={cn(
-                "relative flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
+                "flex h-6 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-medium transition",
                 active
                   ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
                   : "text-[#79716b] hover:bg-white/70 hover:text-[#292524]",
               )}
             >
               {language.short}
-              {!primary && (
-                <span
-                  className={cn(
-                    "absolute right-1 top-1 h-1.5 w-1.5 rounded-full ring-1 ring-white",
-                    workspaceLanguage.status === "empty" && "bg-zinc-300",
-                    workspaceLanguage.status === "partial" && "bg-amber-400",
-                    workspaceLanguage.status === "ready" && "bg-emerald-500",
-                  )}
-                />
-              )}
             </button>
           );
         })}
