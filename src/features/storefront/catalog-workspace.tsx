@@ -822,6 +822,15 @@ function getSectionTreeStatusLabel(section: Pick<TreeSection, "status" | "visibi
   return null;
 }
 
+function getTreePositionOperationalStatus(item: CatalogItem) {
+  if (item.status === "archive") return { label: "В архиве", className: "font-medium text-[#78716c]" };
+  if (item.status === "stopped") return { label: "На стопе", className: "font-medium text-[#b45309]" };
+  if (item.status === "coming-soon" || item.displayMode !== "full") {
+    return { label: "Не продаётся", className: "font-medium text-[#8a6b32]" };
+  }
+  return { label: "В продаже", className: "font-normal text-[#a8a29e]" };
+}
+
 function CatalogThumbnail({
   src,
   kind,
@@ -5366,7 +5375,6 @@ function PositionEditor({
 
 function PositionEditorHost({
   intent,
-  onCurrentIdChange,
   onClose,
   onFeedback,
   onRequestPermanentDelete,
@@ -5403,11 +5411,6 @@ function PositionEditorHost({
   );
   const saveTimersRef = useRef<Record<string, number>>({});
   const item = itemsById[intent.currentId] ?? null;
-  const currentIndex = intent.orderedIds.indexOf(intent.currentId);
-  const previousId = currentIndex > 0 ? intent.orderedIds[currentIndex - 1] : null;
-  const nextId = currentIndex >= 0 && currentIndex < intent.orderedIds.length - 1
-    ? intent.orderedIds[currentIndex + 1]
-    : null;
   const editorContext = intent.origin === "positions" && intent.snapshot
     ? getQueueEditorContext(intent.snapshot.entryFilterId)
     : { tab: "basic" as EditorTab, anchor: undefined };
@@ -5529,29 +5532,6 @@ function PositionEditorHost({
           <ArrowLeft size={14} />
           <span className="truncate">{intent.returnContext.label}</span>
         </button>
-      }
-      headerMeta={
-        <div className="flex items-center gap-1 text-[12px] text-[#a6a09b]">
-          <span className="px-1 tabular-nums">{currentIndex >= 0 ? currentIndex + 1 : 1}/{intent.orderedIds.length}</span>
-          <button
-            type="button"
-            aria-label="Предыдущая позиция"
-            disabled={!previousId}
-            onClick={() => previousId && onCurrentIdChange(previousId)}
-            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
-          >
-            <CaretUp size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="Следующая позиция"
-            disabled={!nextId}
-            onClick={() => nextId && onCurrentIdChange(nextId)}
-            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] disabled:opacity-30"
-          >
-            <CaretDown size={14} />
-          </button>
-        </div>
       }
       />
     </div>
@@ -5981,10 +5961,23 @@ function UnifiedCatalogTreePanel({
   dragActiveRef: RefObject<boolean>;
 }) {
   const selectedItem = selectedItemId ? items.find((item) => item.id === selectedItemId) ?? null : null;
+  const selectedSectionPath = sectionEditingEnabled && selectedSectionId
+    ? findSectionPath(sections, selectedSectionId)
+    : [];
+  const selectedSectionNode = selectedSectionId
+    ? flattenSections(sections).find((section) => section.id === selectedSectionId) ?? null
+    : null;
+  const selectedSectionHasTreeChildren = Boolean(
+    selectedSectionNode
+    && (
+      (selectedSectionNode.children?.length ?? 0) > 0
+      || (showPositions && items.some((item) => item.sectionId === selectedSectionNode.id))
+    ),
+  );
   const initialExpandedPath = selectedItem
     ? findSectionPath(sections, selectedItem.sectionId)
-    : sectionEditingEnabled && selectedSectionId
-      ? findSectionPath(sections, selectedSectionId)
+    : selectedSectionPath.length > 0
+      ? selectedSectionHasTreeChildren ? selectedSectionPath : selectedSectionPath.slice(0, -1)
       : [sections[0]?.id ?? ""];
   const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
@@ -6048,6 +6041,19 @@ function UnifiedCatalogTreePanel({
     current.push(item);
     itemsBySection.set(item.sectionId, current);
   });
+
+  const aggregateItemCountBySection = new Map<string, number>();
+  const getAggregateItemCount = (section: TreeSection): number => {
+    const cachedCount = aggregateItemCountBySection.get(section.id);
+    if (cachedCount !== undefined) return cachedCount;
+    const ownCount = (itemsBySection.get(section.id) ?? []).filter((item) => item.status !== "archive").length;
+    const totalCount = ownCount + (section.children ?? []).reduce(
+      (total, child) => total + getAggregateItemCount(child),
+      0,
+    );
+    aggregateItemCountBySection.set(section.id, totalCount);
+    return totalCount;
+  };
 
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, expanded);
@@ -6477,11 +6483,20 @@ function UnifiedCatalogTreePanel({
   }
 
   useEffect(() => {
+    const selectedPath = selectedSectionId ? findSectionPath(sections, selectedSectionId) : [];
+    const selectedNode = selectedSectionId
+      ? allFlatSections.find((candidate) => candidate.id === selectedSectionId) ?? null
+      : null;
+    const selectedNodeHasTreeChildren = Boolean(
+      selectedNode
+      && (
+        (selectedNode.children?.length ?? 0) > 0
+        || (showPositions && items.some((item) => item.sectionId === selectedNode.id))
+      ),
+    );
     const path = selectedItem
       ? findSectionPath(sections, selectedItem.sectionId)
-      : selectedSectionId
-        ? findSectionPath(sections, selectedSectionId)
-        : [];
+      : selectedNodeHasTreeChildren ? selectedPath : selectedPath.slice(0, -1);
     if (path.length > 0) {
       setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
     }
@@ -6534,8 +6549,17 @@ function UnifiedCatalogTreePanel({
 
   useEffect(() => {
     if (!revealSectionId) return;
-    const path = findSectionPath(sections, revealSectionId);
-    if (path.length === 0) return;
+    const revealPath = findSectionPath(sections, revealSectionId);
+    if (revealPath.length === 0) return;
+    const revealNode = allFlatSections.find((candidate) => candidate.id === revealSectionId) ?? null;
+    const revealNodeHasTreeChildren = Boolean(
+      revealNode
+      && (
+        (revealNode.children?.length ?? 0) > 0
+        || (showPositions && items.some((item) => item.sectionId === revealNode.id))
+      ),
+    );
+    const path = revealNodeHasTreeChildren ? revealPath : revealPath.slice(0, -1);
     setExpanded((current) => ({ ...current, ...Object.fromEntries(path.map((id) => [id, true])) }));
     const timeout = window.setTimeout(() => {
       const row = Array.from(panelScrollRef.current?.querySelectorAll<HTMLElement>("[data-tree-section-id]") ?? [])
@@ -6551,6 +6575,7 @@ function UnifiedCatalogTreePanel({
 
   const renderPosition = (item: CatalogItem, section: TreeSection) => {
     const active = item.id === selectedItemId;
+    const operationalStatus = getTreePositionOperationalStatus(item);
     const dragData: PragmaticTreeDragData = {
       type: PRAGMATIC_TREE_DRAG_TYPE,
       kind: "item",
@@ -6587,22 +6612,20 @@ function UnifiedCatalogTreePanel({
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <CatalogTreeThumbnail src={item.thumbnailUrl} selected={active} />
               <TruncatedText
-                className={cn("h-4 text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : "text-[#79716b]")}
+                className={cn("h-4 min-w-0 flex-1 text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : "text-[#79716b]")}
               >
                 {item.title}
               </TruncatedText>
             </div>
-            <span className="ml-2 flex min-w-0 shrink-0 items-center justify-end">
-              {sectionEditingEnabled && item.status === "stopped" && (
-                <Tooltip label="На стопе" side="top" delayDuration={200}>
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Prohibit size={12} /></span>
-                </Tooltip>
+            <span
+              data-tree-position-status={operationalStatus.label}
+              className={cn(
+                "ml-2 max-w-[78px] shrink-0 truncate whitespace-nowrap text-right text-[10px] leading-4",
+                operationalStatus.className,
               )}
-              {sectionEditingEnabled && item.status === "archive" && (
-                <Tooltip label="В архиве" side="top" delayDuration={200}>
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e]"><Archive size={12} /></span>
-                </Tooltip>
-              )}
+              title={operationalStatus.label}
+            >
+              {operationalStatus.label}
             </span>
           </div>
         )}
@@ -6633,6 +6656,7 @@ function UnifiedCatalogTreePanel({
       && invalidTooltipIdentity === getPragmaticTreeDropIdentity(parentDropState),
     );
     const active = sectionEditingEnabled && selectedSectionId === section.id;
+    const sectionItemCount = getAggregateItemCount(section);
     const highlighted = highlightedSectionId === section.id;
     const draggedSubtreeSections = [section, ...flattenSections(section.children ?? [])];
     const draggedSubtreeCount = draggedSubtreeSections.length - 1 + draggedSubtreeSections.reduce(
@@ -6640,7 +6664,6 @@ function UnifiedCatalogTreePanel({
       0,
     );
     const hasVisibleChildren = (section.children ?? []).some((child) => !normalizedQuery || visibleSectionIds.has(child.id));
-    const hasTreeChildren = (showPositions && sectionItems.length > 0) || (section.children?.length ?? 0) > 0;
     const parentAvailability = getParentAvailability(section, items, allFlatSections);
     const dragEnabled = !normalizedQuery && restrictedScopeSectionId !== section.id;
     const sectionDragData: PragmaticTreeDragData = {
@@ -6705,16 +6728,18 @@ function UnifiedCatalogTreePanel({
             </span>
           )}
           <span
-            data-tree-parent-indicator={hasTreeChildren
-              ? "existing"
-              : futureParentIndicatorVisible
-                ? "future"
-                : invalidParentIndicatorVisible
-                  ? "invalid"
-                  : "empty"}
+            data-tree-parent-indicator={futureParentIndicatorVisible
+              ? "future"
+              : invalidParentIndicatorVisible
+                ? "invalid"
+                : "existing"}
             className="flex h-[11px] w-[11px] shrink-0 items-center justify-center"
           >
-            {hasTreeChildren ? (
+            {invalidParentIndicatorVisible ? (
+              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#dc2626]" aria-hidden="true">
+                <Prohibit size={12} weight="bold" />
+              </span>
+            ) : (
               <button
                 type="button"
                 data-no-tree-drag
@@ -6737,15 +6762,7 @@ function UnifiedCatalogTreePanel({
                   )}
                 />
               </button>
-            ) : futureParentIndicatorVisible ? (
-              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#a6a09b]" aria-hidden="true">
-                <CaretRight size={11} weight="fill" />
-              </span>
-            ) : invalidParentIndicatorVisible ? (
-              <span className="pointer-events-none -m-[4.5px] grid h-5 w-5 place-items-center text-[#dc2626]" aria-hidden="true">
-                <Prohibit size={12} weight="bold" />
-              </span>
-            ) : null}
+            )}
           </span>
           <div className="ml-1 flex min-w-0 flex-1 items-center gap-2">
             <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
@@ -6757,27 +6774,23 @@ function UnifiedCatalogTreePanel({
             </TruncatedText>
           </div>
           <div
-            className={cn(
-              "relative grid h-5 shrink-0 grid-cols-1 items-center justify-items-end",
-              sectionStatusLabel || active
-                ? "ml-2 w-auto overflow-visible"
-                : "ml-0 w-0 overflow-hidden group-hover:ml-2 group-hover:w-auto group-hover:overflow-visible group-focus-visible:ml-2 group-focus-visible:w-auto group-focus-visible:overflow-visible group-has-[:focus-visible]:ml-2 group-has-[:focus-visible]:w-auto group-has-[:focus-visible]:overflow-visible",
-            )}
+            className="relative ml-2 grid h-5 min-w-11 shrink-0 grid-cols-1 items-center justify-items-end"
             data-tree-section-trailing
           >
             <span
               className={cn(
-                "col-start-1 row-start-1 flex shrink-0 items-center justify-end whitespace-nowrap text-[11px] leading-4 text-[#a8a29e] transition-opacity duration-100",
+                "col-start-1 row-start-1 flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[11px] leading-4 text-[#a8a29e] transition-opacity duration-100",
                 "group-hover:opacity-0 group-focus-visible:opacity-0 group-has-[:focus-visible]:opacity-0",
-                active && "opacity-0",
               )}
             >
-              {sectionStatusLabel}
+              {sectionStatusLabel && <span>{sectionStatusLabel}</span>}
+              <span data-tree-section-count={sectionItemCount} className="min-w-4 text-right tabular-nums">
+                {sectionItemCount}
+              </span>
             </span>
             <span
               className={cn(
                 "pointer-events-none col-start-1 row-start-1 flex shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100",
-                active && "pointer-events-auto opacity-100",
                 isDragging && "invisible",
               )}
             >
@@ -6846,9 +6859,14 @@ function UnifiedCatalogTreePanel({
                 {renderPosition(item, section)}
               </Fragment>
             ))}
-            {showPositions && visibleItems.length === 0 && !hasVisibleChildren && !normalizedQuery && (
-              <div className="flex min-h-8 items-center gap-2 rounded-[12px] px-1.5 py-1.5 text-[12px] text-[#a8a29e]">
-                <span className="min-w-0 flex-1 truncate">В разделе пока нет позиций</span>
+            {(!showPositions || visibleItems.length === 0) && !hasVisibleChildren && !normalizedQuery && (
+              <div
+                data-tree-empty-state={section.id}
+                className="flex min-h-7 items-center px-1.5 py-1 text-[11px] leading-4 text-[#a8a29e]"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {showPositions ? "Пока нет позиций" : "Нет подразделов"}
+                </span>
               </div>
             )}
             {hasVisibleChildren && renderSectionList(
@@ -7968,6 +7986,14 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
   };
 }
 
+type StructurePositionDraft = {
+  item: CatalogItem;
+  targetSectionId: string;
+  returnSectionId: string | null;
+  returnItemId: string | null;
+  returnEditing: boolean;
+};
+
 function getLinkedEntitiesCount(item: CatalogItem) {
   return item.recommendationsCount + item.optionsCount + item.modifiersCount;
 }
@@ -8395,6 +8421,8 @@ function PopulatedWorkspace({
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
   const [editing, setEditing] = useState(editorNavMode === "section" ? false : Boolean(firstItemId));
+  const [structurePositionDraft, setStructurePositionDraft] = useState<StructurePositionDraft | null>(null);
+  const [structureCreateSubmitting, setStructureCreateSubmitting] = useState(false);
   const [sectionOrderByParent, setSectionOrderByParent] = useState<Record<string, string[]>>(() =>
     readJsonRecord<Record<string, string[]>>(CATALOG_SECTION_ORDER_STORAGE_KEY, {}),
   );
@@ -9550,41 +9578,130 @@ function PopulatedWorkspace({
     clearDndState();
   };
 
-  // «Добавить позицию» в текущий раздел → создаём черновик и сразу открываем.
+  const cancelStructurePositionCreation = () => {
+    const pendingDraft = structurePositionDraft;
+    if (!pendingDraft) return;
+    setStructurePositionDraft(null);
+    setStructureCreateSubmitting(false);
+
+    const returnItem = pendingDraft.returnItemId
+      ? allItems.find((item) => item.id === pendingDraft.returnItemId) ?? null
+      : null;
+    if (returnItem) {
+      setSelectedSectionId(returnItem.sectionId);
+      setSelectedItemId(returnItem.id);
+      setActiveEditorItemId(returnItem.id);
+      setEditing(true);
+      if (editorNavMode === "entity") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("sectionId");
+        url.searchParams.set("positionId", returnItem.id);
+        window.history.replaceState(null, "", url);
+      }
+      return;
+    }
+
+    const returnSectionId = pendingDraft.returnSectionId
+      && allSections.some((candidate) => candidate.id === pendingDraft.returnSectionId)
+      ? pendingDraft.returnSectionId
+      : pendingDraft.targetSectionId;
+    setSelectedSectionId(returnSectionId);
+    setSelectedItemId(null);
+    setActiveEditorItemId(null);
+    setEditing(pendingDraft.returnEditing && editorNavMode !== "entity");
+    if (editorNavMode === "entity") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("positionId");
+      url.searchParams.set("sectionId", returnSectionId);
+      window.history.replaceState(null, "", url);
+    }
+  };
+
+  const createStructurePosition = async () => {
+    if (!structurePositionDraft || structureCreateSubmitting) return;
+    const normalizedTitle = structurePositionDraft.item.title.trim();
+    if (!normalizedTitle) {
+      setFeedback("Укажите название позиции");
+      return;
+    }
+
+    setStructureCreateSubmitting(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const createdItem: CatalogItem = {
+      ...structurePositionDraft.item,
+      id: createRealPositionId(),
+      title: normalizedTitle,
+      price: structurePositionDraft.item.price || 0,
+      hasDescription: descriptionHasContent(structurePositionDraft.item.description),
+      translationFilledCount: 1,
+    };
+    writeCreatedCatalogItems([
+      createdItem,
+      ...readCreatedCatalogItems().filter((item) => item.id !== createdItem.id),
+    ]);
+    addCatalogItem(createdItem);
+    setPositionOrderBySection((current) => ({
+      ...current,
+      [createdItem.sectionId]: [
+        createdItem.id,
+        ...(current[createdItem.sectionId] ?? allItems
+          .filter((item) => item.sectionId === createdItem.sectionId)
+          .map((item) => item.id))
+          .filter((id) => id !== createdItem.id),
+      ],
+    }));
+    setStructurePositionDraft(null);
+    setStructureCreateSubmitting(false);
+    setSelectedSectionId(createdItem.sectionId);
+    setSelectedItemId(createdItem.id);
+    setActiveEditorItemId(createdItem.id);
+    setEditing(true);
+    setLastItemBySection((current) => ({ ...current, [createdItem.sectionId]: createdItem.id }));
+    writeRecentPositionId(createdItem.id, [...allItems, createdItem]);
+    registerChange("catalog");
+    if (editorNavMode === "entity") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sectionId");
+      url.searchParams.set("positionId", createdItem.id);
+      window.history.replaceState(null, "", url);
+    }
+    setFeedback("Позиция создана в выбранном разделе");
+  };
+
+  // «Добавить позицию» открывает локальный черновик. В каталог он попадёт
+  // только после явного подтверждения в шапке редактора.
   const addPositionToSection = (sectionId: string) => {
     const targetSection = allSections.find((candidate) => candidate.id === sectionId) ?? null;
     if (!targetSection) return;
+    if (structurePositionDraft) {
+      setFeedback("Завершите создание или нажмите «Отменить»");
+      return;
+    }
     const restriction = getPositionCreateRestriction(sectionId, allSections);
     if (restriction) {
       setFeedback(restriction);
       return;
     }
-    const draft = {
-      ...makeDraftItem(targetSection),
-      id: createRealPositionId(),
-      title: "Новая позиция",
-    };
-    addCatalogItem(draft);
-    writeCreatedCatalogItems([
-      draft,
-      ...readCreatedCatalogItems().filter((item) => item.id !== draft.id),
-    ]);
+    const draft = makeDraftItem(targetSection);
+    setStructurePositionDraft({
+      item: draft,
+      targetSectionId: sectionId,
+      returnSectionId: selectedSectionId,
+      returnItemId: selectedItemId,
+      returnEditing: editing,
+    });
     setSelectedSectionId(sectionId);
-    setSelectedItemId(draft.id);
-    setActiveEditorItemId(draft.id);
+    setSelectedItemId(null);
+    setActiveEditorItemId(null);
     setEditing(true);
     // Radix закрывает контекстное меню после onSelect; повторяем выбор на
     // следующем кадре, чтобы завершающий клик по строке раздела не закрыл редактор.
     window.requestAnimationFrame(() => {
       setSelectedSectionId(sectionId);
-      setSelectedItemId(draft.id);
-      setActiveEditorItemId(draft.id);
+      setSelectedItemId(null);
+      setActiveEditorItemId(null);
       setEditing(true);
     });
-    setLastItemBySection((prev) => ({ ...prev, [sectionId]: draft.id }));
-    writeRecentPositionId(draft.id, [...allItems, draft]);
-    registerChange("catalog");
-    setFeedback("Позиция создана в выбранном разделе");
   };
   const addPosition = () => {
     if (selectedSectionId) addPositionToSection(selectedSectionId);
@@ -10028,6 +10145,62 @@ function PopulatedWorkspace({
       />
     );
   };
+
+  const renderStructurePositionCreation = () => {
+    if (!structurePositionDraft) return null;
+    const updateDraft = (patch: Partial<CatalogItem>) => {
+      setStructurePositionDraft((current) => current
+        ? { ...current, item: { ...current.item, ...patch } }
+        : current);
+    };
+    const draftItem = structurePositionDraft.item;
+    return (
+      <div data-structure-position-draft className="flex min-w-0 flex-1 overflow-hidden">
+        <PositionEditor
+          item={draftItem}
+          mode="create"
+          allItems={allItems}
+          upsell={{}}
+          onUpsellChange={() => {}}
+          stopBusy={false}
+          onArchiveItem={() => {}}
+          onRestoreItem={() => {}}
+          onMoveItem={() => {}}
+          onToggleStop={() => updateDraft({ status: draftItem.status === "stopped" ? "active" : "stopped" })}
+          onSetAvailabilityMode={(_item, mode) => updateDraft({
+            status: mode === "unavailable" ? "stopped" : "active",
+            scheduled: mode === "schedule",
+          })}
+          unavailableDisplayMode="hidden"
+          outsideScheduleMode="hidden"
+          weeklySchedule={createDefaultWeeklySchedule()}
+          onUnavailableDisplayModeChange={() => {}}
+          onOutsideScheduleModeChange={() => {}}
+          onWeeklyScheduleChange={() => {}}
+          onRequestPermanentDelete={() => {}}
+          onDraftChange={updateDraft}
+          onItemChange={(_item, patch) => updateDraft(patch)}
+          onCreatePosition={createStructurePosition}
+          onBackCreate={cancelStructurePositionCreation}
+          onCancelCreate={cancelStructurePositionCreation}
+          createDisabled={!draftItem.title.trim()}
+          createSubmitting={structureCreateSubmitting}
+          breadcrumb={(
+            <>
+              <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">·</span>
+              <span
+                className="min-w-0 truncate text-[13px] font-normal leading-5 text-[#79716b] max-[1100px]:text-[11px]"
+                title={draftItem.sectionName}
+              >
+                {draftItem.sectionName}
+              </span>
+            </>
+          )}
+        />
+      </div>
+    );
+  };
+
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
       <div className="flex min-h-0 flex-1">
@@ -10043,8 +10216,12 @@ function PopulatedWorkspace({
             showPositions={treeContentMode === "sections-and-positions"}
             treeContentMode={treeContentMode}
             positionOrderBySection={positionOrderBySection}
-            onSelectSection={handleTreeSelectSection}
-            onSelectItem={openItem}
+            onSelectSection={structurePositionDraft
+              ? () => setFeedback("Завершите создание или нажмите «Отменить»")
+              : handleTreeSelectSection}
+            onSelectItem={structurePositionDraft
+              ? () => setFeedback("Завершите создание или нажмите «Отменить»")
+              : openItem}
             onScopeChange={onScopeChange}
             onCreateSection={() => openSectionCreation()}
             onAddPositionToSection={addPositionToSection}
@@ -10105,7 +10282,9 @@ function PopulatedWorkspace({
           onDragEnd={handleDndDragEnd}
           onDragCancel={handleDndDragCancel}
         >
-        {editorNavMode === "entity" ? (
+        {structurePositionDraft ? (
+          renderStructurePositionCreation()
+        ) : editorNavMode === "entity" ? (
           selectedItem ? (
             renderPositionEditor(selectedItem)
           ) : section ? (
