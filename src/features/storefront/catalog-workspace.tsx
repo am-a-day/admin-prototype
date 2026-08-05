@@ -114,6 +114,7 @@ import {
 /** dnd-kit остаётся у плоского списка позиций: спокойная анимация ~200мс,
  * отключается при prefers-reduced-motion. Дерево разделов использует Pragmatic DnD. */
 const DND_TRANSITION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" };
+const restrictTableSortToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
@@ -6295,6 +6296,10 @@ function orderSectionItems(items: CatalogItem[], order: string[] | undefined): C
 
 function orderItemsByStoredPositionOrder(items: CatalogItem[]) {
   const orders = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
+  return orderItemsByPositionOrder(items, orders);
+}
+
+function orderItemsByPositionOrder(items: CatalogItem[], orders: Record<string, string[]>) {
   const originalIndexes = new Map(items.map((item, index) => [item.id, index]));
   return [...items].sort((left, right) => {
     if (left.sectionId !== right.sectionId) {
@@ -11303,6 +11308,7 @@ const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
 };
 
 const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
+  { id: "reorder", enableHiding: false },
   { id: "selection", enableHiding: false },
   { id: "position", accessorKey: "title" },
   { id: "section", accessorKey: "sectionName" },
@@ -11403,6 +11409,7 @@ function TableHeaderRow({
       <div className="flex min-h-9 items-center">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
+          if (column.id === "reorder") return <span key={column.id} className="h-8 w-[24px] shrink-0" />;
           if (column.id === "selection") {
             return (
               <span key={column.id} className="flex h-full w-[26px] shrink-0 items-center">
@@ -11742,6 +11749,7 @@ function AuditDishRow({
   onSelectedChange,
   compositionMode,
   highlighted,
+  reorderEnabled = false,
 }: {
   row: TableRow<CatalogItem>;
   onAction: (item: CatalogItem, action: string) => void;
@@ -11750,8 +11758,19 @@ function AuditDishRow({
   onSelectedChange: (id: string, selected: boolean) => void;
   compositionMode?: boolean;
   highlighted?: boolean;
+  reorderEnabled?: boolean;
 }) {
   const item = row.original;
+  const reducedMotion = usePrefersReducedMotion();
+  const {
+    attributes: reorderAttributes,
+    listeners: reorderListeners,
+    setNodeRef: setSortableNodeRef,
+    setActivatorNodeRef: setReorderHandleRef,
+    transform: reorderTransform,
+    transition: reorderTransition,
+    isDragging: isReordering,
+  } = useSortable({ id: item.id, disabled: !reorderEnabled });
   // В составе раздела: обычный клик по основной зоне открывает позицию во
   // вкладке «Позиции»; в активном режиме мультивыбора — переключает выделение.
   const primaryClick = () => {
@@ -11769,6 +11788,14 @@ function AuditDishRow({
 
   return (
     <div
+      ref={setSortableNodeRef}
+      data-catalog-table-row={item.id}
+      data-reordering={isReordering || undefined}
+      style={{
+        transform: CSS.Transform.toString(reorderTransform),
+        transition: reducedMotion ? undefined : reorderTransition,
+        zIndex: isReordering ? 2 : undefined,
+      }}
       role="button"
       tabIndex={0}
       onClick={primaryClick}
@@ -11782,11 +11809,33 @@ function AuditDishRow({
         "group flex h-11 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
         highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
+        isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
       )}
     >
       {row.getVisibleCells().map((cell) => {
         if (!cell.column.getIsVisible()) return null;
         switch (cell.column.id) {
+          case "reorder":
+            return (
+              <span
+                key={cell.id}
+                className="flex h-full w-[24px] shrink-0 items-center justify-center"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  ref={setReorderHandleRef}
+                  type="button"
+                  data-table-reorder-handle={item.id}
+                  aria-label={`Изменить порядок позиции ${item.title}`}
+                  {...reorderAttributes}
+                  {...reorderListeners}
+                  className="flex h-7 w-5 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f1f1ea] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <DotsSixVertical size={14} weight="bold" />
+                </button>
+              </span>
+            );
           case "selection":
             return (
               <span
@@ -11913,6 +11962,7 @@ function VirtualizedAuditRows({
   onAction,
   compositionMode,
   highlightItemId,
+  reorderEnabled = false,
 }: {
   rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
@@ -11922,6 +11972,7 @@ function VirtualizedAuditRows({
   onAction: (item: CatalogItem, action: string) => void;
   compositionMode?: boolean;
   highlightItemId?: string | null;
+  reorderEnabled?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
@@ -11958,6 +12009,7 @@ function VirtualizedAuditRows({
               onAction={onAction}
               compositionMode={compositionMode}
               highlighted={highlightItemId != null && item.id === highlightItemId}
+              reorderEnabled={reorderEnabled}
             />
           </div>
         );
@@ -13317,6 +13369,8 @@ function OverviewWorkspace({
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
   const {
     items,
+    itemOrderBySection,
+    replaceItemOrder,
     updateItem,
     addItem,
     deleteItem,
@@ -13369,6 +13423,10 @@ function OverviewWorkspace({
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
+  const tableReorderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const handleColumnVisibilityChange = useCallback((updater: Updater<VisibilityState>) => {
     setColumnVisibility((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
@@ -13452,11 +13510,33 @@ function OverviewWorkspace({
       : filtered,
     [filtered, normalizedQuery],
   );
-  const visible = useMemo(() => sortItemsByPrice(searched, workspacePriceSort), [searched, workspacePriceSort]);
+  const manuallyOrdered = useMemo(
+    () => orderItemsByPositionOrder(searched, itemOrderBySection),
+    [itemOrderBySection, searched],
+  );
+  const visible = useMemo(
+    () => sortItemsByPrice(manuallyOrdered, workspacePriceSort),
+    [manuallyOrdered, workspacePriceSort],
+  );
+  const scopeIsLeafSection = Boolean(
+    scopeSection
+    && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
+  );
+  const canReorderTable = Boolean(
+    embedded
+    && !mandatoryFilterId
+    && scopeSection
+    && scopeIsLeafSection
+    && workspaceFilterId === "quick:all"
+    && workspaceQuery.trim() === ""
+    && workspacePriceSort === "none"
+    && visible.length > 1
+    && visible.every((item) => item.sectionId === scopeSection.id),
+  );
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
-    state: { columnVisibility },
+    state: { columnVisibility: { ...columnVisibility, reorder: canReorderTable } },
     onColumnVisibilityChange: handleColumnVisibilityChange,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item) => item.id,
@@ -13478,6 +13558,24 @@ function OverviewWorkspace({
     [selectedIds, visibleIds],
   );
   const someVisibleSelected = useMemo(() => visibleIds.some((id) => selectedIds.has(id)), [selectedIds, visibleIds]);
+
+  const handleTableReorder = (event: DragEndEvent) => {
+    if (!canReorderTable || !scopeSection || !event.over || event.active.id === event.over.id) return;
+    const previousIds = [...visibleIds];
+    const fromIndex = previousIds.indexOf(String(event.active.id));
+    const toIndex = previousIds.indexOf(String(event.over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextIds = arrayMove(previousIds, fromIndex, toIndex);
+    const previousOrder = cloneStringArrayRecord(itemOrderBySection);
+    try {
+      replaceItemOrder({ ...itemOrderBySection, [scopeSection.id]: nextIds });
+      registerChange("catalog");
+      showFeedback("Порядок позиций изменён");
+    } catch {
+      replaceItemOrder(previousOrder);
+      showFeedback("Не удалось изменить порядок. Исходный порядок восстановлен.");
+    }
+  };
 
   const resetFilter = () => {
     setWorkspaceQuery("");
@@ -14479,15 +14577,25 @@ function OverviewWorkspace({
                         />
                       </div>
                     )}
-                    <VirtualizedAuditRows
-                      rows={catalogTable.getRowModel().rows}
-                      selectedIds={selectedIds}
-                      selectionMode={selectedIds.size > 0}
-                      scrollParentRef={scrollContainerRef}
-                      onSelectedChange={setItemSelected}
-                      onAction={prepareRowAction}
-                      highlightItemId={tableHighlightId}
-                    />
+                    <DndContext
+                      sensors={tableReorderSensors}
+                      collisionDetection={closestCenter}
+                      modifiers={[restrictTableSortToVerticalAxis]}
+                      onDragEnd={handleTableReorder}
+                    >
+                      <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
+                        <VirtualizedAuditRows
+                          rows={catalogTable.getRowModel().rows}
+                          selectedIds={selectedIds}
+                          selectionMode={selectedIds.size > 0}
+                          scrollParentRef={scrollContainerRef}
+                          onSelectedChange={setItemSelected}
+                          onAction={prepareRowAction}
+                          highlightItemId={tableHighlightId}
+                          reorderEnabled={canReorderTable}
+                        />
+                      </SortableContext>
+                    </DndContext>
                   </div>
                   {bulkDialog && (
                     <BulkDialogModal
