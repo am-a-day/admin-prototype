@@ -821,10 +821,14 @@ type CatalogWorkspaceProps = {
   stopListActive: boolean;
   viewMode: CatalogViewMode;
   sectionScopeId: string | null;
+  stopListFilterId: OverviewFilterId;
+  stopListSectionScopeId: string | null;
   resetSignal: number;
   onOverviewFilterChange: (id: OverviewFilterId) => void;
   onViewModeChange: (mode: CatalogViewMode) => void;
   onSectionScopeChange: (id: string | null) => void;
+  onStopListFilterChange: (id: OverviewFilterId) => void;
+  onStopListSectionScopeChange: (id: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
@@ -1174,6 +1178,15 @@ function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = cat
   return items.filter(FILTER_PREDICATES[filterId]);
 }
 
+function getCombinedOverviewItems(
+  filterId: OverviewFilterId,
+  items: CatalogItem[],
+  mandatoryFilterId?: OverviewFilterId,
+) {
+  const mandatoryItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
+  return getOverviewItems(filterId, mandatoryItems);
+}
+
 const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
   { label: "Вид", ids: ["sections"] },
   { label: "Статус", ids: ["status:active", "status:archived"] },
@@ -1475,6 +1488,8 @@ type DescriptionAuditQueueSnapshot = {
   /** Фильтр, из которого редактор был открыт. Задаёт forced editor tab и не
    * меняется при смене browse (фильтра/scope), чтобы не дёргать вкладку редактора. */
   entryFilterId: AuditQueueFilterId;
+  /** Человекочитаемое имя сохранённой выборки, когда она состоит из нескольких фильтров. */
+  filterLabel?: string;
   /** Локальный поиск в списке левой панели. */
   query: string;
   /** Поиск левой панели до открытия редактора; для очереди из таблицы `query`
@@ -1523,6 +1538,11 @@ type EditorFirstPositionsState = {
 
 const EDITOR_FIRST_POSITIONS_STORAGE_KEY = catalogStorageKey("positionsWorkspace.editorFirst.v1");
 const OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY = catalogStorageKey("overviewWorkspace.context.v1");
+const STOP_LIST_WORKSPACE_CONTEXT_STORAGE_KEY = catalogStorageKey("stopList.workspaceContext.v1");
+const STOP_LIST_UNIFIED_SCOPE_STORAGE_KEY = catalogStorageKey("stopList.unifiedWorkspace.scope");
+const STOP_LIST_TREE_QUERY_STORAGE_KEY = catalogStorageKey("stopList.treeQuery");
+const STOP_LIST_TREE_EXPANDED_STORAGE_KEY = catalogStorageKey("stopList.treeExpanded");
+const STOP_LIST_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("stopList.treeScrollTop");
 
 type OverviewWorkspaceContext = {
   panelQuery: string;
@@ -1531,8 +1551,8 @@ type OverviewWorkspaceContext = {
   sectionScopeId: string | null;
 };
 
-function readOverviewWorkspaceContext(): OverviewWorkspaceContext {
-  const stored = readJsonRecord<Partial<OverviewWorkspaceContext>>(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, {});
+function readOverviewWorkspaceContext(storageKey = OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY): OverviewWorkspaceContext {
+  const stored = readJsonRecord<Partial<OverviewWorkspaceContext>>(storageKey, {});
   return {
     panelQuery: typeof stored.panelQuery === "string" ? stored.panelQuery : "",
     priceSort: stored.priceSort === "asc" || stored.priceSort === "desc" ? stored.priceSort : "none",
@@ -1703,10 +1723,11 @@ function getQueueItemIds(
   query: string,
   sectionScopeId: string | null,
   priceSort: PriceSortDirection = "none",
+  mandatoryFilterId?: OverviewFilterId,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
   const scopeIds = getSectionScopeIds(sectionScopeId);
-  const filtered = getOverviewItems(filterId, items)
+  const filtered = getCombinedOverviewItems(filterId, items, mandatoryFilterId)
     .filter((item) => !scopeIds || scopeIds.has(item.sectionId))
     .filter((item) =>
       !normalizedQuery || [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
@@ -5902,7 +5923,7 @@ function PositionEditorHost({
           {intent.origin === "positions" && intent.snapshot && (
             <>
               <PositionQueueReturnLink
-                filterLabel={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+                filterLabel={intent.snapshot.filterLabel ?? HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
                 onBack={onClose}
               />
               <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
@@ -5921,7 +5942,7 @@ function PositionEditorHost({
       )}
       headerMeta={intent.origin === "positions" && intent.snapshot ? (
         <PositionQueueControls
-          filterLabel={HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
+          filterLabel={intent.snapshot.filterLabel ?? HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
           itemIds={currentSelectionIds}
           currentId={intent.currentId}
           itemsById={itemsById}
@@ -6334,6 +6355,8 @@ function UnifiedCatalogTreePanel({
   onInsertSection,
   onInsertItem,
   dragActiveRef,
+  positionCreationEnabled = true,
+  storageKeys,
 }: {
   sections: TreeSection[];
   items: CatalogItem[];
@@ -6360,7 +6383,12 @@ function UnifiedCatalogTreePanel({
   onInsertItem: (draggedId: string, targetParentId: string, targetIndex: number) => void;
   /** Синхронный флаг активного drag — блокирует клик по строке без задержки re-render. */
   dragActiveRef: RefObject<boolean>;
+  positionCreationEnabled?: boolean;
+  storageKeys?: { expanded: string; query: string; scroll: string };
 }) {
+  const expandedStorageKey = storageKeys?.expanded ?? CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY;
+  const queryStorageKey = storageKeys?.query ?? CATALOG_SECTION_TREE_QUERY_STORAGE_KEY;
+  const scrollStorageKey = storageKeys?.scroll ?? CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY;
   const selectedItem = selectedItemId ? items.find((item) => item.id === selectedItemId) ?? null : null;
   const selectedSectionPath = sectionEditingEnabled && selectedSectionId
     ? findSectionPath(sections, selectedSectionId)
@@ -6382,14 +6410,14 @@ function UnifiedCatalogTreePanel({
       : [sections[0]?.id ?? ""];
   const initialExpanded = Object.fromEntries(initialExpandedPath.map((id) => [id, true]));
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
-    ...readJsonRecord<Record<string, boolean>>(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, {}),
+    ...readJsonRecord<Record<string, boolean>>(expandedStorageKey, {}),
     ...initialExpanded,
   }));
-  const [query, setQuery] = useState(() => readJsonRecord<string>(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, ""));
+  const [query, setQuery] = useState(() => readJsonRecord<string>(queryStorageKey, ""));
   const [navigationTargetSectionId, setNavigationTargetSectionId] = useState<string | null>(null);
   const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
-  const initialPanelScrollTopRef = useRef(readJsonRecord<number>(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, 0));
+  const initialPanelScrollTopRef = useRef(readJsonRecord<number>(scrollStorageKey, 0));
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const selectionScrollReadyRef = useRef(false);
   const [treeDropState, setTreeDropState] = useState<PragmaticTreeDropState>(null);
@@ -6457,12 +6485,12 @@ function UnifiedCatalogTreePanel({
   };
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, expanded);
-  }, [expanded]);
+    writeJsonRecord(expandedStorageKey, expanded);
+  }, [expanded, expandedStorageKey]);
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, query);
-  }, [query]);
+    writeJsonRecord(queryStorageKey, query);
+  }, [query, queryStorageKey]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -7202,7 +7230,7 @@ function UnifiedCatalogTreePanel({
             </span>
             {!isDragging && (
               <span className="hidden shrink-0 items-center justify-end gap-0.5 group-hover:flex group-focus-visible:flex group-has-[:focus-visible]:flex">
-            <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
+            {positionCreationEnabled && <Tooltip label="Добавить позицию" side="top" delayDuration={200}>
               <button
                 type="button"
                 data-no-tree-drag
@@ -7225,7 +7253,7 @@ function UnifiedCatalogTreePanel({
               >
                 <Plus size={14} weight="regular" />
               </button>
-            </Tooltip>
+            </Tooltip>}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -7244,6 +7272,7 @@ function UnifiedCatalogTreePanel({
               <DropdownContent align="end">
                 <SectionActionMenuContent
                   section={section}
+                  allowPositionCreation={positionCreationEnabled}
                   subsectionDisabledReason={parentAvailability.available ? null : parentAvailability.label}
                   onAction={(action) => onSectionAction(section, action)}
                 />
@@ -7363,7 +7392,7 @@ function UnifiedCatalogTreePanel({
       </div>
       <div
         ref={panelScrollRef}
-        onScroll={(event) => writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, event.currentTarget.scrollTop)}
+        onScroll={(event) => writeJsonRecord(scrollStorageKey, event.currentTarget.scrollTop)}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2"
       >
         {onTreeContentModeChange && (
@@ -7680,6 +7709,7 @@ function SectionEditor({
   showOpenInPositions = true,
   forcePositionsLabel = false,
   compositionCountOverride,
+  allowPositionCreation = true,
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -7714,6 +7744,7 @@ function SectionEditor({
   showOpenInPositions?: boolean;
   forcePositionsLabel?: boolean;
   compositionCountOverride?: number;
+  allowPositionCreation?: boolean;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -7780,7 +7811,7 @@ function SectionEditor({
                 <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
               )}
             </div>
-            <CatalogActionButton
+            {allowPositionCreation && <CatalogActionButton
               onClick={onAddPosition}
               disabled={archived}
               disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
@@ -7788,7 +7819,7 @@ function SectionEditor({
               dataPositionCreateButton
             >
               Добавить позицию
-            </CatalogActionButton>
+            </CatalogActionButton>}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
@@ -7796,6 +7827,7 @@ function SectionEditor({
               <DropdownContent align="end">
                 <SectionActionMenuContent
                   section={section}
+                  allowPositionCreation={allowPositionCreation}
                   subsectionDisabledReason={subsectionCreateDisabledReason}
                   onAction={onAction}
                 />
@@ -8011,6 +8043,7 @@ function UnifiedSectionTableHeader({
   onAction,
   positionCreateDisabledReason,
   subsectionCreateDisabledReason,
+  allowPositionCreation = true,
 }: {
   section: TreeSection;
   itemCount: number;
@@ -8020,6 +8053,7 @@ function UnifiedSectionTableHeader({
   onAction: (action: string) => void;
   positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
+  allowPositionCreation?: boolean;
 }) {
   const archived = section.status === "archive";
   const status = getSectionStatusMeta(section);
@@ -8035,7 +8069,7 @@ function UnifiedSectionTableHeader({
             <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
           )}
         </div>
-        <CatalogActionButton
+        {allowPositionCreation && <CatalogActionButton
           onClick={onAddPosition}
           disabled={archived}
           disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
@@ -8043,7 +8077,7 @@ function UnifiedSectionTableHeader({
           dataPositionCreateButton
         >
           Добавить позицию
-        </CatalogActionButton>
+        </CatalogActionButton>}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
@@ -8051,6 +8085,7 @@ function UnifiedSectionTableHeader({
           <DropdownContent align="end">
             <SectionActionMenuContent
               section={section}
+              allowPositionCreation={allowPositionCreation}
               subsectionDisabledReason={subsectionCreateDisabledReason}
               onAction={onAction}
             />
@@ -8869,6 +8904,10 @@ function PopulatedWorkspace({
   onRegisterCreateNavigationGuard,
   onPendingOpenHandled,
   onCreateClosed,
+  mandatoryFilterId,
+  titleOverride,
+  allowPositionCreation = true,
+  workspaceKind = "catalog",
 }: {
   sections: TreeSection[];
   createdItems: CatalogItem[];
@@ -8891,6 +8930,10 @@ function PopulatedWorkspace({
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onPendingOpenHandled?: () => void;
   onCreateClosed?: () => void;
+  mandatoryFilterId?: OverviewFilterId;
+  titleOverride?: string;
+  allowPositionCreation?: boolean;
+  workspaceKind?: "catalog" | "stop-list";
 }) {
   const { contentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
@@ -8933,7 +8976,20 @@ function PopulatedWorkspace({
   const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
   const retainedItem = initialSelectedItemId ? sourceCatalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
-  const storedUnifiedScope = readJsonRecord<string | "__all">(CATALOG_UNIFIED_SCOPE_STORAGE_KEY, "__all");
+  const unifiedScopeStorageKey = workspaceKind === "stop-list"
+    ? STOP_LIST_UNIFIED_SCOPE_STORAGE_KEY
+    : CATALOG_UNIFIED_SCOPE_STORAGE_KEY;
+  const overviewContextStorageKey = workspaceKind === "stop-list"
+    ? STOP_LIST_WORKSPACE_CONTEXT_STORAGE_KEY
+    : OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY;
+  const treeStorageKeys = workspaceKind === "stop-list"
+    ? {
+        expanded: STOP_LIST_TREE_EXPANDED_STORAGE_KEY,
+        query: STOP_LIST_TREE_QUERY_STORAGE_KEY,
+        scroll: STOP_LIST_TREE_SCROLL_STORAGE_KEY,
+      }
+    : undefined;
+  const storedUnifiedScope = readJsonRecord<string | "__all">(unifiedScopeStorageKey, "__all");
   const storedUnifiedSectionId = storedUnifiedScope !== "__all"
     && catalogSections.some((section) => section.id === storedUnifiedScope)
     ? storedUnifiedScope
@@ -9219,9 +9275,9 @@ function PopulatedWorkspace({
   }, [selectedSectionId]);
 
   useEffect(() => {
-    writeJsonRecord(CATALOG_UNIFIED_SCOPE_STORAGE_KEY, selectedSectionId ?? "__all");
+    writeJsonRecord(unifiedScopeStorageKey, selectedSectionId ?? "__all");
     if (scopeSectionId !== selectedSectionId) onScopeChange(selectedSectionId);
-  }, [onScopeChange, scopeSectionId, selectedSectionId]);
+  }, [onScopeChange, scopeSectionId, selectedSectionId, unifiedScopeStorageKey]);
 
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY, treeContentMode);
@@ -10828,9 +10884,9 @@ function PopulatedWorkspace({
 
   const restoreUnifiedStructureContext = (context: StructureReturnContext, openItemId: string | null) => {
     if (context.sectionEditorTab) setSectionEditorTab(context.sectionEditorTab);
-    if (context.treeQuery !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, context.treeQuery);
-    if (context.treeExpanded) writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, context.treeExpanded);
-    if (context.treeScrollTop !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, context.treeScrollTop);
+    if (context.treeQuery !== undefined) writeJsonRecord(treeStorageKeys?.query ?? CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, context.treeQuery);
+    if (context.treeExpanded) writeJsonRecord(treeStorageKeys?.expanded ?? CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, context.treeExpanded);
+    if (context.treeScrollTop !== undefined) writeJsonRecord(treeStorageKeys?.scroll ?? CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, context.treeScrollTop);
     setSelectedSectionId(context.sectionId);
     setSelectedItemId(openItemId);
     setEditorSource(openItemId ? "tree" : null);
@@ -10838,8 +10894,8 @@ function PopulatedWorkspace({
   };
 
   const scopedItemCount = selectedSectionId
-    ? getQueueItemIds(filterId, allItems, query, selectedSectionId).length
-    : getQueueItemIds(filterId, allItems, query, null).length;
+    ? getQueueItemIds(filterId, allItems, query, selectedSectionId, "none", mandatoryFilterId).length
+    : getQueueItemIds(filterId, allItems, query, null, "none", mandatoryFilterId).length;
   const subsectionDisabledReason = section ? (() => {
     const availability = getParentAvailability(section, allItems, allSections);
     return availability.available ? null : availability.label;
@@ -10854,6 +10910,7 @@ function PopulatedWorkspace({
       onAction={(action) => handleUnifiedSectionAction(section, action)}
       positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
       subsectionCreateDisabledReason={subsectionDisabledReason}
+      allowPositionCreation={allowPositionCreation}
     />
   ) : null;
 
@@ -10883,6 +10940,9 @@ function PopulatedWorkspace({
       onActiveItemChange={handleOverviewActiveItemChange}
       structureSections={allSections}
       structuralPositionOrderBySection={positionOrderBySection}
+      mandatoryFilterId={mandatoryFilterId}
+      titleOverride={titleOverride}
+      overviewContextStorageKey={overviewContextStorageKey}
       onOpenStructuralItem={openItemFromEditorBreadcrumb}
       onOpenStructuralSection={openSectionFromEditorBreadcrumb}
       onRevealStructuralSection={revealSectionFromEditorBreadcrumb}
@@ -10936,6 +10996,7 @@ function PopulatedWorkspace({
       showOpenInPositions={false}
       forcePositionsLabel
       compositionCountOverride={scopedItemCount}
+      allowPositionCreation={allowPositionCreation}
     />
   ) : unifiedOverviewWorkspace;
 
@@ -10972,6 +11033,8 @@ function PopulatedWorkspace({
             onInsertSection={insertTreeSectionAt}
             onInsertItem={insertTreeItemAt}
             dragActiveRef={dragActiveRef}
+            positionCreationEnabled={allowPositionCreation}
+            storageKeys={treeStorageKeys}
           />
         ) : editing ? (
           <SectionPositionNav
@@ -11555,10 +11618,12 @@ function SectionAvailabilitySubmenu({
 function SectionActionMenuContent({
   section,
   subsectionDisabledReason,
+  allowPositionCreation = true,
   onAction,
 }: {
   section: TreeSection;
   subsectionDisabledReason?: string | null;
+  allowPositionCreation?: boolean;
   onAction: (action: string) => void;
 }) {
   if (section.status === "archive") {
@@ -11572,7 +11637,7 @@ function SectionActionMenuContent({
   }
   return (
     <>
-      <DropdownActionItem icon={Plus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>
+      {allowPositionCreation && <DropdownActionItem icon={Plus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
       <Tooltip label={subsectionDisabledReason ?? ""} side="left" disabled={!subsectionDisabledReason}>
         <span className="block">
           <DropdownActionItem
@@ -12272,14 +12337,16 @@ function SelectionFeedback({ message }: { message: string }) {
 
 function OverviewStatusBar({
   filterId,
+  titleOverride,
 }: {
   filterId: OverviewFilterId;
+  titleOverride?: string;
 }) {
   return (
     <div className="flex min-h-[24px] min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium leading-[17px] text-[#292524]">
-          {getFilterPanelTitle(filterId)}
+          {titleOverride ?? getFilterPanelTitle(filterId)}
         </div>
       </div>
     </div>
@@ -12288,6 +12355,7 @@ function OverviewStatusBar({
 
 function CatalogTableFilterBar({
   filterId,
+  mandatoryFilterId,
   sectionScopeId,
   items,
   onFilterChange,
@@ -12295,6 +12363,7 @@ function CatalogTableFilterBar({
   onResetColumns,
 }: {
   filterId: OverviewFilterId;
+  mandatoryFilterId?: OverviewFilterId;
   sectionScopeId: string | null;
   items: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
@@ -12303,7 +12372,7 @@ function CatalogTableFilterBar({
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
-  const countByFilter = (id: OverviewFilterId) => getOverviewItems(id, items)
+  const countByFilter = (id: OverviewFilterId) => getCombinedOverviewItems(id, items, mandatoryFilterId)
     .filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
   const filterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
     ...group,
@@ -12320,9 +12389,10 @@ function CatalogTableFilterBar({
       "quick:no-photo",
       "quick:no-weight",
     ];
-    if (activeFilterId && !ordered.includes(activeFilterId)) ordered.push(activeFilterId);
-    return ordered;
-  }, [activeFilterId]);
+    const withoutMandatory = ordered.filter((id) => id !== mandatoryFilterId);
+    if (activeFilterId && activeFilterId !== mandatoryFilterId && !withoutMandatory.includes(activeFilterId)) withoutMandatory.push(activeFilterId);
+    return withoutMandatory;
+  }, [activeFilterId, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
   const visibleInformationColumnCount = informationColumns.filter((column) => column.getIsVisible()).length;
 
@@ -12348,8 +12418,9 @@ function CatalogTableFilterBar({
                 {group.ids.map((id) => (
                   <DropdownMenu.CheckboxItem
                     key={id}
-                    checked={filterId === id}
-                    onCheckedChange={() => onFilterChange(id)}
+                    checked={filterId === id || mandatoryFilterId === id}
+                    disabled={mandatoryFilterId === id}
+                    onCheckedChange={() => mandatoryFilterId !== id && onFilterChange(id)}
                     className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
@@ -12366,6 +12437,16 @@ function CatalogTableFilterBar({
       </DropdownMenu.Root>
       <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max min-w-full items-center gap-1.5">
+          {mandatoryFilterId && (
+            <button
+              type="button"
+              onClick={() => setFilterMenuOpen(true)}
+              className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#d8d5d0] bg-[#f5f5f4] px-2.5 text-[12px] font-medium text-[#57534d] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <span>{HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]}</span>
+              <span className="tabular-nums text-[#9b948e]">{countByFilter("quick:all")}</span>
+            </button>
+          )}
           {quickFilterIds.map((id) => {
             const active = id === activeFilterId;
             return (
@@ -13200,6 +13281,9 @@ function OverviewWorkspace({
   onOpenStructuralItem,
   onOpenStructuralSection,
   onRevealStructuralSection,
+  mandatoryFilterId,
+  titleOverride,
+  overviewContextStorageKey = OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY,
 }: {
   filterId: OverviewFilterId;
   createdItems: CatalogItem[];
@@ -13225,6 +13309,9 @@ function OverviewWorkspace({
   onOpenStructuralItem?: (id: string) => void;
   onOpenStructuralSection?: (id: string) => void;
   onRevealStructuralSection?: (id: string) => void;
+  mandatoryFilterId?: OverviewFilterId;
+  titleOverride?: string;
+  overviewContextStorageKey?: string;
 }) {
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
@@ -13239,7 +13326,7 @@ function OverviewWorkspace({
     revision: catalogRevision,
   } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
-  const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext());
+  const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext(overviewContextStorageKey));
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
     ? restoreEditorFirstQueue(initialEditorFirstState, initialWorkspaceItems)
@@ -13323,13 +13410,13 @@ function OverviewWorkspace({
   const workspacePriceSort = editorFirstEnabled ? editorFirstPriceSort : priceSort;
   const workspacePanelQuery = editorFirstEnabled ? editorFirstQuery : panelQuery;
   useEffect(() => {
-    writeJsonRecord(OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY, {
+    writeJsonRecord(overviewContextStorageKey, {
       panelQuery,
       priceSort,
       scrollTop: overviewScrollTop,
       sectionScopeId: workspaceSectionScopeId,
     });
-  }, [overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
+  }, [overviewContextStorageKey, overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
   const setWorkspaceFilterId = (id: OverviewFilterId) => {
     if (editorFirstEnabled) setEditorFirstFilterId(id);
     else onFilterChange(id);
@@ -13352,8 +13439,9 @@ function OverviewWorkspace({
   );
   const scopeIds = useMemo(() => getSectionScopeIds(workspaceSectionScopeId), [workspaceSectionScopeId]);
   const filtered = useMemo(
-    () => getOverviewItems(workspaceFilterId, items).filter((item) => !scopeIds || scopeIds.has(item.sectionId)),
-    [items, scopeIds, workspaceFilterId],
+    () => getCombinedOverviewItems(workspaceFilterId, items, mandatoryFilterId)
+      .filter((item) => !scopeIds || scopeIds.has(item.sectionId)),
+    [items, mandatoryFilterId, scopeIds, workspaceFilterId],
   );
   const normalizedQuery = useMemo(() => workspaceQuery.trim().toLowerCase(), [workspaceQuery]);
   const searched = useMemo(
@@ -13402,7 +13490,7 @@ function OverviewWorkspace({
   const handlePriceSortChange = () => {
     setWorkspacePriceSort((current) => getNextPriceSort(current));
   };
-  const emptyTitle = getFilterPanelTitle(workspaceFilterId);
+  const emptyTitle = titleOverride ?? getFilterPanelTitle(workspaceFilterId);
   const emptyText = scopeSection
     ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[workspaceFilterId].label.toLowerCase()}`
     : statusMeta.emptyText;
@@ -13526,9 +13614,14 @@ function OverviewWorkspace({
     snapshotPriceSort = workspacePriceSort,
     explicitItemIds?: string[],
   ): DescriptionAuditQueueSnapshot => ({
-    itemIds: explicitItemIds ?? getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort),
+    itemIds: explicitItemIds ?? getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort, mandatoryFilterId),
     filterId: nextFilterId,
-    entryFilterId: nextFilterId,
+    entryFilterId: mandatoryFilterId ?? nextFilterId,
+    filterLabel: mandatoryFilterId
+      ? nextFilterId === "quick:all"
+        ? HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]
+        : `${HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]} · ${HYBRID_PRIMARY_FILTER_LABELS[nextFilterId]}`
+      : undefined,
     query: snapshotQuery,
     returnPanelQuery: workspacePanelQuery,
     tableQuery: workspaceQuery,
@@ -13779,7 +13872,7 @@ function OverviewWorkspace({
   const rebrowse = (nextFilterId: OverviewFilterId, nextScopeId: string | null) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, current.snapshot.sort);
+      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, current.snapshot.sort, mandatoryFilterId);
       return {
         ...current,
         snapshot: {
@@ -13798,7 +13891,7 @@ function OverviewWorkspace({
   const rebrowseQuery = (nextQuery: string) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(current.snapshot.filterId, items, nextQuery, current.snapshot.sectionScopeId, current.snapshot.sort);
+      const itemIds = getQueueItemIds(current.snapshot.filterId, items, nextQuery, current.snapshot.sectionScopeId, current.snapshot.sort, mandatoryFilterId);
       return { ...current, snapshot: { ...current.snapshot, itemIds, query: nextQuery } };
     });
   };
@@ -14100,7 +14193,7 @@ function OverviewWorkspace({
       sectionId: queue.snapshot.sectionScopeId ?? undefined,
       snapshot: queue.snapshot,
       returnContext: {
-        label: `Назад к результатам · ${HYBRID_PRIMARY_FILTER_LABELS[queue.snapshot.filterId]} · ${Math.max(1, queueOrderedItemIds.indexOf(currentItem.id) + 1)} из ${queueOrderedItemIds.length}`,
+        label: `Назад к результатам · ${queue.snapshot.filterLabel ?? HYBRID_PRIMARY_FILTER_LABELS[queue.snapshot.filterId]} · ${Math.max(1, queueOrderedItemIds.indexOf(currentItem.id) + 1)} из ${queueOrderedItemIds.length}`,
       },
       revision: catalogRevision,
     } : null;
@@ -14304,6 +14397,7 @@ function OverviewWorkspace({
             {embedded && (
               <CatalogTableFilterBar
                 filterId={workspaceFilterId}
+                mandatoryFilterId={mandatoryFilterId}
                 sectionScopeId={workspaceSectionScopeId}
                 items={items}
                 table={catalogTable}
@@ -14316,7 +14410,7 @@ function OverviewWorkspace({
             )}
             {!tableHeader && (
               <div className="pt-3">
-                <OverviewStatusBar filterId={workspaceFilterId} />
+                <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} />
               </div>
             )}
             <div className={cn(
@@ -14439,19 +14533,19 @@ export function CatalogWorkspace({
   stopListActive,
   viewMode,
   sectionScopeId,
+  stopListFilterId,
+  stopListSectionScopeId,
   resetSignal,
   onOverviewFilterChange,
   onViewModeChange,
   onSectionScopeChange,
+  onStopListFilterChange,
+  onStopListSectionScopeChange,
   onCatalogTabChange,
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
-  const { activeEditorItemId, items: sharedCatalogItems, setActiveEditorItemId } = useCatalogStore();
-  const positionsWorkspaceMode: PositionsWorkspaceMode =
-    new URLSearchParams(window.location.search).get("positionsWorkspace") === "editor-first"
-      ? "editor-first"
-      : "legacy";
+  const { activeEditorItemId, items: sharedCatalogItems } = useCatalogStore();
   const createdItems = readCreatedCatalogItems();
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
@@ -14520,6 +14614,7 @@ export function CatalogWorkspace({
         ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
         : buildSectionTree(catalogSections);
   const [flatQuery, setFlatQuery] = useState("");
+  const [stopListQuery, setStopListQuery] = useState("");
   const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
   const [overviewTableOpenSignal, setOverviewTableOpenSignal] = useState(0);
   const [retainedItemId, setRetainedItemId] = useState<string | null>(null);
@@ -14528,7 +14623,6 @@ export function CatalogWorkspace({
   // открыть и выделить тот же раздел; с «Все разделы» — оставить прежнее состояние
   // дерева нетронутым (PopulatedWorkspace сам восстановит его из localStorage).
   const [retainedSectionId, setRetainedSectionId] = useState<string | null>(null);
-  const [retainedStructureContext, setRetainedStructureContext] = useState<StructureReturnContext | null>(null);
   useEffect(() => {
     if (catalogTab !== "sections" || !retainedStructureHighlightItemId) return;
     const frame = window.requestAnimationFrame(() => setRetainedStructureHighlightItemId(null));
@@ -14575,9 +14669,6 @@ export function CatalogWorkspace({
       });
     }
   }, [activeEditorItemId, catalogTab, flatQuery, onSectionScopeChange, sectionScopeId, sharedCatalogItems, viewMode]);
-  useEffect(() => {
-    if (catalogTab === "sections" && retainedStructureContext) setRetainedStructureContext(null);
-  }, [catalogTab, retainedStructureContext]);
   const previousCatalogResetSignalRef = useRef(resetSignal);
   useEffect(() => {
     if (previousCatalogResetSignalRef.current === resetSignal) return;
@@ -14585,74 +14676,9 @@ export function CatalogWorkspace({
     setFlatQuery("");
     setRetainedItemId(null);
   }, [resetSignal]);
-  const returnToSections = (openItemId: string | null) => {
-    setFlatQuery("");
-    setRetainedItemId(openItemId);
-    onViewModeChange("sections");
-    onCatalogTabChange("sections");
-  };
-  const restoreStructureContext = (context: StructureReturnContext, openItemId: string | null) => {
-    if (context.sectionEditorTab) writeJsonRecord(CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY, context.sectionEditorTab);
-    if (context.treeQuery !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, context.treeQuery);
-    if (context.treeExpanded) writeJsonRecord(CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, context.treeExpanded);
-    if (context.treeScrollTop !== undefined) writeJsonRecord(CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, context.treeScrollTop);
-    if (context.compositionQuery !== undefined) writeJsonRecord(CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY, context.compositionQuery);
-    if (context.workspaceScrollTop !== undefined) writeJsonRecord(CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY, context.workspaceScrollTop);
-    if (context.sectionId) writeJsonRecord(CATALOG_ACTIVE_SECTION_STORAGE_KEY, context.sectionId);
-    setRetainedSectionId(context.sectionId);
-    setRetainedStructureContext(context);
-    setRetainedItemId(openItemId);
-    onSectionScopeChange(context.sectionId);
-    onViewModeChange("sections");
-    onCatalogTabChange("sections");
-  };
-  const overviewWorkspace = catalogPhase === "empty" ? null : (
-    <OverviewWorkspace
-      filterId={viewMode === "sections" ? "quick:all" : viewMode}
-      createdItems={createdItems}
-      onFilterChange={(id) => {
-        onViewModeChange(id);
-        onOverviewFilterChange(id);
-      }}
-      sectionScopeId={sectionScopeId}
-      onSectionScopeChange={(id) => {
-        overviewSectionScopeRef.current = id;
-        onSectionScopeChange(id);
-      }}
-      query={flatQuery}
-      onQueryChange={setFlatQuery}
-      onReturnToSections={returnToSections}
-      onRestoreStructureContext={restoreStructureContext}
-      onOpenSectionInSections={(sectionId, highlightedItemId = null) => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("positionId");
-        if (highlightedItemId) url.searchParams.set("highlightPositionId", highlightedItemId);
-        else url.searchParams.delete("highlightPositionId");
-        if (sectionId) url.searchParams.set("sectionId", sectionId);
-        else url.searchParams.delete("sectionId");
-        window.history.replaceState(window.history.state, "", url);
-        if (highlightedItemId) writeJsonRecord(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY, highlightedItemId);
-        else window.localStorage.removeItem(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY);
-        setActiveEditorItemId(null);
-        setRetainedItemId(null);
-        setRetainedStructureHighlightItemId(highlightedItemId);
-        setRetainedSectionId(sectionId);
-        onSectionScopeChange(sectionId);
-        onViewModeChange("sections");
-        onCatalogTabChange("sections");
-      }}
-      onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
-      pendingOpen={pendingOpen}
-      onPendingOpenHandled={() => {
-        if (pendingOpen?.mode !== "create") setPendingOpen(null);
-      }}
-      onCreateClosed={() => setPendingOpen(null)}
-      tableOpenSignal={overviewTableOpenSignal}
-      positionsWorkspaceMode={positionsWorkspaceMode}
-    />
-  );
   const structureWorkspace = catalogPhase === "has-items" ? (
     <PopulatedWorkspace
+      key="catalog-workspace"
       sections={sections}
       createdItems={createdItems}
       filterId={viewMode === "sections" ? "quick:all" : viewMode}
@@ -14662,7 +14688,7 @@ export function CatalogWorkspace({
       initialSelectedItemId={retainedItemId}
       initialHighlightItemId={retainedStructureHighlightItemId}
       initialSelectedSectionId={retainedSectionId}
-      initialReturnContext={retainedStructureContext}
+      initialReturnContext={null}
       pendingOpen={pendingOpen}
       tableOpenSignal={overviewTableOpenSignal}
       onFilterChange={(id) => {
@@ -14693,12 +14719,38 @@ export function CatalogWorkspace({
       onAddItem={() => onAdvancePhase("has-items")}
     />
   );
+  const stopListWorkspace = catalogPhase === "has-items" ? (
+    <PopulatedWorkspace
+      key="stop-list-workspace"
+      sections={sections}
+      createdItems={createdItems}
+      filterId={stopListFilterId}
+      scopeSectionId={stopListSectionScopeId}
+      query={stopListQuery}
+      resetSignal={resetSignal}
+      initialSelectedItemId={null}
+      initialSelectedSectionId={stopListSectionScopeId}
+      initialReturnContext={null}
+      tableOpenSignal={0}
+      onFilterChange={onStopListFilterChange}
+      onQueryChange={setStopListQuery}
+      onScopeChange={onStopListSectionScopeChange}
+      onOpenSectionInOverview={onStopListSectionScopeChange}
+      onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
+      mandatoryFilterId="status:stop"
+      titleOverride="Позиции на стопе"
+      allowPositionCreation={false}
+      workspaceKind="stop-list"
+    />
+  ) : (
+    <EmptyCatalog sections={sections} onAddItem={() => onAdvancePhase("has-items")} />
+  );
   const workspace = catalogPhase === "empty" ? (
       <CatalogEmptyState onCreateSection={() => setSectionDialogOpen(true)} />
     ) : catalogTab === "upsell" ? (
       <RecommendationsContextWorkspace />
     ) : stopListActive ? (
-      overviewWorkspace
+      stopListWorkspace
     ) : (
       structureWorkspace
     );

@@ -538,6 +538,8 @@ function AuthenticatedShell() {
     initialCatalogCreate ? "overview" : initialCatalogContext?.tab ?? "sections",
   );
   const [catalogStopListActive, setCatalogStopListActive] = useState(false);
+  const [catalogStopListFilterId, setCatalogStopListFilterId] = useState<OverviewFilterId>("quick:all");
+  const [catalogStopListSectionScopeId, setCatalogStopListSectionScopeId] = useState<string | null>(null);
   const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
     initialCatalogContext?.tab === "overview" ? initialCatalogContext.filterId : "quick:all",
   );
@@ -651,8 +653,6 @@ function AuthenticatedShell() {
       requestCatalogNavigation(() => {
         setCatalogStopListActive(true);
         setCatalogTab("overview");
-        setCatalogViewMode("status:stop");
-        setCatalogOverviewFilterId("status:stop");
       });
       return;
     }
@@ -985,10 +985,14 @@ function AuthenticatedShell() {
           stopListActive={catalogStopListActive}
           viewMode={catalogViewMode}
           sectionScopeId={catalogSectionScopeId}
+          stopListFilterId={catalogStopListFilterId}
+          stopListSectionScopeId={catalogStopListSectionScopeId}
           resetSignal={catalogResetSignal}
           onOverviewFilterChange={setCatalogOverviewFilterId}
           onViewModeChange={changeCatalogViewMode}
           onSectionScopeChange={setCatalogSectionScopeId}
+          onStopListFilterChange={setCatalogStopListFilterId}
+          onStopListSectionScopeChange={setCatalogStopListSectionScopeId}
           onCatalogTabChange={setCatalogTab}
           onRegisterCreateNavigationGuard={(guard) => {
             catalogCreateNavigationGuardRef.current = guard;
