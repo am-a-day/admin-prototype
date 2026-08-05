@@ -11264,60 +11264,75 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 
 const TABLE_COL = {
   description: "w-[87px]",
-  weight: "w-[58px]",
+  weight: "w-[104px]",
   kbju: "w-[62px]",
   translation: "w-[80px]",
   section: "w-[120px]",
   price: "w-[82px]",
+  tags: "w-[120px]",
+  stickers: "w-[112px]",
+  upsells: "w-[88px]",
   kebab: "w-[36px]",
 };
 type CatalogInformationColumnId =
-  | "position"
   | "section"
   | "description"
   | "weight"
   | "kbju"
   | "translation"
-  | "price";
+  | "price"
+  | "tags"
+  | "stickers"
+  | "upsells";
 const CATALOG_INFORMATION_COLUMN_IDS: CatalogInformationColumnId[] = [
-  "position",
   "section",
   "description",
   "weight",
   "kbju",
   "translation",
   "price",
+  "tags",
+  "stickers",
+  "upsells",
 ];
 const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, string> = {
-  position: "Позиция",
   section: "Раздел",
   description: "Описание",
-  weight: "Вес",
+  weight: "Вес или объём",
   kbju: "КБЖУ",
   translation: "Перевод",
   price: "Цена",
+  tags: "Теги",
+  stickers: "Стикеры",
+  upsells: "Допродажи",
 };
-const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v1");
+const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v2");
 const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   position: true,
   description: true,
   weight: true,
-  kbju: true,
-  translation: true,
+  kbju: false,
+  translation: false,
   section: false,
   price: true,
+  tags: false,
+  stickers: false,
+  upsells: false,
 };
 
 const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "reorder", enableHiding: false },
   { id: "selection", enableHiding: false },
-  { id: "position", accessorKey: "title" },
+  { id: "position", accessorKey: "title", enableHiding: false },
   { id: "section", accessorKey: "sectionName" },
   { id: "description", accessorKey: "hasDescription" },
   { id: "weight", accessorKey: "weightLabel" },
   { id: "kbju", accessorKey: "nutritionFilledCount" },
   { id: "translation", accessorKey: "translationFilledCount" },
   { id: "price", accessorKey: "price" },
+  { id: "tags", accessorKey: "tags" },
+  { id: "stickers", accessorKey: "guestLabels" },
+  { id: "upsells", accessorKey: "recommendationsCount" },
   { id: "actions", enableHiding: false },
 ];
 
@@ -11327,9 +11342,7 @@ function readTableColumnVisibility(): VisibilityState {
   CATALOG_INFORMATION_COLUMN_IDS.forEach((columnId) => {
     if (typeof stored[columnId] === "boolean") next[columnId] = stored[columnId];
   });
-  if (!CATALOG_INFORMATION_COLUMN_IDS.some((columnId) => next[columnId] !== false)) {
-    next.position = true;
-  }
+  next.position = true;
   return next;
 }
 
@@ -11471,6 +11484,9 @@ function TableHeaderRow({
             kbju: TABLE_COL.kbju,
             translation: TABLE_COL.translation,
             section: TABLE_COL.section,
+            tags: TABLE_COL.tags,
+            stickers: TABLE_COL.stickers,
+            upsells: TABLE_COL.upsells,
           };
           return (
             <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", widths[column.id])}>
@@ -11902,6 +11918,50 @@ function AuditDishRow({
                 >
                   {item.sectionName}
                 </button>
+              </span>
+            );
+          case "tags": {
+            const [firstTag, ...otherTags] = item.tags;
+            return (
+              <span
+                key={cell.id}
+                className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.tags)}
+                title={item.tags.length > 0 ? item.tags.join(", ") : "Теги не назначены"}
+              >
+                {firstTag ? (
+                  <>
+                    <span className="min-w-0 truncate whitespace-nowrap">{firstTag}</span>
+                    {otherTags.length > 0 && <span className="shrink-0 tabular-nums text-[#a6a09b]">+{otherTags.length}</span>}
+                  </>
+                ) : <span className="text-[#a6a09b]">—</span>}
+              </span>
+            );
+          }
+          case "stickers": {
+            const [firstSticker, ...otherStickers] = item.guestLabels;
+            return (
+              <span
+                key={cell.id}
+                className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.stickers)}
+                title={item.guestLabels.length > 0 ? item.guestLabels.join(", ") : "Стикеры не назначены"}
+              >
+                {firstSticker ? (
+                  <>
+                    <span className="min-w-0 truncate whitespace-nowrap">{firstSticker}</span>
+                    {otherStickers.length > 0 && <span className="shrink-0 tabular-nums text-[#a6a09b]">+{otherStickers.length}</span>}
+                  </>
+                ) : <span className="text-[#a6a09b]">—</span>}
+              </span>
+            );
+          }
+          case "upsells":
+            return (
+              <span
+                key={cell.id}
+                className={cn("flex shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]", TABLE_COL.upsells)}
+                title={`Назначено допродаж: ${item.recommendationsCount}`}
+              >
+                {item.recommendationsCount}
               </span>
             );
           case "price":
@@ -12430,7 +12490,7 @@ function CatalogTableFilterBar({
   const filterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
     ...group,
     ids: group.ids.filter(
-      (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all",
+      (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all" && id !== mandatoryFilterId,
     ),
   })).filter((group) => group.ids.length > 0);
   const pinnedQuickFilterIds = useMemo(() => {
@@ -12444,7 +12504,6 @@ function CatalogTableFilterBar({
     return ordered.filter((id) => id !== mandatoryFilterId && !activeFilterIds.includes(id));
   }, [activeFilterIds, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
-  const visibleInformationColumnCount = informationColumns.filter((column) => column.getIsVisible()).length;
 
   return (
     <div className="flex min-w-0 items-center gap-1" data-catalog-quick-filters>
@@ -12460,62 +12519,55 @@ function CatalogTableFilterBar({
         </DropdownMenu.Trigger>
         <DropdownContent align="start">
           <div className="max-h-[380px] min-w-[280px] overflow-y-auto">
-            {filterGroups.map((group, groupIndex) => (
-              <div key={group.label}>
-                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                {group.ids.map((id) => (
-                  <DropdownMenu.CheckboxItem
-                    key={id}
-                    checked={activeFilterIds.includes(id) || mandatoryFilterId === id}
-                    disabled={mandatoryFilterId === id}
-                    onCheckedChange={(checked) => mandatoryFilterId !== id && onActiveFilterChange(id, checked === true)}
-                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
-                      <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                    <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                  </DropdownMenu.CheckboxItem>
-                ))}
-              </div>
-            ))}
+            <DropdownMenu.RadioGroup
+              value={activeFilterIds[0] ?? ""}
+              onValueChange={(value) => onActiveFilterChange(value as OverviewFilterId, true)}
+            >
+              {filterGroups.map((group, groupIndex) => (
+                <div key={group.label}>
+                  {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                  <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                  {group.ids.map((id) => (
+                    <DropdownMenu.RadioItem
+                      key={id}
+                      value={id}
+                      className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                    >
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-[#d6d3d1] bg-white">
+                        <DropdownMenu.ItemIndicator><span className="block h-2 w-2 rounded-full bg-[#57534d]" /></DropdownMenu.ItemIndicator>
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                      <span className="shrink-0 text-[12px] font-normal tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                    </DropdownMenu.RadioItem>
+                  ))}
+                </div>
+              ))}
+            </DropdownMenu.RadioGroup>
           </div>
         </DropdownContent>
       </DropdownMenu.Root>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-          {mandatoryFilterId && (
-            <button
-              type="button"
-              onClick={() => setFilterMenuOpen(true)}
-              className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#d8d5d0] bg-[#f5f5f4] px-2.5 text-[12px] font-medium text-[#57534d] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <span>{HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]}</span>
-              <span className="tabular-nums text-[#9b948e]">{countByFilter("quick:all")}</span>
-            </button>
-          )}
           {activeFilterIds.map((id) => {
             return (
               <div
                 key={id}
-                className="inline-flex h-[30px] shrink-0 items-center rounded-[8px] border border-[#d8d5d0] bg-[#f5f5f4] text-[11px] font-medium text-[#57534d] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8]"
+                className="inline-flex h-[30px] shrink-0 items-center rounded-[8px] bg-[#f1f1ea] text-[12px] font-normal text-[#57534d] transition hover:bg-[#ecece5]"
               >
                 <button
                   type="button"
                   onClick={() => setFilterMenuOpen(true)}
-                  className="inline-flex h-full items-center gap-1 rounded-l-[7px] px-2 pr-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  className="inline-flex h-full items-center gap-1.5 rounded-l-[8px] pl-2 pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
                   <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                  <span className="tabular-nums text-[#9b948e]">{countByFilter(id)}</span>
+                  <span className="tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
                 </button>
                 <button
                   type="button"
                   aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[id]}»`}
                   onClick={() => onActiveFilterChange(id, false)}
-                  className="mr-1 flex h-4 w-4 items-center justify-center rounded-[4px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  className="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[#a6a09b] transition hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  <X size={12} weight="bold" />
+                  <XCircle size={14} weight="fill" />
                 </button>
               </div>
             );
@@ -12550,24 +12602,20 @@ function CatalogTableFilterBar({
         </Tooltip>
         <DropdownContent align="end">
           <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
-          {informationColumns.map((column) => {
-            const isLastVisible = column.getIsVisible() && visibleInformationColumnCount === 1;
-            return (
+          {informationColumns.map((column) => (
             <DropdownMenu.CheckboxItem
               key={column.id}
               checked={column.getIsVisible()}
-              disabled={isLastVisible}
               onCheckedChange={(checked) => column.toggleVisibility(checked === true)}
               onSelect={(event) => event.preventDefault()}
-              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-[#f5f5f4]"
+              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
                 <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
               </span>
               {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
             </DropdownMenu.CheckboxItem>
-            );
-          })}
+          ))}
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
           <DropdownMenu.Item
             onSelect={onResetColumns}
@@ -13391,7 +13439,7 @@ function OverviewWorkspace({
           && Object.prototype.hasOwnProperty.call(FILTER_PREDICATES, id),
         )
       : [];
-    if (restored.length > 0) return [...new Set(restored)];
+    if (restored.length > 0) return [restored.at(-1)!];
     return filterId !== "quick:all" && filterId !== mandatoryFilterId ? [filterId] : [];
   });
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
@@ -13443,7 +13491,6 @@ function OverviewWorkspace({
   const handleColumnVisibilityChange = useCallback((updater: Updater<VisibilityState>) => {
     setColumnVisibility((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
-      if (CATALOG_INFORMATION_COLUMN_IDS.some((columnId) => next[columnId] !== false)) return next;
       return { ...next, position: true };
     });
   }, []);
@@ -13508,11 +13555,9 @@ function OverviewWorkspace({
     else setPriceSort(value);
   };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
-    const next = active
-      ? activeFilterIds.includes(id) ? activeFilterIds : [...activeFilterIds, id]
-      : activeFilterIds.filter((activeId) => activeId !== id);
+    const next = active ? [id] : activeFilterIds[0] === id ? [] : activeFilterIds;
     setActiveFilterIds(next);
-    setWorkspaceFilterId(next.at(-1) ?? "quick:all");
+    setWorkspaceFilterId(next[0] ?? "quick:all");
     setSelectedIds(new Set());
   };
   const scopeSection = useMemo(
@@ -13521,10 +13566,8 @@ function OverviewWorkspace({
   );
   const scopeIds = useMemo(() => getSectionScopeIds(workspaceSectionScopeId), [workspaceSectionScopeId]);
   const filtered = useMemo(() => {
-    let nextItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-    activeFilterIds.forEach((id) => {
-      nextItems = getOverviewItems(id, nextItems);
-    });
+    const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
+    const nextItems = activeFilterIds[0] ? getOverviewItems(activeFilterIds[0], baseItems) : baseItems;
     return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
   }, [activeFilterIds, items, mandatoryFilterId, scopeIds]);
   const normalizedQuery = useMemo(() => workspaceQuery.trim().toLowerCase(), [workspaceQuery]);
@@ -13576,11 +13619,8 @@ function OverviewWorkspace({
       : filtered,
     [filtered, normalizedPanelQuery],
   );
-  const activeDisplayFilterId = activeFilterIds.at(-1) ?? mandatoryFilterId ?? "quick:all";
-  const activeSelectionLabel = [mandatoryFilterId, ...activeFilterIds]
-    .filter((id): id is OverviewFilterId => Boolean(id))
-    .map((id) => HYBRID_PRIMARY_FILTER_LABELS[id])
-    .join(" · ");
+  const activeDisplayFilterId = activeFilterIds[0] ?? mandatoryFilterId ?? "quick:all";
+  const activeSelectionLabel = HYBRID_PRIMARY_FILTER_LABELS[activeDisplayFilterId];
   const statusMeta = OVERVIEW_FILTER_META[activeDisplayFilterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
   const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
@@ -13621,7 +13661,9 @@ function OverviewWorkspace({
   const handlePriceSortChange = () => {
     setWorkspacePriceSort((current) => getNextPriceSort(current));
   };
-  const emptyTitle = titleOverride ?? getFilterPanelTitle(activeDisplayFilterId);
+  const emptyTitle = activeFilterIds.length > 0
+    ? statusMeta.emptyTitle
+    : titleOverride ?? statusMeta.emptyTitle;
   const emptyText = scopeSection
     ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[activeDisplayFilterId].label.toLowerCase()}`
     : statusMeta.emptyText;
