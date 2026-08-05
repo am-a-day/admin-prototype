@@ -80,6 +80,7 @@ import {
   Prohibit,
   ShoppingCartSimple,
   SlidersHorizontal,
+  Sparkle,
   StopCircle,
   TextTSlash,
   Trash,
@@ -104,11 +105,15 @@ import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import {
+  CATALOG_RECOMMENDATION_LIMIT,
   CATALOG_UPSELL_STORAGE_KEY,
+  buildAutomaticRecommendations,
   resolveRecommendationIds,
+  resolveRecommendationSource,
   writeCatalogUpsellState,
   type CatalogItemUpsellState,
   type CatalogLocalizedValue,
+  type CatalogRecommendationSource,
   type CatalogUpsellStateByItem,
 } from "@/lib/catalog-upsell";
 
@@ -1799,48 +1804,6 @@ function CatalogSidePanel({
   );
 }
 
-function CatalogPanelRow({
-  row,
-  selected,
-  onClick,
-}: {
-  row: PanelRow;
-  selected?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "group flex h-8 w-full items-center rounded-xl border px-[6px] pr-2 text-left text-[13px] font-medium leading-[18px] transition",
-        selected
-          ? "rounded-lg border-[#e7e5e4] bg-white text-[#292524] shadow-[0_0_2px_rgba(0,0,0,0.09)]"
-          : "border-transparent text-[#79716b] hover:bg-[#f1f1ea]",
-      )}
-    >
-      {(row.icon || row.imageUrl) && (
-        <span className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#e6e6db] text-[12px]">
-          {row.imageUrl ? (
-            <img src={row.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-          ) : (
-            row.icon
-          )}
-        </span>
-      )}
-      <span className="min-w-0 flex-1 truncate">{row.label}</span>
-      {typeof row.count === "number" && (
-        <span className={cn(
-          "ml-2 shrink-0 text-[12px] font-medium",
-          selected || (row.accent && (row.count ?? 0) > 0) ? "text-[#57534d]" : "text-[#a8a29e]",
-        )}>
-          {row.count}
-        </span>
-      )}
-    </button>
-  );
-}
-
 function CatalogTreePanel({
   sections,
   archivedSections = [],
@@ -2654,35 +2617,6 @@ function getHybridFilterIcon(id: OverviewFilterId) {
   return <FunnelSimple size={16} weight="regular" />;
 }
 
-function CatalogContextPanel({
-  selectedId,
-  onSelect,
-}: {
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <CatalogSidePanel title="Разделы" actionLabel="Добавить раздел">
-      <div className="space-y-1">
-        {SECTIONS_WITH_ITEMS.map((section) => (
-          <CatalogPanelRow
-            key={section.id}
-            row={{
-              id: section.id,
-              label: section.name,
-              count: catalogItems.filter((item) => item.sectionId === section.id).length,
-              imageUrl: section.imageUrl,
-              icon: section.imageUrl ? undefined : "🍽️",
-            }}
-            selected={selectedId === section.id}
-            onClick={() => onSelect(section.id)}
-          />
-        ))}
-      </div>
-    </CatalogSidePanel>
-  );
-}
-
 // ── Empty catalog: skeleton + left panel (phase-aware) ────────────────────────
 
 function EmptyCatalog({
@@ -2954,14 +2888,6 @@ function getLocalizedValueLabels(values: LocalizedValue[], language: LanguageCod
   return values
     .map((value) => getLocalizedValueLabel(value, language))
     .filter((value): value is string => Boolean(value));
-}
-
-function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number) {
-  if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
-  const next = [...items];
-  const [moved] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, moved);
-  return next;
 }
 
 function getItemSearchText(item: CatalogItem) {
@@ -3798,12 +3724,13 @@ function ItemSelectorDialog({
   currentItem: CatalogItem;
   items: CatalogItem[];
   selectedIds: string[];
-  onAdd: (ids: string[]) => void;
+  onAdd: (ids: string[], reciprocal: boolean) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [sectionFilterId, setSectionFilterId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [reciprocal, setReciprocal] = useState(false);
   const selectedSet = new Set(selectedIds);
   const normalizedQuery = query.trim().toLowerCase();
   const baseItems = items.filter((candidate) =>
@@ -3851,7 +3778,7 @@ function ItemSelectorDialog({
   const submit = () => {
     const next = checkedIds.filter((id) => id !== currentItem.id && !selectedSet.has(id));
     if (next.length === 0) return;
-    onAdd(next);
+    onAdd(next, reciprocal);
     onClose();
   };
 
@@ -3948,19 +3875,33 @@ function ItemSelectorDialog({
               <div className="px-3 py-6 text-center text-[13px] text-[#79716b]">Подходящие позиции не найдены</div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2 border-t border-[#eceae7] px-4 py-3">
-            <div className="min-w-0 flex-1 text-[13px] text-[#79716b]">Выбрано: {checkedCount}</div>
-            <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
-              Отмена
-            </button>
-            <button
-              type="button"
-              disabled={checkedCount === 0}
-              onClick={submit}
-              className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]"
-            >
-              {checkedCount === 0 ? "Добавить" : `Добавить ${checkedCount}`}
-            </button>
+          <div className="shrink-0 border-t border-[#eceae7] px-4 py-3">
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-[8px] py-1 text-[13px] text-[#44403b]">
+              <input
+                type="checkbox"
+                checked={reciprocal}
+                onChange={(event) => setReciprocal(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded-[4px] border border-[#d6d3d1] accent-[#292524]"
+              />
+              <span>
+                <span className="block font-medium">Рекомендовать позиции друг друга</span>
+                <span className="mt-0.5 block text-[12px] leading-4 text-[#79716b]">Создаст две независимые связи, порядок каждой настраивается отдельно.</span>
+              </span>
+            </label>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="min-w-0 flex-1 text-[13px] text-[#79716b]">Выбрано: {checkedCount}</div>
+              <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={checkedCount === 0}
+                onClick={submit}
+                className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]"
+              >
+                {checkedCount === 0 ? "Добавить" : `Добавить ${checkedCount}`}
+              </button>
+            </div>
           </div>
         </div>
       </div>,
@@ -4107,109 +4048,251 @@ function PromoAddButton({ label, onClick }: { label: string; onClick: () => void
   );
 }
 
+function SortableRecommendationRow({
+  id,
+  children,
+}: {
+  id: string;
+  children: (args: {
+    setActivatorNodeRef: (element: HTMLElement | null) => void;
+    dragProps: Record<string, unknown>;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, transition: DND_TRANSITION });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: reducedMotion ? undefined : transition,
+        zIndex: isDragging ? 2 : undefined,
+      }}
+      className={cn(
+        "group relative flex h-[30px] items-center gap-2 rounded-[8px] transition-colors hover:bg-[#f8f7f4]",
+        isDragging && "cursor-grabbing bg-white opacity-80 shadow-[0_8px_24px_rgba(41,37,36,0.12)]",
+      )}
+    >
+      {children({
+        setActivatorNodeRef,
+        dragProps: { ...attributes, ...listeners },
+        isDragging,
+      })}
+    </div>
+  );
+}
+
 export function PromoRecommendationsCard({
   item,
   allItems,
   upsell,
   onChange,
+  onManualAdd,
+  onGenerate,
+  isReciprocal,
+  generationBusy = false,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
   upsell: CatalogItemUpsellState;
   onChange: (next: CatalogItemUpsellState) => void;
+  onManualAdd?: (ids: string[], reciprocal: boolean) => void;
+  onGenerate?: (mode: "supplement" | "regenerate") => void;
+  isReciprocal?: (recommendationId: string) => boolean;
+  generationBusy?: boolean;
 }) {
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+  const recommendationSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const recommendationIds = resolveRecommendationIds(item, allItems, upsell);
   const recommendations = recommendationIds
     .map((id) => allItems.find((candidate) => candidate.id === id))
     .filter((candidate): candidate is CatalogItem => Boolean(candidate));
-  const setRecommendationIds = (ids: string[]) => onChange({ ...upsell, recommendationIds: ids });
-  const reorderRecommendation = (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    setRecommendationIds(moveArrayItem(recommendationIds, fromIndex, toIndex));
+  const recommendationSources = Object.fromEntries(
+    recommendationIds.map((id) => [id, resolveRecommendationSource(upsell, id)]),
+  ) as Record<string, CatalogRecommendationSource>;
+  const automaticCount = recommendationIds.filter((id) => recommendationSources[id] === "automatic").length;
+  const setRecommendationIds = (
+    ids: string[],
+    sources: Record<string, CatalogRecommendationSource> = recommendationSources,
+  ) => onChange({
+    ...upsell,
+    recommendationIds: ids,
+    recommendationSources: Object.fromEntries(ids.map((id) => [id, sources[id] ?? "manual"])),
+  });
+  const handleRecommendationDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const fromIndex = recommendationIds.indexOf(String(active.id));
+    const toIndex = recommendationIds.indexOf(String(over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+    setRecommendationIds(arrayMove(recommendationIds, fromIndex, toIndex));
   };
-  const handleDrop = (toIndex: number) => {
-    if (dragIndex == null) return;
-    reorderRecommendation(dragIndex, toIndex);
-    setDragIndex(null);
+  const addManually = (ids: string[], reciprocal: boolean) => {
+    if (onManualAdd) {
+      onManualAdd(ids, reciprocal);
+      return;
+    }
+    const additions = ids.filter((id) => id !== item.id && !recommendationIds.includes(id));
+    setRecommendationIds(
+      [...recommendationIds, ...additions],
+      { ...recommendationSources, ...Object.fromEntries(additions.map((id) => [id, "manual" as const])) },
+    );
   };
+  const generate = (mode: "supplement" | "regenerate") => {
+    if (onGenerate) {
+      onGenerate(mode);
+      return;
+    }
+    const baseIds = mode === "regenerate"
+      ? recommendationIds.filter((id) => recommendationSources[id] === "manual")
+      : recommendationIds;
+    const additions = buildAutomaticRecommendations(item, allItems, baseIds);
+    setRecommendationIds(
+      [...baseIds, ...additions.map((entry) => entry.id)],
+      {
+        ...Object.fromEntries(baseIds.map((id) => [id, recommendationSources[id] ?? "manual"])),
+        ...Object.fromEntries(additions.map((entry) => [entry.id, "automatic" as const])),
+      },
+    );
+  };
+  const localActionLabel = recommendations.length === 0
+    ? "Подобрать для этой позиции"
+    : "Дополнить автоматически";
 
   return (
     <>
-      <div data-upsell-card="recommendations" className="border-t border-[#e7e5e4]">
-        <div className="px-4 pb-2 pt-4">
-          <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Рекомендации</h3>
-          <p className="text-[13px] leading-5 text-[#79716b]">показываются гостю при открытии позиции</p>
+      <div data-upsell-card="recommendations" className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+        <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4">
+          <div>
+            <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Рекомендуемые позиции</h3>
+            <p className="text-[13px] leading-5 text-[#79716b]">показываются гостю при открытии позиции</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-[#f5f5f4] px-2 py-1 text-[11px] tabular-nums text-[#79716b]">
+            {recommendations.length} из {CATALOG_RECOMMENDATION_LIMIT}
+          </span>
         </div>
         {recommendations.length > 0 ? (
-          <div className="space-y-2 px-4 pb-3">
-            {recommendations.map((recommended, index) => (
-              <div
-                key={recommended.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  handleDrop(index);
-                }}
-                className={cn(
-                  "group flex h-[30px] items-center gap-2 rounded-[8px] transition hover:bg-[#f8f7f4]",
-                  dragIndex === index && "bg-[#f5f5f4] opacity-70",
-                )}
-              >
-                <Tooltip label="Изменить порядок" side="top">
-                  <button
-                    type="button"
-                    draggable
-                    aria-label="Изменить порядок рекомендации"
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      setDragIndex(index);
-                    }}
-                    onDragEnd={() => setDragIndex(null)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        reorderRecommendation(index, Math.max(0, index - 1));
-                      }
-                      if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        reorderRecommendation(index, Math.min(recommendations.length - 1, index + 1));
-                      }
-                    }}
-                    className="flex h-[30px] w-5 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <DotsSixVertical size={16} />
-                  </button>
-                </Tooltip>
-                <CatalogThumb item={recommended} size={30} />
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#292524]">{recommended.title}</span>
-                <Tooltip label="Удалить рекомендацию" side="top">
-                  <button
-                    type="button"
-                    aria-label="Удалить рекомендацию"
-                    onClick={() => setRecommendationIds(recommendationIds.filter((id) => id !== recommended.id))}
-                    className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100"
-                  >
-                    <XCircle size={18} />
-                  </button>
-                </Tooltip>
+          <DndContext
+            sensors={recommendationSensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictTableSortToVerticalAxis]}
+            onDragEnd={handleRecommendationDragEnd}
+          >
+            <SortableContext items={recommendationIds} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2 px-4 pb-3">
+                {recommendations.map((recommended) => (
+                  <SortableRecommendationRow key={recommended.id} id={recommended.id}>
+                    {({ setActivatorNodeRef, dragProps }) => (
+                      <>
+                        <Tooltip label="Изменить порядок" side="top">
+                          <button
+                            ref={setActivatorNodeRef}
+                            type="button"
+                            aria-label={`Изменить порядок рекомендации «${recommended.title}»`}
+                            {...dragProps}
+                            className="flex h-[30px] w-5 shrink-0 touch-none cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                          >
+                            <DotsSixVertical size={16} />
+                          </button>
+                        </Tooltip>
+                        <CatalogThumb item={recommended} size={30} />
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#292524]">{recommended.title}</span>
+                        <span className={cn(
+                          "shrink-0 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium",
+                          recommendationSources[recommended.id] === "automatic"
+                            ? "bg-[#f0fdf4] text-[#15803d]"
+                            : "bg-[#f5f5f4] text-[#79716b]",
+                        )}>
+                          {recommendationSources[recommended.id] === "automatic" ? "Автоматически" : "Вручную"}
+                        </span>
+                        {isReciprocal?.(recommended.id) && (
+                          <Tooltip label="Эти позиции рекомендуются друг у друга" side="top">
+                            <span className="shrink-0 cursor-default rounded-[5px] bg-[#eef2ff] px-1.5 py-0.5 text-[10px] font-medium text-[#4f46e5]">
+                              ↔ Взаимная
+                            </span>
+                          </Tooltip>
+                        )}
+                        <Tooltip label="Удалить рекомендацию" side="top">
+                          <button
+                            type="button"
+                            aria-label={`Удалить рекомендацию «${recommended.title}»`}
+                            onClick={() => setRecommendationIds(recommendationIds.filter((id) => id !== recommended.id))}
+                            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100"
+                          >
+                            <XCircle size={18} />
+                          </button>
+                        </Tooltip>
+                      </>
+                    )}
+                  </SortableRecommendationRow>
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         ) : (
-          <div className="px-4 pb-3 text-[13px] leading-5 text-[#a8a29e]">
-            Рекомендации не добавлены
+          <div className="px-4 pb-4 pt-1">
+            <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5 text-center">
+              <p className="text-[13px] font-medium text-[#57534d]">Рекомендуемые позиции не настроены</p>
+              <p className="mt-1 text-[12px] leading-4 text-[#8a8179]">Добавьте позиции вручную или запустите подбор только для этой позиции.</p>
+            </div>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setSelectorOpen(true)}
-          className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-        >
-          <PlusCircle size={16} className="text-[#79716b]" />
-          Добавить рекомендацию
-        </button>
+        <div className="border-t border-[#eceae7]">
+          <div className="flex items-center">
+            <button
+              type="button"
+              disabled={generationBusy || recommendations.length >= CATALOG_RECOMMENDATION_LIMIT}
+              onClick={() => generate("supplement")}
+              className="flex h-10 min-w-0 flex-1 items-center gap-2 px-4 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:text-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+            >
+              <Asterisk size={15} weight="bold" className="shrink-0" />
+              <span className="truncate">{generationBusy ? "Подбираем…" : localActionLabel}</span>
+            </button>
+            {automaticCount > 0 && (
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Дополнительные действия"
+                    className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <DotsThree size={17} weight="bold" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownContent align="end">
+                  <DropdownMenu.Item
+                    onSelect={() => setRegenerateConfirmOpen(true)}
+                    className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    Подобрать заново
+                  </DropdownMenu.Item>
+                </DropdownContent>
+              </DropdownMenu.Root>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={recommendations.length >= CATALOG_RECOMMENDATION_LIMIT}
+            onClick={() => setSelectorOpen(true)}
+            className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f8f7f4] hover:text-[#44403b] disabled:cursor-not-allowed disabled:text-[#a8a29e] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          >
+            <PlusCircle size={16} />
+            Добавить рекомендацию вручную
+          </button>
+        </div>
       </div>
 
       {selectorOpen && (
@@ -4217,9 +4300,35 @@ export function PromoRecommendationsCard({
           currentItem={item}
           items={allItems}
           selectedIds={recommendationIds}
-          onAdd={(ids) => setRecommendationIds([...recommendationIds, ...ids.filter((id) => !recommendationIds.includes(id) && id !== item.id)])}
+          onAdd={addManually}
           onClose={() => setSelectorOpen(false)}
         />
+      )}
+      {regenerateConfirmOpen && createPortal(
+        <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Подобрать рекомендуемые позиции заново">
+          <div className="w-full max-w-[400px] rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+            <div className="px-4 py-4">
+              <h3 className="text-[14px] font-medium text-[#292524]">Подобрать заново?</h3>
+              <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+                Автоматически созданные связи этой позиции будут заменены. Добавленные вручную рекомендации сохранятся.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
+              <button type="button" onClick={() => setRegenerateConfirmOpen(false)} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">Отмена</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRegenerateConfirmOpen(false);
+                  generate("regenerate");
+                }}
+                className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+              >
+                Подобрать заново
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   );
@@ -12747,16 +12856,18 @@ function CatalogScopeSelect({
   value,
   onChange,
   onReset,
+  allOptionLabel,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   onReset: () => void;
+  allOptionLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = catalogSections.find((section) => section.id === value) ?? null;
   const canReset = value !== null;
-  const selectedLabel = selected?.name ?? "Выбрать раздел";
+  const selectedLabel = selected?.name ?? allOptionLabel ?? "Выбрать раздел";
   const normalizedQuery = query.trim().toLowerCase();
   const sectionTree = useMemo(() => buildSectionTree(catalogSections), []);
   // Счётчик раздела включает позиции всех его подразделов (как в дереве «Разделов»).
@@ -12814,7 +12925,7 @@ function CatalogScopeSelect({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            aria-label={selected ? `Выбран раздел: ${selectedLabel}` : "Выбрать раздел"}
+            aria-label={selected || allOptionLabel ? `Выбран раздел: ${selectedLabel}` : "Выбрать раздел"}
             className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-white text-[#57534d]">
@@ -12846,7 +12957,24 @@ function CatalogScopeSelect({
             <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Найти раздел" autoFocus className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
           </label>
           <div className="max-h-[360px] overflow-y-auto">
-            {canReset && (
+            {allOptionLabel ? (
+              <>
+                <DropdownMenu.Item
+                  onSelect={onReset}
+                  className={cn(
+                    "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+                    value === null && "bg-[#f3f3ed]",
+                  )}
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-[#f5f5f4] text-[#57534d]">
+                    <List size={14} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{allOptionLabel}</span>
+                  {value === null && <Check size={13} className="shrink-0 text-[#57534d]" />}
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              </>
+            ) : canReset && (
               <>
                 <DropdownActionItem onSelect={onReset}>Показать всё меню</DropdownActionItem>
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
@@ -14696,18 +14824,451 @@ function OverviewWorkspace({
   );
 }
 
-function RecommendationsContextWorkspace() {
-  const [selectedContextId, setSelectedContextId] = useState(SECTIONS_WITH_ITEMS[0]?.id ?? "all");
+const CATALOG_RECIPROCAL_HINT_STORAGE_KEY = catalogStorageKey("recommendations.reciprocalHintDismissed.v1");
+
+function materializeRecommendationState(
+  item: CatalogItem,
+  items: CatalogItem[],
+  state: CatalogItemUpsellState | undefined,
+): CatalogItemUpsellState {
+  const recommendationIds = resolveRecommendationIds(item, items, state);
+  return {
+    ...(state ?? {}),
+    recommendationIds,
+    recommendationSources: Object.fromEntries(
+      recommendationIds.map((id) => [id, resolveRecommendationSource(state, id)]),
+    ),
+  };
+}
+
+function addManualRecommendationLinks(
+  stateByItem: CatalogUpsellStateByItem,
+  sourceItem: CatalogItem,
+  targetIds: string[],
+  reciprocal: boolean,
+  items: CatalogItem[],
+) {
+  const next = { ...stateByItem };
+  const sourceState = materializeRecommendationState(sourceItem, items, next[sourceItem.id]);
+  const sourceIds = [...(sourceState.recommendationIds ?? [])];
+  const sourceSources = { ...(sourceState.recommendationSources ?? {}) };
+  const addedIds: string[] = [];
+
+  targetIds.forEach((targetId) => {
+    if (targetId === sourceItem.id || sourceIds.includes(targetId) || sourceIds.length >= CATALOG_RECOMMENDATION_LIMIT) return;
+    if (reciprocal) {
+      const targetItem = items.find((candidate) => candidate.id === targetId);
+      if (!targetItem) return;
+      const targetState = materializeRecommendationState(targetItem, items, next[targetId]);
+      const targetRecommendationIds = targetState.recommendationIds ?? [];
+      if (!targetRecommendationIds.includes(sourceItem.id) && targetRecommendationIds.length >= CATALOG_RECOMMENDATION_LIMIT) return;
+    }
+    sourceIds.push(targetId);
+    addedIds.push(targetId);
+    sourceSources[targetId] = "manual";
+  });
+  next[sourceItem.id] = { ...sourceState, recommendationIds: sourceIds, recommendationSources: sourceSources };
+
+  if (!reciprocal) return { state: next, addedCount: addedIds.length, reciprocalCount: 0 };
+  let reciprocalCount = 0;
+  addedIds.forEach((targetId) => {
+    const targetItem = items.find((candidate) => candidate.id === targetId);
+    if (!targetItem) return;
+    const targetState = materializeRecommendationState(targetItem, items, next[targetId]);
+    const targetRecommendationIds = [...(targetState.recommendationIds ?? [])];
+    if (targetRecommendationIds.includes(sourceItem.id)) {
+      reciprocalCount += 1;
+      return;
+    }
+    if (targetRecommendationIds.length >= CATALOG_RECOMMENDATION_LIMIT) return;
+    targetRecommendationIds.push(sourceItem.id);
+    next[targetId] = {
+      ...targetState,
+      recommendationIds: targetRecommendationIds,
+      recommendationSources: { ...(targetState.recommendationSources ?? {}), [sourceItem.id]: "manual" },
+    };
+    reciprocalCount += 1;
+  });
+  return { state: next, addedCount: addedIds.length, reciprocalCount };
+}
+
+function generateRecommendationLinks(
+  stateByItem: CatalogUpsellStateByItem,
+  sourceItem: CatalogItem,
+  items: CatalogItem[],
+  mode: "supplement" | "regenerate",
+) {
+  const next = { ...stateByItem };
+  const sourceState = materializeRecommendationState(sourceItem, items, next[sourceItem.id]);
+  const currentIds = sourceState.recommendationIds ?? [];
+  const currentSources = sourceState.recommendationSources ?? {};
+  const baseIds = mode === "regenerate"
+    ? currentIds.filter((id) => currentSources[id] === "manual")
+    : currentIds;
+  const additions = buildAutomaticRecommendations(sourceItem, items, baseIds);
+  const nextSourceIds = [...baseIds, ...additions.map((entry) => entry.id)];
+  next[sourceItem.id] = {
+    ...sourceState,
+    recommendationIds: nextSourceIds,
+    recommendationSources: {
+      ...Object.fromEntries(baseIds.map((id) => [id, currentSources[id] ?? "manual"])),
+      ...Object.fromEntries(additions.map((entry) => [entry.id, "automatic" as const])),
+    },
+  };
+
+  additions.filter((entry) => entry.reciprocal).forEach((entry) => {
+    const targetItem = items.find((candidate) => candidate.id === entry.id);
+    if (!targetItem) return;
+    const targetState = materializeRecommendationState(targetItem, items, next[targetItem.id]);
+    const targetIds = targetState.recommendationIds ?? [];
+    if (targetIds.includes(sourceItem.id) || targetIds.length >= CATALOG_RECOMMENDATION_LIMIT) return;
+    next[targetItem.id] = {
+      ...targetState,
+      recommendationIds: [...targetIds, sourceItem.id],
+      recommendationSources: { ...(targetState.recommendationSources ?? {}), [sourceItem.id]: "automatic" },
+    };
+  });
+
+  return { state: next, addedCount: additions.length };
+}
+
+type BulkRecommendationRunState = {
+  stage: "setup" | "running" | "done";
+  targetIds: string[];
+  processed: number;
+  updated: number;
+  skipped: number;
+};
+
+export function RecommendationsContextWorkspace({
+  selectedDishId,
+  setSelectedDishId,
+  setUpsellSurface,
+  setUpsellFocused,
+}: {
+  selectedDishId?: string;
+  setSelectedDishId?: (id: string) => void;
+  setUpsellSurface?: (surface: "home" | "dish" | "cart") => void;
+  setUpsellFocused?: (focused: boolean) => void;
+} = {}) {
+  const { items, setActiveEditorItemId } = useCatalogStore();
+  const { registerChange } = usePublish();
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
+    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
+  );
+  const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(() => {
+    const stored = readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {});
+    return items.find((item) => item.id === selectedDishId)?.id
+      ?? items.find((item) => item.status === "active" && resolveRecommendationIds(item, items, stored[item.id]).length === 0)?.id
+      ?? items.find((item) => item.status === "active")?.id
+      ?? items[0]?.id
+      ?? null;
+  });
+  const [hintDismissed, setHintDismissed] = useState(() =>
+    readJsonRecord<boolean>(CATALOG_RECIPROCAL_HINT_STORAGE_KEY, false),
+  );
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkScope, setBulkScope] = useState<"all" | "section">("all");
+  const [bulkRun, setBulkRun] = useState<BulkRecommendationRunState>({
+    stage: "setup",
+    targetIds: [],
+    processed: 0,
+    updated: 0,
+    skipped: 0,
+  });
+  const [feedback, setFeedback] = useState("");
+  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const visibleItems = useMemo(() => items.filter((item) => (
+    (!scopeIds || scopeIds.has(item.sectionId))
+    && (!normalizedQuery || getItemSearchText(item).includes(normalizedQuery))
+  )), [items, normalizedQuery, scopeIds]);
+  const selectedItem = items.find((item) => item.id === selectedItemId) ?? null;
+  const selectedSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
+
+  const getBulkTargetIds = useCallback((scope: "all" | "section") => {
+    const targetScopeIds = scope === "section" ? getSectionScopeIds(sectionScopeId) : null;
+    return items
+      .filter((item) => item.status === "active")
+      .filter((item) => !targetScopeIds || targetScopeIds.has(item.sectionId))
+      .filter((item) => resolveRecommendationIds(item, items, upsellByItem[item.id]).length === 0)
+      .map((item) => item.id);
+  }, [items, sectionScopeId, upsellByItem]);
+  const allBulkCount = getBulkTargetIds("all").length;
+  const sectionBulkCount = sectionScopeId ? getBulkTargetIds("section").length : 0;
+
+  useEffect(() => {
+    writeCatalogUpsellState(upsellByItem);
+  }, [upsellByItem]);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setActiveEditorItemId(null);
+      setUpsellFocused?.(false);
+      return;
+    }
+    setSelectedDishId?.(selectedItem.id);
+    setActiveEditorItemId(selectedItem.id);
+    setUpsellSurface?.("dish");
+    setUpsellFocused?.(true);
+    return () => {
+      setActiveEditorItemId(null);
+      setUpsellFocused?.(false);
+    };
+  }, [selectedItem?.id, setActiveEditorItemId, setSelectedDishId, setUpsellFocused, setUpsellSurface]);
+
+  useEffect(() => {
+    if (selectedItemId && visibleItems.some((item) => item.id === selectedItemId)) return;
+    setSelectedItemId(visibleItems[0]?.id ?? null);
+  }, [selectedItemId, visibleItems]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(""), 2400);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
+  useEffect(() => {
+    if (!bulkOpen || bulkRun.stage !== "running") return;
+    const chunkIds = bulkRun.targetIds.slice(bulkRun.processed, bulkRun.processed + 8);
+    if (chunkIds.length === 0) {
+      setBulkRun((current) => ({ ...current, stage: "done" }));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      let nextState = upsellByItem;
+      let updated = 0;
+      let skipped = 0;
+      chunkIds.forEach((id) => {
+        const item = items.find((candidate) => candidate.id === id);
+        if (!item) {
+          skipped += 1;
+          return;
+        }
+        const result = generateRecommendationLinks(nextState, item, items, "supplement");
+        nextState = result.state;
+        if (result.addedCount > 0) updated += 1;
+        else skipped += 1;
+      });
+      setUpsellByItem(nextState);
+      setBulkRun((current) => {
+        const processed = current.processed + chunkIds.length;
+        return {
+          ...current,
+          stage: processed >= current.targetIds.length ? "done" : "running",
+          processed,
+          updated: current.updated + updated,
+          skipped: current.skipped + skipped,
+        };
+      });
+    }, 70);
+    return () => window.clearTimeout(timer);
+  }, [bulkOpen, bulkRun, items, upsellByItem]);
+
+  const openBulkDialog = () => {
+    setBulkScope(sectionScopeId ? "section" : "all");
+    setBulkRun({ stage: "setup", targetIds: [], processed: 0, updated: 0, skipped: 0 });
+    setBulkOpen(true);
+  };
+  const startBulkGeneration = () => {
+    const targetIds = getBulkTargetIds(bulkScope);
+    setBulkRun({
+      stage: targetIds.length > 0 ? "running" : "done",
+      targetIds,
+      processed: 0,
+      updated: 0,
+      skipped: 0,
+    });
+    if (targetIds.length > 0) registerChange("catalog");
+  };
+  const updateSelectedState = (next: CatalogItemUpsellState) => {
+    if (!selectedItem) return;
+    setUpsellByItem((current) => ({ ...current, [selectedItem.id]: next }));
+    registerChange("catalog");
+  };
+  const addManualLinks = (ids: string[], reciprocal: boolean) => {
+    if (!selectedItem) return;
+    const result = addManualRecommendationLinks(upsellByItem, selectedItem, ids, reciprocal, items);
+    setUpsellByItem(result.state);
+    registerChange("catalog");
+    setFeedback(
+      result.addedCount === 0
+        ? reciprocal
+          ? "Не удалось создать взаимную связь: достигнут лимит рекомендаций"
+          : "Выбранные позиции уже добавлены"
+        : reciprocal && result.reciprocalCount === result.addedCount
+          ? "Добавлены две независимые взаимные связи"
+          : "Рекомендуемые позиции добавлены",
+    );
+  };
+  const generateForSelected = (mode: "supplement" | "regenerate") => {
+    if (!selectedItem) return;
+    const result = generateRecommendationLinks(upsellByItem, selectedItem, items, mode);
+    setUpsellByItem(result.state);
+    registerChange("catalog");
+    setFeedback(result.addedCount > 0 ? `Добавлено автоматически: ${result.addedCount}` : "Подходящих позиций для дополнения нет");
+  };
+  const isSelectedLinkReciprocal = (targetId: string) => {
+    if (!selectedItem) return false;
+    const targetItem = items.find((item) => item.id === targetId);
+    if (!targetItem) return false;
+    return resolveRecommendationIds(targetItem, items, upsellByItem[targetId]).includes(selectedItem.id);
+  };
+  const bulkProgress = bulkRun.targetIds.length > 0
+    ? Math.round((bulkRun.processed / bulkRun.targetIds.length) * 100)
+    : 100;
 
   return (
+    <TooltipProvider>
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
-        <CatalogContextPanel selectedId={selectedContextId} onSelect={setSelectedContextId} />
-        <SectionEmptyState
-          sectionName={SECTIONS_WITH_ITEMS.find((section) => section.id === selectedContextId)?.name ?? "Рекомендации"}
-        />
+        <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+          <div className="border-b border-[#e7e5e4] px-3 pb-3 pt-4">
+            <h2 className="px-1 text-[14px] font-medium leading-5 text-[#292524]">Допродажи</h2>
+            <div className="mt-3">
+              <CatalogScopeSelect
+                value={sectionScopeId}
+                onChange={setSectionScopeId}
+                onReset={() => setSectionScopeId(null)}
+                allOptionLabel="Все разделы"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={openBulkDialog}
+              className="mt-2 flex h-[30px] w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[12px] font-normal text-[#57534d] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <Sparkle size={14} weight="fill" className="shrink-0" />
+              <span className="min-w-0 flex-1 whitespace-nowrap">Заполнить ненастроенные</span>
+              <CaretRight size={12} className="shrink-0 text-[#a6a09b]" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center justify-between px-4 pb-2 pt-3">
+              <span className="text-[13px] font-medium text-[#44403b]">Позиции</span>
+              <span className="text-[11px] tabular-nums text-[#a6a09b]">{visibleItems.length}</span>
+            </div>
+            <label className="mx-3 mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5">
+              <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти позицию" className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a6a09b]" />
+            </label>
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+              {visibleItems.map((item) => {
+                const count = resolveRecommendationIds(item, items, upsellByItem[item.id]).length;
+                const selected = item.id === selectedItemId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedItemId(item.id)}
+                    className={cn(
+                      "group flex h-8 w-full items-center gap-2 rounded-[8px] py-1.5 pl-1 pr-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                      selected ? "bg-[#f3f3ed]" : "hover:bg-[#f0f0ea]",
+                    )}
+                  >
+                    <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[5.5px]" />
+                    <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected ? "text-[#292524]" : "text-[#79716b]")}>{item.title}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-[#a6a09b]">{count || "—"}</span>
+                  </button>
+                );
+              })}
+              {visibleItems.length === 0 && <div className="px-2 py-6 text-center text-[12px] text-[#79716b]">Позиции не найдены</div>}
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0 flex-1 overflow-y-auto bg-[#fbfbf9] px-6 pb-10 pt-4">
+          <div className="mx-auto w-full max-w-[680px]">
+            {selectedItem ? (
+              <>
+                <div className="mb-3 flex items-center gap-2">
+                  <CatalogThumb item={selectedItem} size={30} />
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-[14px] font-medium text-[#292524]">{selectedItem.title}</h2>
+                    <p className="truncate text-[12px] text-[#79716b]">{selectedItem.sectionName}</p>
+                  </div>
+                </div>
+                {!hintDismissed && (
+                  <div className="mb-3 rounded-[13px] bg-[#f5f5f4] px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-[14px] font-semibold leading-5 text-[#292524]">Рекомендации могут быть взаимными</h3>
+                        <p className="mt-1 text-[13px] leading-[1.35] text-[#79716b]">При добавлении позиции можно включить взаимную рекомендацию. Тогда позиции будут рекомендоваться друг у друга. Порядок для каждой позиции настраивается отдельно.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHintDismissed(true);
+                          writeJsonRecord(CATALOG_RECIPROCAL_HINT_STORAGE_KEY, true);
+                        }}
+                        className="shrink-0 rounded-full bg-black/[0.04] px-2 py-1 text-[12px] text-[#79716b] transition hover:bg-black/[0.07] hover:text-[#44403b]"
+                      >
+                        Скрыть
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <PromoRecommendationsCard
+                  item={selectedItem}
+                  allItems={items}
+                  upsell={upsellByItem[selectedItem.id] ?? {}}
+                  onChange={updateSelectedState}
+                  onManualAdd={addManualLinks}
+                  onGenerate={generateForSelected}
+                  isReciprocal={isSelectedLinkReciprocal}
+                />
+              </>
+            ) : (
+              <div className="rounded-[13px] border border-dashed border-[#e7e5e4] bg-white p-6 text-center text-[13px] text-[#79716b]">Выберите позицию слева</div>
+            )}
+          </div>
+        </section>
       </div>
+
+      {bulkOpen && createPortal(
+        <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Заполнить ненастроенные позиции">
+          <div className="w-full max-w-[460px] overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+            <div className="border-b border-[#eceae7] px-4 py-3">
+              <h3 className="text-[14px] font-medium text-[#292524]">Заполнить ненастроенные</h3>
+              <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Существующие ручные и автоматические рекомендации не изменятся.</p>
+            </div>
+            {bulkRun.stage === "setup" ? (
+              <div className="px-4 py-4">
+                <p className="mb-3 text-[13px] font-medium text-[#44403b]">Выберите охват</p>
+                <label className={cn("flex cursor-pointer items-start gap-3 rounded-[10px] border p-3", bulkScope === "all" ? "border-[#a8a29e] bg-[#fafaf9]" : "border-[#e7e5e4]")}>
+                  <input type="radio" name="bulk-scope" checked={bulkScope === "all"} onChange={() => setBulkScope("all")} className="mt-0.5 h-4 w-4 accent-[#292524]" />
+                  <span className="min-w-0 flex-1"><span className="block text-[13px] font-medium text-[#292524]">Все ненастроенные активные позиции каталога</span><span className="mt-1 block text-[12px] text-[#79716b]">Будет обработано: {allBulkCount}</span></span>
+                </label>
+                <label className={cn("mt-2 flex items-start gap-3 rounded-[10px] border p-3", sectionScopeId ? "cursor-pointer" : "cursor-not-allowed opacity-50", bulkScope === "section" && sectionScopeId ? "border-[#a8a29e] bg-[#fafaf9]" : "border-[#e7e5e4]")}>
+                  <input type="radio" name="bulk-scope" checked={bulkScope === "section"} disabled={!sectionScopeId} onChange={() => setBulkScope("section")} className="mt-0.5 h-4 w-4 accent-[#292524]" />
+                  <span className="min-w-0 flex-1"><span className="block text-[13px] font-medium text-[#292524]">Ненастроенные позиции выбранного раздела и подразделов</span><span className="mt-1 block text-[12px] text-[#79716b]">{selectedSection ? `${selectedSection.name}: ${sectionBulkCount}` : "Сначала выберите раздел в левой панели"}</span></span>
+                </label>
+              </div>
+            ) : (
+              <div className="px-4 py-5">
+                <div className="flex items-center justify-between text-[13px] text-[#44403b]"><span>{bulkRun.stage === "running" ? "Заполняем позиции…" : "Готово"}</span><span className="tabular-nums text-[#79716b]">{bulkRun.processed} из {bulkRun.targetIds.length}</span></div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#eceae7]"><div className="h-full rounded-full bg-[#57534d] transition-[width] duration-200" style={{ width: `${bulkProgress}%` }} /></div>
+                {bulkRun.stage === "done" && <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-[9px] bg-[#f0fdf4] p-3"><div className="text-[11px] text-[#15803d]">Настроено</div><div className="mt-1 text-[18px] font-medium tabular-nums text-[#166534]">{bulkRun.updated}</div></div><div className="rounded-[9px] bg-[#f5f5f4] p-3"><div className="text-[11px] text-[#79716b]">Без подходящих связей</div><div className="mt-1 text-[18px] font-medium tabular-nums text-[#57534d]">{bulkRun.skipped}</div></div></div>}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
+              {bulkRun.stage === "setup" ? (
+                <><button type="button" onClick={() => setBulkOpen(false)} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">Отмена</button><button type="button" onClick={startBulkGeneration} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">Запустить · {bulkScope === "section" ? sectionBulkCount : allBulkCount}</button></>
+              ) : bulkRun.stage === "done" ? (
+                <button type="button" onClick={() => setBulkOpen(false)} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">Закрыть</button>
+              ) : (
+                <button type="button" disabled className="h-8 rounded-[8px] bg-[#d6d3d1] px-3 text-[13px] font-medium text-white">Выполняется</button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {feedback && <SelectionFeedback message={feedback} />}
     </main>
+    </TooltipProvider>
   );
 }
 

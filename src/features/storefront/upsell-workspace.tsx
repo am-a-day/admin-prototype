@@ -16,7 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { PromoRecommendationsCard, PromoTab } from "@/features/storefront/catalog-workspace";
+import { PromoRecommendationsCard, PromoTab, RecommendationsContextWorkspace } from "@/features/storefront/catalog-workspace";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { usePublish } from "@/contexts/publish-context";
 import { catalogSections, type CatalogItem } from "@/data/catalog";
@@ -133,7 +133,18 @@ function ModalFrame({
   );
 }
 
-export function UpsellWorkspace({
+export function UpsellWorkspace(props: UpsellWorkspaceProps) {
+  return (
+    <RecommendationsContextWorkspace
+      selectedDishId={props.selectedDishId}
+      setSelectedDishId={props.setSelectedDishId}
+      setUpsellSurface={props.setUpsellSurface}
+      setUpsellFocused={props.setUpsellFocused}
+    />
+  );
+}
+
+export function LegacyUpsellWorkspace({
   selectedDishId,
   setSelectedDishId,
   setUpsellSurface,
