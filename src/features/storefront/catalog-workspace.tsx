@@ -79,6 +79,7 @@ import {
   PlusCircle,
   Prohibit,
   ShoppingCartSimple,
+  SlidersHorizontal,
   StopCircle,
   TextTSlash,
   Trash,
@@ -12406,19 +12407,19 @@ function OverviewStatusBar({
 }
 
 function CatalogTableFilterBar({
-  filterId,
+  activeFilterIds,
   mandatoryFilterId,
   sectionScopeId,
   items,
-  onFilterChange,
+  onActiveFilterChange,
   table,
   onResetColumns,
 }: {
-  filterId: OverviewFilterId;
+  activeFilterIds: OverviewFilterId[];
   mandatoryFilterId?: OverviewFilterId;
   sectionScopeId: string | null;
   items: CatalogItem[];
-  onFilterChange: (id: OverviewFilterId) => void;
+  onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
 }) {
@@ -12432,8 +12433,7 @@ function CatalogTableFilterBar({
       (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all",
     ),
   })).filter((group) => group.ids.length > 0);
-  const activeFilterId = filterId === "quick:all" ? null : filterId;
-  const quickFilterIds = useMemo(() => {
+  const pinnedQuickFilterIds = useMemo(() => {
     const ordered: OverviewFilterId[] = [
       "quick:no-description",
       "status:stop",
@@ -12441,24 +12441,21 @@ function CatalogTableFilterBar({
       "quick:no-photo",
       "quick:no-weight",
     ];
-    const withoutMandatory = ordered.filter((id) => id !== mandatoryFilterId);
-    if (activeFilterId && activeFilterId !== mandatoryFilterId && !withoutMandatory.includes(activeFilterId)) withoutMandatory.push(activeFilterId);
-    return withoutMandatory;
-  }, [activeFilterId, mandatoryFilterId]);
+    return ordered.filter((id) => id !== mandatoryFilterId && !activeFilterIds.includes(id));
+  }, [activeFilterIds, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
   const visibleInformationColumnCount = informationColumns.filter((column) => column.getIsVisible()).length;
 
   return (
-    <div className="flex min-w-0 items-center gap-2 py-2" data-catalog-quick-filters>
+    <div className="flex min-w-0 items-center gap-1" data-catalog-quick-filters>
       <DropdownMenu.Root open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <FunnelSimple size={14} />
-            <span>{sectionScopeId ? "Фильтры" : "Все фильтры"}</span>
-            <CaretDown size={12} weight="bold" className="text-[#79716b]" />
+            <span>Фильтры</span>
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="start">
@@ -12470,9 +12467,9 @@ function CatalogTableFilterBar({
                 {group.ids.map((id) => (
                   <DropdownMenu.CheckboxItem
                     key={id}
-                    checked={filterId === id || mandatoryFilterId === id}
+                    checked={activeFilterIds.includes(id) || mandatoryFilterId === id}
                     disabled={mandatoryFilterId === id}
-                    onCheckedChange={() => mandatoryFilterId !== id && onFilterChange(id)}
+                    onCheckedChange={(checked) => mandatoryFilterId !== id && onActiveFilterChange(id, checked === true)}
                     className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
@@ -12487,8 +12484,7 @@ function CatalogTableFilterBar({
           </div>
         </DropdownContent>
       </DropdownMenu.Root>
-      <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex w-max min-w-full items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {mandatoryFilterId && (
             <button
               type="button"
@@ -12499,56 +12495,59 @@ function CatalogTableFilterBar({
               <span className="tabular-nums text-[#9b948e]">{countByFilter("quick:all")}</span>
             </button>
           )}
-          {quickFilterIds.map((id) => {
-            const active = id === activeFilterId;
+          {activeFilterIds.map((id) => {
             return (
               <div
                 key={id}
-                className={cn(
-                  "inline-flex h-[30px] shrink-0 items-center rounded-[8px] border text-[12px] font-medium text-[#57534d] transition",
-                  active
-                    ? "border-[#d8d5d0] bg-[#f5f5f4] shadow-[0_1px_2px_rgba(41,37,36,0.04)] hover:bg-[#efefe8]"
-                    : "border-transparent bg-white hover:border-[#e7e5e4] hover:bg-[#fafaf9]",
-                )}
+                className="inline-flex h-[30px] shrink-0 items-center rounded-[8px] border border-[#d8d5d0] bg-[#f5f5f4] text-[11px] font-medium text-[#57534d] shadow-[0_1px_2px_rgba(41,37,36,0.04)] transition hover:bg-[#efefe8]"
               >
                 <button
                   type="button"
-                  onClick={() => active ? setFilterMenuOpen(true) : onFilterChange(id)}
-                  className={cn(
-                    "inline-flex h-full items-center gap-1.5 px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                    active && "rounded-l-[7px] pr-1",
-                    !active && "rounded-[7px]",
-                  )}
+                  onClick={() => setFilterMenuOpen(true)}
+                  className="inline-flex h-full items-center gap-1 rounded-l-[7px] px-2 pr-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
                   <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
                   <span className="tabular-nums text-[#9b948e]">{countByFilter(id)}</span>
                 </button>
-                {active && (
-                  <button
-                    type="button"
-                    aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[id]}»`}
-                    onClick={() => onFilterChange("quick:all")}
-                    className="mr-1 flex h-5 w-5 items-center justify-center rounded-[5px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <X size={12} weight="bold" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  aria-label={`Удалить фильтр «${HYBRID_PRIMARY_FILTER_LABELS[id]}»`}
+                  onClick={() => onActiveFilterChange(id, false)}
+                  className="mr-1 flex h-4 w-4 items-center justify-center rounded-[4px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <X size={12} weight="bold" />
+                </button>
               </div>
             );
           })}
-        </div>
+          <div className="min-w-0 flex-1 overflow-hidden" data-inactive-quick-filters>
+            <div className="flex w-max items-center gap-0.5">
+              {pinnedQuickFilterIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onActiveFilterChange(id, true)}
+                  className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-normal text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                >
+                  <span>{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                  <span className="tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
       </div>
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <List size={14} />
-            <span>Колонки</span>
-            <CaretDown size={12} weight="bold" className="text-[#79716b]" />
-          </button>
-        </DropdownMenu.Trigger>
+        <Tooltip label="Настроить колонки" side="top">
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Настроить колонки"
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <SlidersHorizontal size={15} />
+            </button>
+          </DropdownMenu.Trigger>
+        </Tooltip>
         <DropdownContent align="end">
           <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
           {informationColumns.map((column) => {
@@ -13381,6 +13380,20 @@ function OverviewWorkspace({
   } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
   const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext(overviewContextStorageKey));
+  const activeFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v1`;
+  const [activeFilterIds, setActiveFilterIds] = useState<OverviewFilterId[]>(() => {
+    const stored = readJsonRecord<unknown>(activeFiltersStorageKey, []);
+    const restored = Array.isArray(stored)
+      ? stored.filter((id): id is OverviewFilterId =>
+          typeof id === "string"
+          && id !== "quick:all"
+          && id !== mandatoryFilterId
+          && Object.prototype.hasOwnProperty.call(FILTER_PREDICATES, id),
+        )
+      : [];
+    if (restored.length > 0) return [...new Set(restored)];
+    return filterId !== "quick:all" && filterId !== mandatoryFilterId ? [filterId] : [];
+  });
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
     ? restoreEditorFirstQueue(initialEditorFirstState, initialWorkspaceItems)
@@ -13475,6 +13488,9 @@ function OverviewWorkspace({
       sectionScopeId: workspaceSectionScopeId,
     });
   }, [overviewContextStorageKey, overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
+  useEffect(() => {
+    writeJsonRecord(activeFiltersStorageKey, activeFilterIds);
+  }, [activeFilterIds, activeFiltersStorageKey]);
   const setWorkspaceFilterId = (id: OverviewFilterId) => {
     if (editorFirstEnabled) setEditorFirstFilterId(id);
     else onFilterChange(id);
@@ -13491,16 +13507,26 @@ function OverviewWorkspace({
     if (editorFirstEnabled) setEditorFirstPriceSort(value);
     else setPriceSort(value);
   };
+  const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
+    const next = active
+      ? activeFilterIds.includes(id) ? activeFilterIds : [...activeFilterIds, id]
+      : activeFilterIds.filter((activeId) => activeId !== id);
+    setActiveFilterIds(next);
+    setWorkspaceFilterId(next.at(-1) ?? "quick:all");
+    setSelectedIds(new Set());
+  };
   const scopeSection = useMemo(
     () => catalogSections.find((section) => section.id === workspaceSectionScopeId) ?? null,
     [workspaceSectionScopeId],
   );
   const scopeIds = useMemo(() => getSectionScopeIds(workspaceSectionScopeId), [workspaceSectionScopeId]);
-  const filtered = useMemo(
-    () => getCombinedOverviewItems(workspaceFilterId, items, mandatoryFilterId)
-      .filter((item) => !scopeIds || scopeIds.has(item.sectionId)),
-    [items, mandatoryFilterId, scopeIds, workspaceFilterId],
-  );
+  const filtered = useMemo(() => {
+    let nextItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
+    activeFilterIds.forEach((id) => {
+      nextItems = getOverviewItems(id, nextItems);
+    });
+    return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
+  }, [activeFilterIds, items, mandatoryFilterId, scopeIds]);
   const normalizedQuery = useMemo(() => workspaceQuery.trim().toLowerCase(), [workspaceQuery]);
   const searched = useMemo(
     () => normalizedQuery
@@ -13527,7 +13553,7 @@ function OverviewWorkspace({
     && !mandatoryFilterId
     && scopeSection
     && scopeIsLeafSection
-    && workspaceFilterId === "quick:all"
+    && activeFilterIds.length === 0
     && workspaceQuery.trim() === ""
     && workspacePriceSort === "none"
     && visible.length > 1
@@ -13550,7 +13576,12 @@ function OverviewWorkspace({
       : filtered,
     [filtered, normalizedPanelQuery],
   );
-  const statusMeta = OVERVIEW_FILTER_META[workspaceFilterId];
+  const activeDisplayFilterId = activeFilterIds.at(-1) ?? mandatoryFilterId ?? "quick:all";
+  const activeSelectionLabel = [mandatoryFilterId, ...activeFilterIds]
+    .filter((id): id is OverviewFilterId => Boolean(id))
+    .map((id) => HYBRID_PRIMARY_FILTER_LABELS[id])
+    .join(" · ");
+  const statusMeta = OVERVIEW_FILTER_META[activeDisplayFilterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
   const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
   const allVisibleSelected = useMemo(
@@ -13579,6 +13610,8 @@ function OverviewWorkspace({
 
   const resetFilter = () => {
     setWorkspaceQuery("");
+    setActiveFilterIds([]);
+    setWorkspaceFilterId("quick:all");
     setSelectedIds(new Set());
     onReturnToSections(null);
   };
@@ -13588,9 +13621,9 @@ function OverviewWorkspace({
   const handlePriceSortChange = () => {
     setWorkspacePriceSort((current) => getNextPriceSort(current));
   };
-  const emptyTitle = titleOverride ?? getFilterPanelTitle(workspaceFilterId);
+  const emptyTitle = titleOverride ?? getFilterPanelTitle(activeDisplayFilterId);
   const emptyText = scopeSection
-    ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[workspaceFilterId].label.toLowerCase()}`
+    ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[activeDisplayFilterId].label.toLowerCase()}`
     : statusMeta.emptyText;
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -13715,11 +13748,7 @@ function OverviewWorkspace({
     itemIds: explicitItemIds ?? getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort, mandatoryFilterId),
     filterId: nextFilterId,
     entryFilterId: mandatoryFilterId ?? nextFilterId,
-    filterLabel: mandatoryFilterId
-      ? nextFilterId === "quick:all"
-        ? HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]
-        : `${HYBRID_PRIMARY_FILTER_LABELS[mandatoryFilterId]} · ${HYBRID_PRIMARY_FILTER_LABELS[nextFilterId]}`
-      : undefined,
+    filterLabel: activeSelectionLabel || undefined,
     query: snapshotQuery,
     returnPanelQuery: workspacePanelQuery,
     tableQuery: workspaceQuery,
@@ -13940,6 +13969,7 @@ function OverviewWorkspace({
     setWorkspaceQuery("");
     if (!editorFirstEnabled) setPanelQuery("");
     setWorkspacePriceSort("none");
+    setActiveFilterIds([]);
     setWorkspaceFilterId("quick:all");
     setWorkspaceSectionScopeId(targetSectionId);
     if (editorFirstEnabled) setEditorFirstView("table");
@@ -13962,6 +13992,7 @@ function OverviewWorkspace({
       setPanelQuery("");
       setPriceSort("none");
     }
+    setActiveFilterIds([]);
     setActivePositionId(null);
   }, [editorFirstEnabled, sectionScopeId, tableOpenSignal]);
   // Пока редактор открыт, смена фильтра/scope меняет ТОЛЬКО browse (список слева),
@@ -13999,6 +14030,7 @@ function OverviewWorkspace({
     clearSelection();
     setWorkspaceQuery("");
     if (!editorFirstEnabled) setPanelQuery("");
+    setActiveFilterIds(id === "quick:all" || id === mandatoryFilterId ? [] : [id]);
     setWorkspaceFilterId(id);
     if (leavingDraft) setQueue(null);
     else if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
@@ -14391,6 +14423,7 @@ function OverviewWorkspace({
               onOpenStructuralSection={openStructuralSectionFromQueue}
               onRevealStructuralSection={revealStructuralSectionFromQueue}
               onRevealItem={(item) => {
+                setActiveFilterIds([]);
                 setWorkspaceFilterId("quick:all");
                 setWorkspaceSectionScopeId(item.sectionId);
                 setWorkspaceQuery("");
@@ -14485,36 +14518,34 @@ function OverviewWorkspace({
             if (editorFirstEnabled) setEditorFirstTableScrollTop(event.currentTarget.scrollTop);
             else setOverviewScrollTop(event.currentTarget.scrollTop);
           }}
-          className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
+          className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pb-10"
         >
           <div className={cn(
             "mx-auto w-full min-w-0",
             catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px]" : "max-w-[800px]",
           )}>
             {tableHeader}
-            {embedded && (
-              <CatalogTableFilterBar
-                filterId={workspaceFilterId}
-                mandatoryFilterId={mandatoryFilterId}
-                sectionScopeId={workspaceSectionScopeId}
-                items={items}
-                table={catalogTable}
-                onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                onFilterChange={(id) => {
-                  clearSelection();
-                  setWorkspaceFilterId(id);
-                }}
-              />
-            )}
             {!tableHeader && (
               <div className="pt-3">
                 <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} />
               </div>
             )}
             <div className={cn(
-              "mt-3 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
-              catalogTable.getColumn("section")?.getIsVisible() ? "min-w-[850px]" : "min-w-[730px]",
+              "mt-3 min-w-0 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
             )}>
+              {embedded && (
+                <div className="px-3 pb-1 pt-2">
+                  <CatalogTableFilterBar
+                    activeFilterIds={activeFilterIds}
+                    mandatoryFilterId={mandatoryFilterId}
+                    sectionScopeId={workspaceSectionScopeId}
+                    items={items}
+                    table={catalogTable}
+                    onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                    onActiveFilterChange={setWorkspaceActiveFilter}
+                  />
+                </div>
+              )}
               {visible.length === 0 ? (
                 <div className="p-6">
                   <div className="flex flex-col gap-4">
@@ -14546,7 +14577,11 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <div className="px-3 pb-3">
+                <div className="overflow-x-auto [scrollbar-width:thin]">
+                  <div className={cn(
+                    "px-3 pb-3",
+                    catalogTable.getColumn("section")?.getIsVisible() ? "min-w-[850px]" : "min-w-[730px]",
+                  )}>
                   <TableHeaderRow
                     query={workspaceQuery}
                     onQueryChange={handleQueryChange}
@@ -14607,6 +14642,7 @@ function OverviewWorkspace({
                     />
                   )}
                   {feedback && <SelectionFeedback message={feedback} />}
+                  </div>
                 </div>
               )}
             </div>
