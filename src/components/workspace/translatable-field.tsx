@@ -65,6 +65,7 @@ export function TranslatableField({
       return initialTranslations;
     }
   });
+  const translationsRef = useRef(translations);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const pendingFocus = useRef(false);
 
@@ -95,12 +96,11 @@ export function TranslatableField({
   };
 
   const saveTranslation = (value: string) => {
-    setTranslations((prev) => {
-      const next = { ...prev, [contentLanguage]: value };
-      if (persistedKey) window.localStorage.setItem(persistedKey, JSON.stringify(next));
-      onChange?.(next);
-      return next;
-    });
+    const next = { ...translationsRef.current, [contentLanguage]: value };
+    translationsRef.current = next;
+    setTranslations(next);
+    if (persistedKey) window.localStorage.setItem(persistedKey, JSON.stringify(next));
+    onChange?.(next);
     setWorkspaceLanguageHasContent(contentLanguage, value.trim() !== "");
     onValueChange?.(value);
   };
