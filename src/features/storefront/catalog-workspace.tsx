@@ -5513,6 +5513,7 @@ function StructuralPositionBreadcrumb({
   onOpenPosition: (id: string) => void;
 }) {
   const [positionQuery, setPositionQuery] = useState("");
+  const [positionMenuOpen, setPositionMenuOpen] = useState(false);
   const sectionPath = getCatalogSectionPathFromSections(item.sectionId, sections);
   const sectionsByParent = new Map<string, TreeSection[]>();
   sections.forEach((section) => {
@@ -5551,20 +5552,31 @@ function StructuralPositionBreadcrumb({
         );
       })}
       {sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setPositionQuery(""); }}>
-        <div className="flex min-w-0 flex-1 items-center">
-          <span title={item.title} className="min-w-0 flex-1 truncate px-1 py-0.5 text-[13px] font-medium text-[#292524]">{item.title}</span>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Открыть позиции раздела"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
+      <HoverCard
+        open={positionMenuOpen}
+        onOpenChange={(open) => {
+          setPositionMenuOpen(open);
+          if (!open) setPositionQuery("");
+        }}
+        openDelay={275}
+        closeDelay={275}
+      >
+        <HoverCardTrigger asChild>
+          <button
+            type="button"
+            title={item.title}
+            aria-label={`Открыть позиции раздела, текущая позиция: ${item.title}`}
+            aria-expanded={positionMenuOpen}
+            onClick={() => setPositionMenuOpen(true)}
+            className="flex h-7 min-w-0 flex-1 items-center rounded-[6px] px-1 text-[13px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
+            <span className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-[#79716b]">
               <CaretDown size={12} weight="bold" />
-            </button>
-          </DropdownMenu.Trigger>
-        </div>
-        <CatalogPickerContent align="end" className="w-[320px]">
+            </span>
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent align="end" className="w-[320px]">
           <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
             Позиции раздела · {structuralItems.length}
           </div>
@@ -5583,25 +5595,29 @@ function StructuralPositionBreadcrumb({
           )}
           <div className="max-h-[320px] overflow-y-auto py-0.5">
             {visibleStructuralItems.map((candidate) => (
-              <DropdownMenu.Item
+              <button
+                type="button"
                 key={candidate.id}
-                onSelect={() => onOpenPosition(candidate.id)}
+                onClick={() => {
+                  setPositionMenuOpen(false);
+                  onOpenPosition(candidate.id);
+                }}
                 className={cn(
-                  "flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
+                  "flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13px] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                   candidate.id === item.id && "bg-[#f5f5f4] font-medium",
                 )}
               >
                 <CatalogThumbnail src={candidate.thumbnailUrl} kind="item" className="h-7 w-7" />
                 <span className="min-w-0 flex-1 truncate text-[#44403b]">{candidate.title}</span>
                 {candidate.id === item.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-              </DropdownMenu.Item>
+              </button>
             ))}
             {visibleStructuralItems.length === 0 && (
               <div className="px-2.5 py-3 text-[12px] text-[#79716b]">Ничего не найдено</div>
             )}
           </div>
-        </CatalogPickerContent>
-      </DropdownMenu.Root>
+        </HoverCardContent>
+      </HoverCard>
     </nav>
   );
 }
@@ -7393,15 +7409,20 @@ function UnifiedCatalogTreePanel({
   );
 }
 
-const CatalogMoreButton = forwardRef<HTMLButtonElement, { ariaLabel: string; title?: string } & ButtonHTMLAttributes<HTMLButtonElement>>(
-  ({ ariaLabel, title, ...props }, ref) => (
+const CatalogMoreButton = forwardRef<HTMLButtonElement, { ariaLabel: string; title?: string; variant?: "outline" | "ghost" } & ButtonHTMLAttributes<HTMLButtonElement>>(
+  ({ ariaLabel, title, variant = "outline", className, ...props }, ref) => (
     <button
       {...props}
       ref={ref}
       type="button"
       aria-label={ariaLabel}
       title={title}
-      className="flex h-[30px] w-[31px] shrink-0 items-center justify-center rounded-[22px] border border-[#e7e5e4] bg-white p-1 text-[#292524] transition-colors hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] active:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      className={cn(
+        "flex h-[30px] w-[31px] shrink-0 items-center justify-center rounded-[22px] p-1 text-[#57534d] transition-colors hover:bg-[#f5f5f4] hover:text-[#292524] active:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        variant === "outline" && "border border-[#e7e5e4] bg-white hover:border-[#d6d3d1] hover:bg-[#fafaf9]",
+        variant === "ghost" && "border border-transparent bg-transparent",
+        className,
+      )}
     >
       <DotsThreeVertical size={18} weight="regular" />
     </button>
@@ -7755,7 +7776,9 @@ function SectionEditor({
               <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">
                 {section.name}
               </h2>
-              <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
+              {getSectionTreeStatusLabel(section) && (
+                <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
+              )}
             </div>
             <CatalogActionButton
               onClick={onAddPosition}
@@ -7768,7 +7791,7 @@ function SectionEditor({
             </CatalogActionButton>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <CatalogMoreButton ariaLabel="Действия с разделом" />
+                <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
                 <SectionActionMenuContent
@@ -7779,13 +7802,13 @@ function SectionEditor({
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
-          <div className="space-y-2">
-            <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-              <div className="flex items-center justify-between gap-3 px-3">
+          <div>
+            <div data-editor-tabs>
+              <div className="flex items-center justify-between gap-3 border-b border-[#e7e5e4]">
                 <div className="flex min-w-0 items-center gap-2">
                   {([
                     { id: "composition", label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции" },
-                    { id: "basic", label: "Настройки раздела" },
+                    { id: "basic", label: "Настройка раздела" },
                     { id: "availability", label: "Доступность" },
                   ] as const).map((tab) => (
                     <button
@@ -7817,10 +7840,10 @@ function SectionEditor({
                   Открыть в таблице
                 </button>}
               </div>
-              <div className="border-t border-[#e7e5e4]">
+              <div className="pt-3">
             {activeTab === "composition" ? (
             hasChildSections ? (
-              <section className="px-3 py-1">
+              <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 py-1 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
                 <SubsectionList
                   parentSectionId={section.id}
                   childSections={childSections}
@@ -7831,7 +7854,7 @@ function SectionEditor({
                 />
               </section>
             ) : (
-              <section className="px-3 pb-3">
+              <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 pb-3 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
                 {compositionItems.length === 0 && !compositionQuery.trim() ? (
                   <div className="py-1">
                     <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
@@ -7898,7 +7921,7 @@ function SectionEditor({
               </section>
             )
             ) : activeTab === "basic" ? (
-            <section>
+            <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
               <div className="divide-y divide-[#f0efe9]">
                 <label className="grid gap-3 px-4 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
                   <span className="text-[13px] font-medium text-[#44403b]">Название</span>
@@ -8008,7 +8031,9 @@ function UnifiedSectionTableHeader({
             {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={14} />}
           </span>
           <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
-          <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
+          {getSectionTreeStatusLabel(section) && (
+            <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
+          )}
         </div>
         <CatalogActionButton
           onClick={onAddPosition}
@@ -8021,7 +8046,7 @@ function UnifiedSectionTableHeader({
         </CatalogActionButton>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <CatalogMoreButton ariaLabel="Действия с разделом" />
+            <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
           </DropdownMenu.Trigger>
           <DropdownContent align="end">
             <SectionActionMenuContent
@@ -8035,7 +8060,7 @@ function UnifiedSectionTableHeader({
       <div className="flex items-center gap-2 border-b border-[#e7e5e4]">
         {([
           { id: "composition", label: "Позиции" },
-          { id: "basic", label: "Настройки раздела" },
+          { id: "basic", label: "Настройка раздела" },
           { id: "availability", label: "Доступность" },
         ] as const).map((tab) => (
           <button
@@ -11311,7 +11336,7 @@ function TableHeaderRow({
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
+    <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white py-1">
       <div className="flex min-h-9 items-center">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
@@ -11689,7 +11714,7 @@ function AuditDishRow({
         }
       }}
       className={cn(
-        "group flex h-12 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "group flex h-11 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
         highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
       )}
@@ -11785,7 +11810,7 @@ function AuditDishRow({
   );
 }
 
-const AUDIT_ROW_HEIGHT = 48;
+const AUDIT_ROW_HEIGHT = 44;
 const QUEUE_ROW_HEIGHT = 36;
 
 function useVirtualScrollMargin(
@@ -12310,7 +12335,7 @@ function CatalogTableFilterBar({
             className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <FunnelSimple size={14} />
-            <span>Все фильтры</span>
+            <span>{sectionScopeId ? "Фильтры" : "Все фильтры"}</span>
             <CaretDown size={12} weight="bold" className="text-[#79716b]" />
           </button>
         </DropdownMenu.Trigger>
@@ -14272,8 +14297,8 @@ function OverviewWorkspace({
           className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
         >
           <div className={cn(
-            "mx-auto w-full",
-            catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px] min-w-[850px]" : "max-w-[800px] min-w-[730px]",
+            "mx-auto w-full min-w-0",
+            catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px]" : "max-w-[800px]",
           )}>
             {tableHeader}
             {embedded && (
@@ -14289,12 +14314,15 @@ function OverviewWorkspace({
                 }}
               />
             )}
-            <div className="pt-3">
-              <OverviewStatusBar
-                filterId={workspaceFilterId}
-              />
-            </div>
-            <div className="mt-[14px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+            {!tableHeader && (
+              <div className="pt-3">
+                <OverviewStatusBar filterId={workspaceFilterId} />
+              </div>
+            )}
+            <div className={cn(
+              "mt-3 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
+              catalogTable.getColumn("section")?.getIsVisible() ? "min-w-[850px]" : "min-w-[730px]",
+            )}>
               {visible.length === 0 ? (
                 <div className="p-6">
                   <div className="flex flex-col gap-4">
