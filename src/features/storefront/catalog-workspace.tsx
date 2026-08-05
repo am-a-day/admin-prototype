@@ -60,6 +60,7 @@ import {
   Check,
   CheckCircle,
   CameraSlash,
+  CircleNotch,
   Clock,
   Dot,
   DotsThree,
@@ -910,6 +911,15 @@ type PanelRow = {
 const CATALOG_THUMBNAIL_CLASS = "h-7 w-7 rounded-[7px]";
 const CATALOG_TREE_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5.263px]";
 const MAX_SECTION_DEPTH = 2;
+
+type MoveOperation = "position" | "section" | "bulk";
+type MovePopoverAnchor = { left: number; right: number; top: number; bottom: number };
+
+function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
+  const target = event.currentTarget as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+}
 
 function getSectionStatusMeta(section: Pick<TreeSection, "status" | "visibility" | "availabilityMode">) {
   if (section.status === "archive") {
@@ -2137,6 +2147,264 @@ function getSectionTreeDepth(sectionId: string, sections: TreeSection[]): number
   return depth;
 }
 
+type MoveToSectionPopoverProps = {
+  operation: MoveOperation;
+  entityIds: string[];
+  currentSectionIds: string[];
+  movingSectionId?: string;
+  sections: TreeSection[];
+  forbiddenTargets?: Record<string, string>;
+  anchor: MovePopoverAnchor;
+  onClose: () => void;
+  onMove: (targetSectionId: string | null) => Promise<void> | void;
+  onSuccess?: (targetSectionId: string | null) => void;
+  onError?: () => void;
+};
+
+function MoveToSectionPopover({
+  operation,
+  currentSectionIds,
+  movingSectionId,
+  sections,
+  forbiddenTargets = {},
+  anchor,
+  onClose,
+  onMove,
+  onSuccess,
+  onError,
+}: MoveToSectionPopoverProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [loadingTarget, setLoadingTarget] = useState<string | null | undefined>(undefined);
+  const flatSections = useMemo(() => flattenSections(buildLocalSectionTree(sections)), [sections]);
+  const sectionById = useMemo(() => new Map(flatSections.map((section) => [section.id, section])), [flatSections]);
+  const childIdsByParent = useMemo(() => {
+    const result = new Map<string | null, string[]>();
+    flatSections.forEach((section) => {
+      const parentId = section.parentId ?? null;
+      result.set(parentId, [...(result.get(parentId) ?? []), section.id]);
+    });
+    return result;
+  }, [flatSections]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(flatSections.map((section) => section.id)));
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const uniqueCurrentSectionIds = useMemo(() => [...new Set(currentSectionIds)], [currentSectionIds]);
+  const showCurrentLabel = operation !== "bulk" || uniqueCurrentSectionIds.length === 1;
+  const movingSubtreeIds = useMemo(
+    () => movingSectionId ? getSectionSubtreeIds(movingSectionId, flatSections) : new Set<string>(),
+    [flatSections, movingSectionId],
+  );
+  const movingSubtreeHeight = useMemo(() => {
+    if (!movingSectionId) return 0;
+    const baseDepth = getSectionTreeDepth(movingSectionId, flatSections);
+    return Math.max(
+      0,
+      ...flatSections
+        .filter((section) => movingSubtreeIds.has(section.id))
+        .map((section) => getSectionTreeDepth(section.id, flatSections) - baseDepth),
+    );
+  }, [flatSections, movingSectionId, movingSubtreeIds]);
+
+  const pathFor = useCallback((section: TreeSection) => {
+    const names: string[] = [section.name];
+    const seen = new Set<string>([section.id]);
+    let parentId = section.parentId ?? null;
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = sectionById.get(parentId);
+      if (!parent) break;
+      names.unshift(parent.name);
+      parentId = parent.parentId ?? null;
+    }
+    return ["Каталог", ...names].join(" / ");
+  }, [sectionById]);
+
+  const disabledReasonFor = useCallback((section: TreeSection): string | null => {
+    if (operation === "section") {
+      if (section.id === movingSectionId) return "Нельзя переместить раздел внутрь самого себя";
+      if (movingSubtreeIds.has(section.id)) return "Нельзя переместить раздел в его подраздел";
+      if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
+      if (getSectionTreeDepth(section.id, flatSections) + 1 + movingSubtreeHeight > MAX_SECTION_DEPTH) {
+        return "Достигнута максимальная глубина";
+      }
+      if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
+      if (section.status === "archive") return "Архивный раздел нельзя выбрать";
+      return null;
+    }
+    if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
+    if (section.status === "archive") return "Архивный раздел нельзя выбрать";
+    if (showCurrentLabel && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
+    if ((childIdsByParent.get(section.id)?.length ?? 0) > 0) return "В разделе уже есть подразделы";
+    return null;
+  }, [childIdsByParent, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, showCurrentLabel, uniqueCurrentSectionIds]);
+
+  const rootDisabledReason = operation === "section" && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
+    ? "Текущее расположение"
+    : forbiddenTargets.__root__ ?? null;
+
+  const searchResults = useMemo(() => normalizedQuery
+    ? flatSections.filter((section) => pathFor(section).toLocaleLowerCase("ru").includes(normalizedQuery))
+    : [], [flatSections, normalizedQuery, pathFor]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+    const handlePointerDown = (event: PointerEvent) => {
+      if (loadingTarget !== undefined) return;
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || loadingTarget !== undefined) return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [loadingTarget, onClose]);
+
+  const chooseTarget = async (targetSectionId: string | null, disabledReason: string | null) => {
+    if (disabledReason || loadingTarget !== undefined) return;
+    setLoadingTarget(targetSectionId);
+    try {
+      await Promise.resolve(onMove(targetSectionId));
+      onSuccess?.(targetSectionId);
+      onClose();
+    } catch {
+      setLoadingTarget(undefined);
+      onError?.();
+    }
+  };
+
+  const renderRow = (section: TreeSection, depth: number, searchMode: boolean) => {
+    const childIds = childIdsByParent.get(section.id) ?? [];
+    const hasChildren = childIds.length > 0;
+    const disabledReason = disabledReasonFor(section);
+    const current = showCurrentLabel && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id;
+    const loading = loadingTarget === section.id;
+    return (
+      <Fragment key={section.id}>
+        <Tooltip label={disabledReason ?? ""} side="left" disabled={!disabledReason} delayDuration={180}>
+          <span className="block">
+            <button
+              type="button"
+              disabled={Boolean(disabledReason) || loadingTarget !== undefined}
+              onClick={() => void chooseTarget(section.id, disabledReason)}
+              className={cn(
+                "group flex h-8 w-full items-center gap-1.5 rounded-[6px] pr-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                disabledReason ? "cursor-not-allowed text-[#a8a29e]" : "text-[#44403b] hover:bg-[#f5f5f4]",
+              )}
+              style={{ paddingLeft: searchMode ? 8 : 8 + depth * 14 }}
+            >
+              <span
+                role={hasChildren && !searchMode ? "button" : undefined}
+                tabIndex={hasChildren && !searchMode ? 0 : -1}
+                onClick={(event) => {
+                  if (!hasChildren || searchMode) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setExpanded((currentExpanded) => {
+                    const next = new Set(currentExpanded);
+                    if (next.has(section.id)) next.delete(section.id);
+                    else next.add(section.id);
+                    return next;
+                  });
+                }}
+                className="flex h-5 w-4 shrink-0 items-center justify-center rounded-[4px]"
+              >
+                {hasChildren && !searchMode ? (
+                  <CaretRight size={11} weight="bold" className={cn("transition-transform", expanded.has(section.id) && "rotate-90")} />
+                ) : <span className="w-[11px]" />}
+              </span>
+              <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px]", disabledReason ? "bg-[#f1f1ea]" : "bg-[#e6e6db]") }>
+                {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={12} />}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] leading-4">{section.name}</span>
+              {searchMode && (
+                <span className="min-w-0 max-w-[180px] truncate text-[10px] font-normal text-[#a8a29e]">{pathFor(section)}</span>
+              )}
+              {current && <span className="shrink-0 rounded-[4px] bg-[#f1f1ea] px-1.5 text-[10px] font-medium leading-4 text-[#79716b]">Текущий</span>}
+              {loading && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+            </button>
+          </span>
+        </Tooltip>
+        {!searchMode && hasChildren && expanded.has(section.id) && childIds.map((childId) => {
+          const child = sectionById.get(childId);
+          return child ? renderRow(child, depth + 1, false) : null;
+        })}
+      </Fragment>
+    );
+  };
+
+  const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
+  const panelWidth = Math.min(380, viewportWidth - 24);
+  const left = Math.max(12, Math.min(anchor.left, viewportWidth - panelWidth - 12));
+  const preferredTop = anchor.bottom + 6;
+  const top = Math.max(12, Math.min(preferredTop, viewportHeight - 480));
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label={operation === "section" ? "Переместить раздел" : "Переместить в раздел"}
+      className="fixed z-[100005] flex max-h-[468px] flex-col overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_48px_rgba(41,37,36,0.18)]"
+      style={{ width: panelWidth, left, top }}
+    >
+      <div className="sticky top-0 z-10 bg-white pb-1.5">
+        <label className="flex h-8 items-center gap-2 rounded-[7px] bg-[#f5f5f4] px-2.5 ring-1 ring-inset ring-[#eceae7] focus-within:bg-white focus-within:ring-[#a8a29e]">
+          <MagnifyingGlass size={14} className="shrink-0 text-[#79716b]" />
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={operation === "section" ? "Переместить раздел…" : "Переместить в раздел…"}
+            className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-[#292524] outline-none placeholder:text-[#a8a29e]"
+          />
+          {loadingTarget !== undefined && <CircleNotch size={13} weight="bold" className="animate-spin text-[#79716b]" />}
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-0.5 [scrollbar-width:thin]">
+        {operation === "section" && !normalizedQuery && (
+          <Tooltip label={rootDisabledReason ?? ""} side="left" disabled={!rootDisabledReason} delayDuration={180}>
+            <span className="block">
+              <button
+                type="button"
+                disabled={Boolean(rootDisabledReason) || loadingTarget !== undefined}
+                onClick={() => void chooseTarget(null, rootDisabledReason)}
+                className={cn(
+                  "flex h-8 w-full items-center gap-1.5 rounded-[6px] px-2 text-left text-[13px] outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                  rootDisabledReason ? "cursor-not-allowed text-[#a8a29e]" : "text-[#44403b] hover:bg-[#f5f5f4]",
+                )}
+              >
+                <span className="w-4 shrink-0" />
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db]"><List size={12} /></span>
+                <span className="min-w-0 flex-1 truncate">В корень каталога</span>
+                {rootDisabledReason === "Текущее расположение" && <span className="shrink-0 rounded-[4px] bg-[#f1f1ea] px-1.5 text-[10px] font-medium leading-4 text-[#79716b]">Текущий</span>}
+                {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+              </button>
+            </span>
+          </Tooltip>
+        )}
+        {normalizedQuery
+          ? searchResults.map((section) => renderRow(section, 0, true))
+          : (childIdsByParent.get(null) ?? []).map((sectionId) => {
+              const root = sectionById.get(sectionId);
+              return root ? renderRow(root, 0, false) : null;
+            })}
+        {normalizedQuery && searchResults.length === 0 && (
+          <div className="flex h-20 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function SectionParentPicker({
   sections,
   allItems,
@@ -2725,6 +2993,60 @@ const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "display", label: "Отображение" },
 ];
 const editorTabByItem = new Map<string, EditorTab>();
+
+type WorkspaceLocalTab<T extends string> = {
+  id: T;
+  label: string;
+  count?: number;
+};
+
+function WorkspaceLocalTabs<T extends string>({
+  tabs,
+  value,
+  onValueChange,
+  endAction,
+  className,
+}: {
+  tabs: readonly WorkspaceLocalTab<T>[];
+  value: T;
+  onValueChange: (value: T) => void;
+  endAction?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      data-workspace-local-tabs
+      className={cn("flex min-w-0 items-center gap-3 border-b border-[#e7e5e4]", className)}
+    >
+      <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
+        <div className="flex w-max min-w-full items-center gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onValueChange(tab.id)}
+              aria-current={value === tab.id ? "page" : undefined}
+              className={cn(
+                "flex shrink-0 items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
+                value === tab.id
+                  ? "border-[#1c1917] font-medium text-[#1c1917]"
+                  : "border-transparent text-[#79716b] hover:text-[#44403b]",
+              )}
+            >
+              {tab.label}
+              {tab.count != null && (
+                <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium tabular-nums text-[#79716b]">
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      {endAction && <div className="shrink-0">{endAction}</div>}
+    </div>
+  );
+}
 
 type PositionOptionSelection = "single" | "multiple";
 type PositionOptionPricing = "total" | "surcharge";
@@ -5809,7 +6131,7 @@ function PositionEditor({
   stopBusy: boolean;
   onArchiveItem: (item: CatalogItem) => void;
   onRestoreItem: (item: CatalogItem) => void;
-  onMoveItem: (item: CatalogItem) => void;
+  onMoveItem: (item: CatalogItem, anchor: MovePopoverAnchor) => void;
   onToggleStop: (item: CatalogItem) => void;
   onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
   unavailableDisplayMode: UnavailableDisplayMode;
@@ -5948,7 +6270,7 @@ function PositionEditor({
           {isArchived ? (
             <>
               <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+              <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
               <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
                 Удалить навсегда
@@ -5961,7 +6283,7 @@ function PositionEditor({
                   {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
                 </DropdownActionItem>
               )}
-              <DropdownActionItem onSelect={() => onMoveItem(item)}>Переместить в другой раздел</DropdownActionItem>
+              <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
               <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
             </>
@@ -6056,40 +6378,18 @@ function PositionEditor({
             </div>
           )}
 
-          <div className="space-y-2">
-            <div data-editor-tabs-card className="rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-              <div className="flex items-center gap-2 px-3">
-                {EDITOR_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => selectEditorTab(tab.id)}
-                    className={cn(
-                      "flex items-center gap-2 border-b px-1 py-3.5 text-[13px] transition",
-                      activeTab === tab.id
-                        ? "border-[#1c1917] font-medium text-[#1c1917]"
-                        : "border-transparent text-[#79716b] hover:text-[#44403b]",
-                    )}
-                  >
-                    {tab.label}
-                    {tab.id === "options" && (
-                      <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                        {item.optionsCount}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              {activeTab === "promo" && (
-                <PromoRecommendationsCard
-                  item={item}
-                  allItems={allItems}
-                  upsell={upsell}
-                  onChange={onUpsellChange}
-                />
-              )}
-              {activeTab === "basic" && (
-                <div className="border-t border-[#e7e5e4] px-4 pb-4 pt-5">
+          <WorkspaceLocalTabs
+            tabs={EDITOR_TABS.map((tab) => ({
+              ...tab,
+              ...(tab.id === "options" ? { count: item.optionsCount } : {}),
+            }))}
+            value={activeTab}
+            onValueChange={selectEditorTab}
+          />
+
+          <div className="pt-3">
+            {activeTab === "basic" ? (
+              <div data-editor-form-card className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
                   <BasicTab
                     item={item}
                     media={media}
@@ -6123,11 +6423,22 @@ function PositionEditor({
                     }}
                     onTitleChange={(value) => onItemChange?.(item, { title: value })}
                   />
-                </div>
-              )}
-            </div>
-
-            {activeTab === "options" ? (
+              </div>
+            ) : activeTab === "promo" ? (
+              <div className="space-y-2">
+                <PromoRecommendationsCard
+                  item={item}
+                  allItems={allItems}
+                  upsell={upsell}
+                  onChange={onUpsellChange}
+                />
+                <PromoTab
+                  item={item}
+                  upsell={upsell}
+                  onChange={onUpsellChange}
+                />
+              </div>
+            ) : activeTab === "options" ? (
               <OptionsTab
                 item={item}
                 onSavedGroupsChange={(count) => {
@@ -6135,13 +6446,7 @@ function PositionEditor({
                   else onItemChange?.(item, { optionsCount: count });
                 }}
               />
-            ) : activeTab === "promo" ? (
-              <PromoTab
-                item={item}
-                upsell={upsell}
-                onChange={onUpsellChange}
-              />
-            ) : activeTab === "basic" ? null : (
+            ) : (
               <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
                 {activeTab === "availability" && (
                   <AvailabilityTab
@@ -6544,6 +6849,7 @@ function PositionEditorHost({
     itemsById,
     updateItem,
     deleteItem,
+    moveItem,
     setItemStatus,
     setAutosaveStatus,
     setActiveEditorItemId,
@@ -6561,6 +6867,8 @@ function PositionEditorHost({
   const [weeklyScheduleByItem, setWeeklyScheduleByItem] = useState<Record<string, WeeklySchedule>>(() =>
     readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
   );
+  const [moveRequest, setMoveRequest] = useState<{ itemId: string; anchor: MovePopoverAnchor } | null>(null);
+  const [moveUndo, setMoveUndo] = useState<{ itemId: string; sectionId: string; sectionName: string; message: string } | null>(null);
   const saveTimersRef = useRef<Record<string, number>>({});
   const item = itemsById[intent.currentId] ?? null;
   const editorContext = intent.origin === "positions" && intent.snapshot
@@ -6587,6 +6895,12 @@ function PositionEditorHost({
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
   }, []);
+
+  useEffect(() => {
+    if (!moveUndo) return;
+    const timeout = window.setTimeout(() => setMoveUndo(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [moveUndo]);
 
   useEffect(() => {
     setActiveEditorItemId(intent.currentId);
@@ -6646,7 +6960,7 @@ function PositionEditorHost({
         setItemStatus(target.id, "active");
         onFeedback?.("Позиция восстановлена");
       }}
-      onMoveItem={(target) => onFeedback?.(`Переместить «${target.title}»: placeholder`)}
+      onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
       onToggleStop={(target) => setItemStatus(target.id, target.status === "stopped" ? "active" : "stopped")}
       onSetAvailabilityMode={setAvailability}
       unavailableDisplayMode={unavailableDisplayByItem[item.id] ?? "hidden"}
@@ -6708,6 +7022,50 @@ function PositionEditorHost({
         />
       ) : undefined}
       />
+      {moveRequest && itemsById[moveRequest.itemId] && (
+        <MoveToSectionPopover
+          operation="position"
+          entityIds={[moveRequest.itemId]}
+          currentSectionIds={[itemsById[moveRequest.itemId].sectionId]}
+          sections={structureSections}
+          anchor={moveRequest.anchor}
+          onClose={() => setMoveRequest(null)}
+          onMove={async (targetSectionId) => {
+            if (!targetSectionId) return;
+            const target = itemsById[moveRequest.itemId];
+            const destination = structureSections.find((section) => section.id === targetSectionId);
+            if (!target || !destination || target.sectionId === targetSectionId) return;
+            const previous = { itemId: target.id, sectionId: target.sectionId, sectionName: target.sectionName };
+            moveItem(target.id, targetSectionId, { sectionName: destination.name });
+            try {
+              await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+              registerChange("catalog");
+              setMoveUndo({ ...previous, message: `Позиция перемещена в «${destination.name}»` });
+            } catch (error) {
+              moveItem(previous.itemId, previous.sectionId, { sectionName: previous.sectionName });
+              throw error;
+            }
+          }}
+          onError={() => onFeedback?.("Не удалось переместить. Попробуйте ещё раз")}
+        />
+      )}
+      {moveUndo && (
+        <div className="fixed bottom-5 left-1/2 z-[100006] flex -translate-x-1/2 items-center gap-2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
+          <span>{moveUndo.message}</span>
+          <span aria-hidden="true" className="text-white/45">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              moveItem(moveUndo.itemId, moveUndo.sectionId, { sectionName: moveUndo.sectionName });
+              setMoveUndo(null);
+              registerChange("catalog");
+            }}
+            className="rounded-[5px] font-semibold text-[#c9c2ff] outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-white/35"
+          >
+            Отменить
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -6791,8 +7149,8 @@ function SectionItemList({
   onSelectedChange: (id: string, selected: boolean) => void;
   onSelectAll: (selected: boolean) => void;
   onClearSelection: () => void;
-  onSectionAction: (action: string) => void;
-  onBulkAction: (action: string) => void;
+  onSectionAction: (action: string, anchor?: MovePopoverAnchor) => void;
+  onBulkAction: (action: string, anchor?: MovePopoverAnchor) => void;
   onOpenItem: (id: string) => void;
 }) {
   const sectionName = section?.name ?? "Раздел";
@@ -6854,7 +7212,7 @@ function SectionItemList({
                 ) : (
                   <>
                     {["Переименовать", "Поменять иконку", "Настроить доступность", "Переместить"].map((action) => (
-                      <DropdownActionItem key={action} onSelect={() => onSectionAction(action)}>{action}</DropdownActionItem>
+                      <DropdownActionItem key={action} icon={action === "Переместить" ? ArrowsOutCardinal : undefined} onSelect={(event) => onSectionAction(action, action === "Переместить" ? getMovePopoverAnchor(event) : undefined)}>{action === "Переместить" ? "Переместить…" : action}</DropdownActionItem>
                     ))}
                   </>
                 )}
@@ -6893,7 +7251,7 @@ function SectionItemList({
                     <DropdownActionItem onSelect={() => onSectionAction("Переименовать")}>Переименовать</DropdownActionItem>
                     <DropdownActionItem onSelect={() => onSectionAction("Поменять иконку")}>Поменять иконку</DropdownActionItem>
                     <DropdownActionItem onSelect={() => onSectionAction("Настроить доступность")}>Настроить доступность</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction("Переместить")}>Переместить</DropdownActionItem>
+                    <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onSectionAction("Переместить", getMovePopoverAnchor(event))}>Переместить…</DropdownActionItem>
                   </>
                 )}
                 <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
@@ -6974,7 +7332,7 @@ function SectionBulkToolbar({
   flush?: boolean;
   onSelectAll: (selected: boolean) => void;
   onClear: () => void;
-  onAction: (action: string) => void;
+  onAction: (action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   return (
     <div className={cn("flex h-8 w-fit items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2] shadow-[0_4px_14px_rgba(41,37,36,0.08)]", !flush && "mt-4")}>
@@ -7003,6 +7361,15 @@ function SectionBulkToolbar({
         <DropdownActionItem onSelect={() => onAction("Скоро будет")}>Скоро будет</DropdownActionItem>
         <DropdownActionItem onSelect={() => onAction("По расписанию")}>По расписанию</DropdownActionItem>
       </ToolbarDropdown>
+      <ToolbarDivider />
+      <button
+        type="button"
+        onClick={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event))}
+        className="flex h-full items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <ArrowsOutCardinal size={14} />
+        Переместить в раздел…
+      </button>
       <ToolbarDivider />
       <ToolbarDropdown label="Скидка">
         <DropdownActionItem onSelect={() => onAction("Задать скидку")}>Задать скидку</DropdownActionItem>
@@ -7138,7 +7505,7 @@ function UnifiedCatalogTreePanel({
   onTreeContentModeChange?: (mode: CatalogTreeContentMode) => void;
   createSectionButtonRef?: RefObject<HTMLButtonElement | null>;
   revealSectionId?: string | null;
-  onSectionAction: (section: TreeSection, action: string) => void;
+  onSectionAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
   onInsertSection: (draggedId: string, targetParentId: string | null, targetIndex: number) => void;
   onInsertItem: (draggedId: string, targetParentId: string, targetIndex: number) => void;
   /** Синхронный флаг активного drag — блокирует клик по строке без задержки re-render. */
@@ -8034,7 +8401,7 @@ function UnifiedCatalogTreePanel({
                   section={section}
                   allowPositionCreation={positionCreationEnabled}
                   subsectionDisabledReason={parentAvailability.available ? null : parentAvailability.label}
-                  onAction={(action) => onSectionAction(section, action)}
+                  onAction={(action, anchor) => onSectionAction(section, action, anchor)}
                 />
               </DropdownContent>
             </DropdownMenu.Root>
@@ -8327,7 +8694,7 @@ function SubsectionRow({
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   onSelect: (id: string) => void;
-  onAction: (section: TreeSection, action: string) => void;
+  onAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
 
@@ -8387,7 +8754,7 @@ function SubsectionRow({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
-                <SectionActionMenuContent section={section} onAction={(action) => onAction(section, action)} />
+                <SectionActionMenuContent section={section} onAction={(action, anchor) => onAction(section, action, anchor)} />
               </DropdownContent>
             </DropdownMenu.Root>
           </span>
@@ -8410,7 +8777,7 @@ function SubsectionList({
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   onSelect: (id: string) => void;
-  onAction: (section: TreeSection, action: string) => void;
+  onAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   return (
     <SortableContext
@@ -8489,15 +8856,15 @@ function SectionEditor({
   onAddPosition: () => void;
   onOpenInPositions: () => void;
   onSelectChildSection: (id: string) => void;
-  onChildSectionAction: (section: TreeSection, action: string) => void;
+  onChildSectionAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
   positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
   onCompositionQueryChange: (value: string) => void;
   onScrollTopChange: (value: number) => void;
   onArchive: () => void;
   onRestore: () => void;
-  onAction: (action: string) => void;
-  onItemAction: (item: CatalogItem, action: string) => void;
+  onAction: (action: string, anchor?: MovePopoverAnchor) => void;
+  onItemAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   highlightItemId?: string | null;
@@ -8596,42 +8963,29 @@ function SectionEditor({
           </div>
           <div>
             <div data-editor-tabs>
-              <div className="flex items-center justify-between gap-3 border-b border-[#e7e5e4]">
-                <div className="flex min-w-0 items-center gap-2">
-                  {([
-                    { id: "composition", label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции" },
-                    { id: "basic", label: "Настройка раздела" },
-                    { id: "availability", label: "Доступность" },
-                  ] as const).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => onTabChange(tab.id)}
-                      className={cn(
-                        "flex items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
-                        activeTab === tab.id
-                          ? "border-[#1c1917] font-medium text-[#1c1917]"
-                          : "border-transparent text-[#79716b] hover:text-[#44403b]",
-                      )}
-                    >
-                      {tab.label}
-                      {tab.id === "composition" && (
-                        <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                          {compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length)}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                {showOpenInPositions && <button
+              <WorkspaceLocalTabs
+                tabs={[
+                  {
+                    id: "composition",
+                    label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции",
+                    count: compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length),
+                  },
+                  { id: "basic", label: "Настройка раздела" },
+                  { id: "availability", label: "Доступность" },
+                ]}
+                value={activeTab}
+                onValueChange={onTabChange}
+                endAction={showOpenInPositions ? (
+                  <button
                   type="button"
                   onClick={onOpenInPositions}
                   className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
                   <ArrowsOut size={14} weight="regular" />
                   Открыть в таблице
-                </button>}
-              </div>
+                  </button>
+                ) : undefined}
+              />
               <div className="pt-3">
             {activeTab === "composition" ? (
             hasChildSections ? (
@@ -8810,7 +9164,7 @@ function UnifiedSectionTableHeader({
   activeTab: SectionEditorTab;
   onTabChange: (tab: SectionEditorTab) => void;
   onAddPosition: () => void;
-  onAction: (action: string) => void;
+  onAction: (action: string, anchor?: MovePopoverAnchor) => void;
   positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
   allowPositionCreation?: boolean;
@@ -8852,32 +9206,15 @@ function UnifiedSectionTableHeader({
           </DropdownContent>
         </DropdownMenu.Root>
       </div>
-      <div className="flex items-center gap-2 border-b border-[#e7e5e4]">
-        {([
-          { id: "composition", label: "Позиции" },
+      <WorkspaceLocalTabs
+        tabs={[
+          { id: "composition", label: "Позиции", count: itemCount },
           { id: "basic", label: "Настройка раздела" },
           { id: "availability", label: "Доступность" },
-        ] as const).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onTabChange(tab.id)}
-            className={cn(
-              "flex items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
-              activeTab === tab.id
-                ? "border-[#1c1917] font-medium text-[#1c1917]"
-                : "border-transparent text-[#79716b] hover:text-[#44403b]",
-            )}
-          >
-            {tab.label}
-            {tab.id === "composition" && (
-              <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium text-[#79716b]">
-                {itemCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+        ]}
+        value={activeTab}
+        onValueChange={onTabChange}
+      />
     </div>
   );
 }
@@ -8913,7 +9250,7 @@ function SectionPositionNav({
   onSelectItem: (id: string) => void;
   onAddPosition: () => void;
   onOpenOverview: () => void;
-  onSectionAction: (action: string) => void;
+  onSectionAction: (action: string, anchor?: MovePopoverAnchor) => void;
   onArchiveOpenChange: (open: boolean) => void;
   onRestoreItem: (item: CatalogItem) => void;
   onToggleStop: (item: CatalogItem) => void;
@@ -9181,9 +9518,9 @@ function SectionPositionNav({
                 <SectionActionMenuContent
                   section={activeSection}
                   subsectionDisabledReason={subsectionAvailability && !subsectionAvailability.available ? subsectionAvailability.label : null}
-                  onAction={(action) => {
+                  onAction={(action, anchor) => {
                     if (action === "Добавить позицию") onAddPosition();
-                    else onSectionAction(action);
+                    else onSectionAction(action, anchor);
                   }}
                 />
               ) : null}
@@ -9852,6 +10189,13 @@ function PopulatedWorkspace({
   const [stopBusyIds, setStopBusyIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
+  const [moveRequest, setMoveRequest] = useState<{
+    operation: MoveOperation;
+    entityIds: string[];
+    currentSectionIds: string[];
+    movingSectionId?: string;
+    anchor: MovePopoverAnchor;
+  } | null>(null);
   const [treeMoveUndo, setTreeMoveUndo] = useState<CatalogTreeMoveUndoState>(null);
   const previousResetSignalRef = useRef(resetSignal);
 
@@ -10291,14 +10635,7 @@ function PopulatedWorkspace({
     lastItemBySection: { ...lastItemBySection },
   });
 
-  const offerTreeMoveUndo = (message: string, snapshot: CatalogTreeMoveSnapshot) => {
-    setFeedback("");
-    setTreeMoveUndo({ message, snapshot });
-  };
-
-  const undoLastTreeMove = () => {
-    if (!treeMoveUndo) return;
-    const { snapshot } = treeMoveUndo;
+  const restoreTreeMoveSnapshot = (snapshot: CatalogTreeMoveSnapshot) => {
     setPositionOrderBySection(cloneStringArrayRecord(snapshot.positionOrderBySection));
     setSectionOrderByParent(cloneStringArrayRecord(snapshot.sectionOrderByParent));
     Object.entries(snapshot.itemSectionOverrides).forEach(([itemId, sectionId]) => {
@@ -10307,6 +10644,16 @@ function PopulatedWorkspace({
     });
     setSectionParentOverrides({ ...snapshot.sectionParentOverrides });
     setLastItemBySection({ ...snapshot.lastItemBySection });
+  };
+
+  const offerTreeMoveUndo = (message: string, snapshot: CatalogTreeMoveSnapshot) => {
+    setFeedback("");
+    setTreeMoveUndo({ message, snapshot });
+  };
+
+  const undoLastTreeMove = () => {
+    if (!treeMoveUndo) return;
+    restoreTreeMoveSnapshot(treeMoveUndo.snapshot);
     setTreeMoveUndo(null);
     registerChange("catalog");
   };
@@ -11281,11 +11628,6 @@ function PopulatedWorkspace({
     setSectionEditorTab("availability");
   };
 
-  const focusSectionMove = (target: TreeSection) => {
-    window.dispatchEvent(new CustomEvent("tasko-focus-section-sorting", { detail: target.id }));
-    setFeedback("Перетащите раздел в дереве, чтобы выбрать нового родителя");
-  };
-
   const setSectionVisibility = (target: TreeSection, visible: boolean) => {
     setSectionVisibilityBySection((current) => ({
       ...current,
@@ -11307,7 +11649,7 @@ function PopulatedWorkspace({
     setFeedback(mode === "always" ? "Раздел доступен для заказа" : mode === "unavailable" ? "Раздел поставлен на стоп" : "Раздел доступен по расписанию");
   };
 
-  const handleSectionAction = (action: string) => {
+  const handleSectionAction = (action: string, anchor?: MovePopoverAnchor) => {
     if (action === "Добавить позицию") {
       addPosition();
       return;
@@ -11317,7 +11659,15 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Переместить" || action === "Переместить раздел") {
-      if (section) focusSectionMove(section);
+      if (section && anchor) {
+        setMoveRequest({
+          operation: "section",
+          entityIds: [section.id],
+          currentSectionIds: [section.parentId ?? "__root__"],
+          movingSectionId: section.id,
+          anchor,
+        });
+      }
       return;
     }
     if (action === "Настроить доступность") {
@@ -11354,7 +11704,7 @@ function PopulatedWorkspace({
     showPlaceholderFeedback(`${action}: placeholder`);
   };
 
-  const handleUnifiedSectionAction = (target: TreeSection, action: string) => {
+  const handleUnifiedSectionAction = (target: TreeSection, action: string, anchor?: MovePopoverAnchor) => {
     if (action === "Добавить позицию") {
       addPositionToSection(target.id);
       return;
@@ -11387,7 +11737,15 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Переместить" || action === "Переместить раздел") {
-      focusSectionMove(target);
+      if (anchor) {
+        setMoveRequest({
+          operation: "section",
+          entityIds: [target.id],
+          currentSectionIds: [target.parentId ?? "__root__"],
+          movingSectionId: target.id,
+          anchor,
+        });
+      }
       return;
     }
     if (action === "Архивировать" || action === "Архивировать раздел") {
@@ -11468,7 +11826,7 @@ function PopulatedWorkspace({
     setSelectedItemId(replacement?.id ?? null);
     setFeedback("Позиция удалена навсегда");
   };
-  const handleBulkAction = (action: string) => {
+  const handleBulkAction = (action: string, anchor?: MovePopoverAnchor) => {
     const selectedCount = selectedIds.size;
     const selectedLabel = `${selectedCount} ${plural(selectedCount, "позиция", "позиции", "позиций")}`;
     const setSelectedStatus = (status: CatalogItem["status"], message: string) => {
@@ -11476,6 +11834,17 @@ function PopulatedWorkspace({
       setFeedback(message);
       setSelectedIds(new Set());
     };
+
+    if (action === "Переместить в раздел" && anchor) {
+      const ids = [...selectedIds];
+      setMoveRequest({
+        operation: "bulk",
+        entityIds: ids,
+        currentSectionIds: ids.map((id) => allItems.find((item) => item.id === id)?.sectionId).filter((id): id is string => Boolean(id)),
+        anchor,
+      });
+      return;
+    }
 
     if (action === "В меню" || action === "Убрать со стопа") {
       setSelectedStatus("active", `${selectedLabel} возвращены в меню`);
@@ -11505,6 +11874,60 @@ function PopulatedWorkspace({
       return;
     }
     showPlaceholderFeedback(`${action}: ${selectedLabel}`);
+  };
+
+  const moveForbiddenTargets = useMemo(() => {
+    if (moveRequest?.operation !== "section") return {};
+    return Object.fromEntries(allSections.flatMap((target) => {
+      if (allItems.some((item) => item.sectionId === target.id)) {
+        return [[target.id, "Нельзя переместить раздел в раздел с позициями"]];
+      }
+      return [];
+    }));
+  }, [allItems, allSections, moveRequest?.operation]);
+
+  const performMoveRequest = async (targetSectionId: string | null) => {
+    if (!moveRequest) return;
+    const snapshot = captureTreeMoveSnapshot();
+    try {
+      if (moveRequest.operation === "section") {
+        const movingSectionId = moveRequest.movingSectionId;
+        if (!movingSectionId) return;
+        moveTreeSection(movingSectionId, targetSectionId, null, "inside", false);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+        registerChange("catalog");
+        const destinationName = targetSectionId
+          ? allSections.find((candidate) => candidate.id === targetSectionId)?.name ?? "выбранный раздел"
+          : null;
+        offerTreeMoveUndo(
+          destinationName ? `Раздел перемещён в «${destinationName}»` : "Раздел перемещён в корень каталога",
+          snapshot,
+        );
+        setSelectedSectionId(movingSectionId);
+        return;
+      }
+
+      if (!targetSectionId) return;
+      const destination = allSections.find((candidate) => candidate.id === targetSectionId);
+      if (!destination) return;
+      const targets = moveRequest.entityIds
+        .map((id) => allItems.find((item) => item.id === id))
+        .filter((item): item is CatalogItem => item != null && item.sectionId !== targetSectionId);
+      targets.forEach((target) => moveCatalogItem(target.id, targetSectionId, { sectionName: destination.name }));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+      registerChange("catalog");
+      const count = moveRequest.entityIds.length;
+      offerTreeMoveUndo(
+        moveRequest.operation === "bulk"
+          ? `${count} ${plural(count, "позиция перемещена", "позиции перемещены", "позиций перемещено")} в «${destination.name}»`
+          : `Позиция перемещена в «${destination.name}»`,
+        snapshot,
+      );
+      if (moveRequest.operation === "bulk") setSelectedIds(new Set());
+    } catch (error) {
+      restoreTreeMoveSnapshot(snapshot);
+      throw error;
+    }
   };
 
   useEffect(() => {
@@ -11667,7 +12090,7 @@ function PopulatedWorkspace({
       activeTab={sectionEditorTab}
       onTabChange={setSectionEditorTab}
       onAddPosition={() => addPositionToSection(section.id)}
-      onAction={(action) => handleUnifiedSectionAction(section, action)}
+      onAction={(action, anchor) => handleUnifiedSectionAction(section, action, anchor)}
       positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
       subsectionCreateDisabledReason={subsectionDisabledReason}
       allowPositionCreation={allowPositionCreation}
@@ -11748,10 +12171,10 @@ function PopulatedWorkspace({
       onScrollTopChange={setSectionEditorScrollTop}
       onArchive={() => archiveSection(section)}
       onRestore={() => restoreSection(section)}
-      onAction={(action) => handleUnifiedSectionAction(section, action)}
-      onItemAction={(item, action) => {
+      onAction={(action, anchor) => handleUnifiedSectionAction(section, action, anchor)}
+      onItemAction={(item, action, anchor) => {
         if (action === "Редактировать в Позициях" || action === "Открыть позицию" || action === "Редактировать") openItem(item.id);
-        else if (action === "Переместить в раздел") showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`);
+        else if (action === "Переместить в раздел" && anchor) setMoveRequest({ operation: "position", entityIds: [item.id], currentSectionIds: [item.sectionId], anchor });
       }}
       showOpenInPositions={false}
       forcePositionsLabel
@@ -11894,13 +12317,13 @@ function PopulatedWorkspace({
               onScrollTopChange={setSectionEditorScrollTop}
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
-              onAction={(action) => handleUnifiedSectionAction(section, action)}
-                onItemAction={(item, action) => {
+              onAction={(action, anchor) => handleUnifiedSectionAction(section, action, anchor)}
+                onItemAction={(item, action, anchor) => {
                   if (action === "Редактировать в Позициях" || action === "Открыть позицию" || action === "Редактировать") {
                     openItem(item.id);
                   return;
                 }
-                if (action === "Переместить в раздел") showPlaceholderFeedback(`Переместить «${item.title}»: placeholder`);
+                if (action === "Переместить в раздел" && anchor) setMoveRequest({ operation: "position", entityIds: [item.id], currentSectionIds: [item.sectionId], anchor });
               }}
             />
           ) : (
@@ -11943,6 +12366,20 @@ function PopulatedWorkspace({
           {activeDrag ? <CatalogDragOverlayRow drag={activeDrag} /> : null}
         </DragOverlay>
         </DndContext>
+        {moveRequest && (
+          <MoveToSectionPopover
+            operation={moveRequest.operation}
+            entityIds={moveRequest.entityIds}
+            currentSectionIds={moveRequest.currentSectionIds}
+            movingSectionId={moveRequest.movingSectionId}
+            sections={allSections}
+            forbiddenTargets={moveForbiddenTargets}
+            anchor={moveRequest.anchor}
+            onClose={() => setMoveRequest(null)}
+            onMove={performMoveRequest}
+            onError={() => setFeedback("Не удалось переместить. Попробуйте ещё раз")}
+          />
+        )}
         {selectedItem?.status === "archive" && (
           <div className="pointer-events-none fixed bottom-5 right-8 z-[100001] rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-2 text-[13px] font-medium text-[#79716b] shadow-[0_12px_36px_rgba(41,37,36,0.12)]">
             Архивные позиции не отображаются в меню
@@ -12304,7 +12741,7 @@ function DropdownActionItem({
   icon: Icon,
 }: {
   children: ReactNode;
-  onSelect: () => void;
+  onSelect: (event: Event) => void;
   tone?: "default" | "danger";
   disabled?: boolean;
   icon?: PhosphorIcon;
@@ -12402,7 +12839,7 @@ function SectionActionMenuContent({
   section: TreeSection;
   subsectionDisabledReason?: string | null;
   allowPositionCreation?: boolean;
-  onAction: (action: string) => void;
+  onAction: (action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   if (section.status === "archive") {
     return (
@@ -12428,7 +12865,7 @@ function SectionActionMenuContent({
         </span>
       </Tooltip>
       <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-      <DropdownActionItem icon={ArrowsOutCardinal} onSelect={() => onAction("Переместить раздел")}>Переместить раздел</DropdownActionItem>
+      <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event))}>Переместить…</DropdownActionItem>
       <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
       <SectionVisibilityMenuItem
         visible={section.visibility !== "hidden"}
@@ -12442,7 +12879,7 @@ function SectionActionMenuContent({
   );
 }
 
-function AuditRowActionsMenu({ item, onAction, compositionMode }: { item: CatalogItem; onAction: (action: string) => void; compositionMode?: boolean }) {
+function AuditRowActionsMenu({ item, onAction, compositionMode }: { item: CatalogItem; onAction: (action: string, anchor?: MovePopoverAnchor) => void; compositionMode?: boolean }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -12456,12 +12893,13 @@ function AuditRowActionsMenu({ item, onAction, compositionMode }: { item: Catalo
       </DropdownMenu.Trigger>
       <DropdownContent>
         {compositionMode ? (
-          <DropdownActionItem onSelect={() => onAction("Переместить в раздел")}>Переместить в раздел</DropdownActionItem>
+          <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
         ) : (
           <>
             <DropdownActionItem onSelect={() => onAction("Открыть позицию")}>Открыть позицию</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Открыть в разделе")}>Открыть в разделе</DropdownActionItem>
             <DropdownActionItem onSelect={() => onAction("Редактировать")}>Редактировать</DropdownActionItem>
+            <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
           </>
         )}
         {!compositionMode && (
@@ -12523,7 +12961,7 @@ function AuditDishRow({
   reorderEnabled = false,
 }: {
   row: TableRow<CatalogItem>;
-  onAction: (item: CatalogItem, action: string) => void;
+  onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
   selected: boolean;
   selectionMode: boolean;
   onSelectedChange: (id: string, selected: boolean) => void;
@@ -12728,7 +13166,7 @@ function AuditDishRow({
           case "actions":
             return (
               <span key={cell.id} className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                <AuditRowActionsMenu item={item} onAction={(action) => onAction(item, action)} compositionMode={compositionMode} />
+                <AuditRowActionsMenu item={item} onAction={(action, anchor) => onAction(item, action, anchor)} compositionMode={compositionMode} />
               </span>
             );
           default:
@@ -12784,7 +13222,7 @@ function VirtualizedAuditRows({
   selectionMode: boolean;
   scrollParentRef: RefObject<HTMLDivElement | null>;
   onSelectedChange: (id: string, selected: boolean) => void;
-  onAction: (item: CatalogItem, action: string) => void;
+  onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
   compositionMode?: boolean;
   highlightItemId?: string | null;
   reorderEnabled?: boolean;
@@ -12851,7 +13289,7 @@ function CompositionRow({
   highlightItemId?: string | null;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
-  onItemAction: (item: CatalogItem, action: string) => void;
+  onItemAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   const status = getCompositionRowStatusLabel(item);
   const archived = item.status === "archive";
@@ -12935,7 +13373,7 @@ function CompositionRow({
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            <AuditRowActionsMenu item={item} onAction={(action) => onItemAction(item, action)} compositionMode />
+            <AuditRowActionsMenu item={item} onAction={(action, anchor) => onItemAction(item, action, anchor)} compositionMode />
           </span>
         </div>
       )}
@@ -12958,7 +13396,7 @@ function SectionCompositionList({
   highlightItemId?: string | null;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
-  onItemAction: (item: CatalogItem, action: string) => void;
+  onItemAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   return (
     <SortableContext
@@ -13000,6 +13438,7 @@ function SelectionToolbar({
   onClearDiscount,
   onOpenSchedule,
   onOpenDiscount,
+  onMove,
   onOpenPlaceholder,
   onOpenDelete,
 }: {
@@ -13013,6 +13452,7 @@ function SelectionToolbar({
   onClearDiscount: () => void;
   onOpenSchedule: () => void;
   onOpenDiscount: () => void;
+  onMove: (anchor: MovePopoverAnchor) => void;
   onOpenPlaceholder: (title: string, text: string) => void;
   onOpenDelete: () => void;
 }) {
@@ -13046,6 +13486,15 @@ function SelectionToolbar({
           <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
           <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
         </ToolbarDropdown>
+        <ToolbarDivider />
+        <button
+          type="button"
+          onClick={(event) => onMove(getMovePopoverAnchor(event))}
+          className="flex h-full items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <ArrowsOutCardinal size={14} />
+          Переместить в раздел…
+        </button>
         <ToolbarDivider />
         <ToolbarDropdown label="Скидка">
           <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
@@ -14194,6 +14643,7 @@ function OverviewWorkspace({
     updateItem,
     addItem,
     deleteItem,
+    moveItem,
     setItemStatus,
     setAutosaveStatus,
     setActiveEditorItemId,
@@ -14256,6 +14706,8 @@ function OverviewWorkspace({
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [moveRequest, setMoveRequest] = useState<{ operation: "position" | "bulk"; itemIds: string[]; anchor: MovePopoverAnchor } | null>(null);
+  const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
   const tableReorderSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -14288,6 +14740,12 @@ function OverviewWorkspace({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollTopRef = useRef<number | null>(null);
   const descriptionSaveTimersRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!moveUndo) return;
+    const timeout = window.setTimeout(() => setMoveUndo(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [moveUndo]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -14645,7 +15103,11 @@ function OverviewWorkspace({
     // pendingOpen is an atomic hand-off that must be consumed only once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOpen]);
-  const prepareRowAction = (item: CatalogItem, action: string) => {
+  const prepareRowAction = (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => {
+    if (action === "Переместить в раздел" && anchor) {
+      setMoveRequest({ operation: "position", itemIds: [item.id], anchor });
+      return;
+    }
     if (action === "Открыть в разделе") {
       onOpenSectionInSections(item.sectionId, item.id);
       return;
@@ -15422,6 +15884,7 @@ function OverviewWorkspace({
                           onClearDiscount={clearSelectedDiscount}
                           onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
                           onOpenDiscount={() => setBulkDialog({ type: "discount" })}
+                          onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
                           onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
                           onOpenDelete={() => setBulkDialog({ type: "delete" })}
                         />
@@ -15457,6 +15920,56 @@ function OverviewWorkspace({
                     />
                   )}
                   {feedback && <SelectionFeedback message={feedback} />}
+                  {moveRequest && (
+                    <MoveToSectionPopover
+                      operation={moveRequest.operation}
+                      entityIds={moveRequest.itemIds}
+                      currentSectionIds={moveRequest.itemIds.map((id) => items.find((item) => item.id === id)?.sectionId).filter((id): id is string => Boolean(id))}
+                      sections={structureSections ?? catalogSections}
+                      anchor={moveRequest.anchor}
+                      onClose={() => setMoveRequest(null)}
+                      onMove={async (targetSectionId) => {
+                        if (!targetSectionId) return;
+                        const destination = (structureSections ?? catalogSections).find((section) => section.id === targetSectionId);
+                        if (!destination) return;
+                        const targets = moveRequest.itemIds
+                          .map((id) => items.find((item) => item.id === id))
+                          .filter((item): item is CatalogItem => item != null && item.sectionId !== targetSectionId);
+                        const previous = targets.map((target) => ({ id: target.id, sectionId: target.sectionId, sectionName: target.sectionName }));
+                        targets.forEach((target) => moveItem(target.id, targetSectionId, { sectionName: destination.name }));
+                        try {
+                          await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+                          registerChange("catalog");
+                          const message = moveRequest.operation === "bulk"
+                            ? `${moveRequest.itemIds.length} ${plural(moveRequest.itemIds.length, "позиция перемещена", "позиции перемещены", "позиций перемещено")} в «${destination.name}»`
+                            : `Позиция перемещена в «${destination.name}»`;
+                          setMoveUndo({ previous, message });
+                          if (moveRequest.operation === "bulk") clearSelection();
+                        } catch (error) {
+                          previous.forEach((entry) => moveItem(entry.id, entry.sectionId, { sectionName: entry.sectionName }));
+                          throw error;
+                        }
+                      }}
+                      onError={() => showFeedback("Не удалось переместить. Попробуйте ещё раз")}
+                    />
+                  )}
+                  {moveUndo && (
+                    <div className="fixed bottom-5 left-1/2 z-[100006] flex -translate-x-1/2 items-center gap-2 rounded-[10px] bg-[#292524] px-3 py-2 text-[13px] font-medium text-white shadow-[0_12px_36px_rgba(41,37,36,0.2)]">
+                      <span>{moveUndo.message}</span>
+                      <span aria-hidden="true" className="text-white/45">·</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          moveUndo.previous.forEach((entry) => moveItem(entry.id, entry.sectionId, { sectionName: entry.sectionName }));
+                          setMoveUndo(null);
+                          registerChange("catalog");
+                        }}
+                        className="rounded-[5px] font-semibold text-[#c9c2ff] outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-white/35"
+                      >
+                        Отменить
+                      </button>
+                    </div>
+                  )}
                   </div>
                 </div>
               )}

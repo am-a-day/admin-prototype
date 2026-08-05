@@ -46,7 +46,13 @@ import {
 } from "@/data/mock-data";
 import { AnalyticsPage, OrderHistoryPage, QRPage } from "@/features/standalone-pages";
 import { AMApp } from "@/features/am/am-app";
-import { DeliveryWorkspace } from "@/features/management/delivery-workspace";
+import {
+  DeliveryWorkspace,
+  OrderSettingsSaveIndicator,
+  OrderSettingsTabs,
+  type OrderSettingsSaveState,
+  type OrderSettingsTab,
+} from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
 import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
@@ -170,7 +176,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:upsell":     { title: "Допродажи",          description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
   "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
-  "management:order-settings": { title: "Настройка заказов", description: "Доставка, самовывоз и способы оплаты.", showLanguage: true },
+  "management:order-settings": { title: "Настройка заказов", description: "Настройте способы получения заказов и обслуживание гостей.", showLanguage: true },
   "management:order-history":  { title: "История заказов",   description: "Все входящие заказы — доставка и самовывоз." },
   "management:billing":    { title: "Тарифы",             description: "Текущий план, ограничения и возможности следующего." },
   "management:account":    { title: "Аккаунт",            description: "Данные заведения, владелец и доступы." },
@@ -517,6 +523,8 @@ function AuthenticatedShell() {
   const [storeTab, setStoreTab] = useState<StoreTabId>(initialStorefrontRoute.storeTab);
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>(initialStorefrontRoute.aboutTab);
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
+  const [orderSettingsTab, setOrderSettingsTab] = useState<OrderSettingsTab>("delivery");
+  const [orderSettingsSaveState, setOrderSettingsSaveState] = useState<OrderSettingsSaveState>("saved");
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
@@ -1022,7 +1030,12 @@ function AuthenticatedShell() {
     }
   } else if (section === "management") {
     if (manageTab === "order-settings") {
-      content = <DeliveryWorkspace setPreviewScenario={setPreviewScenario} />;
+      content = (
+        <DeliveryWorkspace
+          activeTab={orderSettingsTab}
+          onSaveStateChange={setOrderSettingsSaveState}
+        />
+      );
     } else if (manageTab === "order-history") {
       content = <OrderHistoryPage />;
     } else {
@@ -1081,6 +1094,7 @@ function AuthenticatedShell() {
   const isHomePage = section === "storefront" && storeTab === "home";
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
   const isAboutPage = section === "storefront" && storeTab === "about";
+  const isOrderSettingsPage = section === "management" && manageTab === "order-settings";
   const isTrainingPage = section === "training";
   const isPublicDisplayPage = section === "storefront" && storeTab === "about" && storeAboutTab === "public-display";
 
@@ -1095,9 +1109,7 @@ function AuthenticatedShell() {
     isCatalogPage && catalogTab === "upsell" ? "upsell" :
     isTrainingPage ? null :
     (activeTab as StoreTabId | ManageTabId | AnalyticsTabId | null);
-  const previewVisible =
-    section === "storefront" ||
-    (section === "management" && manageTab === "order-settings");
+  const previewVisible = section === "storefront";
 
   const metaKey =
     section === "storefront" ? `storefront:${storeTab}` :
@@ -1194,7 +1206,7 @@ function AuthenticatedShell() {
               <div className={cn(
                 "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
               )}>
-                <div className={cn(isAboutPage ? "min-w-0 flex-1" : "shrink-0")}>
+                <div className={cn(isAboutPage || isOrderSettingsPage ? "min-w-0 flex-1" : "shrink-0")}>
                   {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
                   {isCatalogPage && catalogPhase !== "empty" && (
                     <CatalogTabs value={catalogPrimaryTab} onChange={changeCatalogPrimaryTab} />
@@ -1210,6 +1222,9 @@ function AuthenticatedShell() {
                   {isTrainingPage && (
                     <TrainingTabs value={trainingTab} onChange={changeTrainingTab} />
                   )}
+                  {isOrderSettingsPage && (
+                    <OrderSettingsTabs value={orderSettingsTab} onChange={setOrderSettingsTab} />
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {pageMeta.showLanguage && (
@@ -1218,6 +1233,9 @@ function AuthenticatedShell() {
                         navigate("storefront", "about:language-region")
                       }
                     />
+                  )}
+                  {isOrderSettingsPage && (
+                    <OrderSettingsSaveIndicator state={orderSettingsSaveState} />
                   )}
                 </div>
               </div>
