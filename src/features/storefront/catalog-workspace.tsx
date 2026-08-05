@@ -35,6 +35,7 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type KeyboardCoordinateGetter,
   type Modifier,
 } from "@dnd-kit/core";
 import {
@@ -231,6 +232,27 @@ const optionCollisionDetection: CollisionDetection = (args) => {
     return data?.kind === "option-variant" && data?.groupId === groupId;
   });
   return closestCenter({ ...args, droppableContainers });
+};
+
+const optionKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  const activeData = args.context.active?.data.current;
+  const kind = activeData?.kind;
+  const groupId = activeData?.groupId;
+  const originalContainers = args.context.droppableContainers;
+  const enabledContainers = originalContainers.getEnabled().filter((container) => {
+    const data = container.data.current;
+    if (kind === "option-group") return data?.kind === "option-group";
+    return data?.kind === "option-variant" && data?.groupId === groupId;
+  });
+  const filteredContainers = {
+    get: originalContainers.get.bind(originalContainers),
+    getEnabled: () => enabledContainers,
+  } as unknown as typeof originalContainers;
+
+  return sortableKeyboardCoordinates(event, {
+    ...args,
+    context: { ...args.context, droppableContainers: filteredContainers },
+  });
 };
 
 function mergeRefs<T extends HTMLElement>(...refs: Array<RefObject<T | null> | ((element: T | null) => void) | undefined>) {
@@ -5511,7 +5533,7 @@ function OptionsTab({
   const draftNameRef = useRef<HTMLInputElement | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: optionKeyboardCoordinates }),
   );
 
   useEffect(() => {
