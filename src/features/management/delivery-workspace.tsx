@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
 import {
   AlertCircle,
   Check,
   CheckCircle2,
   CreditCard,
   Loader2,
-  MessageCircle,
+  MoreHorizontal,
   Send,
   X,
 } from "lucide-react";
@@ -13,8 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { TranslatableField } from "@/components/workspace/translatable-field";
-import { PageContent, PageScroll } from "@/components/workspace/page-layout";
-import { ChannelManagerDialog, ChannelPickerDialog } from "@/features/management/order-channels-dialogs";
+import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
+import {
+  ChannelManagerDialog,
+  ChannelPickerPopover,
+  ChannelSettingsPopover,
+  getChannelPopoverAnchor,
+  type ChannelPopoverAnchor,
+} from "@/features/management/order-channels-dialogs";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   CHANNEL_LABELS,
@@ -133,19 +141,20 @@ function FeatureHeader({
   enabled: boolean;
   status: "Не настроено" | "Выключено" | "Включено" | "Требует настройки";
   validationMessage?: string;
-  onToggle: (enabled: boolean) => void;
+  onToggle: (enabled: boolean, anchor: ChannelPopoverAnchor) => void;
 }) {
+  const toggleAnchorRef = useRef<HTMLSpanElement>(null);
   return (
     <div className="flex items-start justify-between gap-6 px-1 py-1">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[17px] font-semibold text-[#292524]">{title}</h1>
+          <h1 className="text-[14px] font-medium leading-tight text-stone-950">{title}</h1>
           <span className={cn(
             "rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium",
             status === "Включено" ? "bg-emerald-50 text-emerald-700" : status === "Требует настройки" ? "bg-amber-50 text-amber-800" : "bg-[#f1f1ea] text-[#79716b]",
           )}>{status}</span>
         </div>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-[#79716b]">{description}</p>
+        <p className="mt-1 max-w-2xl text-sm text-zinc-500">{description}</p>
         {validationMessage && (
           <div className="mt-2 flex items-center gap-1.5 text-[12px] text-red-600">
             <AlertCircle size={13} />
@@ -153,7 +162,7 @@ function FeatureHeader({
           </div>
         )}
       </div>
-      <Switch checked={enabled} onCheckedChange={onToggle} aria-label={`${enabled ? "Выключить" : "Включить"} ${title.toLowerCase()}`} className="mt-0.5" />
+      <span ref={toggleAnchorRef} className="mt-0.5 flex"><Switch checked={enabled} onCheckedChange={(checked) => onToggle(checked, getChannelPopoverAnchor(toggleAnchorRef.current ?? document.body))} aria-label={`${enabled ? "Выключить" : "Включить"} ${title.toLowerCase()}`} /></span>
     </div>
   );
 }
@@ -168,12 +177,12 @@ function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-4 border-t border-[#eceae7] px-5 py-5 md:grid-cols-[190px_minmax(0,1fr)] md:gap-7">
+    <section className="border-t border-[#eceae7] px-5 py-5 first:border-t-0">
       <div>
         <h3 className="text-[13px] font-medium text-[#292524]">{title}</h3>
         {description && <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{description}</p>}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="mt-4 min-w-0">{children}</div>
     </section>
   );
 }
@@ -216,28 +225,33 @@ function CompactField({
 type TestState = "idle" | "sending" | "success" | "error";
 
 function ChannelSection({
+  event,
   route,
   testState,
   testLabel,
   onSelect,
-  onCreate,
+  onConfigure,
+  onDetach,
   onTest,
 }: {
+  event: OrderEvent;
   route: RouteChannel | null;
   testState: TestState;
   testLabel: string;
-  onSelect: () => void;
-  onCreate: () => void;
+  onSelect: (anchor: ChannelPopoverAnchor) => void;
+  onConfigure: (anchor: ChannelPopoverAnchor) => void;
+  onDetach: () => void;
   onTest: () => void;
 }) {
   const routeStatus = route ? channelStatus(route.status) : null;
+  const detachLabel = event === "delivery" ? "Убрать из доставки" : event === "pickup" ? "Убрать из самовывоза" : "Убрать из вызова официанта";
   return (
     <div>
       {route ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]", route.type === "whatsapp" ? "bg-emerald-50 text-emerald-600" : "bg-sky-50 text-sky-600")}>
-              <MessageCircle size={16} />
+              {route.type === "telegram" ? <TelegramLogo size={17} weight="fill" /> : <WhatsappLogo size={17} weight="fill" />}
             </span>
             <div className="min-w-0">
               <div className="truncate text-[13px] font-medium text-[#292524]">{route.name}</div>
@@ -246,11 +260,23 @@ function ChannelSection({
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button type="button" variant="ghost" size="sm" onClick={onSelect}>Сменить канал</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Сменить канал</Button>
             <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testState === "sending"}>
               {testState === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               {testState === "sending" ? "Отправляем…" : testLabel}
             </Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" aria-label="Действия канала" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><MoreHorizontal size={16} /></button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content sideOffset={6} align="end" className="z-[100007] min-w-[210px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+                  <DropdownMenu.Item onSelect={(eventValue) => onConfigure(getChannelPopoverAnchor(eventValue.currentTarget as Element))} className="flex h-8 cursor-pointer items-center rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Настроить канал</DropdownMenu.Item>
+                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                  <DropdownMenu.Item onSelect={onDetach} className="flex h-8 cursor-pointer items-center rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">{detachLabel}</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
       ) : (
@@ -259,10 +285,7 @@ function ChannelSection({
             <div className="text-[13px] font-medium text-[#292524]">Канал не выбран</div>
             <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Выберите существующий канал или создайте новый.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" size="sm" onClick={onSelect}>Выбрать канал</Button>
-            <Button type="button" variant="outline" size="sm" onClick={onCreate}>Создать новый</Button>
-          </div>
+          <Button type="button" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Выбрать канал</Button>
         </div>
       )}
       {route && testState === "success" && <span role="status" className="sr-only">Тестовое сообщение отправлено</span>}
@@ -380,8 +403,8 @@ export function DeliveryWorkspace({
   const saveTimerRef = useRef<number | null>(null);
   const testTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pickerEvent, setPickerEvent] = useState<OrderEvent | null>(null);
-  const [explainConnectionFirst, setExplainConnectionFirst] = useState(false);
+  const [pickerRequest, setPickerRequest] = useState<{ event: OrderEvent; anchor: ChannelPopoverAnchor; enableAfterSelect: boolean } | null>(null);
+  const [settingsRequest, setSettingsRequest] = useState<{ channelId: string; anchor: ChannelPopoverAnchor } | null>(null);
   const [managerCreateEvent, setManagerCreateEvent] = useState<OrderEvent | null>(null);
   const [managerKey, setManagerKey] = useState(0);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -442,10 +465,9 @@ export function DeliveryWorkspace({
     }, 650);
   };
 
-  const toggleRoutedFeature = (event: OrderEvent, enabled: boolean) => {
+  const toggleRoutedFeature = (event: OrderEvent, enabled: boolean, anchor: ChannelPopoverAnchor) => {
     if (enabled && !routes[event]) {
-      setExplainConnectionFirst(true);
-      setPickerEvent(event);
+      setPickerRequest({ event, anchor, enableAfterSelect: true });
       return;
     }
     if (event === "delivery") setDeliveryEnabled(enabled);
@@ -458,6 +480,22 @@ export function DeliveryWorkspace({
     if (event === "delivery") setDeliveryEnabled(enabled);
     if (event === "pickup") setPickupEnabled(enabled);
     if (event === "waiter") setWaiterEnabled(enabled);
+  };
+
+  const detachChannel = (event: OrderEvent) => {
+    setRoute(event, null);
+    setFeatureEnabled(event, false);
+    setRequiresSetupEvents((current) => current.filter((candidate) => candidate !== event));
+    setTestState(event, "idle");
+    queueSave(true);
+    const target = event === "delivery" ? "доставки" : event === "pickup" ? "самовывоза" : "вызова официанта";
+    setToast({ message: `Канал отключён от ${target}`, tone: "success" });
+  };
+
+  const handleAssignmentsRemoved = (events: OrderEvent[]) => {
+    events.forEach((event) => setFeatureEnabled(event, false));
+    setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
+    queueSave(true);
   };
 
   const openChannelManager = (sourceEvent: OrderEvent | null = null) => {
@@ -514,7 +552,8 @@ export function DeliveryWorkspace({
 
   return (
     <PageScroll>
-      <PageContent className="max-w-5xl space-y-4 px-8 pb-8 pt-5">
+      <PageContent className="space-y-0">
+        <CompactContent className="space-y-4">
         {!loading && (activeTab === "payment" ? (
           <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
             <div className="min-w-0">
@@ -532,12 +571,12 @@ export function DeliveryWorkspace({
             description={content.description}
             enabled={content.enabled}
             status={content.status}
-            onToggle={(enabled) => {
+            onToggle={(enabled, anchor) => {
               if (activeTab === "service-fee") {
                 setServiceFeeEnabled(enabled);
                 queueSave(true);
               } else if (activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter") {
-                toggleRoutedFeature(activeTab, enabled);
+                toggleRoutedFeature(activeTab, enabled, anchor);
               }
             }}
           />
@@ -545,16 +584,18 @@ export function DeliveryWorkspace({
         {loading ? (
           <WorkspaceLoading />
         ) : (
-          <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+          <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             {activeTab === "delivery" && (
               <>
                 <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
                   <ChannelSection
+                    event="delivery"
                     route={routes.delivery}
                     testState={testStates.delivery}
                     testLabel="Отправить тест"
-                    onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("delivery"); }}
-                    onCreate={() => openChannelManager("delivery")}
+                    onSelect={(anchor) => setPickerRequest({ event: "delivery", anchor, enableAfterSelect: false })}
+                    onConfigure={(anchor) => routes.delivery && setSettingsRequest({ channelId: routes.delivery.id, anchor })}
+                    onDetach={() => detachChannel("delivery")}
                     onTest={() => sendTest("delivery")}
                   />
                 </SettingsSection>
@@ -582,7 +623,7 @@ export function DeliveryWorkspace({
             {activeTab === "pickup" && (
               <>
                 <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
-                  <ChannelSection route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("pickup"); }} onCreate={() => openChannelManager("pickup")} onTest={() => sendTest("pickup")} />
+                  <ChannelSection event="pickup" route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={(anchor) => setPickerRequest({ event: "pickup", anchor, enableAfterSelect: false })} onConfigure={(anchor) => routes.pickup && setSettingsRequest({ channelId: routes.pickup.id, anchor })} onDetach={() => detachChannel("pickup")} onTest={() => sendTest("pickup")} />
                 </SettingsSection>
                 {routes.pickup && (
                   <>
@@ -653,47 +694,50 @@ export function DeliveryWorkspace({
 
             {activeTab === "waiter" && (
               <SettingsSection title="Получение вызовов" description="Канал для уведомлений сотрудников зала.">
-                <ChannelSection route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("waiter"); }} onCreate={() => openChannelManager("waiter")} onTest={() => sendTest("waiter")} />
+                <ChannelSection event="waiter" route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={(anchor) => setPickerRequest({ event: "waiter", anchor, enableAfterSelect: false })} onConfigure={(anchor) => routes.waiter && setSettingsRequest({ channelId: routes.waiter.id, anchor })} onDetach={() => detachChannel("waiter")} onTest={() => sendTest("waiter")} />
               </SettingsSection>
             )}
           </div>
         )}
+        </CompactContent>
       </PageContent>
 
-      {pickerEvent && (
-        <ChannelPickerDialog
-          key={`${pickerEvent}-${explainConnectionFirst ? "required" : "regular"}`}
-          event={pickerEvent}
-          currentChannel={routes[pickerEvent]}
-          explainConnectionFirst={explainConnectionFirst}
-          onClose={() => { setPickerEvent(null); setExplainConnectionFirst(false); }}
+      {pickerRequest && (
+        <ChannelPickerPopover
+          key={`${pickerRequest.event}-${pickerRequest.anchor.left}-${pickerRequest.anchor.top}`}
+          event={pickerRequest.event}
+          currentChannelId={routes[pickerRequest.event]?.id ?? null}
+          anchor={pickerRequest.anchor}
+          onClose={() => setPickerRequest(null)}
           onCreate={() => {
-            const sourceEvent = pickerEvent;
-            setPickerEvent(null);
-            setExplainConnectionFirst(false);
+            const sourceEvent = pickerRequest.event;
+            setPickerRequest(null);
             openChannelManager(sourceEvent);
           }}
-          onConnect={(channel) => {
-            const previousRoute = routes[pickerEvent];
-            setRoute(pickerEvent, channel);
-            setRequiresSetupEvents((current) => current.filter((event) => event !== pickerEvent));
-            if (explainConnectionFirst) setFeatureEnabled(pickerEvent, true);
-            setTestState(pickerEvent, "idle");
+          onSelect={(channel) => {
+            const selectedEvent = pickerRequest.event;
+            setRoute(selectedEvent, channel);
+            setRequiresSetupEvents((current) => current.filter((event) => event !== selectedEvent));
+            if (pickerRequest.enableAfterSelect) setFeatureEnabled(selectedEvent, true);
+            setTestState(selectedEvent, "idle");
             queueSave(true);
-            setPickerEvent(null);
-            setExplainConnectionFirst(false);
-            setToast({ message: previousRoute && previousRoute.id !== channel.id ? "Канал изменён" : "Канал подключён", tone: "success" });
+            setPickerRequest(null);
+            const target = selectedEvent === "delivery" ? "доставки" : selectedEvent === "pickup" ? "самовывоза" : "вызова официанта";
+            setToast({ message: `Канал для ${target} изменён`, tone: "success" });
           }}
+        />
+      )}
+      {settingsRequest && (
+        <ChannelSettingsPopover
+          channelId={settingsRequest.channelId}
+          anchor={settingsRequest.anchor}
+          onClose={() => setSettingsRequest(null)}
           onToast={setToast}
           onAssignmentsApplied={(events) => {
-            setRequiresSetupEvents((current) => current.filter((assignedEvent) => !events.includes(assignedEvent)));
+            setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
             queueSave(true);
           }}
-          onChannelDeleted={(events) => {
-            events.forEach((deletedEvent) => setFeatureEnabled(deletedEvent, false));
-            setRequiresSetupEvents((current) => Array.from(new Set([...current, ...events])));
-            queueSave(true);
-          }}
+          onAssignmentsRemoved={handleAssignmentsRemoved}
         />
       )}
       {channelsManagerOpen && (
@@ -709,6 +753,7 @@ export function DeliveryWorkspace({
             }
             queueSave(true);
           }}
+          onAssignmentsRemoved={handleAssignmentsRemoved}
           onChannelDeleted={(events) => {
             events.forEach((event) => setFeatureEnabled(event, false));
             setRequiresSetupEvents((current) => Array.from(new Set([...current, ...events])));

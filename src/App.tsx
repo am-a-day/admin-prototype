@@ -1243,7 +1243,7 @@ function AuthenticatedShell() {
                     <button
                       type="button"
                       onClick={() => setOrderChannelsOpen(true)}
-                      className="flex h-7 items-center rounded-[7px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+                      className="flex h-8 items-center rounded-[10px] border border-[#d6d3d1] bg-white px-3 text-[13px] font-medium text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                     >
                       <Bell size={13} className="mr-1.5" />
                       Каналы уведомлений

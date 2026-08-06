@@ -68,7 +68,7 @@ export function PageLangSwitcher({
     return (
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="flex h-7 min-w-9 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]">
+          <button type="button" className="flex h-8 min-w-9 items-center justify-center rounded-[10px] border border-[#d6d3d1] bg-white px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
             {activeLanguage?.short ?? "RU"}
           </button>
         </DropdownMenu.Trigger>
