@@ -525,6 +525,7 @@ function AuthenticatedShell() {
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
   const [orderSettingsTab, setOrderSettingsTab] = useState<OrderSettingsTab>("delivery");
   const [orderSettingsSaveState, setOrderSettingsSaveState] = useState<OrderSettingsSaveState>("saved");
+  const [orderChannelsOpen, setOrderChannelsOpen] = useState(false);
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
@@ -1034,6 +1035,8 @@ function AuthenticatedShell() {
         <DeliveryWorkspace
           activeTab={orderSettingsTab}
           onSaveStateChange={setOrderSettingsSaveState}
+          channelsManagerOpen={orderChannelsOpen}
+          onChannelsManagerOpenChange={setOrderChannelsOpen}
         />
       );
     } else if (manageTab === "order-history") {
@@ -1227,12 +1230,21 @@ function AuthenticatedShell() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {pageMeta.showLanguage && (
+                  {pageMeta.showLanguage && (!isOrderSettingsPage || orderSettingsTab === "delivery" || orderSettingsTab === "pickup") && (
                     <PageLangSwitcher
                       onManageLanguages={() =>
                         navigate("storefront", "about:language-region")
                       }
                     />
+                  )}
+                  {isOrderSettingsPage && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderChannelsOpen(true)}
+                      className="flex h-7 items-center rounded-[7px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+                    >
+                      Каналы
+                    </button>
                   )}
                   {isOrderSettingsPage && (
                     <OrderSettingsSaveIndicator state={orderSettingsSaveState} />

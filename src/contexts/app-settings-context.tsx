@@ -31,6 +31,8 @@ type AppSettingsContextValue = {
   setDeliveryEnabled: (enabled: boolean) => void;
   pickupEnabled: boolean;
   setPickupEnabled: (enabled: boolean) => void;
+  waiterEnabled: boolean;
+  setWaiterEnabled: (enabled: boolean) => void;
   deliveryComment: string;
   setDeliveryComment: (value: string) => void;
   pickupComment: string;
@@ -45,6 +47,7 @@ type StoredOrderSettings = {
   serviceFeeRequireConsent: boolean;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
+  waiterEnabled: boolean;
   deliveryComment: string;
   pickupComment: string;
   pickupAddress: string;
@@ -56,6 +59,7 @@ const EMPTY_ORDER_SETTINGS: StoredOrderSettings = {
   serviceFeeRequireConsent: false,
   deliveryEnabled: false,
   pickupEnabled: false,
+  waiterEnabled: false,
   deliveryComment: "",
   pickupComment: "",
   pickupAddress: "",
@@ -91,6 +95,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [minimumAge, setMinimumAge] = useState<18 | 21>(18);
   const [deliveryEnabled, setDeliveryEnabled] = useState(initialOrderSettings.deliveryEnabled);
   const [pickupEnabled, setPickupEnabled] = useState(initialOrderSettings.pickupEnabled);
+  const [waiterEnabled, setWaiterEnabled] = useState(initialOrderSettings.waiterEnabled);
   const [deliveryComment, setDeliveryComment] = useState(initialOrderSettings.deliveryComment);
   const [pickupComment, setPickupComment] = useState(initialOrderSettings.pickupComment);
   const [pickupAddress, setPickupAddress] = useState(initialOrderSettings.pickupAddress);
@@ -103,6 +108,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       serviceFeeRequireConsent,
       deliveryEnabled,
       pickupEnabled,
+      waiterEnabled,
       deliveryComment,
       pickupComment,
       pickupAddress,
@@ -114,6 +120,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     serviceFeeRequireConsent,
     deliveryEnabled,
     pickupEnabled,
+    waiterEnabled,
     deliveryComment,
     pickupComment,
     pickupAddress,
@@ -156,6 +163,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       setDeliveryEnabled,
       pickupEnabled,
       setPickupEnabled,
+      waiterEnabled,
+      setWaiterEnabled,
       deliveryComment,
       setDeliveryComment,
       pickupComment,
@@ -173,6 +182,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     minimumAge,
     deliveryEnabled,
     pickupEnabled,
+    waiterEnabled,
     deliveryComment,
     pickupComment,
     pickupAddress,

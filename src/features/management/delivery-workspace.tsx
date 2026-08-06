@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   Check,
@@ -12,11 +12,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { AuthPhoneField } from "@/components/auth/auth-phone-field";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { ChannelManagerDialog, ChannelPickerDialog } from "@/features/management/order-channels-dialogs";
 import { useAppSettings } from "@/contexts/app-settings-context";
-import { useMockAuth } from "@/contexts/mock-auth-context";
 import {
   CHANNEL_LABELS,
   useOrderRouting,
@@ -86,221 +85,27 @@ export function OrderSettingsSaveIndicator({ state }: { state: OrderSettingsSave
       ) : (
         <Check size={13} />
       )}
-      {state === "saving" ? "Сохранение…" : state === "error" ? "Ошибка сохранения" : "Сохранено"}
+      {state === "saving" ? "Сохранение" : state === "error" ? "Не удалось сохранить" : "Сохранено"}
     </div>
   );
-}
-
-const PURPOSE_LABELS: Record<OrderEvent, string> = {
-  delivery: "Доставка",
-  pickup: "Самовывоз",
-  waiter: "Вызов официанта",
-};
-
-function channelKey(channel: RouteChannel) {
-  return `${channel.type}:${channel.contact}`;
 }
 
 function channelName(type: ChannelType, contact: string) {
   return `${CHANNEL_LABELS[type]} · ${contact}`;
 }
 
-function slugifyChannelName(value: string) {
-  return value
-    .toLocaleLowerCase("ru")
-    .replace(/[^a-zа-яё0-9]+/gi, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 28);
-}
-
-function ChannelDialog({
-  event,
-  route,
-  channels,
-  onClose,
-  onSave,
-  explainConnectionFirst = false,
-}: {
-  event: OrderEvent;
-  route: RouteChannel | null;
-  channels: RouteChannel[];
-  onClose: () => void;
-  onSave: (channel: RouteChannel) => void;
-  explainConnectionFirst?: boolean;
-}) {
-  const { account } = useMockAuth();
-  const venueName = account?.workspace.name.trim() || "Мой ресторан 4798";
-  const [type, setType] = useState<ChannelType>(route?.type ?? "telegram");
-  const [selectedKey, setSelectedKey] = useState(route ? channelKey(route) : "");
-  const [showTelegramCreate, setShowTelegramCreate] = useState(() => !channels.some((channel) => channel.type === "telegram"));
-  const [whatsappPhone, setWhatsappPhone] = useState(route?.type === "whatsapp" ? route.contact : "");
-  const [whatsappValid, setWhatsappValid] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const generatedChatName = `${venueName} · ${PURPOSE_LABELS[event]}`;
-  const generatedTelegramContact = `@${slugifyChannelName(`${venueName}_${PURPOSE_LABELS[event]}`)}`;
-  const telegramChannels = channels.filter((channel) => channel.type === "telegram");
-  const selectedExisting = telegramChannels.find((channel) => channelKey(channel) === selectedKey) ?? null;
-  const description = event === "delivery"
-    ? "Выберите, куда отправлять новые заказы доставки."
-    : event === "pickup"
-      ? "Выберите, куда отправлять новые заказы самовывоза."
-      : "Выберите, куда отправлять вызовы официанта.";
-  const telegramDescription = event === "delivery"
-    ? "Мы создадим отдельный чат для заказов доставки и добавим в него бота Tasko."
-    : event === "pickup"
-      ? "Мы создадим отдельный чат для заказов самовывоза и добавим в него бота Tasko."
-      : "Мы создадим отдельный чат для вызовов официанта и добавим в него бота Tasko.";
-  const whatsappDescription = event === "delivery"
-    ? "На этот номер будут приходить новые заказы доставки."
-    : event === "pickup"
-      ? "На этот номер будут приходить новые заказы самовывоза."
-      : "На этот номер будут приходить вызовы официанта.";
-
-  useEffect(() => {
-    const onKeyDown = (eventValue: KeyboardEvent) => {
-      if (eventValue.key === "Escape" && !submitting) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, submitting]);
-
-  const createTelegramChannel = () => {
-    if (submitting) return;
-    setSubmitting(true);
-    window.setTimeout(() => {
-      const matchingCount = channels.filter((channel) => channel.type === "telegram" && channel.contact.startsWith(generatedTelegramContact)).length;
-      const contact = matchingCount > 0 ? `${generatedTelegramContact}_${matchingCount + 1}` : generatedTelegramContact;
-      onSave({ type: "telegram", contact });
-    }, 450);
-  };
-
-  const saveExistingTelegram = () => {
-    if (!selectedExisting || submitting) return;
-    setSubmitting(true);
-    window.setTimeout(() => onSave(selectedExisting), 350);
-  };
-
-  const saveWhatsapp = () => {
-    if (!whatsappValid || submitting) return;
-    setSubmitting(true);
-    window.setTimeout(() => onSave({ type: "whatsapp", contact: whatsappPhone }), 350);
-  };
-
-  const handleWhatsappValueChange = useCallback((value: string, valid: boolean) => {
-    setWhatsappPhone(value);
-    setWhatsappValid(valid);
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/25 px-4" role="dialog" aria-modal="true" aria-labelledby="channel-dialog-title">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={() => { if (!submitting) onClose(); }} aria-label="Закрыть" />
-      <div className="relative flex max-h-[min(640px,calc(100vh-32px))] w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-        <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4">
-          <div className="min-w-0">
-            <h2 id="channel-dialog-title" className="text-[15px] font-semibold text-[#292524]">Получение заказов</h2>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{description}</p>
-          </div>
-          <button type="button" onClick={onClose} disabled={submitting} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:opacity-50">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="border-b border-[#eceae7] px-5 pt-3">
-          <div role="tablist" aria-label="Канал получения заказов" className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-            {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => (
-              <button
-                key={channelType}
-                type="button"
-                role="tab"
-                aria-selected={type === channelType}
-                onClick={() => setType(channelType)}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-[12px] transition",
-                  type === channelType ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]" : "text-[#79716b] hover:text-[#292524]",
-                )}
-              >
-                {CHANNEL_LABELS[channelType]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-h-0 overflow-y-auto px-5 py-5">
-          {explainConnectionFirst && (
-            <div className="mb-4 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
-              Сначала подключите канал. После подключения функция включится автоматически.
-            </div>
-          )}
-
-          {type === "telegram" ? (
-            <div className="space-y-5">
-              {telegramChannels.length > 0 && (
-                <section>
-                  <h3 className="text-[13px] font-medium text-[#292524]">Подключённые чаты</h3>
-                  <div className="mt-2 space-y-1" role="radiogroup" aria-label="Подключённые Telegram-чаты">
-                    {telegramChannels.map((channel) => {
-                      const selected = selectedKey === channelKey(channel);
-                      return (
-                        <button key={channelKey(channel)} type="button" role="radio" aria-checked={selected} onClick={() => { setSelectedKey(channelKey(channel)); setShowTelegramCreate(false); }} className={cn("flex h-10 w-full items-center gap-3 rounded-[9px] px-2.5 text-left transition", selected ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]")}>
-                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-sky-50 text-sky-600"><MessageCircle size={15} /></span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{channel.contact}</span>
-                          <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>{selected && <Check size={10} />}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {!showTelegramCreate && (
-                    <button type="button" onClick={() => setShowTelegramCreate(true)} className="mt-2 text-[12px] font-medium text-[#57534d] underline underline-offset-2">Создать новый чат</button>
-                  )}
-                </section>
-              )}
-
-              {(showTelegramCreate || telegramChannels.length === 0) && (
-                <section>
-                  <h3 className="text-[13px] font-medium text-[#292524]">Telegram-чат</h3>
-                  <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{telegramDescription}</p>
-                  <div className="mt-4 text-[12px] text-[#79716b]">Название чата</div>
-                  <div className="mt-1 text-[14px] font-medium text-[#292524]">{generatedChatName}</div>
-                  <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Название формируется из названия заведения и назначения чата.</p>
-                </section>
-              )}
-            </div>
-          ) : (
-            <section>
-              <label htmlFor="order-whatsapp-phone" className="mb-1.5 block text-[12px] font-medium text-[#57534d]">Номер WhatsApp</label>
-              <AuthPhoneField id="order-whatsapp-phone" initialValue={whatsappPhone} disabled={submitting} onValueChange={handleWhatsappValueChange} />
-              <p className="mt-2 text-[12px] leading-5 text-[#79716b]">{whatsappDescription}</p>
-            </section>
-          )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[#eceae7] px-5 py-4">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>Отмена</Button>
-          {type === "telegram" && (showTelegramCreate || telegramChannels.length === 0) && (
-            <Button type="button" size="sm" disabled={submitting} onClick={createTelegramChannel}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : "Создать и подключить"}</Button>
-          )}
-          {type === "telegram" && !showTelegramCreate && telegramChannels.length > 0 && (
-            <Button type="button" size="sm" disabled={!selectedExisting || submitting} onClick={saveExistingTelegram}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Сохраняем…</> : route && selectedExisting && channelKey(route) === channelKey(selectedExisting) ? "Сохранить" : "Подключить выбранный"}</Button>
-          )}
-          {type === "whatsapp" && (
-            <Button type="button" size="sm" disabled={!whatsappValid || submitting} onClick={saveWhatsapp}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : route?.type === "whatsapp" ? "Сохранить" : "Подключить WhatsApp"}</Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FeatureHeader({
   title,
   description,
   enabled,
+  status,
   validationMessage,
   onToggle,
 }: {
   title: string;
   description: string;
   enabled: boolean;
+  status: "Не настроено" | "Выключено" | "Включено" | "Требует настройки";
   validationMessage?: string;
   onToggle: (enabled: boolean) => void;
 }) {
@@ -309,9 +114,10 @@ function FeatureHeader({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[16px] font-semibold text-[#292524]">{title}</h2>
-          {!enabled && (
-            <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Выключено</span>
-          )}
+          <span className={cn(
+            "rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium",
+            status === "Включено" ? "bg-emerald-50 text-emerald-700" : status === "Требует настройки" ? "bg-amber-50 text-amber-800" : "bg-[#f1f1ea] text-[#79716b]",
+          )}>{status}</span>
         </div>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-[#79716b]">{description}</p>
         {validationMessage && (
@@ -387,13 +193,15 @@ function ChannelSection({
   route,
   testState,
   testLabel,
-  onConfigure,
+  onSelect,
+  onCreate,
   onTest,
 }: {
   route: RouteChannel | null;
   testState: TestState;
   testLabel: string;
-  onConfigure: () => void;
+  onSelect: () => void;
+  onCreate: () => void;
   onTest: () => void;
 }) {
   return (
@@ -405,12 +213,13 @@ function ChannelSection({
               <MessageCircle size={16} />
             </span>
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium text-[#292524]">{channelName(route.type, route.contact)}</div>
+              <div className="truncate text-[13px] font-medium text-[#292524]">{route.name}</div>
+              <div className="mt-0.5 truncate text-[11px] text-[#79716b]">{channelName(route.type, route.contact)}</div>
               <div className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-600"><CheckCircle2 size={11} /> Канал подключён</div>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button type="button" variant="ghost" size="sm" onClick={onConfigure}>Изменить</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={onSelect}>Изменить</Button>
             <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testState === "sending"}>
               {testState === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               {testState === "sending" ? "Отправляем…" : testLabel}
@@ -420,14 +229,29 @@ function ChannelSection({
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4">
           <div className="min-w-0">
-            <div className="text-[13px] font-medium text-[#292524]">Канал не подключён</div>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Подключите Telegram или WhatsApp, чтобы получать новые заказы.</p>
+            <div className="text-[13px] font-medium text-[#292524]">Канал не выбран</div>
+            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Выберите существующий канал или создайте новый.</p>
           </div>
-          <Button type="button" size="sm" onClick={onConfigure}>Подключить канал</Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={onSelect}>Выбрать канал</Button>
+            <Button type="button" variant="outline" size="sm" onClick={onCreate}>Создать новый</Button>
+          </div>
         </div>
       )}
       {route && testState === "success" && <span role="status" className="sr-only">Тестовое сообщение отправлено</span>}
       {route && testState === "error" && <span role="alert" className="sr-only">Не удалось отправить сообщение. Проверьте подключение канала.</span>}
+    </div>
+  );
+}
+
+function ChannelTestSuggestion({ event, onTest, onDismiss }: { event: OrderEvent; onTest: () => void; onDismiss: () => void }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[9px] bg-[#f5f5f4] px-3 py-2.5">
+      <p className="text-[12px] leading-5 text-[#57534d]">Канал подключён. Отправьте тестовое сообщение, чтобы убедиться, что всё работает.</p>
+      <div className="flex items-center gap-1.5">
+        <Button type="button" variant="outline" size="sm" onClick={onTest}>{event === "waiter" ? "Отправить тестовый вызов" : "Отправить тест"}</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>Позже</Button>
+      </div>
     </div>
   );
 }
@@ -508,9 +332,13 @@ function WorkspaceLoading() {
 export function DeliveryWorkspace({
   activeTab,
   onSaveStateChange,
+  channelsManagerOpen,
+  onChannelsManagerOpenChange,
 }: {
   activeTab: OrderSettingsTab;
   onSaveStateChange: (state: OrderSettingsSaveState) => void;
+  channelsManagerOpen: boolean;
+  onChannelsManagerOpenChange: (open: boolean) => void;
 }) {
   const {
     serviceFeeEnabled,
@@ -523,6 +351,8 @@ export function DeliveryWorkspace({
     setDeliveryEnabled,
     pickupEnabled,
     setPickupEnabled,
+    waiterEnabled,
+    setWaiterEnabled,
     deliveryComment,
     setDeliveryComment,
     pickupComment,
@@ -535,27 +365,18 @@ export function DeliveryWorkspace({
   const saveTimerRef = useRef<number | null>(null);
   const testTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dialogEvent, setDialogEvent] = useState<OrderEvent | null>(null);
+  const [pickerEvent, setPickerEvent] = useState<OrderEvent | null>(null);
   const [explainConnectionFirst, setExplainConnectionFirst] = useState(false);
+  const [managerCreateEvent, setManagerCreateEvent] = useState<OrderEvent | null>(null);
+  const [managerKey, setManagerKey] = useState(0);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [validationEvent, setValidationEvent] = useState<OrderEvent | null>(null);
   const [testStates, setTestStates] = useState<Record<OrderEvent, TestState>>({ delivery: "idle", pickup: "idle", waiter: "idle" });
+  const [testSuggestionEvent, setTestSuggestionEvent] = useState<OrderEvent | null>(null);
+  const [requiresSetupEvents, setRequiresSetupEvents] = useState<OrderEvent[]>([]);
   const [pickupPoint, setPickupPoint] = useState(pickupAddress);
   const [pickupAddressEditing, setPickupAddressEditing] = useState(false);
   const [serviceApplications, setServiceApplications] = useState({ delivery: false, pickup: false, dineIn: false });
-  const [waiterEnabled, setWaiterEnabled] = useState(false);
-  const [includeTable, setIncludeTable] = useState(false);
-  const [includeZone, setIncludeZone] = useState(false);
-  const [repeatDelay, setRepeatDelay] = useState("");
-  const [connectedChannels, setConnectedChannels] = useState<RouteChannel[]>([]);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
-  const availableChannels = useMemo(() => {
-    const result = [...connectedChannels];
-    Object.values(routes).forEach((route) => {
-      if (route && !result.some((candidate) => channelKey(candidate) === channelKey(route))) result.push(route);
-    });
-    return result;
-  }, [connectedChannels, routes]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setLoading(false), 420);
@@ -572,6 +393,14 @@ export function DeliveryWorkspace({
     const timer = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const missing: OrderEvent[] = [];
+    if (!routes.delivery && deliveryEnabled) { setDeliveryEnabled(false); missing.push("delivery"); }
+    if (!routes.pickup && pickupEnabled) { setPickupEnabled(false); missing.push("pickup"); }
+    if (!routes.waiter && waiterEnabled) { setWaiterEnabled(false); missing.push("waiter"); }
+    if (missing.length) setRequiresSetupEvents((current) => Array.from(new Set([...current, ...missing])));
+  }, [routes.delivery, routes.pickup, routes.waiter, deliveryEnabled, pickupEnabled, waiterEnabled, setDeliveryEnabled, setPickupEnabled, setWaiterEnabled]);
 
   const queueSave = (register = false, fail = false) => {
     if (register) registerChange("order-settings");
@@ -601,16 +430,31 @@ export function DeliveryWorkspace({
 
   const toggleRoutedFeature = (event: OrderEvent, enabled: boolean) => {
     if (enabled && !routes[event]) {
-      setValidationEvent(null);
       setExplainConnectionFirst(true);
-      setDialogEvent(event);
+      setPickerEvent(event);
       return;
     }
-    setValidationEvent(null);
     if (event === "delivery") setDeliveryEnabled(enabled);
     if (event === "pickup") setPickupEnabled(enabled);
     if (event === "waiter") setWaiterEnabled(enabled);
     queueSave(true);
+  };
+
+  const setFeatureEnabled = (event: OrderEvent, enabled: boolean) => {
+    if (event === "delivery") setDeliveryEnabled(enabled);
+    if (event === "pickup") setPickupEnabled(enabled);
+    if (event === "waiter") setWaiterEnabled(enabled);
+  };
+
+  const openChannelManager = (sourceEvent: OrderEvent | null = null) => {
+    setManagerCreateEvent(sourceEvent);
+    setManagerKey((current) => current + 1);
+    onChannelsManagerOpenChange(true);
+  };
+
+  const functionStatus = (event: OrderEvent, enabled: boolean): "Не настроено" | "Выключено" | "Включено" | "Требует настройки" => {
+    if (!routes[event]) return requiresSetupEvents.includes(event) ? "Требует настройки" : "Не настроено";
+    return enabled ? "Включено" : "Выключено";
   };
 
   const content = useMemo(() => {
@@ -619,6 +463,7 @@ export function DeliveryWorkspace({
         title: "Доставка",
         description: "Гости смогут оформить доставку через витрину.",
         enabled: deliveryEnabled,
+        status: functionStatus("delivery", deliveryEnabled),
       };
     }
     if (activeTab === "pickup") {
@@ -626,6 +471,7 @@ export function DeliveryWorkspace({
         title: "Самовывоз",
         description: "Гости смогут самостоятельно забрать заказ из заведения.",
         enabled: pickupEnabled,
+        status: functionStatus("pickup", pickupEnabled),
       };
     }
     if (activeTab === "payment") {
@@ -633,6 +479,7 @@ export function DeliveryWorkspace({
         title: "Оплата",
         description: "Подключите онлайн-оплату, чтобы гости могли оплачивать заказы на витрине.",
         enabled: false,
+        status: "Не настроено" as const,
       };
     }
     if (activeTab === "service-fee") {
@@ -640,21 +487,16 @@ export function DeliveryWorkspace({
         title: "Сервисный сбор",
         description: "Добавьте сервисный сбор к заказу и сообщите об этом гостю до подтверждения.",
         enabled: serviceFeeEnabled,
+        status: serviceFeeEnabled ? "Включено" as const : "Выключено" as const,
       };
     }
     return {
       title: "Вызов официанта",
       description: "Гость сможет позвать официанта прямо из витрины.",
       enabled: waiterEnabled,
+      status: functionStatus("waiter", waiterEnabled),
     };
-  }, [activeTab, deliveryEnabled, pickupEnabled, serviceFeeEnabled, waiterEnabled]);
-
-  const activeRouteEvent: OrderEvent | null = activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter"
-    ? activeTab
-    : null;
-  const validationMessage = activeRouteEvent && validationEvent === activeRouteEvent
-    ? "Сначала настройте обязательный канал уведомлений."
-    : undefined;
+  }, [activeTab, deliveryEnabled, pickupEnabled, serviceFeeEnabled, waiterEnabled, routes, requiresSetupEvents]);
 
   return (
     <PageScroll>
@@ -682,7 +524,7 @@ export function DeliveryWorkspace({
                 title={content.title}
                 description={content.description}
                 enabled={content.enabled}
-                validationMessage={validationMessage}
+                status={content.status}
                 onToggle={(enabled) => {
                   if (activeTab === "service-fee") {
                     setServiceFeeEnabled(enabled);
@@ -695,20 +537,21 @@ export function DeliveryWorkspace({
             )}
 
             {activeTab === "delivery" && (
-              routes.delivery ? (
-                <>
-                  <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
-                    <ChannelSection
-                      route={routes.delivery}
-                      testState={testStates.delivery}
-                      testLabel="Отправить тест"
-                      onConfigure={() => {
-                        setExplainConnectionFirst(false);
-                        setDialogEvent("delivery");
-                      }}
-                      onTest={() => sendTest("delivery")}
-                    />
-                  </SettingsSection>
+              <>
+                <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
+                  <ChannelSection
+                    route={routes.delivery}
+                    testState={testStates.delivery}
+                    testLabel="Отправить тест"
+                    onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("delivery"); }}
+                    onCreate={() => openChannelManager("delivery")}
+                    onTest={() => sendTest("delivery")}
+                  />
+                  {testSuggestionEvent === "delivery" && routes.delivery && (
+                    <ChannelTestSuggestion event="delivery" onTest={() => { setTestSuggestionEvent(null); sendTest("delivery"); }} onDismiss={() => setTestSuggestionEvent(null)} />
+                  )}
+                </SettingsSection>
+                {routes.delivery && (
                   <SettingsSection
                     title="Информация о доставке"
                     description="Гость увидит этот текст при оформлении заказа. Укажите важные условия: минимальную сумму заказа, стоимость и примерное время доставки."
@@ -725,72 +568,33 @@ export function DeliveryWorkspace({
                       onValueChange={(value) => { setDeliveryComment(value); queueSave(); }}
                     />
                   </SettingsSection>
-                </>
-              ) : (
-                <section className="border-t border-[#eceae7] px-5 py-6">
-                  <div className="max-w-xl">
-                    <h3 className="text-[15px] font-semibold text-[#292524]">Настройте получение заказов</h3>
-                    <p className="mt-1.5 text-[13px] leading-5 text-[#79716b]">Подключите Telegram или WhatsApp, чтобы получать новые заказы доставки.</p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="mt-4"
-                      onClick={() => {
-                        setExplainConnectionFirst(false);
-                        setDialogEvent("delivery");
-                      }}
-                    >
-                      Подключить канал
-                    </Button>
-                  </div>
-                </section>
-              )
+                )}
+              </>
             )}
 
             {activeTab === "pickup" && (
               <>
-                <SettingsSection title="Точка самовывоза" description="Адрес, который увидит гость после оформления.">
-                  {pickupPoint || pickupAddressEditing ? (
-                    <div className="flex items-end gap-2">
-                      <div className="min-w-0 flex-1">
-                        <CompactField id="pickup-address-input" label="Адрес" value={pickupPoint} placeholder="Укажите адрес точки" onChange={setPickupPoint} />
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="mb-0.5"
-                        disabled={!pickupPoint.trim()}
-                        onClick={() => {
-                          const nextAddress = pickupPoint.trim();
-                          setPickupPoint(nextAddress);
-                          setPickupAddress(nextAddress);
-                          setPickupAddressEditing(false);
-                          queueSave(true);
-                        }}
-                      >
-                        Сохранить
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPickupAddressEditing(true)}>Добавить адрес</Button>
+                <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
+                  <ChannelSection route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("pickup"); }} onCreate={() => openChannelManager("pickup")} onTest={() => sendTest("pickup")} />
+                  {testSuggestionEvent === "pickup" && routes.pickup && (
+                    <ChannelTestSuggestion event="pickup" onTest={() => { setTestSuggestionEvent(null); sendTest("pickup"); }} onDismiss={() => setTestSuggestionEvent(null)} />
                   )}
                 </SettingsSection>
-                <SettingsSection title="Информация о самовывозе" description="Гость увидит этот текст при оформлении заказа на самовывоз.">
-                  <TranslatableField
-                    label="Текст при оформлении"
-                    initialTranslations={{ ru: pickupComment }}
-                    multiline
-                    rows={3}
-                    plain
-                    showTranslationMeta={false}
-                    persist={false}
-                    placeholder="Например: заказ можно забрать у стойки выдачи."
-                    onValueChange={(value) => { setPickupComment(value); queueSave(); }}
-                  />
-                </SettingsSection>
-                <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
-                  <ChannelSection route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onConfigure={() => setDialogEvent("pickup")} onTest={() => sendTest("pickup")} />
-                </SettingsSection>
+                {routes.pickup && (
+                  <>
+                    <SettingsSection title="Точка самовывоза" description="Адрес, который увидит гость после оформления.">
+                      {pickupPoint || pickupAddressEditing ? (
+                        <div className="flex items-end gap-2">
+                          <div className="min-w-0 flex-1"><CompactField id="pickup-address-input" label="Адрес" value={pickupPoint} placeholder="Укажите адрес точки" onChange={setPickupPoint} /></div>
+                          <Button type="button" size="sm" className="mb-0.5" disabled={!pickupPoint.trim()} onClick={() => { const nextAddress = pickupPoint.trim(); setPickupPoint(nextAddress); setPickupAddress(nextAddress); setPickupAddressEditing(false); queueSave(true); }}>Сохранить</Button>
+                        </div>
+                      ) : <Button type="button" variant="outline" size="sm" onClick={() => setPickupAddressEditing(true)}>Добавить адрес</Button>}
+                    </SettingsSection>
+                    <SettingsSection title="Информация о самовывозе" description="Гость увидит этот текст при оформлении заказа на самовывоз.">
+                      <TranslatableField label="Текст при оформлении" initialTranslations={{ ru: pickupComment }} multiline rows={3} plain showTranslationMeta={false} persist={false} placeholder="Например: заказ можно забрать у стойки выдачи." onValueChange={(value) => { setPickupComment(value); queueSave(); }} />
+                    </SettingsSection>
+                  </>
+                )}
               </>
             )}
 
@@ -844,64 +648,70 @@ export function DeliveryWorkspace({
             )}
 
             {activeTab === "waiter" && (
-              <>
-                <SettingsSection title="Получение вызовов" description="Канал для уведомлений сотрудников зала.">
-                  <ChannelSection route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onConfigure={() => setDialogEvent("waiter")} onTest={() => sendTest("waiter")} />
-                </SettingsSection>
-                <fieldset disabled={!waiterEnabled} className={cn(!waiterEnabled && "opacity-50")}>
-                  <SettingsSection title="Данные вызова" description="Информация, которую получит сотрудник.">
-                    <div className="space-y-4">
-                      <ToggleSetting title="Передавать номер стола" checked={includeTable} onChange={(checked) => { setIncludeTable(checked); queueSave(true); }} />
-                      <div className="border-t border-[#eceae7]" />
-                      <ToggleSetting title="Передавать название зоны" checked={includeZone} onChange={(checked) => { setIncludeZone(checked); queueSave(true); }} />
-                      <div className="border-t border-[#eceae7]" />
-                      <div className="max-w-[320px]">
-                        <CompactField label="Защита от повторного вызова" value={repeatDelay} onChange={(value) => { setRepeatDelay(value); queueSave(); }} suffix="мин" type="number" />
-                        <p className="mt-1.5 text-[11px] leading-4 text-[#79716b]">Повторная кнопка станет доступна гостю после этого интервала.</p>
-                      </div>
-                    </div>
-                  </SettingsSection>
-                </fieldset>
-              </>
+              <SettingsSection title="Получение вызовов" description="Канал для уведомлений сотрудников зала.">
+                <ChannelSection route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("waiter"); }} onCreate={() => openChannelManager("waiter")} onTest={() => sendTest("waiter")} />
+                {testSuggestionEvent === "waiter" && routes.waiter && (
+                  <ChannelTestSuggestion event="waiter" onTest={() => { setTestSuggestionEvent(null); sendTest("waiter"); }} onDismiss={() => setTestSuggestionEvent(null)} />
+                )}
+              </SettingsSection>
             )}
           </div>
         )}
       </PageContent>
 
-      {dialogEvent && (
-        <ChannelDialog
-          key={`${dialogEvent}-${explainConnectionFirst ? "required" : "regular"}`}
-          event={dialogEvent}
-          route={routes[dialogEvent]}
-          channels={availableChannels}
+      {pickerEvent && (
+        <ChannelPickerDialog
+          key={`${pickerEvent}-${explainConnectionFirst ? "required" : "regular"}`}
+          event={pickerEvent}
+          currentChannel={routes[pickerEvent]}
           explainConnectionFirst={explainConnectionFirst}
-          onClose={() => {
-            setDialogEvent(null);
+          onClose={() => { setPickerEvent(null); setExplainConnectionFirst(false); }}
+          onCreate={() => {
+            const sourceEvent = pickerEvent;
+            setPickerEvent(null);
             setExplainConnectionFirst(false);
+            openChannelManager(sourceEvent);
           }}
-          onSave={(channel) => {
-            const previousRoute = routes[dialogEvent];
-            const routeChanged = Boolean(previousRoute && channelKey(previousRoute) !== channelKey(channel));
-            setConnectedChannels((current) => current.some((candidate) => channelKey(candidate) === channelKey(channel))
-              ? current
-              : [...current, channel]);
-            setRoute(dialogEvent, channel);
-            if (dialogEvent === "delivery") setDeliveryEnabled(true);
-            setValidationEvent(null);
-            setTestState(dialogEvent, "idle");
+          onConnect={(channel) => {
+            const previousRoute = routes[pickerEvent];
+            setRoute(pickerEvent, channel);
+            setRequiresSetupEvents((current) => current.filter((event) => event !== pickerEvent));
+            if (explainConnectionFirst) setFeatureEnabled(pickerEvent, true);
+            if (!previousRoute) setTestSuggestionEvent(pickerEvent);
+            setTestState(pickerEvent, "idle");
             queueSave(true);
-            setDialogEvent(null);
+            setPickerEvent(null);
             setExplainConnectionFirst(false);
-            setToast({
-              message: routeChanged
-                ? "Канал получения заказов изменён"
-                : previousRoute
-                  ? "Канал получения заказов сохранён"
-                  : channel.type === "telegram"
-                    ? "Telegram-чат подключён"
-                    : "WhatsApp подключён",
-              tone: "success",
-            });
+            setToast({ message: previousRoute && previousRoute.id !== channel.id ? "Канал получения заказов изменён" : "Канал подключён", tone: "success" });
+          }}
+        />
+      )}
+      {channelsManagerOpen && (
+        <ChannelManagerDialog
+          key={managerKey}
+          initialCreateEvent={managerCreateEvent}
+          onClose={() => { onChannelsManagerOpenChange(false); setManagerCreateEvent(null); }}
+          onToast={setToast}
+          onAssignmentsApplied={(events, sourceEvent) => {
+            setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
+            if (sourceEvent) {
+              setFeatureEnabled(sourceEvent, true);
+              setTestSuggestionEvent(sourceEvent);
+            }
+            queueSave(true);
+          }}
+          onChannelDeleted={(events) => {
+            events.forEach((event) => setFeatureEnabled(event, false));
+            setRequiresSetupEvents((current) => Array.from(new Set([...current, ...events])));
+            queueSave(true);
+          }}
+          onReset={() => {
+            setDeliveryEnabled(false);
+            setPickupEnabled(false);
+            setWaiterEnabled(false);
+            setRequiresSetupEvents([]);
+            setTestSuggestionEvent(null);
+            queueSave(true);
           }}
         />
       )}
