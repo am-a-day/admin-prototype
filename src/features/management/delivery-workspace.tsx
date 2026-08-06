@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
   CheckCircle2,
   CreditCard,
@@ -131,34 +130,24 @@ function ChannelDialog({
   channels,
   onClose,
   onSave,
-  onOpenVenueSettings,
+  explainConnectionFirst = false,
 }: {
   event: OrderEvent;
   route: RouteChannel | null;
   channels: RouteChannel[];
   onClose: () => void;
   onSave: (channel: RouteChannel) => void;
-  onOpenVenueSettings: () => void;
+  explainConnectionFirst?: boolean;
 }) {
   const { account } = useMockAuth();
-  const rawVenueName = account?.workspace.name.trim() ?? "";
-  const venueName = rawVenueName && rawVenueName !== "Новое меню" && !/^Мой ресторан \d+$/u.test(rawVenueName)
-    ? rawVenueName
-    : "";
-  const [type, setType] = useState<ChannelType>(route?.type ?? "telegram");
-  const [screen, setScreen] = useState<"list" | "telegram-create" | "telegram-duplicate">("list");
+  const venueName = account?.workspace.name.trim() || "Мой ресторан 4798";
+  const [screen, setScreen] = useState<"destination" | "telegram" | "telegram-create" | "whatsapp">("destination");
   const [selectedKey, setSelectedKey] = useState(route ? channelKey(route) : "");
   const [creating, setCreating] = useState(false);
   const generatedChatName = `${venueName} · ${PURPOSE_LABELS[event]}`;
   const generatedTelegramContact = `@${slugifyChannelName(`${venueName}_${PURPOSE_LABELS[event]}`)}`;
-  const visibleChannels = channels.filter((channel) => channel.type === type);
-  const selectedExisting = visibleChannels.find((channel) => channelKey(channel) === selectedKey) ?? null;
-  const duplicateChannel = channels.find((channel) => channel.type === "telegram" && channel.contact === generatedTelegramContact) ?? null;
-
-  const switchType = (nextType: ChannelType) => {
-    setType(nextType);
-    setSelectedKey(route?.type === nextType ? channelKey(route) : "");
-  };
+  const telegramChannels = channels.filter((channel) => channel.type === "telegram");
+  const selectedExisting = telegramChannels.find((channel) => channelKey(channel) === selectedKey) ?? null;
 
   useEffect(() => {
     const onKeyDown = (eventValue: KeyboardEvent) => {
@@ -168,150 +157,135 @@ function ChannelDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [creating, onClose]);
 
-  const createTelegramChannel = (forceNew = false) => {
-    if (!venueName || creating) return;
-    if (duplicateChannel && !forceNew) {
-      setScreen("telegram-duplicate");
-      return;
-    }
+  const createTelegramChannel = () => {
+    if (creating) return;
     setCreating(true);
     window.setTimeout(() => {
       const matchingCount = channels.filter((channel) => channel.type === "telegram" && channel.contact.startsWith(generatedTelegramContact)).length;
-      const contact = forceNew && matchingCount > 0 ? `${generatedTelegramContact}_${matchingCount + 1}` : generatedTelegramContact;
+      const contact = matchingCount > 0 ? `${generatedTelegramContact}_${matchingCount + 1}` : generatedTelegramContact;
       onSave({ type: "telegram", contact });
     }, 450);
   };
 
+  const title = screen === "destination"
+    ? "Получение заказов"
+    : screen === "telegram"
+      ? "Telegram"
+      : screen === "whatsapp"
+        ? "WhatsApp"
+        : "Новый Telegram-чат";
+  const description = screen === "destination"
+    ? `Выберите, куда отправлять новые ${event === "delivery" ? "заказы доставки" : PURPOSE_DESCRIPTIONS[event].toLocaleLowerCase("ru")}.`
+    : screen === "telegram-create"
+      ? `Мы создадим чат для ${event === "delivery" ? "заказов доставки" : PURPOSE_GENITIVE[event]} и добавим в него бота Tasko.`
+      : screen === "telegram"
+        ? "Выберите подключённый чат или создайте новый."
+        : "Выберите подключённый канал WhatsApp.";
+
   return (
-    <div className="fixed inset-0 z-[100004] flex justify-end bg-black/25" role="dialog" aria-modal="true" aria-label="Канал получения заказов">
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/25 px-4" role="dialog" aria-modal="true" aria-labelledby="channel-dialog-title">
       <button type="button" className="absolute inset-0 cursor-default" onClick={() => { if (!creating) onClose(); }} aria-label="Закрыть" />
-      <div className="relative flex h-full w-full max-w-[460px] flex-col overflow-hidden border-l border-[#e7e5e4] bg-white shadow-[-20px_0_64px_rgba(41,37,36,0.16)]">
+      <div className="relative flex max-h-[min(640px,calc(100vh-32px))] w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
         <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4">
-          <div className="flex min-w-0 items-start gap-2">
-            {screen !== "list" && (
-              <button type="button" onClick={() => setScreen("list")} disabled={creating} aria-label="Назад" className="mt-[-4px] flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:opacity-50">
-                <ArrowLeft size={16} />
-              </button>
-            )}
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-semibold text-[#292524]">{screen === "list" ? "Канал получения заказов" : "Новый Telegram-чат"}</h2>
-              <p className="mt-1 text-[12px] text-[#79716b]">{PURPOSE_DESCRIPTIONS[event]}</p>
-            </div>
+          <div className="min-w-0">
+            <h2 id="channel-dialog-title" className="text-[15px] font-semibold text-[#292524]">{title}</h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{description}</p>
           </div>
           <button type="button" onClick={onClose} disabled={creating} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:opacity-50">
             <X size={16} />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {screen === "list" ? (
-            <>
-              <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-                {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => (
-                  <button
-                    key={channelType}
-                    type="button"
-                    onClick={() => switchType(channelType)}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-[12px] transition",
-                      type === channelType
-                        ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                        : "text-[#79716b] hover:text-[#292524]",
-                    )}
-                  >
-                    {CHANNEL_LABELS[channelType]}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-5">
-                <h3 className="text-[13px] font-medium text-[#292524]">Подключённые каналы</h3>
-                {visibleChannels.length === 0 ? (
-                  <div className="mt-3 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-3 py-4 text-[12px] text-[#79716b]">
-                    Подключённых каналов пока нет.
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-1" role="radiogroup" aria-label="Подключённые каналы">
-                    {visibleChannels.map((channel) => {
-                      const selected = selectedKey === channelKey(channel);
-                      return (
-                        <button
-                          key={channelKey(channel)}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          onClick={() => setSelectedKey(channelKey(channel))}
-                          className={cn(
-                            "flex h-11 w-full items-center gap-3 rounded-[9px] px-2.5 text-left transition",
-                            selected ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]",
-                          )}
-                        >
-                          <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px]", type === "telegram" ? "bg-sky-50 text-sky-600" : "bg-emerald-50 text-emerald-600")}>
-                            <MessageCircle size={15} />
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{channel.contact}</span>
-                          <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>
-                            {selected && <Check size={10} />}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {type === "whatsapp" && (
-                  <div className="mt-3 rounded-[9px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-3 text-[12px] leading-5 text-[#79716b]">
-                    Подключение WhatsApp для заказов пока недоступно в прототипе.
-                  </div>
-                )}
-              </div>
-            </>
-          ) : screen === "telegram-create" ? (
-            <div>
-              <p className="text-[13px] leading-5 text-[#57534d]">Мы создадим чат для этой функции и добавим в него бота Tasko.</p>
-              {venueName ? (
-                <>
-                  <div className="mt-5 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-4 py-4">
-                    <div className="text-[14px] font-medium text-[#292524]">{generatedChatName}</div>
-                  </div>
-                  <div className="mt-3 space-y-1 text-[12px] leading-5 text-[#79716b]">
-                    <p><span className="font-medium text-[#57534d]">{venueName}</span> — название заведения</p>
-                    <p><span className="font-medium text-[#57534d]">{PURPOSE_LABELS[event]}</span> — назначение канала</p>
-                  </div>
-                </>
-              ) : (
-                <div className="mt-5 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] leading-5 text-amber-900">
-                  <p className="font-medium">Сначала укажите название заведения</p>
-                  <button type="button" onClick={onOpenVenueSettings} className="mt-1 font-medium underline underline-offset-2">Перейти в настройки заведения</button>
+        <div className="min-h-0 overflow-y-auto px-5 py-5">
+          {screen === "destination" && (
+            <div className="space-y-2">
+              {explainConnectionFirst && (
+                <div className="mb-4 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
+                  Сначала подключите канал. После подключения доставка включится автоматически.
                 </div>
               )}
+              {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => (
+                <button
+                  key={channelType}
+                  type="button"
+                  onClick={() => {
+                    setSelectedKey(route?.type === channelType ? channelKey(route) : "");
+                    setScreen(channelType === "telegram" ? "telegram" : "whatsapp");
+                  }}
+                  className="flex w-full items-center gap-3 rounded-[10px] border border-[#e7e5e4] px-3 py-3 text-left transition hover:border-[#c7c2bd] hover:bg-[#fafaf9]"
+                >
+                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]", channelType === "telegram" ? "bg-sky-50 text-sky-600" : "bg-emerald-50 text-emerald-600")}>
+                    <MessageCircle size={16} />
+                  </span>
+                  <span className="flex-1 text-[13px] font-medium text-[#292524]">{CHANNEL_LABELS[channelType]}</span>
+                  <span className="text-[18px] leading-none text-[#a8a29e]">›</span>
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] leading-5 text-amber-900">
-              <p>Для {PURPOSE_GENITIVE[event]} уже подключён канал <span className="font-medium">{duplicateChannel?.contact}</span>.</p>
-              <p className="mt-1 text-amber-800">Используйте его, чтобы не создавать дубликат.</p>
+          )}
+
+          {screen === "telegram" && (
+            telegramChannels.length === 0 ? (
+              <div className="rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-3 py-4 text-[12px] text-[#79716b]">
+                Подключённых Telegram-чатов пока нет.
+              </div>
+            ) : (
+              <div className="space-y-1" role="radiogroup" aria-label="Подключённые Telegram-чаты">
+                {telegramChannels.map((channel) => {
+                  const selected = selectedKey === channelKey(channel);
+                  return (
+                    <button
+                      key={channelKey(channel)}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setSelectedKey(channelKey(channel))}
+                      className={cn("flex h-11 w-full items-center gap-3 rounded-[9px] px-2.5 text-left transition", selected ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]")}
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-sky-50 text-sky-600"><MessageCircle size={15} /></span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{channel.contact}</span>
+                      <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>{selected && <Check size={10} />}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {screen === "telegram-create" && (
+            <div className="rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-4 py-4">
+              <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">Название чата</div>
+              <div className="mt-2 text-[14px] font-medium text-[#292524]">{generatedChatName}</div>
+              <p className="mt-2 text-[12px] leading-5 text-[#79716b]">Название формируется автоматически из названия заведения и назначения чата.</p>
+            </div>
+          )}
+
+          {screen === "whatsapp" && (
+            <div className="rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-3 text-[12px] leading-5 text-[#79716b]">
+              Подключение WhatsApp для заказов пока недоступно в прототипе.
             </div>
           )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[#eceae7] px-5 py-4">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={creating}>Отмена</Button>
-          {screen === "list" ? (
-            selectedExisting ? (
-              <Button type="button" size="sm" onClick={() => onSave(selectedExisting)}>Выбрать канал</Button>
-            ) : (
-              <Button type="button" size="sm" disabled={type === "whatsapp"} onClick={() => setScreen("telegram-create")}>Подключить новый канал</Button>
-            )
-          ) : screen === "telegram-create" ? (
-            <Button type="button" size="sm" disabled={!venueName || creating} onClick={() => createTelegramChannel()}>
-              {creating ? <><Loader2 size={14} className="animate-spin" /> Создаём…</> : "Создать Telegram-чат"}
-            </Button>
+          {screen === "destination" ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>Отмена</Button>
           ) : (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setScreen(screen === "telegram-create" ? "telegram" : "destination")} disabled={creating}>Назад</Button>
+          )}
+          {screen === "telegram" && telegramChannels.length === 0 && (
+            <Button type="button" size="sm" onClick={() => setScreen("telegram-create")}>Создать Telegram-чат</Button>
+          )}
+          {screen === "telegram" && telegramChannels.length > 0 && (
             <>
-              <Button type="button" variant="outline" size="sm" onClick={() => duplicateChannel && onSave(duplicateChannel)}>Использовать существующий</Button>
-              <Button type="button" size="sm" disabled={creating} onClick={() => createTelegramChannel(true)}>
-                {creating ? <><Loader2 size={14} className="animate-spin" /> Создаём…</> : "Всё равно создать новый"}
-              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setScreen("telegram-create")}>Создать новый чат</Button>
+              <Button type="button" size="sm" disabled={!selectedExisting} onClick={() => selectedExisting && onSave(selectedExisting)}>Выбрать</Button>
             </>
+          )}
+          {screen === "telegram-create" && (
+            <Button type="button" size="sm" disabled={creating} onClick={createTelegramChannel}>
+              {creating ? <><Loader2 size={14} className="animate-spin" /> Создаём…</> : "Создать чат"}
+            </Button>
           )}
         </div>
       </div>
@@ -536,11 +510,9 @@ function WorkspaceLoading() {
 export function DeliveryWorkspace({
   activeTab,
   onSaveStateChange,
-  onOpenVenueSettings,
 }: {
   activeTab: OrderSettingsTab;
   onSaveStateChange: (state: OrderSettingsSaveState) => void;
-  onOpenVenueSettings: () => void;
 }) {
   const {
     serviceFeeEnabled,
@@ -566,6 +538,7 @@ export function DeliveryWorkspace({
   const testTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogEvent, setDialogEvent] = useState<OrderEvent | null>(null);
+  const [explainConnectionFirst, setExplainConnectionFirst] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [validationEvent, setValidationEvent] = useState<OrderEvent | null>(null);
   const [testStates, setTestStates] = useState<Record<OrderEvent, TestState>>({ delivery: "idle", pickup: "idle", waiter: "idle" });
@@ -630,8 +603,9 @@ export function DeliveryWorkspace({
 
   const toggleRoutedFeature = (event: OrderEvent, enabled: boolean) => {
     if (enabled && !routes[event]) {
-      setValidationEvent(event);
-      onSaveStateChange("error");
+      setValidationEvent(null);
+      setExplainConnectionFirst(true);
+      setDialogEvent(event);
       return;
     }
     setValidationEvent(null);
@@ -723,24 +697,56 @@ export function DeliveryWorkspace({
             )}
 
             {activeTab === "delivery" && (
-              <>
-                <SettingsSection title="Комментарий для гостя" description="Необязательный текст для выбранной языковой версии.">
-                  <TranslatableField
-                    label="Комментарий"
-                    initialTranslations={{ ru: deliveryComment }}
-                    multiline
-                    rows={3}
-                    plain
-                    showTranslationMeta={false}
-                    persist={false}
-                    placeholder="Добавьте комментарий для гостя…"
-                    onValueChange={(value) => { setDeliveryComment(value); queueSave(); }}
-                  />
-                </SettingsSection>
-                <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
-                  <ChannelSection route={routes.delivery} testState={testStates.delivery} testLabel="Отправить тест" onConfigure={() => setDialogEvent("delivery")} onTest={() => sendTest("delivery")} />
-                </SettingsSection>
-              </>
+              routes.delivery ? (
+                <>
+                  <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
+                    <ChannelSection
+                      route={routes.delivery}
+                      testState={testStates.delivery}
+                      testLabel="Отправить тест"
+                      onConfigure={() => {
+                        setExplainConnectionFirst(false);
+                        setDialogEvent("delivery");
+                      }}
+                      onTest={() => sendTest("delivery")}
+                    />
+                  </SettingsSection>
+                  <SettingsSection
+                    title="Информация о доставке"
+                    description="Гость увидит этот текст при оформлении заказа. Укажите важные условия: минимальную сумму заказа, стоимость и примерное время доставки."
+                  >
+                    <TranslatableField
+                      label="Текст при оформлении"
+                      initialTranslations={{ ru: deliveryComment }}
+                      multiline
+                      rows={3}
+                      plain
+                      showTranslationMeta={false}
+                      persist={false}
+                      placeholder="Например: минимальная сумма заказа — 5 000 ₸. Доставка занимает 45–60 минут."
+                      onValueChange={(value) => { setDeliveryComment(value); queueSave(); }}
+                    />
+                  </SettingsSection>
+                </>
+              ) : (
+                <section className="border-t border-[#eceae7] px-5 py-6">
+                  <div className="max-w-xl">
+                    <h3 className="text-[15px] font-semibold text-[#292524]">Настройте получение заказов</h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-[#79716b]">Подключите Telegram или WhatsApp, чтобы получать новые заказы доставки.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => {
+                        setExplainConnectionFirst(false);
+                        setDialogEvent("delivery");
+                      }}
+                    >
+                      Подключить канал
+                    </Button>
+                  </div>
+                </section>
+              )
             )}
 
             {activeTab === "pickup" && (
@@ -771,16 +777,16 @@ export function DeliveryWorkspace({
                     <Button type="button" variant="outline" size="sm" onClick={() => setPickupAddressEditing(true)}>Добавить адрес</Button>
                   )}
                 </SettingsSection>
-                <SettingsSection title="Комментарий для гостя" description="Необязательный текст для выбранной языковой версии.">
+                <SettingsSection title="Информация о самовывозе" description="Гость увидит этот текст при оформлении заказа на самовывоз.">
                   <TranslatableField
-                    label="Комментарий"
+                    label="Текст при оформлении"
                     initialTranslations={{ ru: pickupComment }}
                     multiline
                     rows={3}
                     plain
                     showTranslationMeta={false}
                     persist={false}
-                    placeholder="Добавьте комментарий для гостя…"
+                    placeholder="Например: заказ можно забрать у стойки выдачи."
                     onValueChange={(value) => { setPickupComment(value); queueSave(); }}
                   />
                 </SettingsSection>
@@ -866,25 +872,27 @@ export function DeliveryWorkspace({
 
       {dialogEvent && (
         <ChannelDialog
-          key={dialogEvent}
+          key={`${dialogEvent}-${explainConnectionFirst ? "required" : "regular"}`}
           event={dialogEvent}
           route={routes[dialogEvent]}
           channels={availableChannels}
-          onClose={() => setDialogEvent(null)}
-          onOpenVenueSettings={() => {
+          explainConnectionFirst={explainConnectionFirst}
+          onClose={() => {
             setDialogEvent(null);
-            onOpenVenueSettings();
+            setExplainConnectionFirst(false);
           }}
           onSave={(channel) => {
             setConnectedChannels((current) => current.some((candidate) => channelKey(candidate) === channelKey(channel))
               ? current
               : [...current, channel]);
             setRoute(dialogEvent, channel);
+            if (dialogEvent === "delivery") setDeliveryEnabled(true);
             setValidationEvent(null);
             setTestState(dialogEvent, "idle");
             queueSave(true);
             setDialogEvent(null);
-            setToast({ message: `${CHANNEL_LABELS[channel.type]} подключён`, tone: "success" });
+            setExplainConnectionFirst(false);
+            setToast({ message: "Канал подключён", tone: "success" });
           }}
         />
       )}

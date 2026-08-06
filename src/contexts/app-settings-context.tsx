@@ -39,24 +39,85 @@ type AppSettingsContextValue = {
   setPickupAddress: (value: string) => void;
 };
 
+type StoredOrderSettings = {
+  serviceFeeEnabled: boolean;
+  serviceFeePercent: number;
+  serviceFeeRequireConsent: boolean;
+  deliveryEnabled: boolean;
+  pickupEnabled: boolean;
+  deliveryComment: string;
+  pickupComment: string;
+  pickupAddress: string;
+};
+
+const EMPTY_ORDER_SETTINGS: StoredOrderSettings = {
+  serviceFeeEnabled: false,
+  serviceFeePercent: 0,
+  serviceFeeRequireConsent: false,
+  deliveryEnabled: false,
+  pickupEnabled: false,
+  deliveryComment: "",
+  pickupComment: "",
+  pickupAddress: "",
+};
+
+function orderSettingsStorageKey(accountId?: string) {
+  return `tasko.orderSettings.v1.${accountId ?? "guest"}`;
+}
+
+function readOrderSettings(accountId?: string): StoredOrderSettings {
+  if (typeof window === "undefined") return EMPTY_ORDER_SETTINGS;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(orderSettingsStorageKey(accountId)) ?? "null") as Partial<StoredOrderSettings> | null;
+    return stored ? { ...EMPTY_ORDER_SETTINGS, ...stored } : EMPTY_ORDER_SETTINGS;
+  } catch {
+    return EMPTY_ORDER_SETTINGS;
+  }
+}
+
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const { account } = useMockAuth();
+  const initialOrderSettings = useMemo(() => readOrderSettings(account?.id), [account?.id]);
   const [contentLanguage, setContentLanguage] = useState<LanguageCode>(
     () => account?.workspace.primaryLanguage ?? "ru",
   );
   const [uiLanguage, setUiLanguage] = useState<LanguageCode>("ru");
-  const [serviceFeeEnabled, setServiceFeeEnabled] = useState(false);
-  const [serviceFeePercent, setServiceFeePercent] = useState(0);
-  const [serviceFeeRequireConsent, setServiceFeeRequireConsent] = useState(false);
+  const [serviceFeeEnabled, setServiceFeeEnabled] = useState(initialOrderSettings.serviceFeeEnabled);
+  const [serviceFeePercent, setServiceFeePercent] = useState(initialOrderSettings.serviceFeePercent);
+  const [serviceFeeRequireConsent, setServiceFeeRequireConsent] = useState(initialOrderSettings.serviceFeeRequireConsent);
   const [ageConfirmationEnabled, setAgeConfirmationEnabled] = useState(false);
   const [minimumAge, setMinimumAge] = useState<18 | 21>(18);
-  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
-  const [pickupEnabled, setPickupEnabled] = useState(false);
-  const [deliveryComment, setDeliveryComment] = useState("");
-  const [pickupComment, setPickupComment] = useState("");
-  const [pickupAddress, setPickupAddress] = useState("");
+  const [deliveryEnabled, setDeliveryEnabled] = useState(initialOrderSettings.deliveryEnabled);
+  const [pickupEnabled, setPickupEnabled] = useState(initialOrderSettings.pickupEnabled);
+  const [deliveryComment, setDeliveryComment] = useState(initialOrderSettings.deliveryComment);
+  const [pickupComment, setPickupComment] = useState(initialOrderSettings.pickupComment);
+  const [pickupAddress, setPickupAddress] = useState(initialOrderSettings.pickupAddress);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(orderSettingsStorageKey(account?.id), JSON.stringify({
+      serviceFeeEnabled,
+      serviceFeePercent,
+      serviceFeeRequireConsent,
+      deliveryEnabled,
+      pickupEnabled,
+      deliveryComment,
+      pickupComment,
+      pickupAddress,
+    } satisfies StoredOrderSettings));
+  }, [
+    account?.id,
+    serviceFeeEnabled,
+    serviceFeePercent,
+    serviceFeeRequireConsent,
+    deliveryEnabled,
+    pickupEnabled,
+    deliveryComment,
+    pickupComment,
+    pickupAddress,
+  ]);
 
   useEffect(() => {
     if (!account) return;

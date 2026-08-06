@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 
 export type ChannelType = "whatsapp" | "telegram";
 export type OrderEvent = "delivery" | "pickup" | "waiter";
@@ -25,6 +27,20 @@ const INITIAL_ROUTES: Routes = {
   waiter: null,
 };
 
+function routesStorageKey(accountId?: string) {
+  return `tasko.orderRoutes.v1.${accountId ?? "guest"}`;
+}
+
+function readRoutes(accountId?: string): Routes {
+  if (typeof window === "undefined") return INITIAL_ROUTES;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(routesStorageKey(accountId)) ?? "null") as Partial<Routes> | null;
+    return stored ? { ...INITIAL_ROUTES, ...stored } : INITIAL_ROUTES;
+  } catch {
+    return INITIAL_ROUTES;
+  }
+}
+
 type OrderRoutingContextValue = {
   routes: Routes;
   setRoute: (event: OrderEvent, channel: RouteChannel | null) => void;
@@ -35,7 +51,13 @@ type OrderRoutingContextValue = {
 const OrderRoutingContext = createContext<OrderRoutingContextValue | null>(null);
 
 export function OrderRoutingProvider({ children }: { children: ReactNode }) {
-  const [routes, setRoutes] = useState<Routes>(INITIAL_ROUTES);
+  const { account } = useMockAuth();
+  const [routes, setRoutes] = useState<Routes>(() => readRoutes(account?.id));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(routesStorageKey(account?.id), JSON.stringify(routes));
+  }, [account?.id, routes]);
 
   const setRoute = useCallback((event: OrderEvent, channel: RouteChannel | null) => {
     setRoutes((prev) => ({ ...prev, [event]: channel }));

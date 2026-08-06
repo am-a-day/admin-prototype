@@ -1034,7 +1034,6 @@ function AuthenticatedShell() {
         <DeliveryWorkspace
           activeTab={orderSettingsTab}
           onSaveStateChange={setOrderSettingsSaveState}
-          onOpenVenueSettings={() => navigate("storefront", "about")}
         />
       );
     } else if (manageTab === "order-history") {
