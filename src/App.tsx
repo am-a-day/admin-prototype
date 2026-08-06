@@ -30,6 +30,7 @@ import { PublishToast } from "@/components/workspace/publish-toast";
 import { AuthScreen } from "@/features/auth/auth-screen";
 import { WorkspaceSetupScreen } from "@/features/auth/workspace-setup-screen";
 import { BookOpen, Flask } from "@phosphor-icons/react";
+import { Bell } from "lucide-react";
 import {
   banners as seedBanners,
   DEFAULT_RECOMMENDATION_TEXTS,
@@ -1232,6 +1233,7 @@ function AuthenticatedShell() {
                 <div className="flex shrink-0 items-center gap-2">
                   {pageMeta.showLanguage && (!isOrderSettingsPage || orderSettingsTab === "delivery" || orderSettingsTab === "pickup") && (
                     <PageLangSwitcher
+                      compact={isOrderSettingsPage}
                       onManageLanguages={() =>
                         navigate("storefront", "about:language-region")
                       }
@@ -1243,7 +1245,8 @@ function AuthenticatedShell() {
                       onClick={() => setOrderChannelsOpen(true)}
                       className="flex h-7 items-center rounded-[7px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
                     >
-                      Каналы
+                      <Bell size={13} className="mr-1.5" />
+                      Каналы уведомлений
                     </button>
                   )}
                   {isOrderSettingsPage && (
@@ -1267,8 +1270,8 @@ function AuthenticatedShell() {
             {/* Editor card */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
               <ContentHeader
-                title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
               <div className="flex min-h-0 min-w-0 flex-1">

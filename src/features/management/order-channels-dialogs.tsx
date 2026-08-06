@@ -16,12 +16,18 @@ import { cn } from "@/lib/utils";
 
 const EVENTS: OrderEvent[] = ["delivery", "pickup", "waiter"];
 
-function slugify(value: string) {
-  return value
-    .toLocaleLowerCase("ru")
-    .replace(/[^a-zа-яё0-9]+/gi, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 28);
+function channelStatusLabel(status: OrderChannel["status"]) {
+  if (status === "connected") return "Подключено";
+  if (status === "checking") return "Проверяем";
+  if (status === "error") return "Ошибка подключения";
+  return "Не подключено";
+}
+
+function channelStatusClass(status: OrderChannel["status"]) {
+  if (status === "connected") return "text-emerald-600";
+  if (status === "checking") return "text-amber-600";
+  if (status === "error") return "text-red-600";
+  return "text-[#79716b]";
 }
 
 function assignmentLabel(events: OrderEvent[]) {
@@ -130,13 +136,16 @@ export function ChannelManagerDialog({
         <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4">
           <div className="min-w-0">
             <h2 id="channels-manager-title" className="text-[15px] font-semibold text-[#292524]">
-              {view.type === "list" ? "Каналы" : view.type === "create" ? "Новый канал" : view.type === "edit" ? "Изменить канал" : view.type === "assign" ? "Назначения канала" : "Удалить канал"}
+              {view.type === "list" ? "Каналы уведомлений" : view.type === "create" ? "Новый канал" : view.type === "edit" ? "Изменить канал" : view.type === "assign" ? "Назначения канала" : "Удалить канал"}
             </h2>
             <p className="mt-1 text-[12px] leading-5 text-[#79716b]">
-              {view.type === "list" ? "Управляйте каналами, в которые приходят заказы и вызовы гостей." : view.type === "create" ? "Создайте канал и выберите функции, которые будут его использовать." : view.type === "edit" ? "Измените понятное внутреннее название. Тип канала останется прежним." : view.type === "assign" ? "Один канал можно использовать сразу для нескольких функций." : "Проверьте последствия перед удалением."}
+              {view.type === "list" ? "Управляйте каналами, в которые приходят заказы и вызовы гостей." : view.type === "create" ? "Создайте канал и выберите функции, которые будут его использовать." : view.type === "edit" ? "Измените название и номер. Тип канала останется прежним." : view.type === "assign" ? "Один канал можно использовать сразу для нескольких функций." : "Проверьте последствия перед удалением."}
             </p>
           </div>
-          <button type="button" onClick={close} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"><X size={16} /></button>
+          <div className="flex shrink-0 items-center gap-2">
+            {view.type === "list" && <Button type="button" size="sm" onClick={() => setView({ type: "create", sourceEvent: null })}><Plus size={14} /> Создать канал</Button>}
+            <button type="button" onClick={close} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"><X size={16} /></button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
@@ -169,7 +178,7 @@ export function ChannelManagerDialog({
                 const channel = createChannel(input);
                 setChannelAssignments(channel.id, events);
                 onAssignmentsApplied(events, view.sourceEvent);
-                onToast({ message: input.type === "telegram" ? "Telegram-чат подключён" : "WhatsApp подключён", tone: "success" });
+                onToast({ message: "Канал подключён", tone: "success" });
                 setView({ type: "list" });
               }}
             />
@@ -180,8 +189,8 @@ export function ChannelManagerDialog({
               channel={activeChannel}
               channels={channels}
               onCancel={() => setView({ type: "list" })}
-              onSave={(name) => {
-                updateChannel(activeChannel.id, { name });
+              onSave={(patch) => {
+                updateChannel(activeChannel.id, patch);
                 onToast({ message: "Канал обновлён", tone: "success" });
                 setView({ type: "list" });
               }}
@@ -256,48 +265,88 @@ function ChannelList({
       <div className="py-8 text-center">
         <h3 className="text-[14px] font-semibold text-[#292524]">Каналов пока нет</h3>
         <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Создайте канал, чтобы получать заказы и вызовы гостей.</p>
-        <Button type="button" size="sm" className="mt-4" onClick={onCreate}><Plus size={14} /> Создать канал</Button>
+        <button type="button" onClick={onCreate} className="mt-3 text-[12px] font-medium text-[#57534d] underline underline-offset-2">Создать первый канал</button>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-3 flex justify-end"><Button type="button" size="sm" onClick={onCreate}><Plus size={14} /> Создать канал</Button></div>
-      <div className="divide-y divide-[#eceae7] border-y border-[#eceae7]">
-        {channels.map((channel) => {
-          const events = getAssignments(channel.id);
-          return (
-            <div key={channel.id} className="grid grid-cols-[minmax(0,1.5fr)_minmax(160px,1fr)_auto] items-center gap-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <ChannelIcon type={channel.type} />
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium text-[#292524]">{channel.name}</div>
-                  <div className="mt-0.5 truncate text-[11px] text-[#79716b]">{CHANNEL_LABELS[channel.type]} · {channel.contact}</div>
-                </div>
-              </div>
-              <div>
-                <AssignmentBadges events={events} />
-                <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-600"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Подключено</div>
-              </div>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <button type="button" aria-label={`Действия канала ${channel.name}`} className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]"><MoreHorizontal size={16} /></button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content sideOffset={6} align="end" className="z-[100008] min-w-48 rounded-[10px] border border-[#e7e5e4] bg-white p-1.5 shadow-xl">
-                    <DropdownMenu.Item onSelect={() => onEdit(channel.id)} className="flex h-8 cursor-pointer items-center rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Изменить</DropdownMenu.Item>
-                    <DropdownMenu.Item onSelect={() => onTest(channel)} className="flex h-8 cursor-pointer items-center gap-2 rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">{testChannelId === channel.id && <Loader2 size={13} className="animate-spin" />} Отправить тест</DropdownMenu.Item>
-                    <DropdownMenu.Item onSelect={() => onAssign(channel.id)} className="flex h-8 cursor-pointer items-center rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Настроить назначения</DropdownMenu.Item>
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownMenu.Item onSelect={() => onDelete(channel.id)} className="flex h-8 cursor-pointer items-center gap-2 rounded-[7px] px-2 text-[12px] text-red-600 outline-none data-[highlighted]:bg-red-50"><Trash2 size={13} /> Удалить</DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+    <ChannelRows
+      mode="manage"
+      channels={channels}
+      getAssignments={getAssignments}
+      testChannelId={testChannelId}
+      onEdit={onEdit}
+      onTest={onTest}
+      onAssign={onAssign}
+      onDelete={onDelete}
+    />
+  );
+}
+
+function ChannelRows({
+  mode,
+  channels,
+  getAssignments,
+  selectedId,
+  testChannelId,
+  onSelect,
+  onEdit,
+  onTest,
+  onAssign,
+  onDelete,
+}: {
+  mode: "manage" | "select";
+  channels: OrderChannel[];
+  getAssignments: (id: string) => OrderEvent[];
+  selectedId?: string;
+  testChannelId: string | null;
+  onSelect?: (id: string) => void;
+  onEdit: (id: string) => void;
+  onTest: (channel: OrderChannel) => void;
+  onAssign: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="divide-y divide-[#eceae7] border-y border-[#eceae7]" role={mode === "select" ? "radiogroup" : undefined} aria-label={mode === "select" ? "Каналы" : undefined}>
+      {channels.map((channel) => {
+        const events = getAssignments(channel.id);
+        const selected = mode === "select" && selectedId === channel.id;
+        return (
+          <div key={channel.id} onClick={() => mode === "select" && onSelect?.(channel.id)} className={cn("grid items-center gap-3 px-1 py-2.5", mode === "manage" ? "grid-cols-[minmax(0,1.5fr)_minmax(160px,1fr)_auto]" : "cursor-pointer grid-cols-[auto_minmax(0,1.5fr)_minmax(130px,0.9fr)_auto]", selected && "bg-[#fafaf9]")}>
+            {mode === "select" && (
+              <button type="button" role="radio" aria-checked={selected} aria-label={`Выбрать ${channel.name}`} onClick={() => onSelect?.(channel.id)} className={cn("flex h-5 w-5 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>
+                {selected && <Check size={11} />}
+              </button>
+            )}
+            <button type="button" disabled={mode !== "select"} onClick={() => onSelect?.(channel.id)} className={cn("flex min-w-0 items-center gap-3 text-left", mode === "manage" && "cursor-default")}>
+              <ChannelIcon type={channel.type} />
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-medium text-[#292524]">{channel.name}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-[#79716b]">{CHANNEL_LABELS[channel.type]} · {channel.contact}</span>
+              </span>
+            </button>
+            <div>
+              <AssignmentBadges events={events} />
+              <div className={cn("mt-1 text-[10px]", channelStatusClass(channel.status))}>{channelStatusLabel(channel.status)}</div>
             </div>
-          );
-        })}
-      </div>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" onClick={(event) => event.stopPropagation()} aria-label={`Действия канала ${channel.name}`} className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]"><MoreHorizontal size={16} /></button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content sideOffset={6} align="end" className="z-[100008] min-w-48 rounded-[10px] border border-[#e7e5e4] bg-white p-1.5 shadow-xl">
+                  <DropdownMenu.Item onSelect={() => onEdit(channel.id)} className="flex h-8 cursor-pointer items-center rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Редактировать</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => onAssign(channel.id)} className="flex h-8 cursor-pointer items-center rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Настроить назначения</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => onTest(channel)} className="flex h-8 cursor-pointer items-center gap-2 rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">{testChannelId === channel.id && <Loader2 size={13} className="animate-spin" />} Отправить тест</DropdownMenu.Item>
+                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                  <DropdownMenu.Item onSelect={() => onDelete(channel.id)} className="flex h-8 cursor-pointer items-center gap-2 rounded-[7px] px-2 text-[12px] text-red-600 outline-none data-[highlighted]:bg-red-50"><Trash2 size={13} /> Удалить</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -324,11 +373,11 @@ function ChannelCreateForm({
   const [phone, setPhone] = useState("");
   const [phoneValid, setPhoneValid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const contact = type === "telegram" ? `@${slugify(name)}` : phone;
+  const contact = phone;
   const exactDuplicate = channels.find((channel) => channel.type === type && channel.contact === contact) ?? channels.find((channel) => channel.name.trim().toLocaleLowerCase("ru") === name.trim().toLocaleLowerCase("ru"));
   const nameDuplicate = channels.some((channel) => channel.name.trim().toLocaleLowerCase("ru") === name.trim().toLocaleLowerCase("ru"));
   const handlePhone = useCallback((value: string, valid: boolean) => { setPhone(value); setPhoneValid(valid); }, []);
-  const canSubmit = Boolean(name.trim()) && !nameDuplicate && (type === "telegram" || phoneValid) && !submitting;
+  const canSubmit = Boolean(name.trim()) && !nameDuplicate && phoneValid && !submitting;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -353,17 +402,11 @@ function ChannelCreateForm({
           {nameDuplicate && <span className="mt-1 block text-[11px] text-red-600">Канал с таким названием уже существует.</span>}
         </label>
 
-        {type === "telegram" ? (
-          <div>
-            <div className="text-[12px] text-[#57534d]">Telegram-чат</div>
-            <div className="mt-1 text-[13px] font-medium text-[#292524]">{contact}</div>
-          </div>
-        ) : (
-          <div>
-            <label htmlFor="manager-whatsapp-phone" className="mb-1.5 block text-[12px] font-medium text-[#57534d]">Номер WhatsApp</label>
-            <AuthPhoneField id="manager-whatsapp-phone" initialValue={phone} disabled={submitting} onValueChange={handlePhone} />
-          </div>
-        )}
+        <div>
+          <label htmlFor="manager-channel-phone" className="mb-1.5 block text-[12px] font-medium text-[#57534d]">{type === "telegram" ? "Номер Telegram" : "Номер WhatsApp"}</label>
+          <AuthPhoneField key={type} id="manager-channel-phone" initialValue={phone} disabled={submitting} onValueChange={handlePhone} />
+          {type === "telegram" && <p className="mt-1.5 text-[11px] leading-4 text-[#79716b]">Укажите номер, к которому привязан Telegram.</p>}
+        </div>
 
         <div>
           <div className="mb-1 text-[12px] font-medium text-[#57534d]">Назначения</div>
@@ -386,15 +429,25 @@ function ChannelCreateForm({
   );
 }
 
-function ChannelEditForm({ channel, channels, onCancel, onSave }: { channel: OrderChannel; channels: OrderChannel[]; onCancel: () => void; onSave: (name: string) => void }) {
+function ChannelEditForm({ channel, channels, onCancel, onSave }: { channel: OrderChannel; channels: OrderChannel[]; onCancel: () => void; onSave: (patch: Pick<OrderChannel, "name" | "contact">) => void }) {
   const [name, setName] = useState(channel.name);
-  const duplicate = channels.some((candidate) => candidate.id !== channel.id && candidate.name.trim().toLocaleLowerCase("ru") === name.trim().toLocaleLowerCase("ru"));
+  const [phone, setPhone] = useState(channel.contact);
+  const [phoneValid, setPhoneValid] = useState(false);
+  const duplicate = channels.some((candidate) => candidate.id !== channel.id && (
+    candidate.name.trim().toLocaleLowerCase("ru") === name.trim().toLocaleLowerCase("ru")
+    || (candidate.type === channel.type && candidate.contact === phone)
+  ));
+  const handlePhone = useCallback((value: string, valid: boolean) => { setPhone(value); setPhoneValid(valid); }, []);
   return (
     <div>
       <label className="block"><span className="mb-1.5 block text-[12px] font-medium text-[#57534d]">Название канала</span><Input value={name} onChange={(event) => setName(event.target.value)} className="h-10 rounded-[9px] text-[13px]" /></label>
-      <div className="mt-3 flex items-center gap-2 text-[12px] text-[#79716b]"><ChannelIcon type={channel.type} /> {CHANNEL_LABELS[channel.type]} · {channel.contact}</div>
+      <div className="mt-4">
+        <label htmlFor={`edit-channel-phone-${channel.id}`} className="mb-1.5 block text-[12px] font-medium text-[#57534d]">{channel.type === "telegram" ? "Номер Telegram" : "Номер WhatsApp"}</label>
+        <AuthPhoneField id={`edit-channel-phone-${channel.id}`} initialValue={channel.contact} onValueChange={handlePhone} />
+        <p className="mt-1.5 text-[11px] text-[#79716b]">Тип канала: {CHANNEL_LABELS[channel.type]}</p>
+      </div>
       {duplicate && <p className="mt-2 text-[11px] text-red-600">Канал с таким названием уже существует.</p>}
-      <div className="mt-6 flex justify-end gap-2 border-t border-[#eceae7] pt-4"><Button type="button" variant="ghost" size="sm" onClick={onCancel}>Отмена</Button><Button type="button" size="sm" disabled={!name.trim() || duplicate} onClick={() => onSave(name.trim())}>Сохранить</Button></div>
+      <div className="mt-6 flex justify-end gap-2 border-t border-[#eceae7] pt-4"><Button type="button" variant="ghost" size="sm" onClick={onCancel}>Отмена</Button><Button type="button" size="sm" disabled={!name.trim() || !phoneValid || duplicate} onClick={() => onSave({ name: name.trim(), contact: phone })}>Сохранить</Button></div>
     </div>
   );
 }
@@ -407,7 +460,7 @@ function ChannelAssignmentsForm({ channel, routes, initialEvents, onCancel, onSa
       <div className="mb-4 flex items-center gap-3"><ChannelIcon type={channel.type} /><div><div className="text-[13px] font-medium text-[#292524]">{channel.name}</div><div className="text-[11px] text-[#79716b]">{CHANNEL_LABELS[channel.type]} · {channel.contact}</div></div></div>
       <AssignmentCheckboxes value={events} onChange={setEvents} />
       {conflicts.map((event) => (
-        <div key={event} className="mt-3 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">{ORDER_EVENT_LABELS[event]} сейчас использует канал “{routes[event]?.name}”. После сохранения новые {event === "delivery" ? "заказы доставки" : event === "pickup" ? "заказы самовывоза" : "вызовы гостей"} будут приходить в этот канал.</div>
+        <div key={event} className="mt-3 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">{ORDER_EVENT_LABELS[event]} сейчас использует канал “{routes[event]?.name}”. После сохранения {event === "waiter" ? "новые вызовы" : "новые заказы"} будут приходить сюда.</div>
       ))}
       <div className="mt-6 flex justify-end gap-2 border-t border-[#eceae7] pt-4"><Button type="button" variant="ghost" size="sm" onClick={onCancel}>Отмена</Button><Button type="button" size="sm" onClick={() => onSave(events)}>Сохранить</Button></div>
     </div>
@@ -436,6 +489,9 @@ export function ChannelPickerDialog({
   onClose,
   onConnect,
   onCreate,
+  onToast,
+  onAssignmentsApplied,
+  onChannelDeleted,
 }: {
   event: OrderEvent;
   currentChannel: OrderChannel | null;
@@ -443,45 +499,102 @@ export function ChannelPickerDialog({
   onClose: () => void;
   onConnect: (channel: OrderChannel) => void;
   onCreate: () => void;
+  onToast: (toast: ToastPayload) => void;
+  onAssignmentsApplied: (events: OrderEvent[]) => void;
+  onChannelDeleted: (events: OrderEvent[]) => void;
 }) {
-  const { channels, getChannelAssignments } = useOrderRouting();
+  const { channels, routes, updateChannel, deleteChannel, setChannelAssignments, getChannelAssignments } = useOrderRouting();
   const [selectedId, setSelectedId] = useState(currentChannel?.id ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const [testChannelId, setTestChannelId] = useState<string | null>(null);
+  const [actionView, setActionView] = useState<Exclude<ManagerView, { type: "list" } | { type: "create" }> | null>(null);
   const selected = channels.find(({ id }) => id === selectedId) ?? null;
-  const confirmation = event === "delivery" ? "Новые заказы доставки будут приходить в этот канал." : event === "pickup" ? "Новые заказы самовывоза будут приходить в этот канал." : "Вызовы гостей будут приходить в этот канал.";
+  const actionChannel = actionView ? channels.find(({ id }) => id === actionView.channelId) ?? null : null;
+  const confirmation = event === "delivery" ? "Новые заказы доставки будут приходить в выбранный канал." : event === "pickup" ? "Новые заказы самовывоза будут приходить в выбранный канал." : "Вызовы гостей будут приходить в выбранный канал.";
+  const unchanged = Boolean(currentChannel && selected?.id === currentChannel.id);
 
   const connect = () => {
-    if (!selected || submitting) return;
+    if (!selected || submitting || unchanged) return;
     setSubmitting(true);
     window.setTimeout(() => onConnect(selected), 350);
   };
+
+  const sendTest = (channel: OrderChannel) => {
+    if (testChannelId) return;
+    setTestChannelId(channel.id);
+    window.setTimeout(() => {
+      setTestChannelId(null);
+      onToast({ message: channel.contact ? "Тестовое сообщение отправлено" : "Не удалось отправить сообщение. Проверьте подключение канала.", tone: channel.contact ? "success" : "error" });
+    }, 650);
+  };
+
+  const title = !actionView ? "Выберите канал" : actionView.type === "edit" ? "Изменить канал" : actionView.type === "assign" ? "Назначения канала" : "Удалить канал";
+  const description = !actionView ? confirmation : actionView.type === "edit" ? "Измените название и номер. Тип канала останется прежним." : actionView.type === "assign" ? "Один канал можно использовать сразу для нескольких функций." : "Проверьте последствия перед удалением.";
 
   return (
     <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/25 px-4" role="dialog" aria-modal="true" aria-labelledby="channel-picker-title">
       <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Закрыть" />
       <div className="relative flex max-h-[min(640px,calc(100vh-32px))] w-full max-w-[620px] flex-col overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-        <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4"><div><h2 id="channel-picker-title" className="text-[15px] font-semibold text-[#292524]">Выберите канал</h2><p className="mt-1 text-[12px] text-[#79716b]">{confirmation}</p></div><button type="button" onClick={onClose} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] hover:bg-[#f5f5f4]"><X size={16} /></button></div>
+        <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4"><div><h2 id="channel-picker-title" className="text-[15px] font-semibold text-[#292524]">{title}</h2><p className="mt-1 text-[12px] text-[#79716b]">{description}</p></div><button type="button" onClick={onClose} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] hover:bg-[#f5f5f4]"><X size={16} /></button></div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {explainConnectionFirst && <div className="mb-3 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">Сначала выберите канал. После назначения функция включится автоматически.</div>}
-          {channels.length ? (
-            <div className="space-y-1" role="radiogroup" aria-label="Каналы">
-              {channels.map((channel) => {
-                const selectedRow = selectedId === channel.id;
-                return (
-                  <button key={channel.id} type="button" role="radio" aria-checked={selectedRow} onClick={() => setSelectedId(channel.id)} className={cn("flex w-full items-center gap-3 rounded-[9px] px-2.5 py-2 text-left", selectedRow ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]")}>
-                    <ChannelIcon type={channel.type} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium text-[#292524]">{channel.name}</div><div className="truncate text-[11px] text-[#79716b]">{CHANNEL_LABELS[channel.type]} · {channel.contact}</div><div className="mt-1"><AssignmentBadges events={getChannelAssignments(channel.id)} /></div></div>
-                    <div className="flex items-center gap-2"><span className="text-[10px] text-emerald-600">Подключено</span><span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selectedRow ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>{selectedRow && <Check size={10} />}</span></div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-6 text-center"><div className="text-[13px] font-medium text-[#292524]">Каналов пока нет</div><p className="mt-1 text-[12px] text-[#79716b]">Сначала создайте канал.</p></div>
+          {!actionView && (
+            <>
+              {explainConnectionFirst && <div className="mb-3 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">Сначала выберите канал. После назначения функция включится автоматически.</div>}
+              {channels.length ? (
+                <ChannelRows
+                  mode="select"
+                  channels={channels}
+                  getAssignments={getChannelAssignments}
+                  selectedId={selectedId}
+                  testChannelId={testChannelId}
+                  onSelect={setSelectedId}
+                  onEdit={(channelId) => setActionView({ type: "edit", channelId })}
+                  onTest={sendTest}
+                  onAssign={(channelId) => setActionView({ type: "assign", channelId })}
+                  onDelete={(channelId) => setActionView({ type: "delete", channelId })}
+                />
+              ) : (
+                <div className="py-6 text-center"><div className="text-[13px] font-medium text-[#292524]">Каналов пока нет</div><p className="mt-1 text-[12px] text-[#79716b]">Сначала создайте канал.</p></div>
+              )}
+              <button type="button" onClick={onCreate} className="mt-3 flex items-center gap-1.5 text-[12px] font-medium text-[#57534d] underline underline-offset-2"><Plus size={13} /> Создать новый канал</button>
+            </>
           )}
-          <button type="button" onClick={onCreate} className="mt-3 flex items-center gap-1.5 text-[12px] font-medium text-[#57534d] underline underline-offset-2"><Plus size={13} /> Создать новый канал</button>
+          {actionView?.type === "edit" && actionChannel && (
+            <ChannelEditForm channel={actionChannel} channels={channels} onCancel={() => setActionView(null)} onSave={(patch) => { updateChannel(actionChannel.id, patch); onToast({ message: "Канал обновлён", tone: "success" }); setActionView(null); }} />
+          )}
+          {actionView?.type === "assign" && actionChannel && (
+            <ChannelAssignmentsForm
+              channel={actionChannel}
+              routes={routes}
+              initialEvents={getChannelAssignments(actionChannel.id)}
+              onCancel={() => setActionView(null)}
+              onSave={(events) => {
+                const removedEvents = getChannelAssignments(actionChannel.id).filter((assignedEvent) => !events.includes(assignedEvent));
+                setChannelAssignments(actionChannel.id, events);
+                onAssignmentsApplied(events);
+                if (removedEvents.length) onChannelDeleted(removedEvents);
+                onToast({ message: "Назначения обновлены", tone: "success" });
+                setActionView(null);
+              }}
+            />
+          )}
+          {actionView?.type === "delete" && actionChannel && (
+            <ChannelDeleteView
+              channel={actionChannel}
+              events={getChannelAssignments(actionChannel.id)}
+              onCancel={() => setActionView(null)}
+              onDelete={() => {
+                const assignedEvents = getChannelAssignments(actionChannel.id);
+                deleteChannel(actionChannel.id);
+                if (selectedId === actionChannel.id) setSelectedId("");
+                onChannelDeleted(assignedEvents);
+                onToast({ message: "Канал удалён", tone: "success" });
+                setActionView(null);
+              }}
+            />
+          )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-[#eceae7] px-5 py-4"><Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>Отмена</Button><Button type="button" size="sm" disabled={!selected || submitting} onClick={connect}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : "Подключить"}</Button></div>
+        {!actionView && <div className="flex justify-end gap-2 border-t border-[#eceae7] px-5 py-4"><Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>Отмена</Button><Button type="button" size="sm" disabled={!selected || submitting || unchanged} onClick={connect}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : "Подключить"}</Button></div>}
       </div>
     </div>
   );

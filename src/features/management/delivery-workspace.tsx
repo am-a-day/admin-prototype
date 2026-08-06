@@ -70,6 +70,25 @@ export function OrderSettingsTabs({
 }
 
 export function OrderSettingsSaveIndicator({ state }: { state: OrderSettingsSaveState }) {
+  const [visible, setVisible] = useState(state !== "saved");
+  const activeRef = useRef(state !== "saved");
+
+  useEffect(() => {
+    if (state === "saving" || state === "error") {
+      activeRef.current = true;
+      setVisible(true);
+      return;
+    }
+    if (!activeRef.current) return;
+    setVisible(true);
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+      activeRef.current = false;
+    }, 1600);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  if (!visible) return null;
   return (
     <div
       role="status"
@@ -85,13 +104,20 @@ export function OrderSettingsSaveIndicator({ state }: { state: OrderSettingsSave
       ) : (
         <Check size={13} />
       )}
-      {state === "saving" ? "Сохранение" : state === "error" ? "Не удалось сохранить" : "Сохранено"}
+      {state === "saving" ? "Сохранение…" : state === "error" ? "Не удалось сохранить" : "Сохранено"}
     </div>
   );
 }
 
 function channelName(type: ChannelType, contact: string) {
   return `${CHANNEL_LABELS[type]} · ${contact}`;
+}
+
+function channelStatus(status: RouteChannel["status"]) {
+  if (status === "connected") return { label: "Подключено", className: "text-emerald-600" };
+  if (status === "checking") return { label: "Проверяем", className: "text-amber-600" };
+  if (status === "error") return { label: "Ошибка подключения", className: "text-red-600" };
+  return { label: "Не подключено", className: "text-[#79716b]" };
 }
 
 function FeatureHeader({
@@ -110,10 +136,10 @@ function FeatureHeader({
   onToggle: (enabled: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 px-5 py-5">
+    <div className="flex items-start justify-between gap-6 px-1 py-1">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[16px] font-semibold text-[#292524]">{title}</h2>
+          <h1 className="text-[17px] font-semibold text-[#292524]">{title}</h1>
           <span className={cn(
             "rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium",
             status === "Включено" ? "bg-emerald-50 text-emerald-700" : status === "Требует настройки" ? "bg-amber-50 text-amber-800" : "bg-[#f1f1ea] text-[#79716b]",
@@ -204,6 +230,7 @@ function ChannelSection({
   onCreate: () => void;
   onTest: () => void;
 }) {
+  const routeStatus = route ? channelStatus(route.status) : null;
   return (
     <div>
       {route ? (
@@ -215,11 +242,11 @@ function ChannelSection({
             <div className="min-w-0">
               <div className="truncate text-[13px] font-medium text-[#292524]">{route.name}</div>
               <div className="mt-0.5 truncate text-[11px] text-[#79716b]">{channelName(route.type, route.contact)}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-600"><CheckCircle2 size={11} /> Канал подключён</div>
+              {routeStatus && <div className={cn("mt-0.5 text-[11px]", routeStatus.className)}>{routeStatus.label}</div>}
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button type="button" variant="ghost" size="sm" onClick={onSelect}>Изменить</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={onSelect}>Сменить канал</Button>
             <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testState === "sending"}>
               {testState === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               {testState === "sending" ? "Отправляем…" : testLabel}
@@ -240,18 +267,6 @@ function ChannelSection({
       )}
       {route && testState === "success" && <span role="status" className="sr-only">Тестовое сообщение отправлено</span>}
       {route && testState === "error" && <span role="alert" className="sr-only">Не удалось отправить сообщение. Проверьте подключение канала.</span>}
-    </div>
-  );
-}
-
-function ChannelTestSuggestion({ event, onTest, onDismiss }: { event: OrderEvent; onTest: () => void; onDismiss: () => void }) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[9px] bg-[#f5f5f4] px-3 py-2.5">
-      <p className="text-[12px] leading-5 text-[#57534d]">Канал подключён. Отправьте тестовое сообщение, чтобы убедиться, что всё работает.</p>
-      <div className="flex items-center gap-1.5">
-        <Button type="button" variant="outline" size="sm" onClick={onTest}>{event === "waiter" ? "Отправить тестовый вызов" : "Отправить тест"}</Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>Позже</Button>
-      </div>
     </div>
   );
 }
@@ -371,7 +386,6 @@ export function DeliveryWorkspace({
   const [managerKey, setManagerKey] = useState(0);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [testStates, setTestStates] = useState<Record<OrderEvent, TestState>>({ delivery: "idle", pickup: "idle", waiter: "idle" });
-  const [testSuggestionEvent, setTestSuggestionEvent] = useState<OrderEvent | null>(null);
   const [requiresSetupEvents, setRequiresSetupEvents] = useState<OrderEvent[]>([]);
   const [pickupPoint, setPickupPoint] = useState(pickupAddress);
   const [pickupAddressEditing, setPickupAddressEditing] = useState(false);
@@ -500,42 +514,38 @@ export function DeliveryWorkspace({
 
   return (
     <PageScroll>
-      <PageContent className="max-w-5xl space-y-0 px-8 pb-8 pt-5">
+      <PageContent className="max-w-5xl space-y-4 px-8 pb-8 pt-5">
+        {!loading && (activeTab === "payment" ? (
+          <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-[17px] font-semibold text-[#292524]">Оплата</h1>
+                <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Не настроено</span>
+              </div>
+              <p className="mt-1 max-w-2xl text-[13px] leading-5 text-[#79716b]">Подключите онлайн-оплату, чтобы гости могли оплачивать заказы на витрине.</p>
+            </div>
+            <Button type="button" size="sm" onClick={() => setPaymentDialogOpen(true)}><CreditCard size={14} /> Подключить эквайринг</Button>
+          </div>
+        ) : (
+          <FeatureHeader
+            title={content.title}
+            description={content.description}
+            enabled={content.enabled}
+            status={content.status}
+            onToggle={(enabled) => {
+              if (activeTab === "service-fee") {
+                setServiceFeeEnabled(enabled);
+                queueSave(true);
+              } else if (activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter") {
+                toggleRoutedFeature(activeTab, enabled);
+              }
+            }}
+          />
+        ))}
         {loading ? (
           <WorkspaceLoading />
         ) : (
           <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-            {activeTab === "payment" ? (
-              <div className="flex flex-wrap items-start justify-between gap-5 px-5 py-5">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-[16px] font-semibold text-[#292524]">Оплата</h2>
-                    <span className="rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-medium text-[#79716b]">Онлайн-оплата не подключена</span>
-                  </div>
-                  <p className="mt-1 max-w-2xl text-[13px] leading-5 text-[#79716b]">Подключите онлайн-оплату, чтобы гости могли оплачивать заказы на витрине.</p>
-                </div>
-                <Button type="button" size="sm" onClick={() => setPaymentDialogOpen(true)}>
-                  <CreditCard size={14} />
-                  Подключить эквайринг
-                </Button>
-              </div>
-            ) : (
-              <FeatureHeader
-                title={content.title}
-                description={content.description}
-                enabled={content.enabled}
-                status={content.status}
-                onToggle={(enabled) => {
-                  if (activeTab === "service-fee") {
-                    setServiceFeeEnabled(enabled);
-                    queueSave(true);
-                  } else if (activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter") {
-                    toggleRoutedFeature(activeTab, enabled);
-                  }
-                }}
-              />
-            )}
-
             {activeTab === "delivery" && (
               <>
                 <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
@@ -547,9 +557,6 @@ export function DeliveryWorkspace({
                     onCreate={() => openChannelManager("delivery")}
                     onTest={() => sendTest("delivery")}
                   />
-                  {testSuggestionEvent === "delivery" && routes.delivery && (
-                    <ChannelTestSuggestion event="delivery" onTest={() => { setTestSuggestionEvent(null); sendTest("delivery"); }} onDismiss={() => setTestSuggestionEvent(null)} />
-                  )}
                 </SettingsSection>
                 {routes.delivery && (
                   <SettingsSection
@@ -576,9 +583,6 @@ export function DeliveryWorkspace({
               <>
                 <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
                   <ChannelSection route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("pickup"); }} onCreate={() => openChannelManager("pickup")} onTest={() => sendTest("pickup")} />
-                  {testSuggestionEvent === "pickup" && routes.pickup && (
-                    <ChannelTestSuggestion event="pickup" onTest={() => { setTestSuggestionEvent(null); sendTest("pickup"); }} onDismiss={() => setTestSuggestionEvent(null)} />
-                  )}
                 </SettingsSection>
                 {routes.pickup && (
                   <>
@@ -650,9 +654,6 @@ export function DeliveryWorkspace({
             {activeTab === "waiter" && (
               <SettingsSection title="Получение вызовов" description="Канал для уведомлений сотрудников зала.">
                 <ChannelSection route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={() => { setExplainConnectionFirst(false); setPickerEvent("waiter"); }} onCreate={() => openChannelManager("waiter")} onTest={() => sendTest("waiter")} />
-                {testSuggestionEvent === "waiter" && routes.waiter && (
-                  <ChannelTestSuggestion event="waiter" onTest={() => { setTestSuggestionEvent(null); sendTest("waiter"); }} onDismiss={() => setTestSuggestionEvent(null)} />
-                )}
               </SettingsSection>
             )}
           </div>
@@ -677,12 +678,21 @@ export function DeliveryWorkspace({
             setRoute(pickerEvent, channel);
             setRequiresSetupEvents((current) => current.filter((event) => event !== pickerEvent));
             if (explainConnectionFirst) setFeatureEnabled(pickerEvent, true);
-            if (!previousRoute) setTestSuggestionEvent(pickerEvent);
             setTestState(pickerEvent, "idle");
             queueSave(true);
             setPickerEvent(null);
             setExplainConnectionFirst(false);
-            setToast({ message: previousRoute && previousRoute.id !== channel.id ? "Канал получения заказов изменён" : "Канал подключён", tone: "success" });
+            setToast({ message: previousRoute && previousRoute.id !== channel.id ? "Канал изменён" : "Канал подключён", tone: "success" });
+          }}
+          onToast={setToast}
+          onAssignmentsApplied={(events) => {
+            setRequiresSetupEvents((current) => current.filter((assignedEvent) => !events.includes(assignedEvent)));
+            queueSave(true);
+          }}
+          onChannelDeleted={(events) => {
+            events.forEach((deletedEvent) => setFeatureEnabled(deletedEvent, false));
+            setRequiresSetupEvents((current) => Array.from(new Set([...current, ...events])));
+            queueSave(true);
           }}
         />
       )}
@@ -696,7 +706,6 @@ export function DeliveryWorkspace({
             setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
             if (sourceEvent) {
               setFeatureEnabled(sourceEvent, true);
-              setTestSuggestionEvent(sourceEvent);
             }
             queueSave(true);
           }}
@@ -710,7 +719,6 @@ export function DeliveryWorkspace({
             setPickupEnabled(false);
             setWaiterEnabled(false);
             setRequiresSetupEvents([]);
-            setTestSuggestionEvent(null);
             queueSave(true);
           }}
         />

@@ -17,7 +17,7 @@ export type OrderChannel = {
   type: ChannelType;
   name: string;
   contact: string;
-  status: "connected";
+  status: "connected" | "disconnected" | "checking" | "error";
 };
 
 export type RouteChannel = OrderChannel;
@@ -64,9 +64,25 @@ function readRoutingState(accountId?: string): StoredRoutingState {
   try {
     const stored = JSON.parse(window.localStorage.getItem(routingStorageKey(accountId)) ?? "null") as StoredRoutingState | null;
     if (stored?.channels && stored.assignments) {
+      const channels = stored.channels
+        .filter((channel) => (
+          channel.id
+          && channel.contact
+          && !(channel.type === "telegram" && channel.contact.trim().startsWith("@"))
+        ))
+        .map((channel) => ({
+          ...channel,
+          status: ["connected", "disconnected", "checking", "error"].includes(channel.status) ? channel.status : "connected",
+        } as OrderChannel));
+      const channelIds = new Set(channels.map(({ id }) => id));
       return {
-        channels: stored.channels.filter((channel) => channel.id && channel.contact),
-        assignments: { ...EMPTY_ASSIGNMENTS, ...stored.assignments },
+        channels,
+        assignments: Object.fromEntries(
+          (Object.keys(EMPTY_ASSIGNMENTS) as OrderEvent[]).map((event) => [
+            event,
+            channelIds.has(stored.assignments[event] ?? "") ? stored.assignments[event] : null,
+          ]),
+        ) as ChannelAssignments,
       };
     }
 
@@ -77,6 +93,7 @@ function readRoutingState(accountId?: string): StoredRoutingState {
     (Object.keys(EMPTY_ASSIGNMENTS) as OrderEvent[]).forEach((event) => {
       const route = legacy[event];
       if (!route?.contact) return;
+      if (route.type === "telegram" && route.contact.trim().startsWith("@")) return;
       let channel = channels.find((candidate) => candidate.type === route.type && candidate.contact === route.contact);
       if (!channel) {
         channel = {
@@ -101,7 +118,7 @@ type OrderRoutingContextValue = {
   assignments: ChannelAssignments;
   routes: Routes;
   createChannel: (input: Omit<OrderChannel, "id" | "status">) => OrderChannel;
-  updateChannel: (id: string, patch: Pick<OrderChannel, "name">) => void;
+  updateChannel: (id: string, patch: Pick<OrderChannel, "name" | "contact">) => void;
   deleteChannel: (id: string) => void;
   setRoute: (event: OrderEvent, channel: OrderChannel | null) => void;
   setChannelAssignments: (channelId: string, events: OrderEvent[]) => void;
@@ -137,7 +154,7 @@ export function OrderRoutingProvider({ children }: { children: ReactNode }) {
     return channel;
   }, []);
 
-  const updateChannel = useCallback((id: string, patch: Pick<OrderChannel, "name">) => {
+  const updateChannel = useCallback((id: string, patch: Pick<OrderChannel, "name" | "contact">) => {
     setState((current) => ({
       ...current,
       channels: current.channels.map((channel) => channel.id === id ? { ...channel, ...patch } : channel),

@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AlertTriangle } from "lucide-react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
@@ -53,12 +54,37 @@ function PlanWarningStrip({ onRenew }: { onRenew?: () => void }) {
 
 export function PageLangSwitcher({
   onManageLanguages,
+  compact = false,
 }: {
   onManageLanguages?: () => void;
+  compact?: boolean;
 }) {
   const { contentLanguage, setContentLanguage } = useAppSettings();
   const { account } = useMockAuth();
   const workspaceLanguages = account?.workspace.languages ?? [];
+  const activeLanguage = LANGUAGES.find(({ code }) => code === contentLanguage);
+
+  if (compact) {
+    return (
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="flex h-7 min-w-9 items-center justify-center rounded-[7px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]">
+            {activeLanguage?.short ?? "RU"}
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content sideOffset={6} align="end" className="z-[100008] min-w-44 rounded-[10px] border border-[#e7e5e4] bg-white p-1.5 shadow-xl">
+            {workspaceLanguages.map((workspaceLanguage) => {
+              const language = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
+              if (!language) return null;
+              return <DropdownMenu.Item key={language.code} onSelect={() => setContentLanguage(language.code)} className={cn("flex h-8 cursor-pointer items-center justify-between rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]", contentLanguage === language.code && "font-medium text-[#292524]")}><span>{language.label}</span><span>{language.short}</span></DropdownMenu.Item>;
+            })}
+            {onManageLanguages && <><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /><DropdownMenu.Item onSelect={onManageLanguages} className="flex h-8 cursor-pointer items-center rounded-[7px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Управлять языками</DropdownMenu.Item></>}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    );
+  }
 
   return (
     <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-transparent px-1 text-[12px] text-[#57534d]">

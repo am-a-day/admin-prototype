@@ -185,7 +185,7 @@ export function PhonePreview({
       <PhoneNotification
         event="delivery"
         channelType={r?.type ?? "telegram"}
-        contact={r?.contact || "@channel"}
+        contact={r?.contact || "Канал не выбран"}
       />
     );
   } else if (scenario === "notification-pickup") {
@@ -194,7 +194,7 @@ export function PhonePreview({
       <PhoneNotification
         event="pickup"
         channelType={r?.type ?? "telegram"}
-        contact={r?.contact || "@channel"}
+        contact={r?.contact || "Канал не выбран"}
       />
     );
   } else if (scenario === "notification-waiter") {
@@ -203,7 +203,7 @@ export function PhonePreview({
       <PhoneNotification
         event="waiter"
         channelType={r?.type ?? "telegram"}
-        contact={r?.contact || "@channel"}
+        contact={r?.contact || "Канал не выбран"}
       />
     );
   } else if (scenario === "seoLink") {
