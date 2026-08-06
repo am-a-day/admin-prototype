@@ -36,6 +36,7 @@ type AppSettingsContextValue = {
   pickupComment: string;
   setPickupComment: (value: string) => void;
   pickupAddress: string;
+  setPickupAddress: (value: string) => void;
 };
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
@@ -46,20 +47,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     () => account?.workspace.primaryLanguage ?? "ru",
   );
   const [uiLanguage, setUiLanguage] = useState<LanguageCode>("ru");
-  const [serviceFeeEnabled, setServiceFeeEnabled] = useState(true);
-  const [serviceFeePercent, setServiceFeePercent] = useState(10);
+  const [serviceFeeEnabled, setServiceFeeEnabled] = useState(false);
+  const [serviceFeePercent, setServiceFeePercent] = useState(0);
   const [serviceFeeRequireConsent, setServiceFeeRequireConsent] = useState(false);
   const [ageConfirmationEnabled, setAgeConfirmationEnabled] = useState(false);
   const [minimumAge, setMinimumAge] = useState<18 | 21>(18);
-  const [deliveryEnabled, setDeliveryEnabled] = useState(true);
-  const [pickupEnabled, setPickupEnabled] = useState(true);
-  const [deliveryComment, setDeliveryComment] = useState(
-    "Курьер свяжется с вами после подтверждения заказа.",
-  );
-  const [pickupComment, setPickupComment] = useState(
-    "Заказ будет готов через 20 минут.",
-  );
-  const pickupAddress = "пр. Кабанбай Батыра, 48, вход со двора";
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [pickupEnabled, setPickupEnabled] = useState(false);
+  const [deliveryComment, setDeliveryComment] = useState("");
+  const [pickupComment, setPickupComment] = useState("");
+  const [pickupAddress, setPickupAddress] = useState("");
 
   useEffect(() => {
     if (!account) return;
@@ -103,6 +100,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       pickupComment,
       setPickupComment,
       pickupAddress,
+      setPickupAddress,
     };
   }, [
     contentLanguage,
@@ -116,6 +114,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     pickupEnabled,
     deliveryComment,
     pickupComment,
+    pickupAddress,
   ]);
 
   return (

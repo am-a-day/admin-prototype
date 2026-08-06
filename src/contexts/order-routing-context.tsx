@@ -20,9 +20,9 @@ export const CHANNEL_LABELS: Record<ChannelType, string> = {
 type Routes = Record<OrderEvent, RouteChannel | null>;
 
 const INITIAL_ROUTES: Routes = {
-  delivery: { type: "telegram", contact: "@kimchi_orders" },
-  pickup: { type: "whatsapp", contact: "+7 701 555 55 55" },
-  waiter: { type: "telegram", contact: "@kimchi_orders" },
+  delivery: null,
+  pickup: null,
+  waiter: null,
 };
 
 type OrderRoutingContextValue = {
