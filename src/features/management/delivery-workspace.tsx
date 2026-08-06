@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
 import {
   AlertCircle,
   Check,
@@ -17,10 +16,12 @@ import { Switch } from "@/components/ui/switch";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import {
-  ChannelManagerDialog,
+  ChannelIcon,
+  ChannelManagerPopover,
   ChannelPickerPopover,
-  ChannelSettingsPopover,
+  channelAssignmentText,
   getChannelPopoverAnchor,
+  type ChannelManagerInitialView,
   type ChannelPopoverAnchor,
 } from "@/features/management/order-channels-dialogs";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -28,6 +29,7 @@ import {
   CHANNEL_LABELS,
   useOrderRouting,
   type ChannelType,
+  type OrderChannel,
   type OrderEvent,
   type RouteChannel,
 } from "@/contexts/order-routing-context";
@@ -232,6 +234,11 @@ function ChannelSection({
   onSelect,
   onConfigure,
   onDetach,
+  availableChannels,
+  getAssignments,
+  onUse,
+  onCreate,
+  onShowAll,
   onTest,
 }: {
   event: OrderEvent;
@@ -241,6 +248,11 @@ function ChannelSection({
   onSelect: (anchor: ChannelPopoverAnchor) => void;
   onConfigure: (anchor: ChannelPopoverAnchor) => void;
   onDetach: () => void;
+  availableChannels: OrderChannel[];
+  getAssignments: (channelId: string) => OrderEvent[];
+  onUse: (channel: OrderChannel) => void;
+  onCreate: () => void;
+  onShowAll: () => void;
   onTest: () => void;
 }) {
   const routeStatus = route ? channelStatus(route.status) : null;
@@ -250,9 +262,7 @@ function ChannelSection({
       {route ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]", route.type === "whatsapp" ? "bg-emerald-50 text-emerald-600" : "bg-sky-50 text-sky-600")}>
-              {route.type === "telegram" ? <TelegramLogo size={17} weight="fill" /> : <WhatsappLogo size={17} weight="fill" />}
-            </span>
+            <ChannelIcon type={route.type} />
             <div className="min-w-0">
               <div className="truncate text-[13px] font-medium text-[#292524]">{route.name}</div>
               <div className="mt-0.5 truncate text-[11px] text-[#79716b]">{channelName(route.type, route.contact)}</div>
@@ -280,13 +290,22 @@ function ChannelSection({
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4">
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-[#292524]">Канал не выбран</div>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Выберите существующий канал или создайте новый.</p>
+        availableChannels.length ? (
+          <div>
+            <div className="divide-y divide-[#eceae7] overflow-hidden rounded-[10px] border border-[#e7e5e4] bg-white">
+              {availableChannels.slice(0, 3).map((channel) => (
+                <div key={channel.id} className="flex min-h-[58px] items-center gap-3 px-2.5 py-2">
+                  <ChannelIcon type={channel.type} />
+                  <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium text-[#292524]">{channel.name}</div><div className="truncate text-[11px] text-[#79716b]">{channelName(channel.type, channel.contact)}</div><div className="truncate text-[10px] text-[#a8a29e]">{channelAssignmentText(getAssignments(channel.id))}</div></div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => onUse(channel)}>Использовать</Button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2"><button type="button" onClick={onCreate} className="h-8 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]">Создать новый канал</button>{availableChannels.length > 3 && <button type="button" onClick={onShowAll} className="h-8 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]">Показать все каналы</button>}</div>
           </div>
-          <Button type="button" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Выбрать канал</Button>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4"><div className="min-w-0"><div className="text-[13px] font-medium text-[#292524]">Каналов пока нет</div><p className="mt-1 text-[12px] leading-5 text-[#79716b]">Создайте канал, чтобы получать уведомления.</p></div><Button type="button" size="sm" onClick={onCreate}>Создать канал</Button></div>
+        )
       )}
       {route && testState === "success" && <span role="status" className="sr-only">Тестовое сообщение отправлено</span>}
       {route && testState === "error" && <span role="alert" className="sr-only">Не удалось отправить сообщение. Проверьте подключение канала.</span>}
@@ -372,11 +391,13 @@ export function DeliveryWorkspace({
   onSaveStateChange,
   channelsManagerOpen,
   onChannelsManagerOpenChange,
+  channelsManagerAnchor,
 }: {
   activeTab: OrderSettingsTab;
   onSaveStateChange: (state: OrderSettingsSaveState) => void;
   channelsManagerOpen: boolean;
   onChannelsManagerOpenChange: (open: boolean) => void;
+  channelsManagerAnchor: ChannelPopoverAnchor | null;
 }) {
   const {
     serviceFeeEnabled,
@@ -398,14 +419,13 @@ export function DeliveryWorkspace({
     pickupAddress,
     setPickupAddress,
   } = useAppSettings();
-  const { routes, setRoute } = useOrderRouting();
+  const { channels, routes, setRoute, getChannelAssignments } = useOrderRouting();
   const { registerChange } = usePublish();
   const saveTimerRef = useRef<number | null>(null);
   const testTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickerRequest, setPickerRequest] = useState<{ event: OrderEvent; anchor: ChannelPopoverAnchor; enableAfterSelect: boolean } | null>(null);
-  const [settingsRequest, setSettingsRequest] = useState<{ channelId: string; anchor: ChannelPopoverAnchor } | null>(null);
-  const [managerCreateEvent, setManagerCreateEvent] = useState<OrderEvent | null>(null);
+  const [managerInitialView, setManagerInitialView] = useState<ChannelManagerInitialView>({ type: "list" });
   const [managerKey, setManagerKey] = useState(0);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [testStates, setTestStates] = useState<Record<OrderEvent, TestState>>({ delivery: "idle", pickup: "idle", waiter: "idle" });
@@ -419,6 +439,10 @@ export function DeliveryWorkspace({
     const timer = window.setTimeout(() => setLoading(false), 420);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!channelsManagerOpen) setManagerInitialView({ type: "list" });
+  }, [channelsManagerOpen]);
 
   useEffect(() => () => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -467,7 +491,8 @@ export function DeliveryWorkspace({
 
   const toggleRoutedFeature = (event: OrderEvent, enabled: boolean, anchor: ChannelPopoverAnchor) => {
     if (enabled && !routes[event]) {
-      setPickerRequest({ event, anchor, enableAfterSelect: true });
+      if (channels.length) setPickerRequest({ event, anchor, enableAfterSelect: true });
+      else openChannelManager({ type: "create", sourceEvent: event });
       return;
     }
     if (event === "delivery") setDeliveryEnabled(enabled);
@@ -498,10 +523,20 @@ export function DeliveryWorkspace({
     queueSave(true);
   };
 
-  const openChannelManager = (sourceEvent: OrderEvent | null = null) => {
-    setManagerCreateEvent(sourceEvent);
+  const openChannelManager = (initialView: ChannelManagerInitialView = { type: "list" }) => {
+    setManagerInitialView(initialView);
     setManagerKey((current) => current + 1);
     onChannelsManagerOpenChange(true);
+  };
+
+  const useChannelForEvent = (event: OrderEvent, channel: OrderChannel) => {
+    setRoute(event, channel);
+    setFeatureEnabled(event, true);
+    setRequiresSetupEvents((current) => current.filter((candidate) => candidate !== event));
+    setTestState(event, "idle");
+    queueSave(true);
+    const target = event === "delivery" ? "доставке" : event === "pickup" ? "самовывозу" : "вызовам официанта";
+    setToast({ message: `Канал подключён к ${target}`, tone: "success" });
   };
 
   const functionStatus = (event: OrderEvent, enabled: boolean): "Не настроено" | "Выключено" | "Включено" | "Требует настройки" => {
@@ -550,6 +585,15 @@ export function DeliveryWorkspace({
     };
   }, [activeTab, deliveryEnabled, pickupEnabled, serviceFeeEnabled, waiterEnabled, routes, requiresSetupEvents]);
 
+  const effectiveChannelsManagerAnchor = channelsManagerAnchor ?? (() => {
+    if (typeof document !== "undefined") {
+      const trigger = document.querySelector("[data-order-channels-trigger]");
+      if (trigger) return getChannelPopoverAnchor(trigger);
+    }
+    const right = typeof window === "undefined" ? 1000 : window.innerWidth - 24;
+    return { left: right - 160, right, top: 40, bottom: 72 };
+  })();
+
   return (
     <PageScroll>
       <PageContent className="space-y-0">
@@ -594,8 +638,13 @@ export function DeliveryWorkspace({
                     testState={testStates.delivery}
                     testLabel="Отправить тест"
                     onSelect={(anchor) => setPickerRequest({ event: "delivery", anchor, enableAfterSelect: false })}
-                    onConfigure={(anchor) => routes.delivery && setSettingsRequest({ channelId: routes.delivery.id, anchor })}
+                    onConfigure={() => routes.delivery && openChannelManager({ type: "edit", channelId: routes.delivery.id })}
                     onDetach={() => detachChannel("delivery")}
+                    availableChannels={channels}
+                    getAssignments={getChannelAssignments}
+                    onUse={(channel) => useChannelForEvent("delivery", channel)}
+                    onCreate={() => openChannelManager({ type: "create", sourceEvent: "delivery" })}
+                    onShowAll={() => openChannelManager({ type: "list" })}
                     onTest={() => sendTest("delivery")}
                   />
                 </SettingsSection>
@@ -623,7 +672,7 @@ export function DeliveryWorkspace({
             {activeTab === "pickup" && (
               <>
                 <SettingsSection title="Получение заказов" description="Канал, куда будут приходить новые заказы.">
-                  <ChannelSection event="pickup" route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={(anchor) => setPickerRequest({ event: "pickup", anchor, enableAfterSelect: false })} onConfigure={(anchor) => routes.pickup && setSettingsRequest({ channelId: routes.pickup.id, anchor })} onDetach={() => detachChannel("pickup")} onTest={() => sendTest("pickup")} />
+                  <ChannelSection event="pickup" route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={(anchor) => setPickerRequest({ event: "pickup", anchor, enableAfterSelect: false })} onConfigure={() => routes.pickup && openChannelManager({ type: "edit", channelId: routes.pickup.id })} onDetach={() => detachChannel("pickup")} availableChannels={channels} getAssignments={getChannelAssignments} onUse={(channel) => useChannelForEvent("pickup", channel)} onCreate={() => openChannelManager({ type: "create", sourceEvent: "pickup" })} onShowAll={() => openChannelManager({ type: "list" })} onTest={() => sendTest("pickup")} />
                 </SettingsSection>
                 {routes.pickup && (
                   <>
@@ -694,7 +743,7 @@ export function DeliveryWorkspace({
 
             {activeTab === "waiter" && (
               <SettingsSection title="Получение вызовов" description="Канал для уведомлений сотрудников зала.">
-                <ChannelSection event="waiter" route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={(anchor) => setPickerRequest({ event: "waiter", anchor, enableAfterSelect: false })} onConfigure={(anchor) => routes.waiter && setSettingsRequest({ channelId: routes.waiter.id, anchor })} onDetach={() => detachChannel("waiter")} onTest={() => sendTest("waiter")} />
+                <ChannelSection event="waiter" route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={(anchor) => setPickerRequest({ event: "waiter", anchor, enableAfterSelect: false })} onConfigure={() => routes.waiter && openChannelManager({ type: "edit", channelId: routes.waiter.id })} onDetach={() => detachChannel("waiter")} availableChannels={channels} getAssignments={getChannelAssignments} onUse={(channel) => useChannelForEvent("waiter", channel)} onCreate={() => openChannelManager({ type: "create", sourceEvent: "waiter" })} onShowAll={() => openChannelManager({ type: "list" })} onTest={() => sendTest("waiter")} />
               </SettingsSection>
             )}
           </div>
@@ -712,7 +761,7 @@ export function DeliveryWorkspace({
           onCreate={() => {
             const sourceEvent = pickerRequest.event;
             setPickerRequest(null);
-            openChannelManager(sourceEvent);
+            openChannelManager({ type: "create", sourceEvent });
           }}
           onSelect={(channel) => {
             const selectedEvent = pickerRequest.event;
@@ -727,43 +776,22 @@ export function DeliveryWorkspace({
           }}
         />
       )}
-      {settingsRequest && (
-        <ChannelSettingsPopover
-          channelId={settingsRequest.channelId}
-          anchor={settingsRequest.anchor}
-          onClose={() => setSettingsRequest(null)}
-          onToast={setToast}
-          onAssignmentsApplied={(events) => {
-            setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
-            queueSave(true);
-          }}
-          onAssignmentsRemoved={handleAssignmentsRemoved}
-        />
-      )}
       {channelsManagerOpen && (
-        <ChannelManagerDialog
+        <ChannelManagerPopover
           key={managerKey}
-          initialCreateEvent={managerCreateEvent}
-          onClose={() => { onChannelsManagerOpenChange(false); setManagerCreateEvent(null); }}
+          anchor={effectiveChannelsManagerAnchor}
+          initialView={managerInitialView}
+          onClose={() => { onChannelsManagerOpenChange(false); setManagerInitialView({ type: "list" }); }}
           onToast={setToast}
-          onAssignmentsApplied={(events, sourceEvent) => {
+          onAssignmentsApplied={(events, enableEvents) => {
             setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
-            if (sourceEvent) {
-              setFeatureEnabled(sourceEvent, true);
-            }
+            if (enableEvents) events.forEach((event) => setFeatureEnabled(event, true));
             queueSave(true);
           }}
           onAssignmentsRemoved={handleAssignmentsRemoved}
           onChannelDeleted={(events) => {
             events.forEach((event) => setFeatureEnabled(event, false));
             setRequiresSetupEvents((current) => Array.from(new Set([...current, ...events])));
-            queueSave(true);
-          }}
-          onReset={() => {
-            setDeliveryEnabled(false);
-            setPickupEnabled(false);
-            setWaiterEnabled(false);
-            setRequiresSetupEvents([]);
             queueSave(true);
           }}
         />
