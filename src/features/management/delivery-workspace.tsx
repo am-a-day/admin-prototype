@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   Check,
@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { AuthPhoneField } from "@/components/auth/auth-phone-field";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -96,18 +97,6 @@ const PURPOSE_LABELS: Record<OrderEvent, string> = {
   waiter: "Вызов официанта",
 };
 
-const PURPOSE_DESCRIPTIONS: Record<OrderEvent, string> = {
-  delivery: "Заказы доставки",
-  pickup: "Заказы самовывоза",
-  waiter: "Вызов официанта",
-};
-
-const PURPOSE_GENITIVE: Record<OrderEvent, string> = {
-  delivery: "доставки",
-  pickup: "самовывоза",
-  waiter: "вызова официанта",
-};
-
 function channelKey(channel: RouteChannel) {
   return `${channel.type}:${channel.contact}`;
 }
@@ -141,25 +130,43 @@ function ChannelDialog({
 }) {
   const { account } = useMockAuth();
   const venueName = account?.workspace.name.trim() || "Мой ресторан 4798";
-  const [screen, setScreen] = useState<"destination" | "telegram" | "telegram-create" | "whatsapp">("destination");
+  const [type, setType] = useState<ChannelType>(route?.type ?? "telegram");
   const [selectedKey, setSelectedKey] = useState(route ? channelKey(route) : "");
-  const [creating, setCreating] = useState(false);
+  const [showTelegramCreate, setShowTelegramCreate] = useState(() => !channels.some((channel) => channel.type === "telegram"));
+  const [whatsappPhone, setWhatsappPhone] = useState(route?.type === "whatsapp" ? route.contact : "");
+  const [whatsappValid, setWhatsappValid] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const generatedChatName = `${venueName} · ${PURPOSE_LABELS[event]}`;
   const generatedTelegramContact = `@${slugifyChannelName(`${venueName}_${PURPOSE_LABELS[event]}`)}`;
   const telegramChannels = channels.filter((channel) => channel.type === "telegram");
   const selectedExisting = telegramChannels.find((channel) => channelKey(channel) === selectedKey) ?? null;
+  const description = event === "delivery"
+    ? "Выберите, куда отправлять новые заказы доставки."
+    : event === "pickup"
+      ? "Выберите, куда отправлять новые заказы самовывоза."
+      : "Выберите, куда отправлять вызовы официанта.";
+  const telegramDescription = event === "delivery"
+    ? "Мы создадим отдельный чат для заказов доставки и добавим в него бота Tasko."
+    : event === "pickup"
+      ? "Мы создадим отдельный чат для заказов самовывоза и добавим в него бота Tasko."
+      : "Мы создадим отдельный чат для вызовов официанта и добавим в него бота Tasko.";
+  const whatsappDescription = event === "delivery"
+    ? "На этот номер будут приходить новые заказы доставки."
+    : event === "pickup"
+      ? "На этот номер будут приходить новые заказы самовывоза."
+      : "На этот номер будут приходить вызовы официанта.";
 
   useEffect(() => {
     const onKeyDown = (eventValue: KeyboardEvent) => {
-      if (eventValue.key === "Escape" && !creating) onClose();
+      if (eventValue.key === "Escape" && !submitting) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [creating, onClose]);
+  }, [onClose, submitting]);
 
   const createTelegramChannel = () => {
-    if (creating) return;
-    setCreating(true);
+    if (submitting) return;
+    setSubmitting(true);
     window.setTimeout(() => {
       const matchingCount = channels.filter((channel) => channel.type === "telegram" && channel.contact.startsWith(generatedTelegramContact)).length;
       const contact = matchingCount > 0 ? `${generatedTelegramContact}_${matchingCount + 1}` : generatedTelegramContact;
@@ -167,125 +174,116 @@ function ChannelDialog({
     }, 450);
   };
 
-  const title = screen === "destination"
-    ? "Получение заказов"
-    : screen === "telegram"
-      ? "Telegram"
-      : screen === "whatsapp"
-        ? "WhatsApp"
-        : "Новый Telegram-чат";
-  const description = screen === "destination"
-    ? `Выберите, куда отправлять новые ${event === "delivery" ? "заказы доставки" : PURPOSE_DESCRIPTIONS[event].toLocaleLowerCase("ru")}.`
-    : screen === "telegram-create"
-      ? `Мы создадим чат для ${event === "delivery" ? "заказов доставки" : PURPOSE_GENITIVE[event]} и добавим в него бота Tasko.`
-      : screen === "telegram"
-        ? "Выберите подключённый чат или создайте новый."
-        : "Выберите подключённый канал WhatsApp.";
+  const saveExistingTelegram = () => {
+    if (!selectedExisting || submitting) return;
+    setSubmitting(true);
+    window.setTimeout(() => onSave(selectedExisting), 350);
+  };
+
+  const saveWhatsapp = () => {
+    if (!whatsappValid || submitting) return;
+    setSubmitting(true);
+    window.setTimeout(() => onSave({ type: "whatsapp", contact: whatsappPhone }), 350);
+  };
+
+  const handleWhatsappValueChange = useCallback((value: string, valid: boolean) => {
+    setWhatsappPhone(value);
+    setWhatsappValid(valid);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/25 px-4" role="dialog" aria-modal="true" aria-labelledby="channel-dialog-title">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={() => { if (!creating) onClose(); }} aria-label="Закрыть" />
+      <button type="button" className="absolute inset-0 cursor-default" onClick={() => { if (!submitting) onClose(); }} aria-label="Закрыть" />
       <div className="relative flex max-h-[min(640px,calc(100vh-32px))] w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
         <div className="flex items-start justify-between gap-4 border-b border-[#eceae7] px-5 py-4">
           <div className="min-w-0">
-            <h2 id="channel-dialog-title" className="text-[15px] font-semibold text-[#292524]">{title}</h2>
+            <h2 id="channel-dialog-title" className="text-[15px] font-semibold text-[#292524]">Получение заказов</h2>
             <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{description}</p>
           </div>
-          <button type="button" onClick={onClose} disabled={creating} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={submitting} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:opacity-50">
             <X size={16} />
           </button>
         </div>
 
+        <div className="border-b border-[#eceae7] px-5 pt-3">
+          <div role="tablist" aria-label="Канал получения заказов" className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+            {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => (
+              <button
+                key={channelType}
+                type="button"
+                role="tab"
+                aria-selected={type === channelType}
+                onClick={() => setType(channelType)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-[12px] transition",
+                  type === channelType ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]" : "text-[#79716b] hover:text-[#292524]",
+                )}
+              >
+                {CHANNEL_LABELS[channelType]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="min-h-0 overflow-y-auto px-5 py-5">
-          {screen === "destination" && (
-            <div className="space-y-2">
-              {explainConnectionFirst && (
-                <div className="mb-4 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
-                  Сначала подключите канал. После подключения доставка включится автоматически.
-                </div>
+          {explainConnectionFirst && (
+            <div className="mb-4 rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
+              Сначала подключите канал. После подключения функция включится автоматически.
+            </div>
+          )}
+
+          {type === "telegram" ? (
+            <div className="space-y-5">
+              {telegramChannels.length > 0 && (
+                <section>
+                  <h3 className="text-[13px] font-medium text-[#292524]">Подключённые чаты</h3>
+                  <div className="mt-2 space-y-1" role="radiogroup" aria-label="Подключённые Telegram-чаты">
+                    {telegramChannels.map((channel) => {
+                      const selected = selectedKey === channelKey(channel);
+                      return (
+                        <button key={channelKey(channel)} type="button" role="radio" aria-checked={selected} onClick={() => { setSelectedKey(channelKey(channel)); setShowTelegramCreate(false); }} className={cn("flex h-10 w-full items-center gap-3 rounded-[9px] px-2.5 text-left transition", selected ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]")}>
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-sky-50 text-sky-600"><MessageCircle size={15} /></span>
+                          <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{channel.contact}</span>
+                          <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>{selected && <Check size={10} />}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!showTelegramCreate && (
+                    <button type="button" onClick={() => setShowTelegramCreate(true)} className="mt-2 text-[12px] font-medium text-[#57534d] underline underline-offset-2">Создать новый чат</button>
+                  )}
+                </section>
               )}
-              {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => (
-                <button
-                  key={channelType}
-                  type="button"
-                  onClick={() => {
-                    setSelectedKey(route?.type === channelType ? channelKey(route) : "");
-                    setScreen(channelType === "telegram" ? "telegram" : "whatsapp");
-                  }}
-                  className="flex w-full items-center gap-3 rounded-[10px] border border-[#e7e5e4] px-3 py-3 text-left transition hover:border-[#c7c2bd] hover:bg-[#fafaf9]"
-                >
-                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]", channelType === "telegram" ? "bg-sky-50 text-sky-600" : "bg-emerald-50 text-emerald-600")}>
-                    <MessageCircle size={16} />
-                  </span>
-                  <span className="flex-1 text-[13px] font-medium text-[#292524]">{CHANNEL_LABELS[channelType]}</span>
-                  <span className="text-[18px] leading-none text-[#a8a29e]">›</span>
-                </button>
-              ))}
-            </div>
-          )}
 
-          {screen === "telegram" && (
-            telegramChannels.length === 0 ? (
-              <div className="rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-3 py-4 text-[12px] text-[#79716b]">
-                Подключённых Telegram-чатов пока нет.
-              </div>
-            ) : (
-              <div className="space-y-1" role="radiogroup" aria-label="Подключённые Telegram-чаты">
-                {telegramChannels.map((channel) => {
-                  const selected = selectedKey === channelKey(channel);
-                  return (
-                    <button
-                      key={channelKey(channel)}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setSelectedKey(channelKey(channel))}
-                      className={cn("flex h-11 w-full items-center gap-3 rounded-[9px] px-2.5 text-left transition", selected ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]")}
-                    >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-sky-50 text-sky-600"><MessageCircle size={15} /></span>
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-[#292524]">{channel.contact}</span>
-                      <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-[#292524] bg-[#292524] text-white" : "border-[#c7c2bd]")}>{selected && <Check size={10} />}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )
-          )}
-
-          {screen === "telegram-create" && (
-            <div className="rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-4 py-4">
-              <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">Название чата</div>
-              <div className="mt-2 text-[14px] font-medium text-[#292524]">{generatedChatName}</div>
-              <p className="mt-2 text-[12px] leading-5 text-[#79716b]">Название формируется автоматически из названия заведения и назначения чата.</p>
+              {(showTelegramCreate || telegramChannels.length === 0) && (
+                <section>
+                  <h3 className="text-[13px] font-medium text-[#292524]">Telegram-чат</h3>
+                  <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{telegramDescription}</p>
+                  <div className="mt-4 text-[12px] text-[#79716b]">Название чата</div>
+                  <div className="mt-1 text-[14px] font-medium text-[#292524]">{generatedChatName}</div>
+                  <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Название формируется из названия заведения и назначения чата.</p>
+                </section>
+              )}
             </div>
-          )}
-
-          {screen === "whatsapp" && (
-            <div className="rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-3 text-[12px] leading-5 text-[#79716b]">
-              Подключение WhatsApp для заказов пока недоступно в прототипе.
-            </div>
+          ) : (
+            <section>
+              <label htmlFor="order-whatsapp-phone" className="mb-1.5 block text-[12px] font-medium text-[#57534d]">Номер WhatsApp</label>
+              <AuthPhoneField id="order-whatsapp-phone" initialValue={whatsappPhone} disabled={submitting} onValueChange={handleWhatsappValueChange} />
+              <p className="mt-2 text-[12px] leading-5 text-[#79716b]">{whatsappDescription}</p>
+            </section>
           )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[#eceae7] px-5 py-4">
-          {screen === "destination" ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>Отмена</Button>
-          ) : (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setScreen(screen === "telegram-create" ? "telegram" : "destination")} disabled={creating}>Назад</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>Отмена</Button>
+          {type === "telegram" && (showTelegramCreate || telegramChannels.length === 0) && (
+            <Button type="button" size="sm" disabled={submitting} onClick={createTelegramChannel}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : "Создать и подключить"}</Button>
           )}
-          {screen === "telegram" && telegramChannels.length === 0 && (
-            <Button type="button" size="sm" onClick={() => setScreen("telegram-create")}>Создать Telegram-чат</Button>
+          {type === "telegram" && !showTelegramCreate && telegramChannels.length > 0 && (
+            <Button type="button" size="sm" disabled={!selectedExisting || submitting} onClick={saveExistingTelegram}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Сохраняем…</> : route && selectedExisting && channelKey(route) === channelKey(selectedExisting) ? "Сохранить" : "Подключить выбранный"}</Button>
           )}
-          {screen === "telegram" && telegramChannels.length > 0 && (
-            <>
-              <Button type="button" variant="outline" size="sm" onClick={() => setScreen("telegram-create")}>Создать новый чат</Button>
-              <Button type="button" size="sm" disabled={!selectedExisting} onClick={() => selectedExisting && onSave(selectedExisting)}>Выбрать</Button>
-            </>
-          )}
-          {screen === "telegram-create" && (
-            <Button type="button" size="sm" disabled={creating} onClick={createTelegramChannel}>
-              {creating ? <><Loader2 size={14} className="animate-spin" /> Создаём…</> : "Создать чат"}
-            </Button>
+          {type === "whatsapp" && (
+            <Button type="button" size="sm" disabled={!whatsappValid || submitting} onClick={saveWhatsapp}>{submitting ? <><Loader2 size={14} className="animate-spin" /> Подключаем…</> : route?.type === "whatsapp" ? "Сохранить" : "Подключить WhatsApp"}</Button>
           )}
         </div>
       </div>
@@ -882,6 +880,8 @@ export function DeliveryWorkspace({
             setExplainConnectionFirst(false);
           }}
           onSave={(channel) => {
+            const previousRoute = routes[dialogEvent];
+            const routeChanged = Boolean(previousRoute && channelKey(previousRoute) !== channelKey(channel));
             setConnectedChannels((current) => current.some((candidate) => channelKey(candidate) === channelKey(channel))
               ? current
               : [...current, channel]);
@@ -892,7 +892,16 @@ export function DeliveryWorkspace({
             queueSave(true);
             setDialogEvent(null);
             setExplainConnectionFirst(false);
-            setToast({ message: "Канал подключён", tone: "success" });
+            setToast({
+              message: routeChanged
+                ? "Канал получения заказов изменён"
+                : previousRoute
+                  ? "Канал получения заказов сохранён"
+                  : channel.type === "telegram"
+                    ? "Telegram-чат подключён"
+                    : "WhatsApp подключён",
+              tone: "success",
+            });
           }}
         />
       )}
