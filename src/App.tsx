@@ -54,7 +54,6 @@ import {
   type OrderSettingsSaveState,
   type OrderSettingsTab,
 } from "@/features/management/delivery-workspace";
-import { getChannelPopoverAnchor, type ChannelPopoverAnchor } from "@/features/management/order-channels-dialogs";
 import { ManagementStub } from "@/features/management/management-stub";
 import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
@@ -528,7 +527,6 @@ function AuthenticatedShell() {
   const [orderSettingsTab, setOrderSettingsTab] = useState<OrderSettingsTab>("delivery");
   const [orderSettingsSaveState, setOrderSettingsSaveState] = useState<OrderSettingsSaveState>("saved");
   const [orderChannelsOpen, setOrderChannelsOpen] = useState(false);
-  const [orderChannelsAnchor, setOrderChannelsAnchor] = useState<ChannelPopoverAnchor | null>(null);
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");
   const [trainingTab, setTrainingTab] = useState<TrainingTab>(() => getInitialTrainingTab());
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
@@ -1040,7 +1038,6 @@ function AuthenticatedShell() {
           onSaveStateChange={setOrderSettingsSaveState}
           channelsManagerOpen={orderChannelsOpen}
           onChannelsManagerOpenChange={setOrderChannelsOpen}
-          channelsManagerAnchor={orderChannelsAnchor}
         />
       );
     } else if (manageTab === "order-history") {
@@ -1248,10 +1245,7 @@ function AuthenticatedShell() {
                       data-order-channels-trigger
                       aria-haspopup="dialog"
                       aria-expanded={orderChannelsOpen}
-                      onClick={(event) => {
-                        setOrderChannelsAnchor(getChannelPopoverAnchor(event.currentTarget));
-                        setOrderChannelsOpen((open) => !open);
-                      }}
+                      onClick={() => setOrderChannelsOpen((open) => !open)}
                       className="flex h-8 items-center rounded-[10px] border border-[#d6d3d1] bg-white px-3 text-[13px] font-medium text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                     >
                       <Bell size={13} className="mr-1.5" />

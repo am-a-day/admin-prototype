@@ -86,6 +86,13 @@ function initialPhoneState(value: string) {
   };
 }
 
+export function formatAuthPhone(value: string) {
+  const state = initialPhoneState(value);
+  if (state.internationalDraft !== null) return value;
+  const nationalNumber = formatNationalNumber(state.nationalNumber, state.country.groups);
+  return `${state.country.dialCode}${nationalNumber ? ` ${nationalNumber}` : ""}`;
+}
+
 export function AuthPhoneField({
   id,
   initialValue = "",

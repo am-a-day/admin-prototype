@@ -119,6 +119,7 @@ type OrderRoutingContextValue = {
   routes: Routes;
   createChannel: (input: Omit<OrderChannel, "id" | "status">) => OrderChannel;
   updateChannel: (id: string, patch: Pick<OrderChannel, "name" | "contact">) => void;
+  setChannelStatus: (id: string, status: OrderChannel["status"]) => void;
   deleteChannel: (id: string) => void;
   setRoute: (event: OrderEvent, channel: OrderChannel | null) => void;
   setChannelAssignments: (channelId: string, events: OrderEvent[]) => void;
@@ -158,6 +159,13 @@ export function OrderRoutingProvider({ children }: { children: ReactNode }) {
     setState((current) => ({
       ...current,
       channels: current.channels.map((channel) => channel.id === id ? { ...channel, ...patch } : channel),
+    }));
+  }, []);
+
+  const setChannelStatus = useCallback((id: string, status: OrderChannel["status"]) => {
+    setState((current) => ({
+      ...current,
+      channels: current.channels.map((channel) => channel.id === id ? { ...channel, status } : channel),
     }));
   }, []);
 
@@ -215,6 +223,7 @@ export function OrderRoutingProvider({ children }: { children: ReactNode }) {
     routes,
     createChannel,
     updateChannel,
+    setChannelStatus,
     deleteChannel,
     setRoute,
     setChannelAssignments,
@@ -227,6 +236,7 @@ export function OrderRoutingProvider({ children }: { children: ReactNode }) {
     routes,
     createChannel,
     updateChannel,
+    setChannelStatus,
     deleteChannel,
     setRoute,
     setChannelAssignments,

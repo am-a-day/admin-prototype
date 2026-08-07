@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TelegramLogo, WhatsappLogo } from "@phosphor-icons/react";
 import { ArrowLeft, Check, Loader2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
-import { AuthPhoneField } from "@/components/auth/auth-phone-field";
+import { AuthPhoneField, formatAuthPhone } from "@/components/auth/auth-phone-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,12 +22,16 @@ const EVENT_CHECKBOX_LABELS: Record<OrderEvent, string> = {
   pickup: "Заказы самовывоза",
   waiter: "Вызовы официанта",
 };
-
 export type ChannelPopoverAnchor = { left: number; right: number; top: number; bottom: number };
 export type ChannelToast = { message: string; tone: "success" | "error" };
 export type ChannelManagerInitialView =
   | { type: "list" }
-  | { type: "create"; sourceEvent: OrderEvent | null }
+  | {
+      type: "create";
+      sourceEvent: OrderEvent | null;
+      returnToList: boolean;
+      enableSourceEventAfterCreate?: boolean;
+    }
   | { type: "edit"; channelId: string };
 
 export function getChannelPopoverAnchor(target: Element): ChannelPopoverAnchor {
@@ -36,14 +40,14 @@ export function getChannelPopoverAnchor(target: Element): ChannelPopoverAnchor {
 }
 
 export function channelAssignmentText(events: OrderEvent[]) {
-  return events.length ? events.map((event) => ORDER_EVENT_LABELS[event]).join(" · ") : "Не используется";
+  return events.length ? events.map((event) => ORDER_EVENT_LABELS[event]).join(" · ") : "Не назначен";
 }
 
 function channelStatusLabel(status: OrderChannel["status"]) {
-  if (status === "connected") return "Подключено";
+  if (status === "connected") return "Подключён";
   if (status === "checking") return "Проверяем";
   if (status === "error") return "Ошибка подключения";
-  return "Не подключено";
+  return "Требуется повторное подключение";
 }
 
 function channelStatusColor(status: OrderChannel["status"]) {
@@ -57,16 +61,16 @@ function assignmentSentence(events: OrderEvent[]) {
   const labels = events.map((event) => event === "delivery" ? "доставки" : event === "pickup" ? "самовывоза" : "вызовов официанта");
   if (!labels.length) return "";
   if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} и ${labels[1]}`;
   return `${labels.slice(0, -1).join(", ")} и ${labels.at(-1)}`;
 }
 
 function deletionConsequence(events: OrderEvent[]) {
-  const parts: string[] = [];
-  if (events.includes("delivery") && events.includes("pickup")) parts.push("заказы доставки и самовывоза");
-  else if (events.includes("delivery")) parts.push("заказы доставки");
-  else if (events.includes("pickup")) parts.push("заказы самовывоза");
-  if (events.includes("waiter")) parts.push("вызовы официанта");
-  return `Канал получает ${parts.join(" и ")}. После удаления эти функции перестанут получать уведомления.`;
+  const usage = assignmentSentence(events);
+  if (events.length === 1) {
+    return `Канал используется для ${usage}. После удаления эта функция перестанет получать уведомления и будет выключена. Остальные настройки сохранятся.`;
+  }
+  return `Канал используется для ${usage}. После удаления эти функции перестанут получать уведомления и будут выключены. Остальные настройки сохранятся.`;
 }
 
 function automaticChannelName(events: OrderEvent[]) {
@@ -94,13 +98,25 @@ function assignmentSummary(events: OrderEvent[]) {
   return "Выберите, какие уведомления должны приходить в этот канал.";
 }
 
+function enabledRemovalWarning(event: OrderEvent) {
+  if (event === "delivery") return "Доставка сейчас включена.";
+  if (event === "pickup") return "Самовывоз сейчас включён.";
+  return "Вызов официанта сейчас включён.";
+}
+
 function creationToast(events: OrderEvent[]) {
   if (!events.length) return "Канал создан";
   if (events.length === 1) {
     const target = events[0] === "delivery" ? "доставке" : events[0] === "pickup" ? "самовывозу" : "вызовам официанта";
-    return `Канал создан и подключён к ${target}`;
+    return `Канал создан и назначен ${target}`;
   }
   return `Канал создан для ${assignmentSentence(events)}`;
+}
+
+function pickerTitle(event: OrderEvent) {
+  if (event === "delivery") return "Канал для доставки";
+  if (event === "pickup") return "Канал для самовывоза";
+  return "Канал для вызовов";
 }
 
 export function ChannelIcon({ type }: { type: ChannelType }) {
@@ -129,24 +145,20 @@ function AssignmentCheckboxes({ value, onChange }: { value: OrderEvent[]; onChan
   );
 }
 
-function popoverPosition(anchor: ChannelPopoverAnchor, width: number, height: number, align: "start" | "end" = "start") {
+function popoverPosition(anchor: ChannelPopoverAnchor, width: number, height: number) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
   const panelWidth = Math.min(width, viewportWidth - 24);
-  const preferredLeft = align === "end" ? anchor.right - panelWidth : anchor.left;
-  const left = Math.max(12, Math.min(preferredLeft, viewportWidth - panelWidth - 12));
+  const left = Math.max(12, Math.min(anchor.left, viewportWidth - panelWidth - 12));
   const below = anchor.bottom + 6;
   const top = below + height <= viewportHeight - 12 ? below : Math.max(12, anchor.top - height - 6);
   return { width: panelWidth, left, top };
 }
 
-function usePopoverDismiss(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void, disabled = false) {
+function usePopoverDismiss(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
-    if (disabled) return;
     const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-channel-menu-content]")) return;
-      if (!ref.current?.contains(target)) onClose();
+      if (!ref.current?.contains(event.target as HTMLElement)) onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -157,7 +169,7 @@ function usePopoverDismiss(ref: React.RefObject<HTMLDivElement | null>, onClose:
       document.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [disabled, onClose, ref]);
+  }, [onClose, ref]);
 }
 
 function ChannelRow({
@@ -165,50 +177,66 @@ function ChannelRow({
   assignments,
   mode,
   current,
-  testLoading,
   onSelect,
   onEdit,
-  onTest,
   onDelete,
 }: {
   channel: OrderChannel;
   assignments: OrderEvent[];
   mode: "select" | "manage";
   current?: boolean;
-  testLoading?: boolean;
   onSelect?: () => void;
   onEdit?: () => void;
-  onTest?: () => void;
   onDelete?: () => void;
 }) {
-  return (
-    <div className={cn("flex min-h-[60px] items-center gap-3 px-2.5 py-2", mode === "select" && !current && "cursor-pointer hover:bg-[#f5f5f4]", current && "bg-[#fafaf9]")} onClick={() => mode === "select" && !current && onSelect?.()}>
+  const details = (
+    <>
       <ChannelIcon type={channel.type} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium leading-5 text-[#292524]">{channel.name}</div>
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[#79716b]">
-          <span className="truncate">{CHANNEL_LABELS[channel.type]} · {channel.contact}</span>
-          <span title={channelStatusLabel(channel.status)} className={cn("h-1.5 w-1.5 shrink-0 rounded-full", channelStatusColor(channel.status))} />
-        </div>
-        <div className="truncate text-[10px] leading-4 text-[#a8a29e]">{channelAssignmentText(assignments)}</div>
-      </div>
-      {mode === "select" ? (
-        current && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#292524] text-white" aria-label="Текущий канал"><Check size={11} /></span>
-      ) : (
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button type="button" aria-label={`Действия канала ${channel.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><MoreHorizontal size={16} /></button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content data-channel-menu-content sideOffset={6} align="end" className="z-[100010] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
-              <DropdownMenu.Item onSelect={onEdit} className="flex h-8 cursor-pointer items-center rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Настроить</DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={onTest} className="flex h-8 cursor-pointer items-center gap-2 rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">{testLoading && <Loader2 size={13} className="animate-spin" />} Отправить тест</DropdownMenu.Item>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownMenu.Item onSelect={onDelete} className="flex h-8 cursor-pointer items-center gap-2 rounded-[8px] px-2 text-[12px] text-red-600 outline-none data-[highlighted]:bg-red-50"><Trash2 size={13} /> Удалить канал</DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      )}
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-[13px] font-medium leading-5 text-[#292524]">{channel.name}</span>
+        <span className="block truncate text-[11px] leading-4 text-[#79716b]">{CHANNEL_LABELS[channel.type]} · {formatAuthPhone(channel.contact)}</span>
+        <span className="block truncate text-[10px] leading-4 text-[#a8a29e]">{mode === "select" ? `Используется: ${channelAssignmentText(assignments)}` : channelAssignmentText(assignments)}</span>
+      </span>
+    </>
+  );
+
+  if (mode === "select") {
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={Boolean(current)}
+        onClick={() => !current && onSelect?.()}
+        className={cn(
+          "flex min-h-[60px] w-full items-center gap-3 rounded-[9px] px-2.5 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          current ? "bg-[#f5f5f4]" : "hover:bg-[#f8f7f4]",
+        )}
+      >
+        {details}
+        {current && <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-[6px] bg-white px-2 text-[10px] font-medium text-[#57534d] ring-1 ring-[#e7e5e4]"><Check size={11} /> Текущий</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[66px] items-center gap-3 px-3 py-2.5">
+      {details}
+      <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-[#79716b]">
+        <span className={cn("h-1.5 w-1.5 rounded-full", channelStatusColor(channel.status))} />
+        {channelStatusLabel(channel.status)}
+      </span>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" aria-label={`Действия канала ${channel.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><MoreHorizontal size={16} /></button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content sideOffset={6} align="end" className="z-[100012] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+            <DropdownMenu.Item onSelect={onEdit} className="flex h-8 cursor-pointer items-center rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Редактировать</DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownMenu.Item onSelect={onDelete} className="flex h-8 cursor-pointer items-center gap-2 rounded-[8px] px-2 text-[12px] text-red-600 outline-none data-[highlighted]:bg-red-50"><Trash2 size={13} /> Удалить канал</DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -231,32 +259,31 @@ export function ChannelPickerPopover({
   const { channels, getChannelAssignments } = useOrderRouting();
   const panelRef = useRef<HTMLDivElement>(null);
   usePopoverDismiss(panelRef, onClose);
-  const height = channels.length ? Math.min(390, channels.length * 60 + 52) : 88;
-  const position = popoverPosition(anchor, 400, height);
+  const height = Math.min(420, channels.length * 60 + 92);
+  const position = popoverPosition(anchor, 392, height);
+  const title = pickerTitle(event);
 
   return createPortal(
-    <div ref={panelRef} role="dialog" aria-label={`Выбрать канал для ${ORDER_EVENT_LABELS[event].toLocaleLowerCase("ru")}`} className="fixed z-[100005] max-h-[390px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_48px_rgba(41,37,36,0.18)]" style={position}>
-      {channels.length ? (
-        <>
-          <div className="max-h-[320px] divide-y divide-[#f0efec] overflow-y-auto overscroll-contain">
-            {channels.map((channel) => <ChannelRow key={channel.id} channel={channel} assignments={getChannelAssignments(channel.id)} mode="select" current={channel.id === currentChannelId} onSelect={() => onSelect(channel)} />)}
-          </div>
-          <div className="mt-1 border-t border-[#eceae7] pt-1"><button type="button" onClick={onCreate} className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[12px] font-medium text-[#57534d] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><Plus size={13} /> Создать новый канал</button></div>
-        </>
-      ) : (
-        <button type="button" onClick={onCreate} className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-[#4f39f6] px-3 text-[13px] font-medium text-white transition hover:bg-[#4030d4]"><Plus size={14} /> Создать канал</button>
-      )}
+    <div ref={panelRef} role="dialog" aria-labelledby="channel-picker-title" className="fixed z-[100005] max-h-[420px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_18px_42px_rgba(41,37,36,0.14)]" style={position}>
+      <div className="border-b border-[#eceae7] px-3 py-2.5">
+        <h2 id="channel-picker-title" className="text-[13px] font-semibold text-[#292524]">{title}</h2>
+      </div>
+      <div role="radiogroup" aria-label={title} className="max-h-[320px] space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
+        {channels.map((channel) => <ChannelRow key={channel.id} channel={channel} assignments={getChannelAssignments(channel.id)} mode="select" current={channel.id === currentChannelId} onSelect={() => onSelect(channel)} />)}
+      </div>
+      <div className="border-t border-[#eceae7] p-1.5"><button type="button" onClick={onCreate} className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[12px] font-medium text-[#57534d] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><Plus size={13} /> Создать новый канал</button></div>
     </div>,
     document.body,
   );
 }
 
-type ChannelFormState = { ready: boolean; submitting: boolean; type: ChannelType };
+type ChannelFormState = { ready: boolean; submitting: boolean };
 
 function ChannelForm({
   mode,
   channel,
   initialEvent,
+  enabledEvents,
   submitSignal,
   onStateChange,
   onSubmit,
@@ -264,6 +291,7 @@ function ChannelForm({
   mode: "create" | "edit";
   channel?: OrderChannel;
   initialEvent?: OrderEvent | null;
+  enabledEvents: OrderEvent[];
   submitSignal: number;
   onStateChange: (state: ChannelFormState) => void;
   onSubmit: (input: Omit<OrderChannel, "id" | "status">, events: OrderEvent[]) => void;
@@ -284,50 +312,72 @@ function ChannelForm({
     || (candidate.type === type && candidate.contact === phone)
   ));
   const conflicts = events.filter((event) => routes[event] && routes[event]?.id !== channel?.id);
+  const removedEnabledEvents = initialEvents.filter((event) => !events.includes(event) && enabledEvents.includes(event));
   const canSubmit = Boolean(displayedName.trim() && phoneValid && !duplicate && !submitting);
   const handlePhone = useCallback((value: string, valid: boolean) => { setPhone(value); setPhoneValid(valid); }, []);
 
   useEffect(() => {
-    onStateChange({ ready: canSubmit, submitting, type });
-  }, [canSubmit, onStateChange, submitting, type]);
+    onStateChange({ ready: canSubmit, submitting });
+  }, [canSubmit, onStateChange, submitting]);
 
   useEffect(() => {
     if (submitSignalRef.current === submitSignal || !canSubmit) return;
     submitSignalRef.current = submitSignal;
     setSubmitting(true);
     window.setTimeout(() => onSubmit({ type, name: displayedName.trim(), contact: phone }, events), 350);
-  }, [submitSignal]);
+  }, [canSubmit, displayedName, events, onSubmit, phone, submitSignal, type]);
 
   return (
     <div className="space-y-4">
       {mode === "create" ? (
-        <div role="tablist" aria-label="Тип канала" className="inline-flex items-center gap-0.5 rounded-[10px] bg-[#f5f5f4] p-0.5">
-          {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => <button key={channelType} type="button" role="tab" aria-selected={type === channelType} onClick={() => setType(channelType)} className={cn("h-8 rounded-[8px] px-3 text-[12px] font-medium transition", type === channelType ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]" : "text-[#79716b] hover:text-[#292524]")}>{CHANNEL_LABELS[channelType]}</button>)}
+        <div>
+          <div className="mb-1.5 text-[12px] font-medium text-[#44403b]">Тип канала</div>
+          <div role="tablist" aria-label="Тип канала" className="inline-flex items-center gap-0.5 rounded-[10px] bg-[#f5f5f4] p-0.5">
+            {(["telegram", "whatsapp"] as ChannelType[]).map((channelType) => <button key={channelType} type="button" role="tab" aria-selected={type === channelType} onClick={() => setType(channelType)} className={cn("h-8 rounded-[8px] px-3 text-[12px] font-medium transition", type === channelType ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]" : "text-[#79716b] hover:text-[#292524]")}>{CHANNEL_LABELS[channelType]}</button>)}
+          </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-[12px] text-[#79716b]"><ChannelIcon type={type} /><span>Тип канала: {CHANNEL_LABELS[type]}</span></div>
+        <div className="flex items-center gap-2 rounded-[10px] bg-[#fafaf9] px-3 py-2 text-[12px] text-[#57534d]"><ChannelIcon type={type} /><span>Тип канала: <span className="font-medium text-[#292524]">{CHANNEL_LABELS[type]}</span></span></div>
       )}
 
-      <label className="block">
-        <span className="mb-1.5 flex items-center justify-between gap-3 text-[12px] font-medium text-[#44403b]"><span>Название канала</span>{mode === "create" && manualName && <button type="button" onClick={() => setManualName(false)} className="text-[11px] font-normal text-[#57534d] underline underline-offset-2">Вернуть автоматическое название</button>}</span>
-        <Input autoFocus value={displayedName} onChange={(event) => { setManualName(true); setName(event.target.value); }} size="compact" />
-      </label>
-
       <div>
-        <label htmlFor={`channel-form-phone-${channel?.id ?? "new"}`} className="mb-1.5 block text-[12px] font-medium text-[#44403b]">{type === "telegram" ? "Номер Telegram" : "Номер WhatsApp"}</label>
+        <label htmlFor={`channel-form-phone-${channel?.id ?? "new"}`} className="mb-1.5 block text-[12px] font-medium text-[#44403b]">{type === "telegram" ? "Номер, привязанный к Telegram" : "Номер WhatsApp"}</label>
         <AuthPhoneField key={mode === "create" ? type : channel?.id} id={`channel-form-phone-${channel?.id ?? "new"}`} initialValue={phone} disabled={submitting} onValueChange={handlePhone} />
-        <p className="mt-1.5 text-[11px] leading-4 text-[#79716b]">{type === "telegram" ? "Укажите номер, привязанный к Telegram." : "Укажите номер WhatsApp."}</p>
+        <p className="mt-1.5 text-[11px] leading-4 text-[#79716b]">{type === "telegram" ? "Tasko создаст чат с ботом и добавит аккаунт Telegram, привязанный к этому номеру." : "На этот номер будут приходить выбранные уведомления."}</p>
       </div>
+
+      {mode === "edit" && <label className="block"><span className="mb-1.5 block text-[12px] font-medium text-[#44403b]">Название канала</span><Input value={name} onChange={(event) => setName(event.target.value)} size="compact" /></label>}
 
       <div>
         <div className="mb-1 text-[12px] font-medium text-[#44403b]">Получать уведомления</div>
         <AssignmentCheckboxes value={events} onChange={setEvents} />
-        <p className="mt-2 rounded-[8px] bg-[#f5f5f4] px-3 py-2 text-[11px] leading-4 text-[#57534d]">{assignmentSummary(events)}</p>
+        <div className="mt-2 rounded-[8px] bg-[#f5f5f4] px-3 py-2 text-[11px] leading-4 text-[#57534d]">
+          <p>{assignmentSummary(events)}</p>
+          <p className="mt-1 text-[#79716b]">{mode === "create" ? "Выключенные функции останутся выключенными." : "Канал будет назначен выбранным функциям. Состояние самих функций не изменится."}</p>
+        </div>
       </div>
 
-      {conflicts.map((event) => <div key={event} className="rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">{ORDER_EVENT_LABELS[event]} сейчас использует канал “{routes[event]?.name}”. После {mode === "create" ? "создания" : "сохранения"} {event === "waiter" ? "новые вызовы" : event === "pickup" ? "новые заказы самовывоза" : "новые заказы доставки"} будут приходить в этот канал.</div>)}
+      {mode === "create" && (!manualName ? (
+          <div>
+            <div className="mb-1.5 text-[12px] font-medium text-[#44403b]">Название канала</div>
+            <div className="flex min-h-9 items-center justify-between gap-3 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3">
+              <span className="truncate text-[13px] text-[#292524]">{displayedName}</span>
+              <button type="button" onClick={() => { setName(displayedName); setManualName(true); }} className="shrink-0 text-[11px] font-medium text-[#57534d] underline underline-offset-2">Изменить</button>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-4 text-[#79716b]">Название формируется из заведения и выбранных уведомлений.</p>
+          </div>
+        ) : (
+          <label className="block">
+            <span className="mb-1.5 flex items-center justify-between gap-3 text-[12px] font-medium text-[#44403b]"><span>Название канала</span><button type="button" onClick={() => setManualName(false)} className="text-[11px] font-normal text-[#57534d] underline underline-offset-2">Вернуть автоматическое название</button></span>
+            <Input value={displayedName} onChange={(event) => { setManualName(true); setName(event.target.value); }} size="compact" />
+          </label>
+        ))}
 
-      {mode === "edit" && channel && <div className="flex items-center justify-between border-t border-[#eceae7] pt-3 text-[11px]"><span className="text-[#79716b]">Статус подключения</span><span className="flex items-center gap-1.5 text-[#57534d]"><span className={cn("h-1.5 w-1.5 rounded-full", channelStatusColor(channel.status))} />{channelStatusLabel(channel.status)}</span></div>}
+      {conflicts.map((event) => <div key={event} className="rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">{ORDER_EVENT_LABELS[event]} сейчас использует канал “{routes[event]?.name}”. После {mode === "create" ? "создания" : "сохранения"} {event === "waiter" ? "новые вызовы" : event === "pickup" ? "новые заказы самовывоза" : "новые заказы доставки"} будут приходить сюда.</div>)}
+
+      {removedEnabledEvents.map((event) => <div key={`removed-${event}`} className="rounded-[9px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">{enabledRemovalWarning(event)} После снятия назначения функция будет выключена. Остальные настройки сохранятся.</div>)}
+
+      {mode === "edit" && channel && <div className="flex items-center justify-between border-t border-[#eceae7] pt-3 text-[11px]"><span className="text-[#79716b]">Состояние подключения</span><span className="flex items-center gap-1.5 text-[#57534d]"><span className={cn("h-1.5 w-1.5 rounded-full", channelStatusColor(channel.status))} />{channelStatusLabel(channel.status)}</span></div>}
       {duplicate && <p className="text-[11px] text-red-600">Канал с таким названием или номером уже существует.</p>}
     </div>
   );
@@ -335,89 +385,113 @@ function ChannelForm({
 
 type ManagerView = ChannelManagerInitialView | { type: "delete"; channelId: string };
 
-export function ChannelManagerPopover({
-  anchor,
+export function ChannelManagerDialog({
   initialView,
+  enabledEvents,
   onClose,
   onToast,
-  onAssignmentsApplied,
-  onAssignmentsRemoved,
+  onChannelCreated,
+  onChannelUpdated,
   onChannelDeleted,
 }: {
-  anchor: ChannelPopoverAnchor;
   initialView: ChannelManagerInitialView;
+  enabledEvents: OrderEvent[];
   onClose: () => void;
   onToast: (toast: ChannelToast) => void;
-  onAssignmentsApplied: (events: OrderEvent[], enableEvents: boolean) => void;
-  onAssignmentsRemoved: (events: OrderEvent[]) => void;
+  onChannelCreated: (events: OrderEvent[], enableSourceEvent: OrderEvent | null) => void;
+  onChannelUpdated: (events: OrderEvent[], removedEvents: OrderEvent[]) => void;
   onChannelDeleted: (events: OrderEvent[]) => void;
 }) {
-  const { channels, createChannel, updateChannel, deleteChannel, setChannelAssignments, getChannelAssignments } = useOrderRouting();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const { channels, createChannel, updateChannel, setChannelStatus, deleteChannel, setChannelAssignments, getChannelAssignments, resetChannels } = useOrderRouting();
   const [view, setView] = useState<ManagerView>(initialView);
-  const [testChannelId, setTestChannelId] = useState<string | null>(null);
   const [submitSignal, setSubmitSignal] = useState(0);
-  const [formState, setFormState] = useState<ChannelFormState>({ ready: false, submitting: false, type: "telegram" });
+  const [formState, setFormState] = useState<ChannelFormState>({ ready: false, submitting: false });
   const activeChannel = view.type === "edit" || view.type === "delete" ? channels.find(({ id }) => id === view.channelId) ?? null : null;
   const deletingEvents = view.type === "delete" && activeChannel ? getChannelAssignments(activeChannel.id) : [];
-  const position = popoverPosition(anchor, 468, 560, "end");
-  const safeClose = () => {
+
+  const safeClose = useCallback(() => {
     if (!formState.submitting) onClose();
-  };
-  usePopoverDismiss(panelRef, safeClose, formState.submitting);
+  }, [formState.submitting, onClose]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") safeClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [safeClose]);
 
   const goTo = (nextView: ManagerView) => {
     setSubmitSignal(0);
-    setFormState({ ready: false, submitting: false, type: "telegram" });
+    setFormState({ ready: false, submitting: false });
     setView(nextView);
   };
 
-  const sendTest = (channel: OrderChannel) => {
-    if (testChannelId) return;
-    setTestChannelId(channel.id);
-    window.setTimeout(() => {
-      setTestChannelId(null);
-      onToast({ message: "Тестовое сообщение отправлено", tone: "success" });
-    }, 650);
+  const returnFromCurrentView = () => {
+    if (view.type === "create" && !view.returnToList) {
+      safeClose();
+      return;
+    }
+    goTo({ type: "list" });
   };
 
-  const title = view.type === "list" ? "Каналы уведомлений" : view.type === "create" ? "Новый канал" : view.type === "edit" ? "Настройка канала" : "Удалить канал?";
-  const description = view.type === "list" ? "Каналы, в которые приходят заказы и вызовы гостей." : view.type === "create" ? "Добавьте канал и выберите уведомления." : view.type === "edit" ? "Измените данные и назначения канала." : "Проверьте последствия перед удалением.";
-  const hasBack = view.type === "create" || view.type === "edit";
+  const title = view.type === "list" ? "Каналы уведомлений" : view.type === "create" ? "Новый канал" : view.type === "edit" ? "Редактировать канал" : "Удалить канал?";
+  const description = view.type === "list" ? "Управляйте каналами для заказов и вызовов гостей." : view.type === "create" ? "Подключите канал и выберите его назначения." : view.type === "edit" ? "Измените данные и назначения канала." : "Проверьте последствия перед удалением.";
+  const hasBack = view.type === "edit" || (view.type === "create" && view.returnToList);
 
   return createPortal(
-    <div ref={panelRef} role="dialog" aria-labelledby="channel-manager-title" className="fixed z-[100008] flex h-[min(560px,calc(100vh-24px))] flex-col overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_18px_48px_rgba(41,37,36,0.18)]" style={position}>
-      <div className="flex shrink-0 items-start gap-2 border-b border-[#eceae7] px-4 py-3.5">
-        {hasBack && <button type="button" disabled={formState.submitting} onClick={() => goTo({ type: "list" })} aria-label="Назад" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:pointer-events-none disabled:opacity-50"><ArrowLeft size={15} /></button>}
-        <div className="min-w-0 flex-1"><h2 id="channel-manager-title" className="text-[15px] font-semibold text-[#292524]">{title}</h2><p className="mt-0.5 text-[11px] leading-4 text-[#79716b]">{description}</p></div>
-        <button type="button" disabled={formState.submitting} onClick={safeClose} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:pointer-events-none disabled:opacity-50"><X size={15} /></button>
-      </div>
+    <div className="fixed inset-0 z-[100008] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[1px]" onMouseDown={(event) => { if (event.target === event.currentTarget) safeClose(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="channel-manager-title" className="flex h-[min(620px,calc(100vh-32px))] w-full max-w-[560px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
+        <div className="flex shrink-0 items-start gap-2 border-b border-[#eceae7] px-5 py-4">
+          {hasBack && <button type="button" disabled={formState.submitting} onClick={() => goTo({ type: "list" })} aria-label="Назад" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:pointer-events-none disabled:opacity-50"><ArrowLeft size={15} /></button>}
+          <div className="min-w-0 flex-1"><h2 id="channel-manager-title" className="text-[16px] font-semibold text-[#292524]">{title}</h2><p className="mt-1 text-[12px] leading-4 text-[#79716b]">{description}</p></div>
+          <button type="button" disabled={formState.submitting} onClick={safeClose} aria-label="Закрыть" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:pointer-events-none disabled:opacity-50"><X size={16} /></button>
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {view.type === "list" && (channels.length ? (
-          <>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {view.type === "list" && (channels.length ? (
             <div className="divide-y divide-[#eceae7] overflow-hidden rounded-[12px] border border-[#e7e5e4]">
-              {channels.map((channel) => <ChannelRow key={channel.id} channel={channel} assignments={getChannelAssignments(channel.id)} mode="manage" testLoading={testChannelId === channel.id} onEdit={() => goTo({ type: "edit", channelId: channel.id })} onTest={() => sendTest(channel)} onDelete={() => goTo({ type: "delete", channelId: channel.id })} />)}
+              {channels.map((channel) => <ChannelRow key={channel.id} channel={channel} assignments={getChannelAssignments(channel.id)} mode="manage" onEdit={() => goTo({ type: "edit", channelId: channel.id })} onDelete={() => goTo({ type: "delete", channelId: channel.id })} />)}
             </div>
-            <button type="button" onClick={() => goTo({ type: "create", sourceEvent: null })} className="mt-2 flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]"><Plus size={13} /> Создать новый канал</button>
-          </>
-        ) : (
-          <div className="flex min-h-[330px] flex-col items-center justify-center px-6 text-center"><h3 className="text-[14px] font-medium text-[#292524]">Каналов пока нет</h3><p className="mt-1 max-w-[300px] text-[12px] leading-5 text-[#79716b]">Создайте канал, чтобы получать заказы и вызовы гостей.</p><Button type="button" size="sm" className="mt-4" onClick={() => goTo({ type: "create", sourceEvent: null })}><Plus size={14} /> Создать канал</Button></div>
-        ))}
+          ) : (
+            <div className="flex min-h-[390px] flex-col items-center justify-center px-6 text-center"><h3 className="text-[14px] font-medium text-[#292524]">Каналов пока нет</h3><p className="mt-1 max-w-[300px] text-[12px] leading-5 text-[#79716b]">Создайте канал, чтобы получать заказы и вызовы гостей.</p></div>
+          ))}
 
-        {view.type === "create" && <ChannelForm mode="create" initialEvent={view.sourceEvent} submitSignal={submitSignal} onStateChange={setFormState} onSubmit={(input, events) => { const channel = createChannel(input); setChannelAssignments(channel.id, events); onAssignmentsApplied(events, true); onToast({ message: creationToast(events), tone: "success" }); goTo({ type: "list" }); }} />}
+          {view.type === "create" && <ChannelForm mode="create" initialEvent={view.sourceEvent} enabledEvents={enabledEvents} submitSignal={submitSignal} onStateChange={setFormState} onSubmit={(input, events) => {
+            const channel = createChannel(input);
+            setChannelAssignments(channel.id, events);
+            const enableSourceEvent = view.enableSourceEventAfterCreate ? view.sourceEvent : null;
+            onChannelCreated(events, enableSourceEvent);
+            onToast({ message: creationToast(events), tone: "success" });
+            if (view.returnToList) goTo({ type: "list" });
+            else onClose();
+          }} />}
 
-        {view.type === "edit" && activeChannel && <ChannelForm mode="edit" channel={activeChannel} submitSignal={submitSignal} onStateChange={setFormState} onSubmit={(input, events) => { const removed = getChannelAssignments(activeChannel.id).filter((event) => !events.includes(event)); updateChannel(activeChannel.id, { name: input.name, contact: input.contact }); setChannelAssignments(activeChannel.id, events); onAssignmentsApplied(events, false); if (removed.length) onAssignmentsRemoved(removed); onToast({ message: "Канал обновлён", tone: "success" }); goTo({ type: "list" }); }} />}
+          {view.type === "edit" && activeChannel && <ChannelForm mode="edit" channel={activeChannel} enabledEvents={enabledEvents} submitSignal={submitSignal} onStateChange={setFormState} onSubmit={(input, events) => {
+            const removed = getChannelAssignments(activeChannel.id).filter((event) => !events.includes(event));
+            updateChannel(activeChannel.id, { name: input.name, contact: input.contact });
+            setChannelAssignments(activeChannel.id, events);
+            onChannelUpdated(events, removed);
+            onToast({ message: "Канал обновлён", tone: "success" });
+            goTo({ type: "list" });
+          }} />}
 
-        {view.type === "delete" && activeChannel && <div className="px-1"><div className="flex items-center gap-3 rounded-[12px] border border-[#e7e5e4] px-3 py-3"><ChannelIcon type={activeChannel.type} /><div className="min-w-0"><div className="truncate text-[13px] font-medium text-[#292524]">{activeChannel.name}</div><div className="truncate text-[11px] text-[#79716b]">{CHANNEL_LABELS[activeChannel.type]} · {activeChannel.contact}</div></div></div><p className="mt-4 text-[13px] leading-5 text-[#57534d]">{deletingEvents.length ? deletionConsequence(deletingEvents) : "Канал нигде не используется и будет полностью удалён."}</p></div>}
+          {view.type === "delete" && activeChannel && <div><div className="flex items-center gap-3 rounded-[12px] border border-[#e7e5e4] px-3 py-3"><ChannelIcon type={activeChannel.type} /><div className="min-w-0"><div className="truncate text-[13px] font-medium text-[#292524]">{activeChannel.name}</div><div className="truncate text-[11px] text-[#79716b]">{CHANNEL_LABELS[activeChannel.type]} · {formatAuthPhone(activeChannel.contact)}</div></div></div><p className="mt-4 text-[13px] leading-5 text-[#57534d]">{deletingEvents.length ? deletionConsequence(deletingEvents) : "Канал нигде не используется и будет полностью удалён."}</p></div>}
+        </div>
+
+        <div className="flex min-h-[61px] shrink-0 items-center justify-between gap-2 border-t border-[#eceae7] px-5 py-3.5">
+          <div className="flex items-center gap-1">
+            {view.type === "list" && import.meta.env.DEV && channels.length > 0 && <><button type="button" onClick={() => { const channel = channels[0]; setChannelStatus(channel.id, channel.status === "error" ? "connected" : "error"); onToast({ message: channel.status === "error" ? "Подключение восстановлено" : "Включена тестовая ошибка канала", tone: channel.status === "error" ? "success" : "error" }); }} className="h-8 rounded-[8px] px-2 text-[11px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]">{channels[0].status === "error" ? "Восстановить канал" : "Ошибка канала"}</button><button type="button" onClick={() => { resetChannels(); onToast({ message: "Данные каналов сброшены", tone: "success" }); }} className="h-8 rounded-[8px] px-2 text-[11px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d]">Сбросить данные</button></>}
+          </div>
+          <div className="flex items-center gap-2">
+            {view.type === "list" && <Button type="button" size="sm" onClick={() => goTo({ type: "create", sourceEvent: null, returnToList: true })}><Plus size={14} /> Создать канал</Button>}
+            {(view.type === "create" || view.type === "edit" || view.type === "delete") && <Button type="button" variant="ghost" size="sm" disabled={formState.submitting} onClick={returnFromCurrentView}>Отмена</Button>}
+            {view.type === "create" && <Button type="button" size="sm" disabled={!formState.ready || formState.submitting} onClick={() => setSubmitSignal((signal) => signal + 1)}>{formState.submitting ? <><Loader2 size={13} className="animate-spin" /> Создаём…</> : "Создать канал"}</Button>}
+            {view.type === "edit" && <Button type="button" size="sm" disabled={!formState.ready || formState.submitting} onClick={() => setSubmitSignal((signal) => signal + 1)}>{formState.submitting ? <><Loader2 size={13} className="animate-spin" /> Сохраняем…</> : "Сохранить"}</Button>}
+            {view.type === "delete" && activeChannel && <Button type="button" size="sm" className="bg-[#9f1239] text-white hover:bg-[#881337]" onClick={() => { deleteChannel(activeChannel.id); onChannelDeleted(deletingEvents); onToast({ message: "Канал удалён", tone: "success" }); goTo({ type: "list" }); }}>{deletingEvents.length ? "Отключить функции и удалить" : "Удалить канал"}</Button>}
+          </div>
+        </div>
       </div>
-
-      {(view.type === "create" || view.type === "edit" || view.type === "delete") && <div className="flex shrink-0 justify-end gap-2 border-t border-[#eceae7] px-4 py-3">
-        <Button type="button" variant="ghost" size="sm" disabled={formState.submitting} onClick={() => goTo({ type: "list" })}>Отмена</Button>
-        {view.type === "create" && <Button type="button" size="sm" disabled={!formState.ready || formState.submitting} onClick={() => setSubmitSignal((signal) => signal + 1)}>{formState.submitting ? <><Loader2 size={13} className="animate-spin" /> Создаём…</> : "Создать канал"}</Button>}
-        {view.type === "edit" && <Button type="button" size="sm" disabled={!formState.ready || formState.submitting} onClick={() => setSubmitSignal((signal) => signal + 1)}>{formState.submitting ? <><Loader2 size={13} className="animate-spin" /> Сохраняем…</> : "Сохранить"}</Button>}
-        {view.type === "delete" && activeChannel && <Button type="button" size="sm" className="bg-[#9f1239] text-white hover:bg-[#881337]" onClick={() => { deleteChannel(activeChannel.id); onChannelDeleted(deletingEvents); onToast({ message: "Канал удалён", tone: "success" }); goTo({ type: "list" }); }}>{deletingEvents.length ? "Отключить функции и удалить" : "Удалить канал"}</Button>}
-      </div>}
     </div>,
     document.body,
   );

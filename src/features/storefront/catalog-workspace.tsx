@@ -908,7 +908,7 @@ type PanelRow = {
   accent?: boolean;
 };
 
-const CATALOG_THUMBNAIL_CLASS = "h-7 w-7 rounded-[7px]";
+const CATALOG_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5px]";
 const CATALOG_TREE_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5.263px]";
 const MAX_SECTION_DEPTH = 2;
 
@@ -12567,7 +12567,7 @@ function TableCheckbox({
       onChange={(event) => onChange?.(event.target.checked)}
       aria-label={ariaLabel}
       className={cn(
-        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-[#a8a29e] bg-white accent-[#a8a29e] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-stone-300 bg-white accent-[#a8a29e] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
         quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
         (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
