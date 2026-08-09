@@ -109,6 +109,34 @@ import {
   type CatalogRecommendationSource,
   type CatalogUpsellStateByItem,
 } from "@/lib/catalog-upsell";
+import type {
+  CatalogPhase,
+  CatalogPrimaryTab,
+  CatalogTab,
+  CatalogViewMode,
+  OverviewFilterId,
+} from "./catalog/model/types";
+import type {
+  CatalogCreateNavigationGuard,
+  CatalogPriceSortDirection,
+  CatalogReturnContext,
+  CatalogSectionEditorTab,
+} from "./catalog/navigation/types";
+
+export type {
+  CatalogPhase,
+  CatalogPrimaryTab,
+  CatalogTab,
+  CatalogViewMode,
+  OverviewFilterId,
+} from "./catalog/model/types";
+export type {
+  CatalogCreateNavigationGuard,
+  CatalogReturnContext,
+} from "./catalog/navigation/types";
+
+type SectionEditorTab = CatalogSectionEditorTab;
+type PriceSortDirection = CatalogPriceSortDirection;
 
 /** dnd-kit остаётся у плоского списка позиций: спокойная анимация ~200мс,
  * отключается при prefers-reduced-motion. Дерево разделов использует Pragmatic DnD. */
@@ -406,10 +434,6 @@ function validateCatalogTreeDrop(
   return { valid: true };
 }
 
-export type CatalogPhase = "empty" | "has-sections" | "has-items";
-
-export type CatalogTab = "sections" | "overview" | "upsell";
-export type CatalogPrimaryTab = "sections" | "overview" | "upsell" | "stop-list";
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
   { id: "sections", label: "Каталог" },
   { id: "upsell", label: "Допродажи" },
@@ -500,8 +524,6 @@ type CatalogWorkspaceProps = {
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
-
-export type CatalogViewMode = "sections" | OverviewFilterId;
 
 /** Section node for the left panels: real sections carry imageUrl, mock/created ones an emoji. */
 type TreeSection = {
@@ -665,28 +687,6 @@ type OverviewFilterMeta = {
   emptyText: string;
   countText: (count: number) => string;
 };
-export type OverviewFilterId =
-  | "quick:all"
-  | "quick:no-description"
-  | "quick:no-photo"
-  | "quick:no-weight"
-  | "quick:no-kbju"
-  | "quick:no-translation"
-  | "quick:discount"
-  | "quick:with-tags"
-  | "quick:with-labels"
-  | "quick:with-options"
-  | "quick:with-recommendations"
-  | "quick:no-recommendations"
-  | "display:full"
-  | "display:no-button"
-  | "display:no-price"
-  | "status:active"
-  | "status:archived"
-  | "status:stop"
-  | "status:soon"
-  | "status:schedule";
-
 const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
   "quick:all": {
     label: "Все позиции",
@@ -938,35 +938,8 @@ function getSectionScopeIds(sectionId: string | null) {
 }
 
 type AuditQueueFilterId = OverviewFilterId;
-type PriceSortDirection = "none" | "asc" | "desc";
 type CatalogSectionCrumb = { id: string; name: string };
-export type CatalogReturnContext =
-  | {
-      tab: "sections";
-      sectionId: string | null;
-      sectionEditorTab?: SectionEditorTab;
-      treeQuery?: string;
-      treeExpanded?: Record<string, boolean>;
-      treeScrollTop?: number;
-      compositionQuery?: string;
-      workspaceScrollTop?: number;
-    }
-  | {
-      tab: "overview";
-      filterId: OverviewFilterId;
-      sectionScopeId: string | null;
-      tableQuery: string;
-      panelQuery: string;
-      sort: PriceSortDirection;
-      scrollTop: number;
-    };
 type StructureReturnContext = Extract<CatalogReturnContext, { tab: "sections" }>;
-export type CatalogCreateNavigationGuard = {
-  request: (continueNavigation: () => void) => void;
-  requestBack: (continueNavigation: () => void) => void;
-  location: { url: string; state: unknown };
-};
-
 const CATALOG_CREATE_QUERY_PARAM = "createPosition";
 const CATALOG_HISTORY_CONTEXT_KEY = "taskoCatalogContext";
 const CATALOG_HISTORY_CREATE_KEY = "taskoCatalogCreate";
@@ -2343,7 +2316,6 @@ function EmptyCatalog({
 
 type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
 type PositionEditorMode = "create" | "edit";
-type SectionEditorTab = "composition" | "basic" | "availability";
 type AvailabilityMode = "always" | "unavailable" | "schedule";
 type UnavailableDisplayMode = "hidden" | "comingSoon";
 type OutsideScheduleMode = "hidden" | "comingSoon";

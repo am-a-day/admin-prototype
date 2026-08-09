@@ -1,4 +1,4 @@
-import { RecommendationsContextWorkspace } from "@/features/storefront/catalog-workspace";
+import { RecommendationsContextWorkspace } from "@/features/storefront/catalog";
 import type { RecommendationTexts, UpsellSurface } from "@/data/mock-data";
 
 type UpsellWorkspaceProps = {

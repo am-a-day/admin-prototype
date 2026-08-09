@@ -67,7 +67,7 @@ import {
   type CatalogTab,
   type CatalogViewMode,
   type OverviewFilterId,
-} from "@/features/storefront/catalog-workspace";
+} from "@/features/storefront/catalog";
 import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";

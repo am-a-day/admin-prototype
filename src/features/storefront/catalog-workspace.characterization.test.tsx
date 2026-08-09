@@ -10,7 +10,7 @@ import {
   CatalogWorkspace,
   type CatalogTab,
   type CatalogViewMode,
-} from "@/features/storefront/catalog-workspace";
+} from "@/features/storefront/catalog";
 
 const firstItemTitle = "Омлет с томатами и сыром";
 
