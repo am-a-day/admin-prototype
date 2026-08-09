@@ -47,7 +47,6 @@ import {
   Eye,
   EyeSlash,
   ForkKnife,
-  FolderPlus,
   FunnelSimple,
   GearSix,
   ImageBroken,
@@ -177,7 +176,6 @@ import {
   writeCreatedCatalogItems,
 } from "./catalog/persistence";
 import { DropdownActionItem, DropdownContent } from "./catalog/ui/catalog-dropdown";
-import { CatalogMoreButton } from "./catalog/ui/catalog-more-button";
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "./catalog/ui/move-anchor";
 import { MoveToSectionPopover } from "./catalog/ui/move-to-section-popover";
 import type { MoveOperation } from "./catalog/ui/move-to-section-popover";
@@ -1999,9 +1997,26 @@ function SectionEditor({
                   </span>
                 </button>
               </Tooltip>
-              <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">
-                {section.name}
-              </h2>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Действия с разделом «${section.name}»`}
+                    className="flex min-w-0 items-center gap-1 rounded-[7px] px-1 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <span className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</span>
+                    <CaretDown size={13} className="shrink-0 text-[#57534d]" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownContent align="start">
+                  <SectionActionMenuContent
+                    section={section}
+                    allowPositionCreation={allowPositionCreation}
+                    showSettingsEntry={hideNavigationTabs}
+                    onAction={onAction}
+                  />
+                </DropdownContent>
+              </DropdownMenu.Root>
               {getSectionTreeStatusLabel(section) && (
                 <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
               )}
@@ -2015,20 +2030,6 @@ function SectionEditor({
             >
               Добавить позицию
             </CatalogActionButton>}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
-              </DropdownMenu.Trigger>
-              <DropdownContent align="end">
-                <SectionActionMenuContent
-                  section={section}
-                  allowPositionCreation={allowPositionCreation}
-                  subsectionDisabledReason={subsectionCreateDisabledReason}
-                  showSettingsEntry={hideNavigationTabs}
-                  onAction={onAction}
-                />
-              </DropdownContent>
-            </DropdownMenu.Root>
           </div>
           <div>
             <div data-editor-tabs>
@@ -2081,6 +2082,21 @@ function SectionEditor({
                     selected ? new Set(childSections.map(({ section: child }) => child.id)) : new Set(),
                   )}
                   onClearSelection={() => setSelectedSubsectionIds(new Set())}
+                  headerAction={(
+                    <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
+                      <span data-no-dnd>
+                        <button
+                          type="button"
+                          disabled={Boolean(subsectionCreateDisabledReason)}
+                          onClick={() => onAction("Добавить подраздел")}
+                          className="inline-flex h-7 items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:cursor-not-allowed disabled:text-[#a8a29e]"
+                        >
+                          <Plus size={13} />
+                          Добавить подраздел
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
                   onSelect={onSelectChildSection}
                   onAction={onChildSectionAction}
                   renderActions={(subsection, onAction) => (
@@ -2241,13 +2257,11 @@ function UnifiedSectionTableHeader({
   section,
   itemCount,
   onAction,
-  subsectionCreateDisabledReason,
   allowPositionCreation = true,
 }: {
   section: TreeSection;
   itemCount: number;
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
-  subsectionCreateDisabledReason?: string | null;
   allowPositionCreation?: boolean;
 }) {
   return (
@@ -2272,7 +2286,6 @@ function UnifiedSectionTableHeader({
         <SectionActionMenuContent
           section={section}
           allowPositionCreation={allowPositionCreation}
-          subsectionDisabledReason={subsectionCreateDisabledReason}
           showSettingsEntry
           onAction={onAction}
         />
@@ -2330,7 +2343,6 @@ function SectionPositionNav({
   const activeSection = flatSections.find((section) => section.id === sectionId) ?? null;
   const activeItems = items.filter((item) => item.status !== "archive");
   const archivedItems = items.filter((item) => item.status === "archive");
-  const subsectionAvailability = activeSection ? getParentAvailability(activeSection, allItems, sections) : null;
   const normalizedPositionQuery = positionQuery.trim().toLowerCase();
   const visibleActiveItems = activeItems.filter((item) => item.title.toLowerCase().includes(normalizedPositionQuery));
   const visibleArchivedItems = archivedItems.filter((item) => item.title.toLowerCase().includes(normalizedPositionQuery));
@@ -2579,7 +2591,6 @@ function SectionPositionNav({
               {activeSection ? (
                 <SectionActionMenuContent
                   section={activeSection}
-                  subsectionDisabledReason={subsectionAvailability && !subsectionAvailability.available ? subsectionAvailability.label : null}
                   onAction={(action, anchor) => {
                     if (action === "Добавить позицию") onAddPosition();
                     else onSectionAction(action, anchor);
@@ -4470,12 +4481,14 @@ function PopulatedWorkspace({
     setSectionAvailabilityBySection((current) => ({ ...current, [target.id]: mode }));
     registerChange("catalog");
     const savedSchedule = sectionWeeklyScheduleBySection[target.id];
-    if (mode === "schedule" && (!savedSchedule || !isWeeklyScheduleValid(savedSchedule))) {
+    if (mode === "schedule") {
       openSectionAvailability(target);
-      setFeedback("Настройте расписание для раздела");
+      setFeedback(!savedSchedule || !isWeeklyScheduleValid(savedSchedule)
+        ? "Настройте расписание для раздела"
+        : "Раздел доступен по расписанию");
       return;
     }
-    setFeedback(mode === "always" ? "Раздел доступен для заказа" : mode === "unavailable" ? "Раздел поставлен на стоп" : "Раздел доступен по расписанию");
+    setFeedback(mode === "always" ? "Раздел доступен для заказа" : "Раздел поставлен на стоп");
   };
 
   const handleSectionAction = (action: string, anchor?: MovePopoverAnchor) => {
@@ -4922,7 +4935,6 @@ function PopulatedWorkspace({
       section={section}
       itemCount={allItems.filter((item) => item.sectionId === section.id && item.status !== "archive").length}
       onAction={(action, anchor) => handleUnifiedSectionAction(section, action, anchor)}
-      subsectionCreateDisabledReason={subsectionDisabledReason}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
     />
   ) : null;
@@ -5040,7 +5052,6 @@ function PopulatedWorkspace({
               <SectionActionMenuContent
                 section={section}
                 allowPositionCreation={options.allowPositionCreation}
-                subsectionDisabledReason={options.subsectionDisabledReason}
                 onAction={onAction}
               />
             )}
@@ -5352,54 +5363,59 @@ function SectionAvailabilitySubmenu({
   onAction: (action: string) => void;
 }) {
   const options: Array<{ value: AvailabilityMode; label: string }> = [
-    { value: "always", label: "Доступен" },
     { value: "unavailable", label: "На стопе" },
     { value: "schedule", label: "По расписанию" },
   ];
   return (
-    <DropdownMenu.Sub>
-      <DropdownMenu.SubTrigger className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
+    <>
+      <DropdownMenu.Item
+        onSelect={() => onAction("availability:always")}
+        className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+      >
         <ShoppingCartSimple size={15} weight="regular" className="shrink-0" />
         <span className="min-w-0 flex-1">Доступен для заказа</span>
-        <CaretRight size={13} className="shrink-0 text-[#a8a29e]" />
-      </DropdownMenu.SubTrigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-4}
-          className="z-[100003] min-w-[210px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-        >
-          <DropdownMenu.RadioGroup value={mode} onValueChange={(value) => onAction(`availability:${value}`)}>
-            {options.map((option) => (
-              <DropdownMenu.RadioItem
-                key={option.value}
-                value={option.value}
-                className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                  <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
-                </span>
-                {option.label}
-              </DropdownMenu.RadioItem>
-            ))}
-          </DropdownMenu.RadioGroup>
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownActionItem icon={Clock} onSelect={() => onAction("availability:settings")}>Настроить расписание…</DropdownActionItem>
-        </DropdownMenu.SubContent>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Sub>
+        {mode === "always" && <Check size={14} weight="bold" className="shrink-0 text-[#57534d]" />}
+      </DropdownMenu.Item>
+      <DropdownMenu.Sub>
+        <DropdownMenu.SubTrigger className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
+          <Clock size={15} weight="regular" className="shrink-0" />
+          <span className="min-w-0 flex-1">Ограничения доступности</span>
+          <CaretRight size={13} className="shrink-0 text-[#a8a29e]" />
+        </DropdownMenu.SubTrigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.SubContent
+            sideOffset={6}
+            alignOffset={-4}
+            className="z-[100003] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+          >
+            <DropdownMenu.RadioGroup value={mode} onValueChange={(value) => onAction(`availability:${value}`)}>
+              {options.map((option) => (
+                <DropdownMenu.RadioItem
+                  key={option.value}
+                  value={option.value}
+                  className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                >
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                    <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
+                  </span>
+                  {option.label}
+                </DropdownMenu.RadioItem>
+              ))}
+            </DropdownMenu.RadioGroup>
+          </DropdownMenu.SubContent>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Sub>
+    </>
   );
 }
 
 function SectionActionMenuContent({
   section,
-  subsectionDisabledReason,
   allowPositionCreation = true,
   showSettingsEntry = false,
   onAction,
 }: {
   section: TreeSection;
-  subsectionDisabledReason?: string | null;
   allowPositionCreation?: boolean;
   showSettingsEntry?: boolean;
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
@@ -5418,18 +5434,7 @@ function SectionActionMenuContent({
     <>
       {showSettingsEntry && <><DropdownActionItem icon={GearSix} onSelect={() => onAction("Настроить раздел")}>Настройки раздела</DropdownActionItem><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /></>}
       {allowPositionCreation && <DropdownActionItem icon={Plus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
-      <Tooltip label={subsectionDisabledReason ?? ""} side="left" disabled={!subsectionDisabledReason}>
-        <span className="block">
-          <DropdownActionItem
-            icon={FolderPlus}
-            disabled={Boolean(subsectionDisabledReason)}
-            onSelect={() => onAction("Добавить подраздел")}
-          >
-            Добавить подраздел
-          </DropdownActionItem>
-        </span>
-      </Tooltip>
-      <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+      {allowPositionCreation && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
       <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event))}>Переместить…</DropdownActionItem>
       <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
       <SectionVisibilityMenuItem

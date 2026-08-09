@@ -178,6 +178,37 @@ test("records direct subsection reorder and current reload behavior", async ({ p
   expect(afterReload).toEqual(before);
 });
 
+test("uses the section chevron for actions and creates a subsection from the workspace", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Кухня", { exact: true }).first().click();
+
+  const sectionActions = page.getByRole("button", { name: "Действия с разделом «Кухня»" });
+  await expect(sectionActions).toBeVisible();
+  await expect(page.getByRole("button", { name: "Действия с разделом", exact: true })).toHaveCount(0);
+  await sectionActions.click();
+  await expect(page.getByRole("menuitem", { name: "Добавить подраздел" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Добавить подраздел" }).click();
+  const createDialog = page.getByRole("dialog", { name: "Новый раздел" });
+  await expect(createDialog.getByRole("button", { name: "Расположение: Кухня" })).toBeVisible();
+  await createDialog.getByLabel("Название раздела").fill("Сезонное меню");
+  await createDialog.getByRole("button", { name: "Добавить раздел" }).click();
+  await expect(page.getByText("Сезонное меню", { exact: true }).first()).toBeVisible();
+});
+
+test("opens the existing schedule settings from the single schedule action", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+  await page.getByRole("button", { name: "Действия с разделом «Завтраки»" }).click();
+
+  await expect(page.getByRole("menuitem", { name: /Настроить расписание/ })).toHaveCount(0);
+  const availabilitySubmenu = page.getByRole("menuitem", { name: "Ограничения доступности" });
+  await availabilitySubmenu.hover();
+  await page.getByRole("menuitemradio", { name: "По расписанию" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Доступность раздела" })).toBeVisible();
+});
+
 test("records explicit position move parent/order and current reload behavior", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();

@@ -189,6 +189,37 @@ describe("catalog observable behavior baseline", () => {
     expect(reorderableRow).toHaveAttribute("aria-roledescription", "sortable");
   });
 
+  it("uses the section-title chevron, creates a subsection from the workspace, and keeps schedule settings singular", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = screen.getByPlaceholderText("Поиск по разделам").closest("aside");
+    expect(sectionTree).not.toBeNull();
+    await user.click(within(sectionTree as HTMLElement).getByText("Кухня", { exact: true }));
+
+    const sectionMenuTrigger = screen.getByRole("button", { name: "Действия с разделом «Кухня»" });
+    expect(sectionMenuTrigger.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Действия с разделом" })).not.toBeInTheDocument();
+    await user.click(sectionMenuTrigger);
+    expect(screen.queryByRole("menuitem", { name: "Добавить подраздел" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел" }));
+    const createDialog = screen.getByRole("dialog", { name: "Новый раздел" });
+    expect(within(createDialog).getByRole("button", { name: "Расположение: Кухня" })).toBeInTheDocument();
+    await user.type(within(createDialog).getByLabelText("Название раздела"), "Сезонное меню");
+    await user.click(within(createDialog).getByRole("button", { name: "Добавить раздел" }));
+    expect((await screen.findAllByText("Сезонное меню", { exact: true })).length).toBeGreaterThan(0);
+
+    await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+    await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" }));
+    expect(screen.queryByRole("menuitem", { name: /Настроить расписание/ })).not.toBeInTheDocument();
+    const availabilitySubmenu = screen.getByRole("menuitem", { name: "Ограничения доступности" });
+    await user.hover(availabilitySubmenu);
+    await user.click(await screen.findByRole("menuitemradio", { name: "По расписанию" }));
+    expect(await screen.findByRole("radiogroup", { name: "Доступность раздела" })).toBeInTheDocument();
+  });
+
   it("opens an item from the table and returns to the same table context", async () => {
     const user = userEvent.setup();
     renderCatalog();
