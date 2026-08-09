@@ -257,6 +257,10 @@ test("keeps current section and descendants disabled as explicit move targets", 
   await page.getByRole("menuitem", { name: "Переместить…" }).click();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  await expect(moveDialog.getByRole("button", { name: "В корень каталога" })).toBeVisible();
+  await expect(moveDialog.getByPlaceholder("Найти раздел")).toBeVisible();
+  await expect(moveDialog.locator("img")).toHaveCount(0);
+  await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(top|bottom)$/);
   await expect(moveDialog.getByRole("button", { name: /^Кухня/ })).toBeDisabled();
   await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
 });
