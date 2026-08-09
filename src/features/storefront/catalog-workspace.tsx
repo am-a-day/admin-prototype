@@ -78,11 +78,9 @@ import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import {
   CATALOG_RECOMMENDATION_LIMIT,
-  CATALOG_UPSELL_STORAGE_KEY,
   buildAutomaticRecommendations,
   resolveRecommendationIds,
   resolveRecommendationSource,
-  writeCatalogUpsellState,
   type CatalogItemUpsellState,
   type CatalogUpsellStateByItem,
 } from "@/lib/catalog-upsell";
@@ -165,6 +163,7 @@ import {
 } from "./catalog/table/catalog-table";
 import { descriptionHasContent, getQueueEditorContext, isRepairQueueFilter } from "./catalog/editor/editor-queue";
 import { useEditorSession } from "./catalog/editor/editor-session";
+import { useCreateSession } from "./catalog/editor/create-session";
 import { WorkspaceLocalTabs } from "./catalog/editor/editor-tabs";
 import {
   readCatalogJson as readJsonRecord,
@@ -3153,6 +3152,7 @@ function PopulatedWorkspace({
     itemOrderBySection: positionOrderBySection,
     activeEditorItemId,
     setActiveEditorItemId,
+    upsellByItem,
     revision: catalogRevision,
     mutations: catalogMutations,
   } = useCatalogStore();
@@ -3230,8 +3230,19 @@ function PopulatedWorkspace({
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
   const [editing, setEditing] = useState(editorNavMode === "section" ? false : Boolean(firstItemId));
-  const [structurePositionDraft, setStructurePositionDraft] = useState<StructurePositionDraft | null>(null);
-  const [structureCreateSubmitting, setStructureCreateSubmitting] = useState(false);
+  const structureCreateSession = useCreateSession();
+  const structurePositionDraft: StructurePositionDraft | null = structureCreateSession.mode === "structure"
+    && structureCreateSession.draft
+    && structureCreateSession.context?.targetSectionId
+    ? {
+        item: structureCreateSession.draft,
+        targetSectionId: structureCreateSession.context.targetSectionId,
+        returnSectionId: structureCreateSession.context.returnSectionId ?? null,
+        returnItemId: structureCreateSession.context.returnItemId ?? null,
+        returnEditing: structureCreateSession.context.returnEditing ?? false,
+      }
+    : null;
+  const structureCreateSubmitting = structureCreateSession.submitting;
   const [sectionOrderByParent, setSectionOrderByParent] = useState<Record<string, string[]>>(() =>
     readJsonRecord<Record<string, string[]>>(CATALOG_SECTION_ORDER_STORAGE_KEY, {}),
   );
@@ -3290,9 +3301,6 @@ function PopulatedWorkspace({
   );
   const [sectionWeeklyScheduleBySection, setSectionWeeklyScheduleBySection] = useState<Record<string, WeeklySchedule>>(() =>
     readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_SECTION_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
-  );
-  const [upsellByItem] = useState<CatalogUpsellStateByItem>(() =>
-    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
   );
   const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
@@ -4340,8 +4348,7 @@ function PopulatedWorkspace({
   const cancelStructurePositionCreation = () => {
     const pendingDraft = structurePositionDraft;
     if (!pendingDraft) return;
-    setStructurePositionDraft(null);
-    setStructureCreateSubmitting(false);
+    structureCreateSession.cancel();
 
     const returnItem = pendingDraft.returnItemId
       ? allItems.find((item) => item.id === pendingDraft.returnItemId) ?? null
@@ -4386,7 +4393,7 @@ function PopulatedWorkspace({
       return;
     }
 
-    setStructureCreateSubmitting(true);
+    structureCreateSession.setSubmitting(true);
     await new Promise((resolve) => window.setTimeout(resolve, 250));
     const createdItem: CatalogItem = {
       ...structurePositionDraft.item,
@@ -4411,8 +4418,7 @@ function PopulatedWorkspace({
       ],
     };
     createCatalogItem(createdItem, { order: nextPositionOrder });
-    setStructurePositionDraft(null);
-    setStructureCreateSubmitting(false);
+    structureCreateSession.complete(createdItem.id);
     setSelectedSectionId(createdItem.sectionId);
     setSelectedItemId(createdItem.id);
     setEditorSource("tree");
@@ -4445,12 +4451,15 @@ function PopulatedWorkspace({
       return;
     }
     const draft = { ...makeDraftItem(targetSection), title: initialTitle };
-    setStructurePositionDraft({
-      item: draft,
-      targetSectionId: sectionId,
-      returnSectionId: selectedSectionId,
-      returnItemId: selectedItemId,
-      returnEditing: editing,
+    structureCreateSession.begin({
+      mode: "structure",
+      draft,
+      context: {
+        targetSectionId: sectionId,
+        returnSectionId: selectedSectionId,
+        returnItemId: selectedItemId,
+        returnEditing: editing,
+      },
     });
     setSelectedSectionId(sectionId);
     setSelectedItemId(null);
@@ -5016,9 +5025,7 @@ function PopulatedWorkspace({
   const renderStructurePositionCreation = () => {
     if (!structurePositionDraft) return null;
     const updateDraft = (patch: Partial<CatalogItem>) => {
-      setStructurePositionDraft((current) => current
-        ? { ...current, item: { ...current.item, ...patch } }
-        : current);
+      structureCreateSession.updateDraft(patch);
     };
     const draftItem = structurePositionDraft.item;
     return (
@@ -6814,10 +6821,30 @@ function OverviewWorkspace({
   const [editorFirstPriceSort, setEditorFirstPriceSort] = useState<PriceSortDirection>(initialEditorFirstState.sort);
   const [editorFirstTableScrollTop, setEditorFirstTableScrollTop] = useState(initialEditorFirstState.tableScrollTop);
   const [editorFirstPanelScrollTop, setEditorFirstPanelScrollTop] = useState(initialEditorFirstState.panelScrollTop);
-  const [creationItemId, setCreationItemId] = useState<string | null>(() => pendingOpen?.mode === "create" ? pendingOpen.id : null);
-  const [draftItem, setDraftItem] = useState<CatalogItem | null>(() => pendingOpen?.mode === "create" ? pendingOpen.item ?? null : null);
-  const [draftDirty, setDraftDirty] = useState(false);
-  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const directCreateSession = useCreateSession(
+    pendingOpen?.mode === "create" && pendingOpen.item
+      ? {
+          mode: "direct",
+          draft: pendingOpen.item,
+          context: { targetSectionId: pendingOpen.section?.sectionId ?? pendingOpen.item.sectionId },
+          dirty: false,
+          submitting: false,
+          completedItemId: null,
+        }
+      : undefined,
+  );
+  const {
+    creationItemId,
+    draftItem,
+    dirty: draftDirty,
+    submitting: createSubmitting,
+    updateDraft,
+    setDirty: setDraftDirty,
+    setSubmitting: setCreateSubmitting,
+    begin: beginDirectCreate,
+    complete: completeDirectCreate,
+    cancel: cancelDirectCreate,
+  } = directCreateSession;
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const pendingCreateNavigationRef = useRef<(() => void) | null>(null);
   const [panelQuery, setPanelQuery] = useState(initialOverviewContext.panelQuery);
@@ -7035,15 +7062,9 @@ function OverviewWorkspace({
     setFeedback(message);
   };
   const isCreateDraftOpen = creationItemId !== null && draftItem !== null;
-  const updateDraft = (patch: Partial<CatalogItem>) => {
-    setDraftItem((current) => (current ? { ...current, ...patch } : current));
-    setDraftDirty(true);
-  };
   const completeCreateNavigation = (action: () => void) => {
     setDiscardDialogOpen(false);
-    setDraftItem(null);
-    setCreationItemId(null);
-    setDraftDirty(false);
+    cancelDirectCreate();
     pendingCreateNavigationRef.current = null;
     onCreateClosed?.();
     action();
@@ -7216,13 +7237,14 @@ function OverviewWorkspace({
       setEditorFirstPriceSort(nextQueue?.snapshot.sort ?? "none");
     }
     if (pendingOpen.mode === "create" && pendingOpen.item) {
-      setCreationItemId(pendingOpen.id);
-      setDraftItem(pendingOpen.item);
-      setDraftDirty(false);
+      beginDirectCreate({
+        mode: "direct",
+        draft: pendingOpen.item,
+        context: { targetSectionId: pendingOpen.section?.sectionId ?? pendingOpen.item.sectionId },
+        dirty: false,
+      });
     } else {
-      setCreationItemId(null);
-      setDraftItem(null);
-      setDraftDirty(false);
+      cancelDirectCreate();
     }
     rememberOpenedPosition(pendingOpen.id);
     onPendingOpenHandled?.();
@@ -7520,9 +7542,7 @@ function OverviewWorkspace({
         },
       } : current);
       setActivePositionId(createdItem.id);
-      setCreationItemId(null);
-      setDraftItem(null);
-      setDraftDirty(false);
+      completeDirectCreate(createdItem.id);
       onCreateClosed?.();
       replaceCatalogHistoryDestination(
         queue?.snapshot.returnContext ?? {
@@ -8253,17 +8273,13 @@ export function RecommendationsContextWorkspace({
   setUpsellSurface?: (surface: "home" | "dish" | "cart") => void;
   setUpsellFocused?: (focused: boolean) => void;
 } = {}) {
-  const { items, setActiveEditorItemId } = useCatalogStore();
+  const { items, setActiveEditorItemId, upsellByItem, setUpsellByItem } = useCatalogStore();
   const { registerChange } = usePublish();
-  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
-    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
-  );
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(() => {
-    const stored = readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {});
     return items.find((item) => item.id === selectedDishId)?.id
-      ?? items.find((item) => item.status === "active" && resolveRecommendationIds(item, items, stored[item.id]).length === 0)?.id
+      ?? items.find((item) => item.status === "active" && resolveRecommendationIds(item, items, upsellByItem[item.id]).length === 0)?.id
       ?? items.find((item) => item.status === "active")?.id
       ?? items[0]?.id
       ?? null;
@@ -8300,10 +8316,6 @@ export function RecommendationsContextWorkspace({
   }, [items, sectionScopeId, upsellByItem]);
   const allBulkCount = getBulkTargetIds("all").length;
   const sectionBulkCount = sectionScopeId ? getBulkTargetIds("section").length : 0;
-
-  useEffect(() => {
-    writeCatalogUpsellState(upsellByItem);
-  }, [upsellByItem]);
 
   useEffect(() => {
     if (!selectedItem) {

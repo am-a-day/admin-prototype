@@ -6,7 +6,9 @@ import {
   useMemo,
   useReducer,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { catalogItems, catalogSections, type CatalogItem, type CatalogSection } from "@/data/catalog";
 import {
@@ -15,6 +17,11 @@ import {
   readCreatedCatalogItems,
   writeCatalogJson,
 } from "@/features/storefront/catalog/persistence";
+import {
+  readCatalogUpsellState,
+  writeCatalogUpsellState,
+  type CatalogUpsellStateByItem,
+} from "@/lib/catalog-upsell";
 
 export type CatalogSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -204,6 +211,8 @@ type CatalogStoreValue = CatalogState & {
   setAutosaveStatus: (id: string, status: CatalogSaveStatus) => void;
   activeEditorItemId: string | null;
   setActiveEditorItemId: (id: string | null) => void;
+  upsellByItem: CatalogUpsellStateByItem;
+  setUpsellByItem: Dispatch<SetStateAction<CatalogUpsellStateByItem>>;
   mutations: CatalogMutationFacade;
 };
 
@@ -227,6 +236,7 @@ const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
   const [activeEditorItemId, setActiveEditorItemId] = useState<string | null>(null);
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() => readCatalogUpsellState());
 
   useEffect(() => {
     const statuses: Record<string, CatalogItem["status"]> = {};
@@ -243,6 +253,10 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     writeCatalogJson(POSITION_ORDER_STORAGE_KEY, state.itemOrderBySection);
     window.dispatchEvent(new Event("tasko-catalog-status-change"));
   }, [state.itemsById, state.itemOrderBySection]);
+
+  useEffect(() => {
+    writeCatalogUpsellState(upsellByItem);
+  }, [upsellByItem]);
 
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
@@ -329,6 +343,8 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     setAutosaveStatus,
     activeEditorItemId,
     setActiveEditorItemId,
+    upsellByItem,
+    setUpsellByItem,
     mutations,
   }), [
     state,
@@ -342,6 +358,8 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     replaceItemOrder,
     setAutosaveStatus,
     activeEditorItemId,
+    upsellByItem,
+    setUpsellByItem,
     mutations,
   ]);
 

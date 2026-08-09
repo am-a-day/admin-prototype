@@ -6,11 +6,6 @@ import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
-import {
-  CATALOG_UPSELL_STORAGE_KEY,
-  writeCatalogUpsellState,
-  type CatalogUpsellStateByItem,
-} from "@/lib/catalog-upsell";
 import type { CatalogPriceSortDirection, CatalogReturnContext } from "../navigation/types";
 import type { OverviewFilterId } from "../model/types";
 import { getCatalogSectionPathFromSections, type CatalogSectionCrumb } from "../model/section-path";
@@ -290,11 +285,10 @@ export function PositionEditorHost({
     setItemStatus,
     setAutosaveStatus,
     setActiveEditorItemId,
+    upsellByItem,
+    setUpsellByItem,
   } = useCatalogStore();
   const { registerChange } = usePublish();
-  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() =>
-    readJsonRecord<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {}),
-  );
   const [unavailableDisplayByItem, setUnavailableDisplayByItem] = useState<Record<string, UnavailableDisplayMode>>(() =>
     readJsonRecord<Record<string, UnavailableDisplayMode>>(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, {}),
   );
@@ -320,10 +314,6 @@ export function PositionEditorHost({
   const currentSelectionIds = editorQueue.itemIds;
   const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
   const { previousId: previousQueueId, nextId: nextQueueId } = editorQueue;
-
-  useEffect(() => {
-    writeCatalogUpsellState(upsellByItem);
-  }, [upsellByItem]);
 
   useEffect(() => writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem), [unavailableDisplayByItem]);
   useEffect(() => writeJsonRecord(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, outsideScheduleByItem), [outsideScheduleByItem]);
