@@ -107,7 +107,12 @@ import {
   getSectionScopeIds,
   sortItemsByPrice,
 } from "./catalog/model/selectors";
-import { moveCatalogIdToIndex, moveCatalogItemIds, reorderCatalogIds } from "./catalog/model/mutations";
+import {
+  moveCatalogIdToIndex,
+  moveCatalogItemIds,
+  reorderCatalogIds,
+  validateCatalogSiblingReorder,
+} from "./catalog/model/mutations";
 import {
   CATALOG_VIEW_MODE_GROUPS,
   HYBRID_PRIMARY_FILTER_IDS,
@@ -128,8 +133,6 @@ import {
   cloneStringArrayRecord,
   orderItemsByPositionOrder,
   orderSectionItems,
-  validateCatalogTreeDrop,
-  type CatalogTreeDropIntent,
 } from "./catalog/model/reorder";
 import {
   CatalogTreeThumbnail,
@@ -289,20 +292,6 @@ function CatalogDragOverlayRow({ drag }: { drag: NonNullable<CatalogActiveDrag> 
     </div>
   );
 }
-
-const PRAGMATIC_TREE_DRAG_TYPE = "tasko-catalog-tree-drag";
-
-type PragmaticTreeDragData = Record<string, unknown> & {
-  type: typeof PRAGMATIC_TREE_DRAG_TYPE;
-  kind: CatalogDndKind;
-  id: string;
-  parentId: string | null;
-  title: string;
-  imageUrl: string | null;
-  count?: number;
-};
-
-type PragmaticTreeDropIntent = CatalogTreeDropIntent;
 
 type CatalogTreeMoveSnapshot = {
   positionOrderBySection: Record<string, string[]>;
@@ -3116,6 +3105,7 @@ function PopulatedWorkspace({
     moveItem: moveCatalogItem,
     moveItems: moveCatalogItems,
     setItemStatus: setCatalogItemStatus,
+    reorderItems: reorderCatalogItems,
     replaceItemOrder: replaceCatalogItemOrder,
   } = catalogMutations;
   const sourceCatalogItems = catalogStoreItems;
@@ -3589,7 +3579,7 @@ function PopulatedWorkspace({
     ).map((item) => item.id);
     const nextIds = moveCatalogIdToIndex(ids, draggedId, targetId);
     if (nextIds.every((id, index) => id === ids[index])) return;
-    setPositionOrderBySection((current) => ({ ...current, [sectionId]: nextIds }));
+    reorderCatalogItems(sectionId, nextIds);
     setFeedback("Порядок позиций изменён");
   };
 
@@ -3601,10 +3591,7 @@ function PopulatedWorkspace({
   ) => {
     const ids = sectionTableItems.map((item) => item.id);
     const nextIds = reorderCatalogIds(ids, draggedId, targetId, zone);
-    setPositionOrderBySection((current) => ({
-      ...current,
-      [containerId]: nextIds,
-    }));
+    reorderCatalogItems(containerId, nextIds);
   };
 
   const moveTreeItem = (
@@ -3624,10 +3611,7 @@ function PopulatedWorkspace({
     if (sourceSectionId === targetSectionId) {
       if (targetItemId && mode !== "inside") {
         const ids = getIds(sourceSectionId);
-        setPositionOrderBySection((current) => ({
-          ...current,
-          [sourceSectionId]: reorderCatalogIds(ids, draggedId, targetItemId, mode),
-        }));
+        reorderCatalogItems(sourceSectionId, reorderCatalogIds(ids, draggedId, targetItemId, mode));
       }
     } else {
       const sourceIds = getIds(sourceSectionId, true);
@@ -3758,7 +3742,6 @@ function PopulatedWorkspace({
     itemSectionOverrides: Record<string, string>;
     sectionParentOverrides: Record<string, string | null>;
   } | null>(null);
-  const dndPreviewKeyRef = useRef("");
   // Синхронный флаг активного drag — блокирует клик по строке без задержки re-render.
   const dragActiveRef = useRef(false);
   const dndReducedMotion = usePrefersReducedMotion();
@@ -3840,46 +3823,19 @@ function PopulatedWorkspace({
     overContainerId: string | null,
     zone: CatalogDropZone,
   ): { valid: boolean; reason?: string } => {
-    if (activeId === overId) return { valid: false, reason: "Элемент уже находится в этой позиции" };
+    if (zone === "inside") {
+      return { valid: false, reason: "Для переноса в другой раздел используйте «Переместить»" };
+    }
     const activeParentId = activeKind === "section"
       ? allSections.find((section) => section.id === activeId)?.parentId ?? null
       : allItems.find((item) => item.id === activeId)?.sectionId ?? null;
-    const targetParentId = zone === "inside" && overKind === "section"
-      ? overId
-      : overKind === "section"
-        ? allSections.find((section) => section.id === overId)?.parentId ?? overContainerId
-        : allItems.find((item) => item.id === overId)?.sectionId ?? overContainerId;
-    const source: PragmaticTreeDragData = {
-      type: PRAGMATIC_TREE_DRAG_TYPE,
-      kind: activeKind,
-      id: activeId,
-      parentId: activeParentId,
-      title: "",
-      imageUrl: null,
-    };
-    const sharedIntent: PragmaticTreeDropIntent = zone === "inside" && targetParentId !== null
-      ? { type: "inside", parentId: targetParentId, index: 0 }
-      : { type: "between", parentId: targetParentId, index: 0 };
-    const validation = validateCatalogTreeDrop(
-      source,
-      sharedIntent,
-      { sections: allSections, items: allItems },
+    const targetParentId = overKind === "section"
+      ? allSections.find((section) => section.id === overId)?.parentId ?? overContainerId
+      : allItems.find((item) => item.id === overId)?.sectionId ?? overContainerId;
+    return validateCatalogSiblingReorder(
+      { kind: activeKind, id: activeId, parentId: activeParentId },
+      { kind: overKind, id: overId, parentId: targetParentId },
     );
-    if (!validation.valid) return validation;
-    if (activeKind === "item") {
-      if (overKind === "item") return { valid: zone !== "inside" };
-      // overKind === "section": для позиции имеет смысл только «вложить».
-      if (zone !== "inside") return { valid: false, reason: "Позицию можно вложить только внутрь раздела" };
-      return { valid: true };
-    }
-    // activeKind === "section"
-    if (overKind !== "section") return { valid: false, reason: "Раздел нельзя разместить рядом с позицией" };
-    if (zone === "inside") return { valid: true };
-    // before/after — только перестановка соседей одного родителя.
-    if (overContainerId !== activeParentId) {
-      return { valid: false, reason: "Для переноса в другой родитель используйте дерево разделов" };
-    }
-    return { valid: true };
   };
 
   type CatalogDndData = { kind: CatalogDndKind; containerId: string | null; surface: CatalogDndSurface };
@@ -3909,7 +3865,6 @@ function PopulatedWorkspace({
       itemSectionOverrides: { ...itemSectionOverrides },
       sectionParentOverrides: { ...sectionParentOverrides },
     };
-    dndPreviewKeyRef.current = "";
     const activatorEvent = event.activatorEvent;
     if (activatorEvent instanceof MouseEvent || activatorEvent instanceof PointerEvent) {
       dndPointerStartRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
@@ -3938,48 +3893,6 @@ function PopulatedWorkspace({
       setActiveDrag(found ? { kind: "item", id: realId, title: found.title, imageUrl: found.thumbnailUrl ?? null } : null);
     }
   };
-  const previewDndTarget = (target: CatalogDropTarget) => {
-    const source = dndSourceRef.current;
-    if (!source || !target?.valid) return;
-
-    if (source.kind === "section") {
-      if (target.kind !== "section") return;
-      const currentParentId = allSections.find((section) => section.id === source.id)?.parentId ?? null;
-      const targetParentId = target.zone === "inside"
-        ? target.id
-        : allSections.find((section) => section.id === target.id)?.parentId ?? target.containerId;
-      if (currentParentId === targetParentId) return;
-      const previewKey = `section:${source.id}:${targetParentId ?? "root"}:${target.id}:${target.zone}`;
-      if (dndPreviewKeyRef.current === previewKey) return;
-      dndPreviewKeyRef.current = previewKey;
-      moveTreeSection(
-        source.id,
-        targetParentId,
-        target.zone === "inside" ? null : target.id,
-        target.zone,
-        false,
-      );
-      return;
-    }
-
-    if (source.surface === "composition" && target.surface === "composition") return;
-    const currentSectionId = allItems.find((item) => item.id === source.id)?.sectionId ?? source.actualParentId;
-    const targetSectionId = target.kind === "section"
-      ? target.id
-      : allItems.find((item) => item.id === target.id)?.sectionId ?? target.containerId;
-    if (!targetSectionId || currentSectionId === targetSectionId) return;
-    const previewKey = `item:${source.id}:${targetSectionId}:${target.id}:${target.zone}`;
-    if (dndPreviewKeyRef.current === previewKey) return;
-    dndPreviewKeyRef.current = previewKey;
-    moveTreeItem(
-      source.id,
-      targetSectionId,
-      target.kind === "item" ? target.id : null,
-      target.zone,
-      false,
-    );
-  };
-
   const resolveDndTarget = (event: DragMoveEvent | DragOverEvent): CatalogDropTarget => {
     const { active, over } = event;
     const activeData = active.data.current as CatalogDndData | undefined;
@@ -4115,7 +4028,6 @@ function PopulatedWorkspace({
       });
       updateDropTarget(target);
       setInvalidZonePresence(false);
-      previewDndTarget(target);
       return;
     }
 
@@ -4136,10 +4048,7 @@ function PopulatedWorkspace({
     updateDropTarget(nextTarget);
     setInvalidZonePresence(!target.valid && target.reason === "В этом разделе уже есть позиции");
 
-    if (insideActive) {
-      previewDndTarget(nextTarget);
-      return;
-    }
+    if (insideActive) return;
     if (samePendingInside && insideActivationTimerRef.current != null) return;
 
     clearInsideActivationTimer();
@@ -4158,7 +4067,6 @@ function PopulatedWorkspace({
       pendingDropTargetRef.current = activeTarget;
       updateDropIntentState({ ...currentIntent, activeIntent: "inside" });
       updateDropTarget(activeTarget);
-      previewDndTarget(activeTarget);
     }, remainingDelay);
   };
 
@@ -4189,7 +4097,6 @@ function PopulatedWorkspace({
     dndPointerCurrentRef.current = null;
     dndSourceRef.current = null;
     dndSnapshotRef.current = null;
-    dndPreviewKeyRef.current = "";
     setInvalidZonePresence(false);
   };
 
@@ -4212,7 +4119,7 @@ function PopulatedWorkspace({
     }
 
     if (source.kind === "section") {
-      if (target.kind !== "section") {
+      if (target.kind !== "section" || target.zone === "inside") {
         restoreDndSnapshot();
         clearDndState();
         return;
@@ -4221,7 +4128,6 @@ function PopulatedWorkspace({
         source.surface === "composition"
         && target.surface === "composition"
         && source.containerId
-        && target.zone !== "inside"
       ) {
         const sourceIndex = directChildSections.findIndex(({ section: child }) => child.id === source.id);
         const targetIndex = directChildSections.findIndex(({ section: child }) => child.id === target.id);
@@ -4234,18 +4140,15 @@ function PopulatedWorkspace({
         clearDndState();
         return;
       }
-      const targetParentId = target.zone === "inside"
-        ? target.id
-        : allSections.find((section) => section.id === target.id)?.parentId ?? target.containerId;
       moveTreeSection(
         source.id,
-        targetParentId,
-        target.zone === "inside" ? null : target.id,
+        source.actualParentId,
+        target.id,
         target.zone,
         false,
       );
       registerChange("catalog");
-      setFeedback(source.actualParentId === targetParentId ? "Порядок разделов изменён" : "Раздел перемещён");
+      setFeedback("Порядок разделов изменён");
     } else {
       if (
         source.surface === "composition"
@@ -4265,18 +4168,15 @@ function PopulatedWorkspace({
         clearDndState();
         return;
       }
-      const targetSectionId = target.kind === "section"
-        ? target.id
-        : allItems.find((item) => item.id === target.id)?.sectionId ?? target.containerId;
-      if (!targetSectionId) {
+      if (target.kind !== "item" || !source.actualParentId || target.zone === "inside") {
         restoreDndSnapshot();
         clearDndState();
         return;
       }
-      moveTreeItem(source.id, targetSectionId, target.kind === "item" ? target.id : null, target.zone, false);
-      setLastItemBySection((current) => ({ ...current, [targetSectionId]: source.id }));
+      moveTreeItem(source.id, source.actualParentId, target.id, target.zone, false);
+      setLastItemBySection((current) => ({ ...current, [source.actualParentId!]: source.id }));
       registerChange("catalog");
-      setFeedback(source.actualParentId === targetSectionId ? "Порядок позиций изменён" : "Позиция перемещена");
+      setFeedback("Порядок позиций изменён");
     }
     clearDndState();
   };
@@ -6711,6 +6611,7 @@ function OverviewWorkspace({
     deleteItems,
     moveItem,
     setItemStatus,
+    reorderItems,
     replaceItemOrder,
   } = catalogMutations;
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
@@ -6967,7 +6868,7 @@ function OverviewWorkspace({
     if (nextIds.every((id, index) => id === previousIds[index])) return;
     const previousOrder = cloneStringArrayRecord(itemOrderBySection);
     try {
-      replaceItemOrder({ ...itemOrderBySection, [scopeSection.id]: nextIds });
+      reorderItems(scopeSection.id, nextIds);
       registerChange("catalog");
       showFeedback("Порядок позиций изменён");
     } catch {
