@@ -165,6 +165,7 @@ import {
   VirtualizedAuditRows,
 } from "./catalog/table/catalog-table";
 import { descriptionHasContent, getQueueEditorContext, isRepairQueueFilter } from "./catalog/editor/editor-queue";
+import { useEditorSession } from "./catalog/editor/editor-session";
 import { WorkspaceLocalTabs } from "./catalog/editor/editor-tabs";
 import { readJsonRecord, writeJsonRecord } from "./catalog/storage";
 import { DropdownActionItem, DropdownContent } from "./catalog/ui/catalog-dropdown";
@@ -6802,16 +6803,22 @@ function OverviewWorkspace({
   // Открытие из «Разделов» обрабатывается атомарно на маунте: сразу строим items и
   // очередь-редактор из pendingOpen — без гонок setState, чтобы повторный переход
   // всегда открывал редактор, а не таблицу последнего фильтра.
-  const [queue, setQueue] = useState<DescriptionAuditQueueState | null>(() =>
-    pendingOpen ? buildSectionQueueFromPending(pendingOpen, initialWorkspaceItems) : restoredEditorFirstQueue,
-  );
+  const initialEditorSessionQueue = pendingOpen
+    ? buildSectionQueueFromPending(pendingOpen, initialWorkspaceItems)
+    : restoredEditorFirstQueue;
   void createdItems;
-  const [activePositionId, setActivePositionId] = useState<string | null>(() =>
-    pendingOpen?.id ?? restoredEditorFirstQueue?.currentId ?? null,
-  );
-  const [editorFirstView, setEditorFirstView] = useState<EditorFirstPositionsView>(() =>
-    pendingOpen ? "editor" : initialEditorFirstState.view,
-  );
+  const {
+    queue,
+    setQueue,
+    activePositionId,
+    setActivePositionId,
+    view: editorFirstView,
+    setView: setEditorFirstView,
+  } = useEditorSession({
+    queue: initialEditorSessionQueue,
+    activePositionId: pendingOpen?.id ?? restoredEditorFirstQueue?.currentId ?? null,
+    view: pendingOpen ? "editor" : initialEditorFirstState.view,
+  });
   const [editorFirstFilterId, setEditorFirstFilterId] = useState<OverviewFilterId>(initialEditorFirstState.filterId);
   const [editorFirstSectionScopeId, setEditorFirstSectionScopeId] = useState<string | null>(
     pendingOpen?.section?.sectionId ?? initialEditorFirstState.sectionScopeId,
