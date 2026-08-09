@@ -321,11 +321,13 @@ export function PhoneCatalog({
   restaurantName = RESTAURANT_NAME,
   themed,
   catalogItem,
+  catalogItems,
 }: {
   selectedDishId: string;
   restaurantName?: string;
   themed?: boolean;
   catalogItem?: CatalogItem | null;
+  catalogItems?: CatalogItem[];
 }) {
   if (catalogItem) {
     return (
@@ -352,7 +354,24 @@ export function PhoneCatalog({
       </div>
     );
   }
-  const selected = dishes.find((d) => d.id === selectedDishId);
+  const previewDishes: Dish[] = catalogItems
+    ? catalogItems
+        .filter((item) => item.status === "active" && item.displayMode === "full")
+        .slice(0, 6)
+        .map((item, index) => ({
+          id: item.id,
+          name: item.title,
+          category: item.sectionName,
+          price: formatPrice(item.priceWithSale ?? item.price),
+          weight: item.weightLabel ?? "",
+          description: item.description,
+          accent: ["from-amber-50 to-orange-100", "from-emerald-50 to-lime-100", "from-violet-50 to-fuchsia-100", "from-sky-50 to-cyan-100"][index % 4],
+          emoji: "🍽️",
+          recommendations: [],
+          stop: false,
+        }))
+    : dishes.slice(0, 6);
+  const selected = previewDishes.find((dish) => dish.id === selectedDishId);
   return (
     <div className={cn("p-4 pt-10", themed && "bg-amber-50")}>
       <div className="mb-4">
@@ -364,7 +383,7 @@ export function PhoneCatalog({
         Найти блюдо
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {dishes.slice(0, 6).map((dish) => (
+        {previewDishes.map((dish) => (
           <div
             key={dish.id}
             className={cn(

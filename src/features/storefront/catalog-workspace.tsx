@@ -69,7 +69,6 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { usePublish } from "@/contexts/publish-context";
-import type { Category } from "@/data/mock-data";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/catalog";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
@@ -314,11 +313,13 @@ function createRealPositionId() {
   return `position-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const CREATED_SECTION: Category = {
+const CREATED_SECTION: TreeSection = {
   id: "created-section",
+  parentId: null,
   name: "Мой раздел",
+  imageUrl: null,
+  sortOrder: 0,
   emoji: "🍽️",
-  photo: "from-blue-100 to-blue-200",
 };
 export function CatalogTabs({
   value,
@@ -3228,7 +3229,10 @@ function PopulatedWorkspace({
   );
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
-  const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
+  const [extraSections, setExtraSections] = useState<TreeSection[]>(() => {
+    const seedIds = new Set(catalogSections.map((section) => section.id));
+    return flattenSections(sections).filter((section) => !seedIds.has(section.id));
+  });
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
   const [positionCreationDialog, setPositionCreationDialog] = useState<{ initialSectionId: string | null } | null>(null);
   const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
@@ -3334,8 +3338,6 @@ function PopulatedWorkspace({
   const activeSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status !== "archive"));
   const archivedSectionTree = buildLocalSectionTree(allSections.filter((candidate) => candidate.status === "archive"));
   const activeSections = allSections.filter((candidate) => candidate.status !== "archive");
-  void sections;
-
   const baseItems = catalogStoreItems;
   const allItems = baseItems.map((item) => {
       const upsell = upsellByItem[item.id];
@@ -8434,7 +8436,7 @@ export function CatalogWorkspace({
 }: CatalogWorkspaceProps) {
   const { activeEditorItemId, items: sharedCatalogItems } = useCatalogStore();
   const createdItems = readCreatedCatalogItems();
-  const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
+  const [firstRunSection, setFirstRunSection] = useState<TreeSection | null>(null);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
   const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen(navigation.route));
@@ -8489,12 +8491,14 @@ export function CatalogWorkspace({
     if (!navigation.route.createPosition) return;
     setPendingOpen((current) => current ?? readDirectCreatePendingOpen(navigation.route));
   }, [navigation.route.createPosition, navigation.route.revision]);
-  const sections: TreeSection[] =
-    catalogPhase === "empty"
-      ? []
-      : catalogPhase === "has-sections"
-        ? [{ id: CREATED_SECTION.id, name: createdSectionName, emoji: CREATED_SECTION.emoji }]
-        : buildSectionTree(catalogSections);
+  const seedSectionTree = buildSectionTree(catalogSections);
+  const sections: TreeSection[] = catalogPhase === "empty"
+    ? []
+    : catalogPhase === "has-sections"
+      ? [firstRunSection ?? CREATED_SECTION]
+      : firstRunSection
+        ? [...seedSectionTree, firstRunSection]
+        : seedSectionTree;
   const [flatQuery, setFlatQuery] = useState("");
   const [stopListQuery, setStopListQuery] = useState("");
   const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
@@ -8570,7 +8574,7 @@ export function CatalogWorkspace({
       resetSignal={resetSignal}
       initialSelectedItemId={retainedItemId}
       initialHighlightItemId={retainedStructureHighlightItemId}
-      initialSelectedSectionId={retainedSectionId}
+      initialSelectedSectionId={retainedSectionId ?? firstRunSection?.id ?? null}
       initialReturnContext={null}
       pendingOpen={pendingOpen}
       tableOpenSignal={overviewTableOpenSignal}
@@ -8647,9 +8651,15 @@ export function CatalogWorkspace({
       {sectionDialogOpen && (
         <CreateSectionDialog
           onCreate={(name) => {
-            setCreatedSectionName(name);
+            const createdSection: TreeSection = {
+              ...CREATED_SECTION,
+              id: `draft-section-${Date.now()}-1`,
+              name,
+            };
+            setFirstRunSection(createdSection);
+            setRetainedSectionId(createdSection.id);
             setSectionDialogOpen(false);
-            onAdvancePhase("has-sections");
+            onAdvancePhase("has-items");
             return true;
           }}
           onCancel={() => setSectionDialogOpen(false)}

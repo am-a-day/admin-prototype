@@ -17,20 +17,20 @@ test.beforeEach(async ({ page }) => {
 async function openItemFromLeaf(page: Page) {
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();
-  await page.getByText(firstItemTitle, { exact: true }).click();
+  await page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).click();
   await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
 }
 
 async function openItemFromAllPositions(page: Page) {
   await page.goto("/?editorNav=unified");
   await page.getByRole("textbox", { name: "Найти позицию" }).fill("Омлет");
-  await page.getByText(firstItemTitle, { exact: true }).click();
+  await page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).click();
   await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
 }
 
 async function openEntityItem(page: Page) {
   await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
-  await page.getByText(firstItemTitle, { exact: true }).click();
+  await page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle }).click();
   await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
 }
 
@@ -106,7 +106,7 @@ test("returns from an all-positions editor with the same search context", async 
   await page.getByRole("button", { name: /^Все позиции$/ }).click();
 
   await expect(page.getByPlaceholder("Поиск по названию")).toHaveValue("Омлет");
-  await expect(page.getByText(firstItemTitle, { exact: true })).toBeVisible();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle })).toBeVisible();
   await expect(page.getByRole("button", { name: /Выбран раздел: Все разделы/ })).toBeVisible();
 });
 
@@ -229,7 +229,7 @@ test("records explicit position move parent/order and current reload behavior", 
 
   await page.reload();
   // Current baseline: a full reload returns to the all-positions scope; the item remains in the catalog.
-  await expect(page.getByText(firstItemTitle, { exact: true })).toBeVisible();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle })).toBeVisible();
 });
 
 test("records explicit subsection move parent/order and current reload behavior", async ({ page }) => {

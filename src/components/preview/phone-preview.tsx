@@ -284,7 +284,16 @@ export function PhonePreview({
   } else if (scenario === "catalog-empty") {
     screen = <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />;
   } else if (activeTab === "catalog") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} />;
+    screen = catalogItems.length === 0 ? (
+      <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />
+    ) : (
+      <PhoneCatalog
+        selectedDishId={selectedDishId}
+        restaurantName={restaurantName}
+        catalogItem={catalogItem}
+        catalogItems={catalogItems}
+      />
+    );
   } else if (activeTab === "upsell") {
     // Сценарий превью управляется фокусом полей «Тексты рекомендаций».
     if (upsellSurface === "home") {
@@ -315,7 +324,7 @@ export function PhonePreview({
       );
     }
   } else if (activeTab === "appearance") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} themed />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} catalogItems={catalogItems} themed />;
   }
 
   // Overlay публикации (Publish model): аккуратный полупрозрачный слой на 3 сек.

@@ -23,6 +23,12 @@ import {
   IS_PRAGMATIC_CATALOG_PREVIEW,
   resetPragmaticCatalogPreview,
 } from "@/lib/catalog-preview";
+import {
+  readCatalogDataScenario,
+  resetCatalogDataScenario,
+  selectCatalogDataScenario,
+  type CatalogDataScenario,
+} from "@/lib/catalog-data-scenarios";
 import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
@@ -231,14 +237,9 @@ const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> =
   promoted: {},
 };
 
-function PrototypeToolsFloating({
-  catalogPhase,
-  setCatalogPhase,
-}: {
-  catalogPhase: CatalogPhase;
-  setCatalogPhase: (phase: CatalogPhase) => void;
-}) {
+function PrototypeToolsFloating() {
   const [open, setOpen] = useState(false);
+  const [catalogDataScenario] = useState(readCatalogDataScenario);
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
   const { stage, forceStage } = useVitrineLaunch();
   const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
@@ -370,21 +371,24 @@ function PrototypeToolsFloating({
 
             <div>
               <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                Каталог
+                Данные каталога
               </div>
               <div className="flex gap-1">
                 {([
                   ["empty", "Пустой"],
-                  ["has-sections", "Раздел"],
-                  ["has-items", "Позиции"],
-                ] as [CatalogPhase, string][]).map(([phase, label]) => (
+                  ["demo", "Демо"],
+                  ["client", "Клиентский"],
+                ] as [CatalogDataScenario, string][]).map(([scenario, label]) => (
                   <button
-                    key={phase}
+                    key={scenario}
                     type="button"
-                    onClick={() => setCatalogPhase(phase)}
+                    onClick={() => {
+                      selectCatalogDataScenario(scenario);
+                      window.location.reload();
+                    }}
                     className={cn(
                       "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
-                      catalogPhase === phase
+                      catalogDataScenario === scenario
                         ? "border-blue-500 bg-blue-50 text-blue-700"
                         : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
                     )}
@@ -393,6 +397,16 @@ function PrototypeToolsFloating({
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  resetCatalogDataScenario(catalogDataScenario);
+                  window.location.reload();
+                }}
+                className="mt-1.5 w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50"
+              >
+                Сбросить сценарий
+              </button>
             </div>
 
             <div>
@@ -1414,7 +1428,7 @@ function AuthenticatedShell() {
       <DraftToast />
       <PublishToast />
       <DevNotesFloating isCatalogPage={isCatalogPage} />
-      <PrototypeToolsFloating catalogPhase={catalogPhase} setCatalogPhase={updateCatalogPhase} />
+      <PrototypeToolsFloating />
     </div>
   );
 }

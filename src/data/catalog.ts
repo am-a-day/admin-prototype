@@ -4,6 +4,7 @@
 // dishes so the app builds without the fixture.
 
 import { categories, dishes } from "./mock-data";
+import { readCatalogDataScenario, type CatalogDataScenario } from "@/lib/catalog-data-scenarios";
 
 export type CatalogSection = {
   id: string;
@@ -109,8 +110,68 @@ function fallbackFixture(): CatalogFixture {
 
 const data = fixture ?? fallbackFixture();
 
-export const catalogSections: CatalogSection[] = data.sections;
-export const catalogItems: CatalogItem[] = data.items;
+const DEMO_SECTIONS: CatalogSection[] = [
+  { id: "demo-kitchen", parentId: null, name: "Кухня", imageUrl: null, sortOrder: 0 },
+  { id: "demo-breakfast", parentId: "demo-kitchen", name: "Завтраки", imageUrl: null, sortOrder: 0 },
+  { id: "demo-drinks", parentId: null, name: "Напитки", imageUrl: null, sortOrder: 1 },
+];
+
+function demoItem(
+  id: string,
+  title: string,
+  section: CatalogSection,
+  price: number,
+  patch: Partial<CatalogItem> = {},
+): CatalogItem {
+  return {
+    id,
+    title,
+    sectionId: section.id,
+    sectionName: section.name,
+    thumbnailUrl: null,
+    price,
+    priceWithSale: null,
+    status: "active",
+    scheduled: false,
+    guestLabels: [],
+    tags: [],
+    optionsCount: 0,
+    modifiersCount: 0,
+    recommendationsCount: 0,
+    displayMode: "full",
+    description: "",
+    hasDescription: false,
+    weightLabel: null,
+    nutritionFilledCount: 0,
+    translationFilledCount: 0,
+    translationTotalCount: 2,
+    hasDiscount: false,
+    ...patch,
+  };
+}
+
+const demoBreakfast = DEMO_SECTIONS[1];
+const demoDrinks = DEMO_SECTIONS[2];
+const DEMO_ITEMS: CatalogItem[] = [
+  demoItem("demo-omelet", "Омлет с томатами", demoBreakfast, 2400, { description: "Яйца, томаты и сыр", hasDescription: true, weightLabel: "280 г" }),
+  demoItem("demo-pancakes", "Панкейки", demoBreakfast, 2100, { description: "С ягодами и кремом", hasDescription: true }),
+  demoItem("demo-croissant", "Круассан", demoBreakfast, 1200),
+  demoItem("demo-porridge", "Овсяная каша", demoBreakfast, 1600, { weightLabel: "300 г" }),
+  demoItem("demo-coffee", "Капучино", demoDrinks, 1100, { weightLabel: "300 мл" }),
+  demoItem("demo-tea", "Чай с облепихой", demoDrinks, 1400, { description: "Облепиха, мёд и апельсин", hasDescription: true }),
+  demoItem("demo-water", "Вода", demoDrinks, 600),
+];
+
+export function getCatalogSeedForScenario(scenario: CatalogDataScenario): Pick<CatalogFixture, "sections" | "items"> {
+  if (scenario === "empty") return { sections: [], items: [] };
+  if (scenario === "demo") return { sections: DEMO_SECTIONS, items: DEMO_ITEMS };
+  return { sections: data.sections, items: data.items };
+}
+
+const activeSeed = getCatalogSeedForScenario(readCatalogDataScenario());
+
+export const catalogSections: CatalogSection[] = activeSeed.sections;
+export const catalogItems: CatalogItem[] = activeSeed.items;
 
 export function formatPrice(value: number) {
   return `${value.toLocaleString("ru-RU")} ₸`;
