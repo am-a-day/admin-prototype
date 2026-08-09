@@ -122,6 +122,35 @@ import type {
   CatalogReturnContext,
   CatalogSectionEditorTab,
 } from "./catalog/navigation/types";
+import {
+  CATALOG_FILTER_PREDICATES as FILTER_PREDICATES,
+  countItemsByFilter,
+  getCombinedOverviewItems,
+  getOverviewItems,
+  getSectionScopeIds,
+  sortItemsByPrice,
+} from "./catalog/model/selectors";
+import {
+  buildCatalogTree as buildLocalSectionTree,
+  filterSectionTree,
+  findSectionPath,
+  flattenCatalogTree as flattenSections,
+  getParentAvailability,
+  getSectionSubtreeIds,
+  getSectionTreeDepth,
+  MAX_CATALOG_SECTION_DEPTH,
+  type CatalogAvailabilityMode,
+  type CatalogTreeSection,
+} from "./catalog/model/tree";
+import {
+  cloneStringArrayRecord,
+  getSortableDestinationIndex,
+  moveId,
+  orderItemsByPositionOrder,
+  orderSectionItems,
+  validateCatalogTreeDrop,
+  type CatalogTreeDropIntent,
+} from "./catalog/model/reorder";
 
 export type {
   CatalogPhase,
@@ -137,6 +166,8 @@ export type {
 
 type SectionEditorTab = CatalogSectionEditorTab;
 type PriceSortDirection = CatalogPriceSortDirection;
+type TreeSection = CatalogTreeSection;
+type AvailabilityMode = CatalogAvailabilityMode;
 
 /** dnd-kit остаётся у плоского списка позиций: спокойная анимация ~200мс,
  * отключается при prefers-reduced-motion. Дерево разделов использует Pragmatic DnD. */
@@ -332,13 +363,7 @@ type PragmaticTreeDragData = Record<string, unknown> & {
   count?: number;
 };
 
-type PragmaticTreeDropIntent =
-  | { type: "inside"; parentId: string; index: number }
-  | { type: "between"; parentId: string | null; index: number };
-
-type PragmaticTreeValidation = { valid: true } | { valid: false; reason: string };
-
-type PragmaticTreeDndModel = { sections: TreeSection[]; items: CatalogItem[] };
+type PragmaticTreeDropIntent = CatalogTreeDropIntent;
 
 type CatalogTreeMoveSnapshot = {
   positionOrderBySection: Record<string, string[]>;
@@ -352,87 +377,6 @@ type CatalogTreeMoveUndoState = {
   message: string;
   snapshot: CatalogTreeMoveSnapshot;
 } | null;
-
-function isPragmaticSectionDescendant(
-  possibleDescendantId: string,
-  ancestorId: string,
-  sections: TreeSection[],
-) {
-  const byId = new Map(sections.map((section) => [section.id, section]));
-  const seen = new Set<string>();
-  let current = byId.get(possibleDescendantId);
-  while (current?.parentId && !seen.has(current.id)) {
-    seen.add(current.id);
-    if (current.parentId === ancestorId) return true;
-    current = byId.get(current.parentId);
-  }
-  return false;
-}
-
-function getPragmaticSectionDepth(sectionId: string, sections: TreeSection[]) {
-  const byId = new Map(sections.map((section) => [section.id, section]));
-  const seen = new Set<string>();
-  let depth = 0;
-  let current = byId.get(sectionId);
-  while (current?.parentId && !seen.has(current.id)) {
-    seen.add(current.id);
-    depth += 1;
-    current = byId.get(current.parentId);
-  }
-  return depth;
-}
-
-function validateCatalogTreeDrop(
-  source: PragmaticTreeDragData,
-  intent: PragmaticTreeDropIntent,
-  model: PragmaticTreeDndModel,
-): PragmaticTreeValidation {
-  const targetParentId = intent.parentId;
-  if (source.kind === "item" && targetParentId === null) {
-    return { valid: false, reason: "Позицию нельзя разместить в корне" };
-  }
-  if (targetParentId !== null && !model.sections.some((section) => section.id === targetParentId)) {
-    return { valid: false, reason: "Родительский раздел не найден" };
-  }
-  if (source.kind === "section" && targetParentId === source.id) {
-    return { valid: false, reason: "Раздел нельзя переместить внутрь себя" };
-  }
-  if (
-    source.kind === "section"
-    && targetParentId !== null
-    && isPragmaticSectionDescendant(targetParentId, source.id, model.sections)
-  ) {
-    return { valid: false, reason: "Раздел нельзя переместить в собственный подраздел" };
-  }
-  // Перестановка между непосредственными соседями не меняет структуру уровня.
-  // Поэтому уже существующие (в том числе скрытые в UI) данные родителя не
-  // должны превращать обычную сортировку в новую попытку смешивания типов.
-  if (intent.type === "between" && targetParentId === source.parentId) {
-    return { valid: true };
-  }
-  if (
-    source.kind === "section"
-    && targetParentId !== null
-    && getPragmaticSectionDepth(targetParentId, model.sections) >= MAX_SECTION_DEPTH
-  ) {
-    return { valid: false, reason: "Достигнута максимальная вложенность" };
-  }
-
-  const directSections = model.sections.filter((section) => (section.parentId ?? null) === targetParentId);
-  const directItems = targetParentId === null
-    ? []
-    : model.items.filter((item) => item.sectionId === targetParentId);
-  if (directSections.length > 0 && directItems.length > 0) {
-    return { valid: false, reason: "В разделе уже смешаны подразделы и позиции" };
-  }
-  if (source.kind === "section" && directItems.length > 0) {
-    return { valid: false, reason: "Раздел нельзя разместить рядом с позицией" };
-  }
-  if (source.kind === "item" && directSections.length > 0) {
-    return { valid: false, reason: "Позицию нельзя разместить рядом с подразделом" };
-  }
-  return { valid: true };
-}
 
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
   { id: "sections", label: "Каталог" },
@@ -525,19 +469,6 @@ type CatalogWorkspaceProps = {
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
 };
 
-/** Section node for the left panels: real sections carry imageUrl, mock/created ones an emoji. */
-type TreeSection = {
-  id: string;
-  parentId?: string | null;
-  name: string;
-  imageUrl?: string | null;
-  emoji?: string;
-  sortOrder?: number;
-  status?: SectionStatus;
-  visibility?: SectionVisibility;
-  availabilityMode?: AvailabilityMode;
-  children?: TreeSection[];
-};
 type SectionStatus = "active" | "archive";
 type SectionVisibility = "visible" | "hidden";
 type SectionDraftOverride = {
@@ -555,8 +486,6 @@ type PanelRow = {
 
 const CATALOG_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5px]";
 const CATALOG_TREE_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5.263px]";
-const MAX_SECTION_DEPTH = 2;
-
 type MoveOperation = "position" | "section" | "bulk";
 type MovePopoverAnchor = { left: number; right: number; top: number; bottom: number };
 
@@ -819,42 +748,6 @@ function plural(count: number, one: string, few: string, many: string) {
   return many;
 }
 
-const FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogItem) => boolean> = {
-  "quick:all": () => true,
-  "quick:no-description": (item) => !item.hasDescription,
-  "quick:no-photo": (item) => !item.thumbnailUrl,
-  "quick:no-weight": (item) => !item.weightLabel,
-  "quick:no-kbju": (item) => item.nutritionFilledCount === 0,
-  "quick:no-translation": (item) => item.translationFilledCount < item.translationTotalCount,
-  "quick:discount": (item) => item.hasDiscount,
-  "quick:with-tags": (item) => item.tags.length > 0,
-  "quick:with-labels": (item) => item.guestLabels.length > 0,
-  "quick:with-options": (item) => item.optionsCount > 0,
-  "quick:with-recommendations": (item) => item.recommendationsCount > 0,
-  "quick:no-recommendations": (item) => item.recommendationsCount === 0,
-  "display:full": (item) => item.displayMode === "full",
-  "display:no-button": (item) => item.displayMode === "no-button",
-  "display:no-price": (item) => item.displayMode === "no-price",
-  "status:active": (item) => item.status === "active",
-  "status:archived": (item) => item.status === "archive",
-  "status:stop": (item) => item.status === "stopped",
-  "status:soon": (item) => item.status === "coming-soon",
-  "status:schedule": (item) => item.scheduled,
-};
-
-function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[] = catalogItems) {
-  return items.filter(FILTER_PREDICATES[filterId]);
-}
-
-function getCombinedOverviewItems(
-  filterId: OverviewFilterId,
-  items: CatalogItem[],
-  mandatoryFilterId?: OverviewFilterId,
-) {
-  const mandatoryItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-  return getOverviewItems(filterId, mandatoryItems);
-}
-
 const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
   { label: "Вид", ids: ["sections"] },
   { label: "Статус", ids: ["status:active", "status:archived"] },
@@ -920,21 +813,6 @@ const FILTER_PANEL_TITLES: Record<OverviewFilterId, string> = {
 
 function getFilterPanelTitle(filterId: OverviewFilterId) {
   return FILTER_PANEL_TITLES[filterId];
-}
-
-function getSectionScopeIds(sectionId: string | null) {
-  if (!sectionId) return null;
-  const ids = new Set<string>([sectionId]);
-  let added = true;
-  while (added) {
-    added = false;
-    catalogSections.forEach((section) => {
-      if (!section.parentId || !ids.has(section.parentId) || ids.has(section.id)) return;
-      ids.add(section.id);
-      added = true;
-    });
-  }
-  return ids;
 }
 
 type AuditQueueFilterId = OverviewFilterId;
@@ -1216,25 +1094,6 @@ function descriptionHasContent(value: string) {
     .trim().length > 0;
 }
 
-function getDisplayedPrice(item: CatalogItem) {
-  if (item.price === 0 && item.priceWithSale == null) return null;
-  return item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : item.price;
-}
-
-function sortItemsByPrice<T extends CatalogItem>(items: T[], direction: PriceSortDirection): T[] {
-  if (direction === "none") return items;
-  return items
-    .map((item, index) => ({ item, index, price: getDisplayedPrice(item) }))
-    .sort((left, right) => {
-      if (left.price == null && right.price == null) return left.index - right.index;
-      if (left.price == null) return 1;
-      if (right.price == null) return -1;
-      const diff = direction === "asc" ? left.price - right.price : right.price - left.price;
-      return diff || left.index - right.index;
-    })
-    .map(({ item }) => item);
-}
-
 function getNextPriceSort(direction: PriceSortDirection): PriceSortDirection {
   if (direction === "none") return "asc";
   if (direction === "asc") return "desc";
@@ -1256,7 +1115,7 @@ function getQueueItemIds(
   mandatoryFilterId?: OverviewFilterId,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
-  const scopeIds = getSectionScopeIds(sectionScopeId);
+  const scopeIds = getSectionScopeIds(sectionScopeId, catalogSections);
   const filtered = getCombinedOverviewItems(filterId, items, mandatoryFilterId)
     .filter((item) => !scopeIds || scopeIds.has(item.sectionId))
     .filter((item) =>
@@ -1546,40 +1405,6 @@ function findTreeSectionName(sections: TreeSection[], id?: string | null): strin
   return null;
 }
 
-function buildLocalSectionTree(sections: TreeSection[]): TreeSection[] {
-  const nodes = new Map(sections.map((section) => [section.id, { ...section, children: [] as TreeSection[] }]));
-  const roots: TreeSection[] = [];
-  for (const node of nodes.values()) {
-    const parent = node.parentId ? nodes.get(node.parentId) : undefined;
-    (parent ? parent.children ?? [] : roots).push(node);
-  }
-  const sortTree = (list: TreeSection[]) => {
-    list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, "ru"));
-    list.forEach((section) => sortTree(section.children ?? []));
-  };
-  sortTree(roots);
-  return roots;
-}
-
-function flattenSections(sections: TreeSection[]): TreeSection[] {
-  return sections.flatMap((section) => [section, ...flattenSections(section.children ?? [])]);
-}
-
-function getSectionSubtreeIds(sectionId: string, sections: TreeSection[]) {
-  const result = new Set<string>([sectionId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    sections.forEach((section) => {
-      if (section.parentId && result.has(section.parentId) && !result.has(section.id)) {
-        result.add(section.id);
-        changed = true;
-      }
-    });
-  }
-  return result;
-}
-
 type SectionDeleteSummary = {
   positionCount: number;
   subsectionCount: number;
@@ -1587,41 +1412,9 @@ type SectionDeleteSummary = {
 
 type SectionCreationResult = boolean | string | void;
 
-type ParentAvailability =
-  | { available: true }
-  | { available: false; reason: "has-positions" | "max-depth"; label: string };
-
-function getParentAvailability(
-  section: TreeSection,
-  allItems: CatalogItem[],
-  sections: TreeSection[] = [],
-): ParentAvailability {
-  if (allItems.some((item) => item.sectionId === section.id && item.status !== "archive")) {
-    return { available: false, reason: "has-positions", label: "В разделе уже есть позиции" };
-  }
-  if (sections.length > 0 && getSectionTreeDepth(section.id, sections) >= MAX_SECTION_DEPTH) {
-    return { available: false, reason: "max-depth", label: "Достигнута максимальная вложенность" };
-  }
-  return { available: true };
-}
-
 function getPositionCreateRestriction(sectionId: string, sections: TreeSection[]): string | null {
   const section = sections.find((candidate) => candidate.id === sectionId);
   return section?.status === "archive" ? "Архивный раздел нельзя изменять" : null;
-}
-
-function getSectionTreeDepth(sectionId: string, sections: TreeSection[]): number {
-  const flat = flattenSections(sections);
-  const byId = new Map(flat.map((section) => [section.id, section]));
-  let depth = 0;
-  let current = byId.get(sectionId);
-  const seen = new Set<string>();
-  while (current?.parentId && !seen.has(current.id)) {
-    seen.add(current.id);
-    depth += 1;
-    current = byId.get(current.parentId);
-  }
-  return depth;
 }
 
 type MoveToSectionPopoverProps = {
@@ -1702,7 +1495,7 @@ function MoveToSectionPopover({
       if (section.id === movingSectionId) return "Нельзя переместить раздел внутрь самого себя";
       if (movingSubtreeIds.has(section.id)) return "Нельзя переместить раздел в его подраздел";
       if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
-      if (getSectionTreeDepth(section.id, flatSections) + 1 + movingSubtreeHeight > MAX_SECTION_DEPTH) {
+      if (getSectionTreeDepth(section.id, flatSections) + 1 + movingSubtreeHeight > MAX_CATALOG_SECTION_DEPTH) {
         return "Достигнута максимальная глубина";
       }
       if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
@@ -2316,7 +2109,6 @@ function EmptyCatalog({
 
 type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
 type PositionEditorMode = "create" | "edit";
-type AvailabilityMode = "always" | "unavailable" | "schedule";
 type UnavailableDisplayMode = "hidden" | "comingSoon";
 type OutsideScheduleMode = "hidden" | "comingSoon";
 type ScheduleDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
@@ -6740,66 +6532,9 @@ function SectionBulkToolbar({
   );
 }
 
-function filterSectionTree(sections: TreeSection[], query: string): TreeSection[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return sections;
-
-  return sections.flatMap((section) => {
-    const children = filterSectionTree(section.children ?? [], normalizedQuery);
-    if (section.name.toLowerCase().includes(normalizedQuery) || children.length > 0) {
-      return [{ ...section, children }];
-    }
-    return [];
-  });
-}
-
-function orderSectionItems(items: CatalogItem[], order: string[] | undefined): CatalogItem[] {
-  if (!order?.length) return items;
-  const positions = new Map(order.map((id, index) => [id, index]));
-  return [...items].sort((left, right) =>
-    (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-  );
-}
-
 function orderItemsByStoredPositionOrder(items: CatalogItem[]) {
   const orders = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
   return orderItemsByPositionOrder(items, orders);
-}
-
-function orderItemsByPositionOrder(items: CatalogItem[], orders: Record<string, string[]>) {
-  const originalIndexes = new Map(items.map((item, index) => [item.id, index]));
-  return [...items].sort((left, right) => {
-    if (left.sectionId !== right.sectionId) {
-      return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
-    }
-    const order = orders[left.sectionId];
-    if (!order?.length) return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
-    const positions = new Map(order.map((id, index) => [id, index]));
-    return (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER)
-      || (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
-  });
-}
-
-function cloneStringArrayRecord(record: Record<string, string[]>) {
-  return Object.fromEntries(Object.entries(record).map(([key, ids]) => [key, [...ids]]));
-}
-
-function getSortableDestinationIndex(
-  fromIndex: number,
-  overIndex: number,
-  zone: Exclude<CatalogDropZone, "inside">,
-) {
-  if (zone === "before") return fromIndex < overIndex ? overIndex - 1 : overIndex;
-  return fromIndex < overIndex ? overIndex : overIndex + 1;
-}
-
-function findSectionPath(sections: TreeSection[], targetId: string): string[] {
-  for (const section of sections) {
-    if (section.id === targetId) return [section.id];
-    const childPath = findSectionPath(section.children ?? [], targetId);
-    if (childPath.length > 0) return [section.id, ...childPath];
-  }
-  return [];
 }
 
 /**
@@ -8957,7 +8692,7 @@ function PopulatedWorkspace({
     const toIndex = getSortableDestinationIndex(fromIndex, overIndex, zone);
     setPositionOrderBySection((current) => ({
       ...current,
-      [containerId]: arrayMove(ids, fromIndex, toIndex),
+      [containerId]: moveId(ids, fromIndex, toIndex),
     }));
   };
 
@@ -8984,7 +8719,7 @@ function PopulatedWorkspace({
         const overIndex = ids.indexOf(targetItemId);
         if (fromIndex < 0 || overIndex < 0) return current;
         const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
-        return { ...current, [sourceSectionId]: arrayMove(ids, fromIndex, toIndex) };
+        return { ...current, [sourceSectionId]: moveId(ids, fromIndex, toIndex) };
       }
 
       const sourceIds = getIds(sourceSectionId, true);
@@ -9032,7 +8767,7 @@ function PopulatedWorkspace({
         const overIndex = ids.indexOf(targetSectionId);
         if (fromIndex < 0 || overIndex < 0) return current;
         const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
-        return { ...current, [sourceParentId ?? "__root__"]: arrayMove(ids, fromIndex, toIndex) };
+        return { ...current, [sourceParentId ?? "__root__"]: moveId(ids, fromIndex, toIndex) };
       }
 
       const sourceIds = getIds(sourceParentId, true);
@@ -12070,9 +11805,8 @@ function CatalogTableFilterBar({
   headerActionsOnly?: boolean;
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
-  const countByFilter = (id: OverviewFilterId) => getCombinedOverviewItems(id, items, mandatoryFilterId)
-    .filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length;
+  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
+  const countByFilter = (id: OverviewFilterId) => countItemsByFilter([id], items, scopeIds, mandatoryFilterId)[id] ?? 0;
   const filterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
     ...group,
     ids: group.ids.filter(
@@ -12629,7 +12363,7 @@ function UnifiedFlatCatalogPanel({
   const previousSelectionRef = useRef({ filterId, scopeSectionId });
   const [searchOpen, setSearchOpen] = useState(() => Boolean(listQuery.trim()));
   const scope = useMemo(() => catalogSections.find((section) => section.id === scopeSectionId) ?? null, [scopeSectionId]);
-  const scopeIds = useMemo(() => getSectionScopeIds(scopeSectionId), [scopeSectionId]);
+  const scopeIds = useMemo(() => getSectionScopeIds(scopeSectionId, catalogSections), [scopeSectionId]);
   const allFilterIds = useMemo(
     () => Array.from(new Set([
       ...HYBRID_PRIMARY_FILTER_IDS,
@@ -12641,16 +12375,10 @@ function UnifiedFlatCatalogPanel({
     () => allFilterIds.filter((id) => !HYBRID_PRIMARY_FILTER_IDS.includes(id)),
     [allFilterIds],
   );
-  const filterCounts = useMemo(() => {
-    const counts = Object.fromEntries(allFilterIds.map((id) => [id, 0])) as Record<OverviewFilterId, number>;
-    allItems.forEach((item) => {
-      if (scopeIds && !scopeIds.has(item.sectionId)) return;
-      allFilterIds.forEach((id) => {
-        if (FILTER_PREDICATES[id](item)) counts[id] += 1;
-      });
-    });
-    return counts;
-  }, [allFilterIds, allItems, scopeIds]);
+  const filterCounts = useMemo(
+    () => countItemsByFilter(allFilterIds, allItems, scopeIds),
+    [allFilterIds, allItems, scopeIds],
+  );
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
   const [addedFilterIds, setAddedFilterIds] = useState<OverviewFilterId[]>(() =>
     secondaryFilterIds.includes(filterId) ? [filterId] : [],
@@ -13267,7 +12995,7 @@ function OverviewWorkspace({
     () => catalogSections.find((section) => section.id === workspaceSectionScopeId) ?? null,
     [workspaceSectionScopeId],
   );
-  const scopeIds = useMemo(() => getSectionScopeIds(workspaceSectionScopeId), [workspaceSectionScopeId]);
+  const scopeIds = useMemo(() => getSectionScopeIds(workspaceSectionScopeId, catalogSections), [workspaceSectionScopeId]);
   const filtered = useMemo(() => {
     const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
     const nextItems = activeFilterIds[0] ? getOverviewItems(activeFilterIds[0], baseItems) : baseItems;
@@ -13344,7 +13072,7 @@ function OverviewWorkspace({
     const fromIndex = previousIds.indexOf(String(event.active.id));
     const toIndex = previousIds.indexOf(String(event.over.id));
     if (fromIndex < 0 || toIndex < 0) return;
-    const nextIds = arrayMove(previousIds, fromIndex, toIndex);
+    const nextIds = moveId(previousIds, fromIndex, toIndex);
     const previousOrder = cloneStringArrayRecord(itemOrderBySection);
     try {
       replaceItemOrder({ ...itemOrderBySection, [scopeSection.id]: nextIds });
@@ -14666,7 +14394,7 @@ export function RecommendationsContextWorkspace({
     skipped: 0,
   });
   const [feedback, setFeedback] = useState("");
-  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
+  const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const visibleItems = useMemo(() => items.filter((item) => (
     (!scopeIds || scopeIds.has(item.sectionId))
@@ -14676,7 +14404,7 @@ export function RecommendationsContextWorkspace({
   const selectedSection = catalogSections.find((section) => section.id === sectionScopeId) ?? null;
 
   const getBulkTargetIds = useCallback((scope: "all" | "section") => {
-    const targetScopeIds = scope === "section" ? getSectionScopeIds(sectionScopeId) : null;
+    const targetScopeIds = scope === "section" ? getSectionScopeIds(sectionScopeId, catalogSections) : null;
     return items
       .filter((item) => item.status === "active")
       .filter((item) => !targetScopeIds || targetScopeIds.has(item.sectionId))
