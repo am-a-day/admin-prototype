@@ -109,7 +109,6 @@ import {
 } from "./catalog/model/selectors";
 import {
   moveCatalogIdToIndex,
-  moveCatalogItemIds,
   reorderCatalogIds,
   validateCatalogSiblingReorder,
 } from "./catalog/model/mutations";
@@ -3594,43 +3593,19 @@ function PopulatedWorkspace({
     reorderCatalogItems(containerId, nextIds);
   };
 
-  const moveTreeItem = (
+  const reorderTreeItem = (
     draggedId: string,
-    targetSectionId: string,
-    targetItemId: string | null,
-    mode: "before" | "after" | "inside",
-    announce = true,
+    targetItemId: string,
+    mode: "before" | "after",
   ) => {
     const dragged = allItems.find((item) => item.id === draggedId);
     if (!dragged) return;
     const sourceSectionId = dragged.sectionId;
-    const getIds = (sectionId: string, excludeDragged = false) => orderSectionItems(
-      allItems.filter((item) => item.sectionId === sectionId && (!excludeDragged || item.id !== draggedId)),
-      positionOrderBySection[sectionId],
+    const ids = orderSectionItems(
+      allItems.filter((item) => item.sectionId === sourceSectionId),
+      positionOrderBySection[sourceSectionId],
     ).map((item) => item.id);
-    if (sourceSectionId === targetSectionId) {
-      if (targetItemId && mode !== "inside") {
-        const ids = getIds(sourceSectionId);
-        reorderCatalogItems(sourceSectionId, reorderCatalogIds(ids, draggedId, targetItemId, mode));
-      }
-    } else {
-      const sourceIds = getIds(sourceSectionId, true);
-      const targetIds = getIds(targetSectionId, true);
-      const targetIndex = targetItemId ? targetIds.indexOf(targetItemId) : -1;
-      const insertionIndex = targetIndex < 0 ? targetIds.length : mode === "after" ? targetIndex + 1 : targetIndex;
-      const moved = moveCatalogItemIds(sourceIds, targetIds, draggedId, insertionIndex);
-      setPositionOrderBySection((current) => ({
-        ...current,
-        [sourceSectionId]: moved.sourceIds,
-        [targetSectionId]: moved.targetIds,
-      }));
-      moveCatalogItem(draggedId, targetSectionId, { index: insertionIndex });
-    }
-    if (announce) {
-      setLastItemBySection((current) => ({ ...current, [targetSectionId]: draggedId }));
-      registerChange("catalog");
-      setFeedback(sourceSectionId === targetSectionId ? "Порядок позиций изменён" : "Позиция перемещена");
-    }
+    reorderCatalogItems(sourceSectionId, reorderCatalogIds(ids, draggedId, targetItemId, mode));
   };
 
   const moveTreeSection = (
@@ -3735,12 +3710,6 @@ function PopulatedWorkspace({
     surface: CatalogDndSurface;
     containerId: string | null;
     actualParentId: string | null;
-  } | null>(null);
-  const dndSnapshotRef = useRef<{
-    positionOrderBySection: Record<string, string[]>;
-    sectionOrderByParent: Record<string, string[]>;
-    itemSectionOverrides: Record<string, string>;
-    sectionParentOverrides: Record<string, string | null>;
   } | null>(null);
   // Синхронный флаг активного drag — блокирует клик по строке без задержки re-render.
   const dragActiveRef = useRef(false);
@@ -3854,16 +3823,6 @@ function PopulatedWorkspace({
       surface: data.surface,
       containerId: data.containerId,
       actualParentId,
-    };
-    dndSnapshotRef.current = {
-      positionOrderBySection: Object.fromEntries(
-        Object.entries(positionOrderBySection).map(([key, ids]) => [key, [...ids]]),
-      ),
-      sectionOrderByParent: Object.fromEntries(
-        Object.entries(sectionOrderByParent).map(([key, ids]) => [key, [...ids]]),
-      ),
-      itemSectionOverrides: { ...itemSectionOverrides },
-      sectionParentOverrides: { ...sectionParentOverrides },
     };
     const activatorEvent = event.activatorEvent;
     if (activatorEvent instanceof MouseEvent || activatorEvent instanceof PointerEvent) {
@@ -4073,18 +4032,6 @@ function PopulatedWorkspace({
   const handleDndDragMove = (event: DragMoveEvent) => applyResolvedDndTarget(event);
   const handleDndDragOver = (event: DragOverEvent) => applyResolvedDndTarget(event);
 
-  const restoreDndSnapshot = () => {
-    const snapshot = dndSnapshotRef.current;
-    if (!snapshot) return;
-    setPositionOrderBySection(snapshot.positionOrderBySection);
-    setSectionOrderByParent(snapshot.sectionOrderByParent);
-    Object.entries(snapshot.itemSectionOverrides).forEach(([itemId, sectionId]) => {
-      const item = allItems.find((candidate) => candidate.id === itemId);
-      if (item && item.sectionId !== sectionId) moveCatalogItem(itemId, sectionId);
-    });
-    setSectionParentOverrides(snapshot.sectionParentOverrides);
-  };
-
   const clearDndState = () => {
     dragActiveRef.current = false;
     clearInsideActivationTimer();
@@ -4096,7 +4043,6 @@ function PopulatedWorkspace({
     dndPointerStartRef.current = null;
     dndPointerCurrentRef.current = null;
     dndSourceRef.current = null;
-    dndSnapshotRef.current = null;
     setInvalidZonePresence(false);
   };
 
@@ -4113,14 +4059,12 @@ function PopulatedWorkspace({
         target?.zone === "inside"
         && target.reason === "В этом разделе уже есть позиции"
       ) holdInvalidDropHint();
-      restoreDndSnapshot();
       clearDndState();
       return;
     }
 
     if (source.kind === "section") {
       if (target.kind !== "section" || target.zone === "inside") {
-        restoreDndSnapshot();
         clearDndState();
         return;
       }
@@ -4169,11 +4113,10 @@ function PopulatedWorkspace({
         return;
       }
       if (target.kind !== "item" || !source.actualParentId || target.zone === "inside") {
-        restoreDndSnapshot();
         clearDndState();
         return;
       }
-      moveTreeItem(source.id, source.actualParentId, target.id, target.zone, false);
+      reorderTreeItem(source.id, target.id, target.zone);
       setLastItemBySection((current) => ({ ...current, [source.actualParentId!]: source.id }));
       registerChange("catalog");
       setFeedback("Порядок позиций изменён");
@@ -4181,7 +4124,6 @@ function PopulatedWorkspace({
     clearDndState();
   };
   const handleDndDragCancel = () => {
-    restoreDndSnapshot();
     invalidDropHeldRef.current = false;
     if (invalidDropHoldTimerRef.current != null) {
       window.clearTimeout(invalidDropHoldTimerRef.current);

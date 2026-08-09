@@ -7,7 +7,7 @@ import {
   buildCatalogTree,
 } from "./tree";
 import { countItemsByFilter, getSectionScopeIds, sortItemsByPrice } from "./selectors";
-import { getSortableDestinationIndex, moveId, validateCatalogTreeDrop } from "./reorder";
+import { getSortableDestinationIndex, moveId } from "./reorder";
 
 const item = (overrides: Partial<CatalogItem> = {}): CatalogItem => ({
   id: "item-1",
@@ -49,25 +49,6 @@ describe("catalog pure model parity", () => {
     expect(getDirectChildSections("parent", sections).map((section) => section.id)).toEqual(["leaf", "sibling"]);
     expect([...getSectionSubtreeIds("parent", sections)]).toEqual(["parent", "leaf", "sibling"]);
     expect([...countItemsBySection([item()], sections, false).entries()]).toEqual([["leaf", 1], ["parent", 1], ["root", 1]]);
-  });
-
-  it("rejects cycles and invalid mixed destinations while preserving sibling drops", () => {
-    const model = { sections, items: [item()] };
-    expect(validateCatalogTreeDrop(
-      { kind: "section", id: "parent", parentId: "root" },
-      { type: "inside", parentId: "leaf", index: 0 },
-      model,
-    )).toEqual({ valid: false, reason: "Раздел нельзя переместить в собственный подраздел" });
-    expect(validateCatalogTreeDrop(
-      { kind: "item", id: "item-1", parentId: "leaf" },
-      { type: "between", parentId: "parent", index: 0 },
-      model,
-    )).toEqual({ valid: false, reason: "Позицию нельзя разместить рядом с подразделом" });
-    expect(validateCatalogTreeDrop(
-      { kind: "section", id: "sibling", parentId: "parent" },
-      { type: "between", parentId: "parent", index: 0 },
-      model,
-    )).toEqual({ valid: true });
   });
 
   it("matches completeness predicates and scoped counts", () => {

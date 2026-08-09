@@ -46,16 +46,3 @@ export function moveCatalogIdToIndex(ids: readonly string[], draggedId: string, 
   if (fromIndex < 0 || targetIndex < 0 || draggedId === targetId) return [...ids];
   return reorderCatalogIds(ids, draggedId, targetId, targetIndex > fromIndex ? "after" : "before");
 }
-
-/** Canonical cross-section order operation. The UI supplies placement-derived index. */
-export function moveCatalogItemIds(
-  sourceIds: readonly string[],
-  targetIds: readonly string[],
-  draggedId: string,
-  targetIndex: number,
-) {
-  const nextSourceIds = sourceIds.filter((id) => id !== draggedId);
-  const nextTargetIds = targetIds.filter((id) => id !== draggedId);
-  nextTargetIds.splice(Math.max(0, Math.min(targetIndex, nextTargetIds.length)), 0, draggedId);
-  return { sourceIds: nextSourceIds, targetIds: nextTargetIds };
-}

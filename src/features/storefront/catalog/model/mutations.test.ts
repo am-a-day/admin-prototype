@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   moveCatalogIdToIndex,
-  moveCatalogItemIds,
   reorderCatalogIds,
   validateCatalogSiblingReorder,
 } from "./mutations";
@@ -29,10 +28,14 @@ describe("catalog mutation order contract", () => {
     )).toEqual({ valid: false, reason: "Для переноса в другой раздел используйте «Переместить»" });
   });
 
-  it("moves an item into a destination at the canonical index", () => {
-    expect(moveCatalogItemIds(["a", "b"], ["c", "d"], "b", 1)).toEqual({
-      sourceIds: ["a"],
-      targetIds: ["c", "b", "d"],
-    });
+  it("rejects self and mixed-kind reorder targets", () => {
+    expect(validateCatalogSiblingReorder(
+      { kind: "item", id: "a", parentId: "leaf" },
+      { kind: "item", id: "a", parentId: "leaf" },
+    )).toEqual({ valid: false, reason: "Элемент уже находится в этой позиции" });
+    expect(validateCatalogSiblingReorder(
+      { kind: "item", id: "a", parentId: "root" },
+      { kind: "section", id: "b", parentId: "root" },
+    )).toEqual({ valid: false, reason: "Можно менять порядок только однотипных элементов" });
   });
 });

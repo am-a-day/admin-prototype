@@ -220,6 +220,16 @@ test("records explicit subsection move parent/order and current reload behavior"
   await expect(directChildRows(page, "Бар").allTextContents()).resolves.toEqual(barOrderBeforeMove);
 });
 
+test("keeps current section and descendants disabled as explicit move targets", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByRole("button", { name: "Действия с разделом Кухня", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить…" }).click();
+
+  const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  await expect(moveDialog.getByRole("button", { name: /^Кухня/ })).toBeDisabled();
+  await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
+});
+
 test("characterizes structure create draft context and cancel/back behavior", async ({ page }) => {
   const draft = await openStructureCreateDraft(page);
 
