@@ -1997,15 +1997,15 @@ function SectionEditor({
                   </span>
                 </button>
               </Tooltip>
+              <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <button
                     type="button"
                     aria-label={`Действия с разделом «${section.name}»`}
-                    className="flex min-w-0 items-center gap-1 rounded-[7px] px-1 text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    <span className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</span>
-                    <CaretDown size={13} className="shrink-0 text-[#57534d]" />
+                    <CaretDown size={13} />
                   </button>
                 </DropdownMenu.Trigger>
                 <DropdownContent align="start">
@@ -5536,10 +5536,10 @@ function CompositionRow({
 
   return (
     <CatalogDndRow kind="item" id={item.id} containerId={sectionId} surface="composition" disabled={!canDrag}>
-      {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
+      {({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
-          {...dragProps}
+          {...rowDragProps}
           data-composition-row={item.id}
           style={style}
           role="button"

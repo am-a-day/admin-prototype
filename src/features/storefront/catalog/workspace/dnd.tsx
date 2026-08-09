@@ -64,6 +64,7 @@ export function CatalogDndRow({
     setNodeRef: (element: HTMLElement | null) => void;
     setActivatorNodeRef: (element: HTMLElement | null) => void;
     dragProps: Record<string, unknown>;
+    rowDragProps: Record<string, unknown>;
     isDragging: boolean;
     style: CSSProperties;
   }) => ReactNode;
@@ -78,7 +79,9 @@ export function CatalogDndRow({
     transform: CSS.Transform.toString(transform),
     transition,
   };
-  return <>{children({ setNodeRef, setActivatorNodeRef, dragProps: disabled ? {} : { ...attributes, ...listeners }, isDragging, style })}</>;
+  const dragProps = disabled ? {} : { ...attributes, ...listeners };
+  const rowDragProps = disabled || !listeners?.onPointerDown ? {} : { onPointerDown: listeners.onPointerDown };
+  return <>{children({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style })}</>;
 }
 
 export const StructureDragHandle = forwardRef<

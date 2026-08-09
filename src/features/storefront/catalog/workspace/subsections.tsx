@@ -79,10 +79,10 @@ export function SubsectionRow({
 
   return (
     <CatalogDndRow kind="section" id={section.id} containerId={parentSectionId} surface="composition">
-      {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
+      {({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
-          {...dragProps}
+          {...rowDragProps}
           style={style}
           role="button"
           tabIndex={0}

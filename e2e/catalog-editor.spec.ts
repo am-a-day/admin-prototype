@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const firstItemTitle = "Омлет с томатами и сыром";
 const firstItemId = "669204cd-0d0d-4782-8784-27df185f169e";
 const breakfastSectionId = "bbcc693d-bb99-4666-b5b0-98c05cd63af9";
+const bakerySectionId = "97869cb7-1192-4bf6-9db8-6680fb2fc8a4";
 const structureCreateTitle = "Structure create characterization";
 const directCreateTitle = "Direct create characterization";
 
@@ -165,6 +166,7 @@ test("records direct subsection reorder and current reload behavior", async ({ p
   await breakfastHandle.focus();
   await breakfastHandle.press("Space");
   await breakfastHandle.press("ArrowDown");
+  await expect(page.locator('[id^="DndLiveRegion"]').last()).toContainText(`section:${bakerySectionId}`);
   await breakfastHandle.press("Space");
 
   await expect(page.getByText("Порядок подразделов изменён", { exact: true })).toBeVisible();

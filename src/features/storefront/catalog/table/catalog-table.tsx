@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEventHandler, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ColumnDef, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -482,10 +482,12 @@ function AuditDishRow({
   return (
     <div
       ref={setSortableNodeRef}
-      {...(reorderEnabled ? reorderAttributes : {})}
-      {...(reorderEnabled ? reorderListeners : {})}
+      {...(reorderEnabled && reorderListeners?.onPointerDown
+        ? { onPointerDown: reorderListeners.onPointerDown as PointerEventHandler<HTMLDivElement> }
+        : {})}
       data-catalog-table-row={item.id}
       data-row-reorder-enabled={reorderEnabled || undefined}
+      aria-roledescription={reorderEnabled ? "sortable" : undefined}
       data-reordering={isReordering || undefined}
       style={{
         transform: CSS.Transform.toString(reorderTransform),
