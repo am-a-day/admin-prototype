@@ -215,6 +215,19 @@ type CatalogStoreValue = CatalogState & {
   setAutosaveStatus: (id: string, status: CatalogSaveStatus) => void;
   activeEditorItemId: string | null;
   setActiveEditorItemId: (id: string | null) => void;
+  mutations: CatalogMutationFacade;
+};
+
+export type CatalogMutationFacade = {
+  createItem: (item: CatalogItem, order?: Record<string, string[]>) => void;
+  updateItem: (id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => void;
+  deleteItem: (id: string) => void;
+  deleteItems: (ids: Iterable<string>) => void;
+  moveItem: (id: string, sectionId: string, options?: { index?: number; sectionName?: string }) => void;
+  moveItems: (ids: Iterable<string>, sectionId: string, options?: { sectionName?: string }) => void;
+  setItemStatus: (id: string, status: CatalogItem["status"], scheduled?: boolean) => void;
+  reorderItems: (sectionId: string, ids: string[]) => void;
+  replaceItemOrder: (order: Record<string, string[]>) => void;
 };
 
 const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
@@ -266,6 +279,29 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const replaceItemOrder = useCallback((order: Record<string, string[]>) => {
     dispatch({ type: "replace-item-order", order });
   }, []);
+  const createItem = useCallback((item: CatalogItem, order?: Record<string, string[]>) => {
+    dispatch({ type: "add-item", item });
+    if (order) dispatch({ type: "replace-item-order", order });
+  }, []);
+  const deleteItems = useCallback((ids: Iterable<string>) => {
+    for (const id of ids) dispatch({ type: "delete-item", id });
+  }, []);
+  const moveItems = useCallback((ids: Iterable<string>, sectionId: string, options?: { sectionName?: string }) => {
+    const sectionName = options?.sectionName ?? state.sectionsById[sectionId]?.name;
+    if (!sectionName) return;
+    for (const id of ids) dispatch({ type: "move-item", id, sectionId, sectionName });
+  }, [state.sectionsById]);
+  const mutations = useMemo<CatalogMutationFacade>(() => ({
+    createItem,
+    updateItem,
+    deleteItem,
+    deleteItems,
+    moveItem,
+    moveItems,
+    setItemStatus,
+    reorderItems: setItemOrder,
+    replaceItemOrder,
+  }), [createItem, updateItem, deleteItems, moveItem, moveItems, setItemStatus, setItemOrder, replaceItemOrder]);
   const setAutosaveStatus = useCallback((id: string, status: CatalogSaveStatus) => {
     dispatch({ type: "set-autosave", id, status });
   }, []);
@@ -285,6 +321,7 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     setAutosaveStatus,
     activeEditorItemId,
     setActiveEditorItemId,
+    mutations,
   }), [
     state,
     updateItem,
@@ -297,6 +334,7 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     replaceItemOrder,
     setAutosaveStatus,
     activeEditorItemId,
+    mutations,
   ]);
 
   return <CatalogStoreContext.Provider value={value}>{children}</CatalogStoreContext.Provider>;

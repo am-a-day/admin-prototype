@@ -108,6 +108,7 @@ import {
   getSectionScopeIds,
   sortItemsByPrice,
 } from "./catalog/model/selectors";
+import { moveCatalogIdToIndex, moveCatalogItemIds, reorderCatalogIds } from "./catalog/model/mutations";
 import {
   CATALOG_VIEW_MODE_GROUPS,
   HYBRID_PRIMARY_FILTER_IDS,
@@ -126,8 +127,6 @@ import {
 } from "./catalog/model/tree";
 import {
   cloneStringArrayRecord,
-  getSortableDestinationIndex,
-  moveId,
   orderItemsByPositionOrder,
   orderSectionItems,
   validateCatalogTreeDrop,
@@ -3160,15 +3159,20 @@ function PopulatedWorkspace({
   const {
     items: catalogStoreItems,
     itemOrderBySection: positionOrderBySection,
-    addItem: addCatalogItem,
-    deleteItem: deleteCatalogItem,
-    moveItem: moveCatalogItem,
-    setItemStatus: setCatalogItemStatus,
-    replaceItemOrder: replaceCatalogItemOrder,
     activeEditorItemId,
     setActiveEditorItemId,
     revision: catalogRevision,
+    mutations: catalogMutations,
   } = useCatalogStore();
+  const {
+    createItem: createCatalogItem,
+    deleteItem: deleteCatalogItem,
+    deleteItems: deleteCatalogItems,
+    moveItem: moveCatalogItem,
+    moveItems: moveCatalogItems,
+    setItemStatus: setCatalogItemStatus,
+    replaceItemOrder: replaceCatalogItemOrder,
+  } = catalogMutations;
   const sourceCatalogItems = catalogStoreItems;
   void createdItems;
   const preferredSectionId =
@@ -3634,17 +3638,12 @@ function PopulatedWorkspace({
   };
 
   const reorderItemsInSection = (sectionId: string, draggedId: string, targetId: string) => {
-    if (draggedId === targetId) return;
     const ids = orderSectionItems(
       allItems.filter((item) => item.sectionId === sectionId && item.status !== "archive"),
       positionOrderBySection[sectionId],
     ).map((item) => item.id);
-    const fromIndex = ids.indexOf(draggedId);
-    const toIndex = ids.indexOf(targetId);
-    if (fromIndex < 0 || toIndex < 0) return;
-    const nextIds = [...ids];
-    const [draggedIdValue] = nextIds.splice(fromIndex, 1);
-    nextIds.splice(toIndex, 0, draggedIdValue);
+    const nextIds = moveCatalogIdToIndex(ids, draggedId, targetId);
+    if (nextIds.every((id, index) => id === ids[index])) return;
     setPositionOrderBySection((current) => ({ ...current, [sectionId]: nextIds }));
     setFeedback("Порядок позиций изменён");
   };
@@ -3656,13 +3655,10 @@ function PopulatedWorkspace({
     zone: Exclude<CatalogDropZone, "inside">,
   ) => {
     const ids = sectionTableItems.map((item) => item.id);
-    const fromIndex = ids.indexOf(draggedId);
-    const overIndex = ids.indexOf(targetId);
-    if (fromIndex < 0 || overIndex < 0) return;
-    const toIndex = getSortableDestinationIndex(fromIndex, overIndex, zone);
+    const nextIds = reorderCatalogIds(ids, draggedId, targetId, zone);
     setPositionOrderBySection((current) => ({
       ...current,
-      [containerId]: moveId(ids, fromIndex, toIndex),
+      [containerId]: nextIds,
     }));
   };
 
@@ -3676,33 +3672,30 @@ function PopulatedWorkspace({
     const dragged = allItems.find((item) => item.id === draggedId);
     if (!dragged) return;
     const sourceSectionId = dragged.sectionId;
-    let targetInsertionIndex: number | undefined;
-    setPositionOrderBySection((current) => {
-      const getIds = (sectionId: string, excludeDragged = false) => orderSectionItems(
-        allItems.filter((item) => item.sectionId === sectionId && (!excludeDragged || item.id !== draggedId)),
-        current[sectionId],
-      ).map((item) => item.id);
-      if (sourceSectionId === targetSectionId) {
-        if (!targetItemId || mode === "inside") return current;
+    const getIds = (sectionId: string, excludeDragged = false) => orderSectionItems(
+      allItems.filter((item) => item.sectionId === sectionId && (!excludeDragged || item.id !== draggedId)),
+      positionOrderBySection[sectionId],
+    ).map((item) => item.id);
+    if (sourceSectionId === targetSectionId) {
+      if (targetItemId && mode !== "inside") {
         const ids = getIds(sourceSectionId);
-        const fromIndex = ids.indexOf(draggedId);
-        const overIndex = ids.indexOf(targetItemId);
-        if (fromIndex < 0 || overIndex < 0) return current;
-        const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
-        return { ...current, [sourceSectionId]: moveId(ids, fromIndex, toIndex) };
+        setPositionOrderBySection((current) => ({
+          ...current,
+          [sourceSectionId]: reorderCatalogIds(ids, draggedId, targetItemId, mode),
+        }));
       }
-
+    } else {
       const sourceIds = getIds(sourceSectionId, true);
       const targetIds = getIds(targetSectionId, true);
       const targetIndex = targetItemId ? targetIds.indexOf(targetItemId) : -1;
       const insertionIndex = targetIndex < 0 ? targetIds.length : mode === "after" ? targetIndex + 1 : targetIndex;
-      targetInsertionIndex = insertionIndex;
-      targetIds.splice(insertionIndex, 0, draggedId);
-      const next = { ...current, [sourceSectionId]: sourceIds, [targetSectionId]: targetIds };
-      return next;
-    });
-    if (sourceSectionId !== targetSectionId) {
-      moveCatalogItem(draggedId, targetSectionId, { index: targetInsertionIndex });
+      const moved = moveCatalogItemIds(sourceIds, targetIds, draggedId, insertionIndex);
+      setPositionOrderBySection((current) => ({
+        ...current,
+        [sourceSectionId]: moved.sourceIds,
+        [targetSectionId]: moved.targetIds,
+      }));
+      moveCatalogItem(draggedId, targetSectionId, { index: insertionIndex });
     }
     if (announce) {
       setLastItemBySection((current) => ({ ...current, [targetSectionId]: draggedId }));
@@ -3733,11 +3726,10 @@ function PopulatedWorkspace({
       if (sourceParentId === targetParentId) {
         if (!targetSectionId || mode === "inside") return current;
         const ids = getIds(sourceParentId);
-        const fromIndex = ids.indexOf(draggedId);
-        const overIndex = ids.indexOf(targetSectionId);
-        if (fromIndex < 0 || overIndex < 0) return current;
-        const toIndex = getSortableDestinationIndex(fromIndex, overIndex, mode);
-        return { ...current, [sourceParentId ?? "__root__"]: moveId(ids, fromIndex, toIndex) };
+        return {
+          ...current,
+          [sourceParentId ?? "__root__"]: reorderCatalogIds(ids, draggedId, targetSectionId, mode),
+        };
       }
 
       const sourceIds = getIds(sourceParentId, true);
@@ -4416,17 +4408,17 @@ function PopulatedWorkspace({
       createdItem,
       ...readCreatedCatalogItems().filter((item) => item.id !== createdItem.id),
     ]);
-    addCatalogItem(createdItem);
-    setPositionOrderBySection((current) => ({
-      ...current,
+    const nextPositionOrder = {
+      ...positionOrderBySection,
       [createdItem.sectionId]: [
         createdItem.id,
-        ...(current[createdItem.sectionId] ?? allItems
+        ...(positionOrderBySection[createdItem.sectionId] ?? allItems
           .filter((item) => item.sectionId === createdItem.sectionId)
           .map((item) => item.id))
           .filter((id) => id !== createdItem.id),
       ],
-    }));
+    };
+    createCatalogItem(createdItem, nextPositionOrder);
     setStructurePositionDraft(null);
     setStructureCreateSubmitting(false);
     setSelectedSectionId(createdItem.sectionId);
@@ -4621,7 +4613,7 @@ function PopulatedWorkspace({
       allItems.filter((item) => subtreeIds.has(item.sectionId)).map((item) => item.id),
     );
     setDeletedSectionIds((prev) => new Set([...prev, ...subtreeIds]));
-    deletedItemIdSet.forEach(deleteCatalogItem);
+    deleteCatalogItems(deletedItemIdSet);
     writeCreatedCatalogItems(readCreatedCatalogItems().filter((item) => !deletedItemIdSet.has(item.id)));
     setSectionStatusOverrides((prev) => {
       const next = { ...prev };
@@ -4948,7 +4940,7 @@ function PopulatedWorkspace({
       const targets = moveRequest.entityIds
         .map((id) => allItems.find((item) => item.id === id))
         .filter((item): item is CatalogItem => item != null && item.sectionId !== targetSectionId);
-      targets.forEach((target) => moveCatalogItem(target.id, targetSectionId, { sectionName: destination.name }));
+      moveCatalogItems(targets.map((target) => target.id), targetSectionId, { sectionName: destination.name });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
       registerChange("catalog");
       const count = moveRequest.entityIds.length;
@@ -6770,16 +6762,19 @@ function OverviewWorkspace({
   const {
     items,
     itemOrderBySection,
-    replaceItemOrder,
-    updateItem,
-    addItem,
-    deleteItem,
-    moveItem,
-    setItemStatus,
     setAutosaveStatus,
     setActiveEditorItemId,
     revision: catalogRevision,
+    mutations: catalogMutations,
   } = useCatalogStore();
+  const {
+    createItem: addItem,
+    updateItem,
+    deleteItem,
+    moveItem,
+    setItemStatus,
+    replaceItemOrder,
+  } = catalogMutations;
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
   const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext(overviewContextStorageKey));
   const activeFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v2`;
@@ -7012,10 +7007,8 @@ function OverviewWorkspace({
   const handleTableReorder = (event: DragEndEvent) => {
     if (!canReorderTable || !scopeSection || !event.over || event.active.id === event.over.id) return;
     const previousIds = [...visibleIds];
-    const fromIndex = previousIds.indexOf(String(event.active.id));
-    const toIndex = previousIds.indexOf(String(event.over.id));
-    if (fromIndex < 0 || toIndex < 0) return;
-    const nextIds = moveId(previousIds, fromIndex, toIndex);
+    const nextIds = moveCatalogIdToIndex(previousIds, String(event.active.id), String(event.over.id));
+    if (nextIds.every((id, index) => id === previousIds[index])) return;
     const previousOrder = cloneStringArrayRecord(itemOrderBySection);
     try {
       replaceItemOrder({ ...itemOrderBySection, [scopeSection.id]: nextIds });
