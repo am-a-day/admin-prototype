@@ -9,6 +9,7 @@
     "build:sites": "tsc -b && vite build --outDir dist/client && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
     "vite": "^6.3.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.1.8",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
