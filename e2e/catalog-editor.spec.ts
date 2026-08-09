@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 const firstItemTitle = "Омлет с томатами и сыром";
 const firstItemId = "669204cd-0d0d-4782-8784-27df185f169e";
 const breakfastSectionId = "bbcc693d-bb99-4666-b5b0-98c05cd63af9";
+const structureCreateTitle = "Structure create characterization";
+const directCreateTitle = "Direct create characterization";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -29,6 +31,35 @@ async function openEntityItem(page: Page) {
   await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
   await page.getByText(firstItemTitle, { exact: true }).click();
   await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+}
+
+async function openStructureCreateDraft(page: Page) {
+  await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
+  await page.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();
+  const draft = page.locator("[data-structure-position-draft]");
+  await expect(draft).toBeVisible();
+  await expect(draft.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
+  return draft;
+}
+
+async function openDirectCreateDraft(page: Page) {
+  await page.goto(`/?editorNav=unified&createPosition=1&sectionId=${breakfastSectionId}`);
+  await expect(page.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
+}
+
+async function preserveLocalStorageOnReload(page: Page) {
+  await page.addInitScript(() => {
+    const snapshot = window.sessionStorage.getItem("catalog-e2e-local-storage-snapshot");
+    if (!snapshot) return;
+    const values = JSON.parse(snapshot) as Record<string, string>;
+    Object.entries(values).forEach(([key, value]) => window.localStorage.setItem(key, value));
+  });
+  await page.evaluate(() => {
+    const values = Object.fromEntries(
+      Object.entries(window.localStorage).map(([key, value]) => [key, value]),
+    );
+    window.sessionStorage.setItem("catalog-e2e-local-storage-snapshot", JSON.stringify(values));
+  });
 }
 
 async function getSubsectionOrder(page: Page) {
@@ -187,4 +218,113 @@ test("records explicit subsection move parent/order and current reload behavior"
   await page.getByRole("button", { name: "Раскрыть раздел Бар", exact: true }).click();
   // Current baseline: the moved subsection returns to its original parent/order after a full reload.
   await expect(directChildRows(page, "Бар").allTextContents()).resolves.toEqual(barOrderBeforeMove);
+});
+
+test("characterizes structure create draft context and cancel/back behavior", async ({ page }) => {
+  const draft = await openStructureCreateDraft(page);
+
+  await expect(draft.getByText("Завтраки", { exact: true })).toBeVisible();
+  await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(structureCreateTitle);
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).not.toBeVisible();
+
+  // Current baseline: structure create has no create history entry; Back only
+  // cancels the local draft and keeps the entity section URL.
+  await draft.getByRole("button", { name: "Назад" }).click();
+  await expect(page.getByRole("heading", { name: "Завтраки" })).toBeVisible();
+  const afterBack = new URL(page.url());
+  expect(afterBack.searchParams.get("sectionId")).toBe(breakfastSectionId);
+  expect(afterBack.searchParams.get("positionId")).toBeNull();
+  await expect(page.getByText(structureCreateTitle, { exact: true })).not.toBeVisible();
+});
+
+test("characterizes structure create completion, active item, section, queue, and reload", async ({ page }) => {
+  const draft = await openStructureCreateDraft(page);
+  await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(structureCreateTitle);
+  await draft.getByRole("button", { name: "Создать", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
+  const createdUrl = new URL(page.url());
+  expect(createdUrl.searchParams.get("sectionId")).toBeNull();
+  expect(createdUrl.searchParams.get("positionId")).toBeTruthy();
+  await expect(
+    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
+      .getByRole("button", { name: "Завтраки", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).not.toBeVisible();
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect(page).toHaveURL(createdUrl.toString());
+  await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
+      .getByRole("button", { name: "Завтраки", exact: true }),
+  ).toBeVisible();
+});
+
+test("characterizes direct create cancel and current persistence behavior", async ({ page }) => {
+  await openDirectCreateDraft(page);
+
+  const createUrl = new URL(page.url());
+  expect(createUrl.searchParams.get("createPosition")).toBe("1");
+  expect(createUrl.searchParams.get("sectionId")).toBe(breakfastSectionId);
+  await page.getByPlaceholder("Например, Пицца").fill(directCreateTitle);
+  await page.getByRole("button", { name: "Отменить", exact: true }).click();
+  await page.getByRole("button", { name: "Выйти без сохранения", exact: true }).click();
+
+  // Current baseline: discarding the direct draft removes the create route,
+  // but leaves its empty draft item in the legacy editor queue.
+  await expect(page.getByRole("navigation", { name: "Положение позиции в каталоге" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Введите перевод…" })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Новая позиция" })).not.toBeVisible();
+  const afterCancel = new URL(page.url());
+  expect(afterCancel.searchParams.get("createPosition")).toBeNull();
+  expect(afterCancel.searchParams.get("sectionId")).toBe(breakfastSectionId);
+  await expect(page.getByText(directCreateTitle, { exact: true })).not.toBeVisible();
+});
+
+test("characterizes direct create Back/Forward, active queue, and reload behavior", async ({ page }) => {
+  await openDirectCreateDraft(page);
+  const createUrl = new URL(page.url());
+
+  // Current baseline: direct create owns a browser history entry; Back closes
+  // the draft and Forward reconstructs pendingOpen and the draft editor.
+  await page.goBack();
+  await expect(page.getByPlaceholder("Поиск по названию")).toBeVisible();
+  const afterBack = new URL(page.url());
+  expect(afterBack.searchParams.get("createPosition")).toBeNull();
+  expect(afterBack.searchParams.get("sectionId")).toBe(breakfastSectionId);
+
+  await page.goForward();
+  await expect(page).toHaveURL(createUrl.toString());
+  await expect(page.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
+
+  await page.getByPlaceholder("Например, Пицца").fill(directCreateTitle);
+  await page.getByRole("button", { name: "Создать", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: directCreateTitle })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
+  const completedUrl = new URL(page.url());
+  expect(completedUrl.searchParams.get("createPosition")).toBeNull();
+  expect(completedUrl.searchParams.get("positionId")).toBeNull();
+  expect(completedUrl.searchParams.get("sectionId")).toBe(breakfastSectionId);
+  await expect(
+    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
+      .getByRole("button", { name: "Завтраки", exact: true }),
+  ).toBeVisible();
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect.poll(async () => page.evaluate((title) => {
+    const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
+    return stored.some((item) => item.title === title);
+  }, directCreateTitle)).toBe(true);
+  // Current baseline: direct create persists the item record, but the current
+  // legacy reload does not expose that created title in the visible catalog UI.
+  await expect(page.getByText(directCreateTitle, { exact: true })).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: directCreateTitle })).not.toBeVisible();
 });
