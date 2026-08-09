@@ -44,15 +44,6 @@ function getPriceSortTooltip(direction: PriceSortDirection) {
   return "Сбросить сортировку";
 }
 
-function plural(count: number, one: string, few: string, many: string) {
-  const abs = Math.abs(count);
-  const mod10 = abs % 10;
-  const mod100 = abs % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
 function getPrimaryRowStatusLabel(item: CatalogItem) {
   if (item.status === "archive") return "В архиве";
   if (item.status === "stopped") return "На стопе";
@@ -279,6 +270,7 @@ export function TableHeaderRow({
   onPriceSortChange,
   table,
   onResetColumns,
+  offsetForLocalHeader = false,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -290,11 +282,15 @@ export function TableHeaderRow({
   onPriceSortChange: () => void;
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
+  offsetForLocalHeader?: boolean;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
-    <div className="sticky top-0 z-10 bg-white" data-catalog-table-header>
+    <div
+      className={cn("sticky z-10 bg-white", offsetForLocalHeader ? "top-11" : "top-0")}
+      data-catalog-table-header
+    >
       <div className="flex h-[38px] items-center">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
@@ -764,9 +760,6 @@ export function VirtualizedAuditRows({
 
 export function SelectionToolbar({
   count,
-  checked,
-  indeterminate,
-  onSelectAll,
   onClear,
   onSetStatus,
   onSetAvailable,
@@ -778,9 +771,6 @@ export function SelectionToolbar({
   onOpenDelete,
 }: {
   count: number;
-  checked: boolean;
-  indeterminate: boolean;
-  onSelectAll: (checked: boolean) => void;
   onClear: () => void;
   onSetStatus: (status: CatalogItem["status"]) => void;
   onSetAvailable: () => void;
@@ -791,74 +781,141 @@ export function SelectionToolbar({
   onOpenPlaceholder: (title: string, text: string) => void;
   onOpenDelete: () => void;
 }) {
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [layout, setLayout] = useState<"full" | "medium" | "compact" | "minimal">("full");
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar || typeof ResizeObserver === "undefined") return;
+    const updateLayout = (width: number) => {
+      setLayout(width >= 600 ? "full" : width >= 500 ? "medium" : width >= 330 ? "compact" : "minimal");
+    };
+    updateLayout(toolbar.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => updateLayout(entry.contentRect.width));
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
+
+  const showStatus = layout === "full" || layout === "medium";
+  const showAvailability = layout === "full" || layout === "medium";
+  const showMove = layout !== "minimal";
+  const showDiscount = layout === "full";
+
   return (
-    <div className="flex h-8 min-w-0 items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2] shadow-[0_4px_14px_rgba(41,37,36,0.08)]">
-      <div className="flex h-full min-w-0 items-center">
-        <TableCheckbox
-          ariaLabel="Выбрать все видимые позиции"
-          checked={checked}
-          indeterminate={indeterminate}
-          onChange={onSelectAll}
-        />
-        <button
-          type="button"
-          onClick={onClear}
-          className="flex h-full items-center px-2.5 text-[13px] font-medium text-[#2563eb] transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          title="Снять выделение"
-        >
-          {count} {plural(count, "выбрана", "выбраны", "выбрано")}
-        </button>
-        <ToolbarDivider />
-        <ToolbarDropdown label="Статус">
-          <DropdownActionItem onSelect={() => onSetStatus("active")}>В меню</DropdownActionItem>
-          <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">В архив</DropdownActionItem>
-        </ToolbarDropdown>
-        <ToolbarDivider />
-        <ToolbarDropdown label="Доступность">
-          <DropdownActionItem onSelect={() => onSetStatus("stopped")}>Поставить на стоп</DropdownActionItem>
-          <DropdownActionItem onSelect={() => onSetStatus("active")}>Убрать со стопа</DropdownActionItem>
-          <DropdownActionItem onSelect={() => onSetStatus("coming-soon")}>Скоро будет</DropdownActionItem>
-          <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
-          <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
-        </ToolbarDropdown>
-        <ToolbarDivider />
-        <button
-          type="button"
-          onClick={(event) => onMove(getMovePopoverAnchor(event))}
-          className="flex h-full items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <ArrowsOutCardinal size={14} />
-          Переместить в раздел…
-        </button>
-        <ToolbarDivider />
-        <ToolbarDropdown label="Скидка">
-          <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-          <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
-        </ToolbarDropdown>
-        <ToolbarDivider />
-        <ToolbarDropdown label="Ещё">
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Добавить тег", "Добавление тегов будет добавлено позже")}>
-            Добавить тег
-          </DropdownActionItem>
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Убрать тег", "Удаление тегов будет добавлено позже")}>
-            Убрать тег
-          </DropdownActionItem>
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Дублировать", "Дублирование будет добавлено позже")}>
-            Дублировать
-          </DropdownActionItem>
+    <div
+      ref={toolbarRef}
+      data-catalog-selection-toolbar
+      data-toolbar-layout={layout}
+      className="flex h-8 w-full min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f7f6f2]"
+    >
+      <span className="shrink-0 px-2.5 text-[13px] font-medium tabular-nums text-[#292524]">
+        Выбрано: <span className="font-semibold">{count}</span>
+      </span>
+      {showStatus && (
+        <>
+          <ToolbarDivider />
+          <ToolbarDropdown label="Витрина">
+            <DropdownActionItem onSelect={() => onSetStatus("active")}>В меню</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">В архив</DropdownActionItem>
+          </ToolbarDropdown>
+        </>
+      )}
+      {showAvailability && (
+        <>
+          <ToolbarDivider />
+          <ToolbarDropdown label="Для заказа">
+            <DropdownActionItem onSelect={() => onSetStatus("stopped")}>Поставить на стоп</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSetStatus("active")}>Убрать со стопа</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSetStatus("coming-soon")}>Скоро будет</DropdownActionItem>
+            <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
+            <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
+          </ToolbarDropdown>
+        </>
+      )}
+      {showMove && (
+        <>
+          <ToolbarDivider />
+          <button
+            type="button"
+            onClick={(event) => onMove(getMovePopoverAnchor(event))}
+            className="flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <ArrowsOutCardinal size={14} />
+            Переместить
+          </button>
+        </>
+      )}
+      {showDiscount && (
+        <>
+          <ToolbarDivider />
+          <ToolbarDropdown label="Скидка">
+            <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
+            <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
+          </ToolbarDropdown>
+        </>
+      )}
+      <span className="min-w-0 flex-1" />
+      <ToolbarDivider />
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Ещё действия"
+            className="flex h-full w-8 shrink-0 items-center justify-center text-[18px] leading-none text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            ⋯
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          {!showStatus && (
+            <>
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Витрина</DropdownMenu.Label>
+              <DropdownActionItem onSelect={() => onSetStatus("active")}>В меню</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">В архив</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            </>
+          )}
+          {!showAvailability && (
+            <>
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Для заказа</DropdownMenu.Label>
+              <DropdownActionItem onSelect={() => onSetStatus("stopped")}>Поставить на стоп</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSetStatus("active")}>Убрать со стопа</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSetStatus("coming-soon")}>Скоро будет</DropdownActionItem>
+              <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
+              <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            </>
+          )}
+          {!showMove && (
+            <>
+              <DropdownActionItem onSelect={(event) => onMove(getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            </>
+          )}
+          {!showDiscount && (
+            <>
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
+              <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
+              <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            </>
+          )}
+          <DropdownActionItem onSelect={() => onOpenPlaceholder("Добавить тег", "Добавление тегов будет добавлено позже")}>Добавить тег</DropdownActionItem>
+          <DropdownActionItem onSelect={() => onOpenPlaceholder("Убрать тег", "Удаление тегов будет добавлено позже")}>Убрать тег</DropdownActionItem>
+          <DropdownActionItem onSelect={() => onOpenPlaceholder("Дублировать", "Дублирование будет добавлено позже")}>Дублировать</DropdownActionItem>
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
           <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
-        </ToolbarDropdown>
-        <ToolbarDivider />
-        <button
-          type="button"
-          onClick={onClear}
-          aria-label="Снять выбор"
-          className="flex h-full w-8 items-center justify-center text-[17px] leading-none text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          ×
-        </button>
-      </div>
+        </DropdownContent>
+      </DropdownMenu.Root>
+      <ToolbarDivider />
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Снять выбор"
+        className="flex h-full w-8 shrink-0 items-center justify-center text-[17px] leading-none text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        ×
+      </button>
     </div>
   );
 }

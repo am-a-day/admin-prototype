@@ -6870,6 +6870,17 @@ function OverviewWorkspace({
     : statusMeta.emptyText;
 
   const clearSelection = () => setSelectedIds(new Set());
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || bulkDialog || moveRequest) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="menu"]')) return;
+      clearSelection();
+    };
+    window.addEventListener("keydown", handleEscape, true);
+    return () => window.removeEventListener("keydown", handleEscape, true);
+  }, [bulkDialog, moveRequest, selectedIds.size]);
   const showFeedback = (message: string) => {
     setFeedback(message);
   };
@@ -7761,36 +7772,56 @@ function OverviewWorkspace({
               </div>
             )}
             <div className={cn(
-              "mt-3 min-w-0 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white pb-1 pt-0.5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
+              "mt-3 min-w-0 overflow-clip rounded-[13px] border border-[#e7e5e4] bg-white pb-1 pt-0.5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
             )} data-catalog-items-card>
               {embedded && (
-                <div className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
-                  {!tableHeader ? (
-                    <CatalogScopeSelect
-                      value={workspaceSectionScopeId}
-                      onChange={setWorkspaceSectionScopeId}
-                      onReset={() => setWorkspaceSectionScopeId(null)}
-                      allOptionLabel="Все разделы"
-                      compact
+                <div
+                  data-catalog-local-header
+                  className="sticky top-0 z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#f0efe9] bg-white px-3"
+                >
+                  {selectedIds.size > 0 ? (
+                    <SelectionToolbar
+                      count={selectedIds.size}
+                      onClear={clearSelection}
+                      onSetStatus={setSelectedStatus}
+                      onSetAvailable={setSelectedAvailable}
+                      onClearDiscount={clearSelectedDiscount}
+                      onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
+                      onOpenDiscount={() => setBulkDialog({ type: "discount" })}
+                      onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
+                      onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
+                      onOpenDelete={() => setBulkDialog({ type: "delete" })}
                     />
-                  ) : <span className="min-w-0 flex-1 text-[13px] font-medium text-[#44403b]">Позиции</span>}
-                  {onAddPosition && allowPositionCreation && (
-                    <Tooltip label={positionCreateDisabledReason ?? ""} side="top" disabled={!positionCreateDisabledReason}>
-                      <span className="shrink-0">
-                        <button
-                          type="button"
-                          onClick={onAddPosition}
-                          disabled={Boolean(positionCreateDisabledReason)}
-                          data-position-create-button
-                          className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white pl-1 pr-2 text-[12px] font-normal leading-[17px] text-[#292524] transition hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                        >
-                          <PlusCircle size={16} weight="regular" />
-                          <span>Новая позиция</span>
-                        </button>
-                      </span>
-                    </Tooltip>
+                  ) : (
+                    <>
+                      {!tableHeader ? (
+                        <CatalogScopeSelect
+                          value={workspaceSectionScopeId}
+                          onChange={setWorkspaceSectionScopeId}
+                          onReset={() => setWorkspaceSectionScopeId(null)}
+                          allOptionLabel="Все разделы"
+                          compact
+                        />
+                      ) : <span className="min-w-0 flex-1 text-[13px] font-medium text-[#44403b]">Позиции</span>}
+                      {onAddPosition && allowPositionCreation && (
+                        <Tooltip label={positionCreateDisabledReason ?? ""} side="top" disabled={!positionCreateDisabledReason}>
+                          <span className="shrink-0">
+                            <button
+                              type="button"
+                              onClick={onAddPosition}
+                              disabled={Boolean(positionCreateDisabledReason)}
+                              data-position-create-button
+                              className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white pl-1 pr-2 text-[12px] font-normal leading-[17px] text-[#292524] transition hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                            >
+                              <PlusCircle size={16} weight="regular" />
+                              <span>Новая позиция</span>
+                            </button>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </>
                   )}
-                  </div>
+                </div>
               )}
               {visible.length === 0 ? (
                 <div className="p-6">
@@ -7844,27 +7875,9 @@ function OverviewWorkspace({
                       onPriceSortChange={handlePriceSortChange}
                       table={catalogTable}
                       onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                      offsetForLocalHeader={embedded}
                     />
                   <div>
-                    {selectedIds.size > 0 && (
-                      <div className="sticky top-[58px] z-[9] flex items-center bg-white py-1">
-                        <SelectionToolbar
-                          count={selectedIds.size}
-                          checked={allVisibleSelected}
-                          indeterminate={!allVisibleSelected && someVisibleSelected}
-                          onSelectAll={setVisibleSelected}
-                          onClear={clearSelection}
-                          onSetStatus={setSelectedStatus}
-                          onSetAvailable={setSelectedAvailable}
-                          onClearDiscount={clearSelectedDiscount}
-                          onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
-                          onOpenDiscount={() => setBulkDialog({ type: "discount" })}
-                          onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
-                          onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
-                          onOpenDelete={() => setBulkDialog({ type: "delete" })}
-                        />
-                      </div>
-                    )}
                     <DndContext
                       sensors={tableReorderSensors}
                       collisionDetection={closestCenter}

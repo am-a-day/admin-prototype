@@ -267,6 +267,99 @@ test("keeps current section and descendants disabled as explicit move targets", 
   await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
 });
 
+test("keeps bulk selection commands in the sticky local header without shifting table rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await page.goto("/?editorNav=unified");
+
+  const scrollContainer = page.locator("[data-catalog-results-scroll]");
+  const localHeader = page.locator("[data-catalog-local-header]");
+  const tableHeader = page.locator("[data-catalog-table-header]");
+  const firstRow = page.locator("[data-catalog-table-row]").first();
+  const firstCheckbox = firstRow.getByRole("checkbox");
+  const normalGeometry = await Promise.all([
+    localHeader.boundingBox(),
+    tableHeader.boundingBox(),
+    firstRow.boundingBox(),
+  ]);
+
+  await firstCheckbox.check();
+  const toolbar = page.locator("[data-catalog-selection-toolbar]");
+  await expect(toolbar).toContainText("Выбрано: 1");
+  await expect(page.getByRole("button", { name: "Витрина" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Для заказа" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Переместить", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ещё действия" })).toBeVisible();
+
+  const selectionGeometry = await Promise.all([
+    localHeader.boundingBox(),
+    tableHeader.boundingBox(),
+    firstRow.boundingBox(),
+  ]);
+  expect(normalGeometry.every(Boolean)).toBe(true);
+  expect(selectionGeometry.every(Boolean)).toBe(true);
+  for (let index = 0; index < normalGeometry.length; index += 1) {
+    expect(Math.abs(normalGeometry[index]!.y - selectionGeometry[index]!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(normalGeometry[index]!.height - selectionGeometry[index]!.height)).toBeLessThanOrEqual(1);
+  }
+  expect(selectionGeometry[2]!.y).toBeGreaterThanOrEqual(selectionGeometry[1]!.y + selectionGeometry[1]!.height - 1);
+
+  await page.getByRole("button", { name: "Переместить", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).not.toBeVisible();
+  await expect(toolbar).not.toBeVisible();
+
+  await firstCheckbox.check();
+  await page.getByRole("button", { name: "Для заказа" }).click();
+  await page.getByRole("menuitem", { name: "Всегда доступно" }).click();
+  await expect(page.getByText("Позиции всегда доступны", { exact: true })).toBeVisible();
+  await expect(toolbar).not.toBeVisible();
+
+  await firstCheckbox.check();
+  await scrollContainer.evaluate((element) => { element.scrollTop = 500; });
+  await expect.poll(async () => scrollContainer.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(toolbar).toContainText("Выбрано: 1");
+  const [scrollBox, stickyLocalBox, stickyTableBox] = await Promise.all([
+    scrollContainer.boundingBox(),
+    localHeader.boundingBox(),
+    tableHeader.boundingBox(),
+  ]);
+  expect(scrollBox && stickyLocalBox && stickyTableBox).toBeTruthy();
+  expect(Math.abs(stickyLocalBox!.y - scrollBox!.y)).toBeLessThanOrEqual(1);
+  expect(stickyTableBox!.y).toBeGreaterThanOrEqual(stickyLocalBox!.y + stickyLocalBox!.height - 1);
+
+  await page.getByRole("button", { name: "Снять выбор" }).click();
+  await expect(toolbar).not.toBeVisible();
+  await expect(localHeader.getByText("Новая позиция", { exact: true })).toBeVisible();
+
+  await scrollContainer.evaluate((element) => { element.scrollTop = 0; });
+  await firstCheckbox.check();
+  await page.keyboard.press("Escape");
+  await expect(toolbar).not.toBeVisible();
+});
+
+test("keeps the bulk toolbar compact at a narrow workspace width", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await page.goto("/?editorNav=unified");
+
+  await page.locator("[data-catalog-table-row]").first().getByRole("checkbox").check();
+  const localHeader = page.locator("[data-catalog-local-header]");
+  const toolbar = page.locator("[data-catalog-selection-toolbar]");
+  await expect(toolbar).toContainText("Выбрано: 1");
+  await expect(page.getByRole("button", { name: "Ещё действия" })).toBeVisible();
+
+  const metrics = await toolbar.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    height: element.getBoundingClientRect().height,
+    localHeaderHeight: element.parentElement?.getBoundingClientRect().height ?? 0,
+  }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
+  expect(metrics.height).toBe(32);
+  expect(metrics.localHeaderHeight).toBe(44);
+  await expect(localHeader).toHaveCSS("position", "sticky");
+});
+
 test("characterizes structure create draft context and cancel/back behavior", async ({ page }) => {
   const draft = await openStructureCreateDraft(page);
 

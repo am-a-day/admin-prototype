@@ -132,7 +132,7 @@ describe("catalog observable behavior baseline", () => {
     const rowCheckbox = screen.getAllByRole("checkbox", { name: /Выбрать / })[0];
     expect(rowCheckbox).toBeDefined();
     await user.click(rowCheckbox);
-    expect(screen.getByText("1 выбрана", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-selection-toolbar]")).toHaveTextContent("Выбрано: 1");
 
     await user.click(screen.getByRole("button", { name: /Заполненность/ }));
     const completenessMenu = screen.getByRole("menu");
@@ -180,8 +180,10 @@ describe("catalog observable behavior baseline", () => {
     const card = document.querySelector("[data-catalog-items-card]");
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText("Позиции", { exact: true })).toBeInTheDocument();
+    const localHeader = document.querySelector("[data-catalog-local-header]");
+    expect(localHeader).toHaveClass("sticky", "top-0", "bg-white");
     const tableHeader = document.querySelector("[data-catalog-table-header]");
-    expect(tableHeader).toHaveClass("sticky", "top-0", "bg-white");
+    expect(tableHeader).toHaveClass("sticky", "top-11", "bg-white");
     expect(tableHeader?.parentElement?.parentElement).not.toHaveClass("overflow-x-auto");
 
     const reorderableRow = document.querySelector("[data-row-reorder-enabled=true]");
