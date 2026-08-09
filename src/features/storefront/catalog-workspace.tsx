@@ -133,7 +133,6 @@ import {
 import {
   buildCatalogTree as buildLocalSectionTree,
   filterSectionTree,
-  findSectionPath,
   flattenCatalogTree as flattenSections,
   getParentAvailability,
   getSectionSubtreeIds,
@@ -151,6 +150,26 @@ import {
   validateCatalogTreeDrop,
   type CatalogTreeDropIntent,
 } from "./catalog/model/reorder";
+import {
+  CatalogTreeThumbnail,
+  UnifiedCatalogTreePanel,
+  type CatalogSectionActionAnchor,
+} from "./catalog/sidebar/section-tree";
+import { CatalogActionButton } from "./catalog/ui/catalog-action-button";
+import { CatalogThumbnail } from "./catalog/ui/catalog-thumbnail";
+import {
+  CatalogDndRow,
+  catalogDndId,
+  DND_TRANSITION,
+  parseCatalogDndId,
+  StructureDragHandle,
+  type CatalogActiveDrag,
+  type CatalogDndKind,
+  type CatalogDndSurface,
+  type CatalogDropTarget,
+  type CatalogDropZone,
+} from "./catalog/workspace/dnd";
+import { SubsectionList } from "./catalog/workspace/subsections";
 
 export type {
   CatalogPhase,
@@ -171,7 +190,6 @@ type AvailabilityMode = CatalogAvailabilityMode;
 
 /** dnd-kit остаётся у плоского списка позиций: спокойная анимация ~200мс,
  * отключается при prefers-reduced-motion. Дерево разделов использует Pragmatic DnD. */
-const DND_TRANSITION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" };
 const restrictTableSortToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() =>
@@ -186,23 +204,6 @@ function usePrefersReducedMotion(): boolean {
   }, []);
   return reduced;
 }
-
-/** Типы старого dnd-kit-контура сохранены для плоского состава выбранного
- * раздела. В левом дереве они больше не регистрируются и не участвуют в drag. */
-type CatalogDndKind = "section" | "item";
-type CatalogDndSurface = "tree" | "composition";
-type CatalogDropZone = "before" | "after" | "inside";
-type CatalogDropTarget = {
-  kind: CatalogDndKind;
-  surface: CatalogDndSurface;
-  id: string;
-  containerId: string | null;
-  zone: CatalogDropZone;
-  valid: boolean;
-  reason?: string;
-  insideActive?: boolean;
-} | null;
-type CatalogActiveDrag = { kind: CatalogDndKind; id: string; title: string; imageUrl?: string | null } | null;
 
 type CatalogDropIntentState = {
   targetId: string | null;
@@ -233,15 +234,6 @@ function getDropIntent(pointer: CatalogPointerPosition, targetRect: CatalogTarge
   if (relativeY < 0.25) return "before";
   if (relativeY > 0.75) return "after";
   return "inside";
-}
-
-function catalogDndId(kind: CatalogDndKind, id: string) {
-  return `${kind}:${id}`;
-}
-function parseCatalogDndId(compoundId: string | number): string {
-  const raw = String(compoundId);
-  const separatorIndex = raw.indexOf(":");
-  return separatorIndex === -1 ? raw : raw.slice(separatorIndex + 1);
 }
 
 /** PointerSensor, который не начинает drag с интерактивных элементов строки
@@ -304,43 +296,6 @@ const optionKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
     context: { ...args.context, droppableContainers: filteredContainers },
   });
 };
-
-/** Render-prop обёртка вокруг useSortable — хуки нельзя звать внутри
- * рекурсивных функций-рендереров напрямую, поэтому каждая строка получает
- * собственный компонент с устойчивым порядком вызова хуков. */
-function CatalogDndRow({
-  kind,
-  id,
-  containerId,
-  surface = "tree",
-  disabled,
-  children,
-}: {
-  kind: CatalogDndKind;
-  id: string;
-  containerId: string | null;
-  surface?: CatalogDndSurface;
-  disabled?: boolean;
-  children: (args: {
-    setNodeRef: (element: HTMLElement | null) => void;
-    setActivatorNodeRef: (element: HTMLElement | null) => void;
-    dragProps: Record<string, unknown>;
-    isDragging: boolean;
-    style: CSSProperties;
-  }) => ReactNode;
-}) {
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, isDragging, transform, transition } = useSortable({
-    id: catalogDndId(kind, id),
-    data: { kind, containerId, surface },
-    disabled,
-    transition: DND_TRANSITION,
-  });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  return <>{children({ setNodeRef, setActivatorNodeRef, dragProps: disabled ? {} : { ...attributes, ...listeners }, isDragging, style })}</>;
-}
 
 function CatalogDragOverlayRow({ drag }: { drag: NonNullable<CatalogActiveDrag> }) {
   return (
@@ -484,10 +439,8 @@ type PanelRow = {
   accent?: boolean;
 };
 
-const CATALOG_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5px]";
-const CATALOG_TREE_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5.263px]";
 type MoveOperation = "position" | "section" | "bulk";
-type MovePopoverAnchor = { left: number; right: number; top: number; bottom: number };
+type MovePopoverAnchor = CatalogSectionActionAnchor;
 
 function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
   const target = event.currentTarget as HTMLElement;
@@ -517,90 +470,6 @@ function getSectionTreeStatusLabel(section: Pick<TreeSection, "status" | "visibi
   if (section.availabilityMode === "unavailable") return "На стопе";
   if (section.availabilityMode === "schedule") return "По расписанию";
   return null;
-}
-
-function CatalogThumbnail({
-  src,
-  kind,
-  className,
-}: {
-  src?: string | null;
-  kind: "section" | "item";
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden bg-[#e9e9df] text-[#a8a29e]",
-        CATALOG_THUMBNAIL_CLASS,
-        className,
-      )}
-    >
-      {src ? (
-        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
-      ) : kind === "section" ? (
-        <ForkKnife size={13} weight="fill" />
-      ) : (
-        <ImageBroken size={13} />
-      )}
-    </span>
-  );
-}
-
-function CatalogTreeThumbnail({
-  src,
-  selected,
-}: {
-  src?: string | null;
-  selected?: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden bg-[#e6e6db]",
-        CATALOG_TREE_THUMBNAIL_CLASS,
-        selected && "border-[0.5px] border-[#4f39f6] bg-white p-px",
-      )}
-    >
-      {src && <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />}
-    </span>
-  );
-}
-
-function TruncatedText({
-  children,
-  className,
-}: {
-  children: string;
-  className?: string;
-}) {
-  const textRef = useRef<HTMLSpanElement | null>(null);
-  const [isTruncated, setIsTruncated] = useState(false);
-
-  useEffect(() => {
-    const node = textRef.current;
-    if (!node) return;
-
-    const update = () => {
-      setIsTruncated(node.scrollWidth > node.clientWidth + 1);
-    };
-
-    update();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", update);
-      return () => window.removeEventListener("resize", update);
-    }
-
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [children]);
-
-  return (
-    <span ref={textRef} title={isTruncated ? children : undefined} className={cn("block min-w-0 truncate", className)}>
-      {children}
-    </span>
-  );
 }
 
 const SECTIONS_WITH_ITEMS = catalogSections.filter((section) =>
@@ -6537,172 +6406,6 @@ function orderItemsByStoredPositionOrder(items: CatalogItem[]) {
   return orderItemsByPositionOrder(items, orders);
 }
 
-/**
- * Structure-only navigation. Positions intentionally never render here: the
- * left rail answers “where am I?” while the center surface owns operations.
- * Reordering is available only in the selected parent's direct-child list or
- * in a leaf section's position table.
- */
-function UnifiedCatalogTreePanel({
-  sections,
-  items,
-  allPositionsSelected,
-  selectedSectionId,
-  sectionEditingEnabled,
-  includeArchived,
-  onSelectSection,
-  onSelectAllPositions,
-  onCreateSection,
-  createSectionButtonRef,
-  onSectionAction,
-  positionCreationEnabled = true,
-}: {
-  sections: TreeSection[];
-  items: CatalogItem[];
-  allPositionsSelected: boolean;
-  scopeSectionId?: string | null;
-  selectedSectionId: string | null;
-  selectedItemId?: string | null;
-  sectionEditingEnabled: boolean;
-  includeArchived: boolean;
-  treeContentMode?: CatalogTreeContentMode;
-  positionOrderBySection?: Record<string, string[]>;
-  onSelectSection: (id: string) => void;
-  onSelectAllPositions: () => void;
-  onSelectItem?: (id: string) => void;
-  onScopeChange?: (id: string | null) => void;
-  onCreateSection: () => void;
-  onAddPositionToSection?: (sectionId: string) => void;
-  onTreeContentModeChange?: (mode: CatalogTreeContentMode) => void;
-  createSectionButtonRef?: RefObject<HTMLButtonElement | null>;
-  revealSectionId?: string | null;
-  onSectionAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
-  dragActiveRef?: RefObject<boolean>;
-  positionCreationEnabled?: boolean;
-  storageKeys?: { expanded: string; query: string; scroll: string };
-}) {
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
-    const root = sections[0]?.id;
-    return root ? { [root]: true } : {};
-  });
-  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
-  const flatSections = flattenSections(sections);
-  const visibleIds = useMemo(() => {
-    if (!normalizedQuery) return new Set(flatSections.map((section) => section.id));
-    return new Set(flatSections
-      .filter((section) => getSectionFullPath(section.id).toLocaleLowerCase("ru").includes(normalizedQuery))
-      .flatMap((section) => [section.id, ...findSectionPath(sections, section.id)]));
-  }, [flatSections, normalizedQuery, sections]);
-  const countBySection = useMemo(() => {
-    const counts = new Map<string, number>();
-    items.forEach((item) => {
-      if (!includeArchived && item.status === "archive") return;
-      let current: string | null = item.sectionId;
-      const seen = new Set<string>();
-      while (current && !seen.has(current)) {
-        seen.add(current);
-        counts.set(current, (counts.get(current) ?? 0) + 1);
-        current = flatSections.find((section) => section.id === current)?.parentId ?? null;
-      }
-    });
-    return counts;
-  }, [flatSections, includeArchived, items]);
-
-  const renderSection = (section: TreeSection, depth = 0): ReactNode => {
-    if (normalizedQuery && !visibleIds.has(section.id)) return null;
-    const hasChildren = (section.children?.length ?? 0) > 0;
-    const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
-    const active = sectionEditingEnabled && selectedSectionId === section.id;
-    const isArchived = section.status === "archive";
-    const parentAvailability = getParentAvailability(section, items, flatSections);
-    const subsectionDisabledReason = parentAvailability.available ? null : parentAvailability.label;
-    return (
-      <div key={section.id}>
-        <div
-          data-tree-section-id={section.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelectSection(section.id)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelectSection(section.id);
-            }
-          }}
-          className={cn(
-            "group flex min-h-8 items-center rounded-[8px] px-1.5 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
-            active ? "bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
-          )}
-          style={{ paddingLeft: 6 + depth * 12 }}
-        >
-          <button
-            type="button"
-            aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-            disabled={!hasChildren}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
-            }}
-            className={cn("mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#a6a09b]", !hasChildren && "invisible")}
-          >
-            <CaretRight size={11} weight="fill" className={cn(isExpanded && "rotate-90")} />
-          </button>
-          <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
-          <span className={cn("ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]")}>{section.name}</span>
-          {isArchived && <span className="mr-1 shrink-0 text-[10px] text-[#a8a29e]">В архиве</span>}
-          <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{countBySection.get(section.id) ?? 0}</span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label={`Действия с разделом ${section.name}`}
-                onClick={(event) => event.stopPropagation()}
-                className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none"
-              >
-                <DotsThreeVertical size={13} weight="bold" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              <SectionActionMenuContent
-                section={section}
-                allowPositionCreation={positionCreationEnabled && !hasChildren}
-                subsectionDisabledReason={subsectionDisabledReason}
-                onAction={(action, anchor) => onSectionAction(section, action, anchor)}
-              />
-            </DropdownContent>
-          </DropdownMenu.Root>
-        </div>
-        {hasChildren && isExpanded && <div className="space-y-0.5">{section.children?.map((child) => renderSection(child, depth + 1))}</div>}
-      </div>
-    );
-  };
-
-  return (
-    <aside className="relative flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-3">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="flex h-[30px] min-w-0 items-center justify-between gap-4">
-          <span className="min-w-0 flex-1 truncate px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">Разделы</span>
-          <CatalogActionButton buttonRef={createSectionButtonRef} onClick={onCreateSection} ariaLabel="Добавить раздел" icon={PlusCircle}>Добавить</CatalogActionButton>
-        </div>
-        <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
-          <MagnifyingGlass size={14} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по разделам" className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#79716b] outline-none placeholder:text-[#79716b]" />
-        </label>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2">
-        <button type="button" onClick={onSelectAllPositions} className={cn("mb-2 flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", allPositionsSelected ? "bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]")}>
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#57534d]"><List size={13} /></span>
-          <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", allPositionsSelected ? "text-[#292524]" : "text-[#79716b]")}>Все позиции</span>
-          <span className="min-w-4 shrink-0 text-right text-[11px] tabular-nums text-[#a8a29e]">{items.length}</span>
-        </button>
-        <div className="space-y-0.5">{sections.map((section) => renderSection(section))}</div>
-        {normalizedQuery && visibleIds.size === 0 && <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы не найдены</p>}
-      </div>
-    </aside>
-  );
-}
-
 const CatalogMoreButton = forwardRef<HTMLButtonElement, { ariaLabel: string; title?: string; variant?: "outline" | "ghost" } & ButtonHTMLAttributes<HTMLButtonElement>>(
   ({ ariaLabel, title, variant = "outline", className, ...props }, ref) => (
     <button
@@ -6724,221 +6427,6 @@ const CatalogMoreButton = forwardRef<HTMLButtonElement, { ariaLabel: string; tit
 );
 
 CatalogMoreButton.displayName = "CatalogMoreButton";
-
-function CatalogActionButton({
-  icon: Icon = PlusCircle,
-  children,
-  onClick,
-  disabledReason,
-  disabled = false,
-  loading = false,
-  tooltipLabel,
-  tooltipDelayDuration = 200,
-  ariaLabel,
-  dataPositionCreateButton = false,
-  buttonRef,
-  className,
-}: {
-  icon?: PhosphorIcon;
-  children: ReactNode;
-  onClick: () => void;
-  disabledReason?: string | null;
-  disabled?: boolean;
-  loading?: boolean;
-  tooltipLabel?: string;
-  tooltipDelayDuration?: number;
-  ariaLabel?: string;
-  dataPositionCreateButton?: boolean;
-  buttonRef?: RefObject<HTMLButtonElement | null>;
-  className?: string;
-}) {
-  const isDisabled = disabled || Boolean(disabledReason);
-  const tooltipText = tooltipLabel ?? disabledReason ?? "";
-  const tooltipEnabled = Boolean(tooltipLabel) || (isDisabled && Boolean(disabledReason));
-  return (
-    <Tooltip label={tooltipText} side="top" delayDuration={tooltipDelayDuration} disabled={!tooltipEnabled}>
-      <span className="inline-flex">
-        <button
-          type="button"
-          ref={buttonRef}
-          {...(dataPositionCreateButton ? { "data-position-create-button": true } : {})}
-          aria-label={ariaLabel}
-          onClick={onClick}
-          disabled={isDisabled}
-          className={cn(
-            "group inline-flex h-[30px] shrink-0 items-center gap-1 whitespace-nowrap rounded-[32px] border border-[#e7e5e4] bg-white pl-1 pr-2 text-[12px] font-normal leading-4 text-[#292524] transition-colors hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#1c1917] active:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:border-[#e7e5e4] disabled:bg-white disabled:text-[#a8a29e]",
-            className,
-          )}
-        >
-          {loading ? (
-            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#a8a29e] border-t-transparent" />
-            </span>
-          ) : (
-            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-[#57534d] group-disabled:text-[#a8a29e]">
-              <Icon size={16} weight="regular" />
-            </span>
-          )}
-          <span className="group-disabled:text-[#a8a29e]">{children}</span>
-        </button>
-      </span>
-    </Tooltip>
-  );
-}
-
-const StructureDragHandle = forwardRef<
-  HTMLButtonElement,
-  {
-    canDrag: boolean;
-    ariaLabel: string;
-    dragProps: Record<string, unknown>;
-    disabledTooltip?: string;
-  }
->(({ canDrag, ariaLabel, dragProps, disabledTooltip = "Изменение порядка недоступно" }, ref) => (
-  <Tooltip label={canDrag ? ariaLabel : disabledTooltip} side="top" delayDuration={250}>
-    <span
-      className="flex h-8 w-6 shrink-0 items-center justify-center"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <button
-        ref={ref}
-        type="button"
-        data-composition-dnd-handle
-        {...dragProps}
-        disabled={!canDrag}
-        aria-label={ariaLabel}
-        className="flex h-7 w-6 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f0f0ea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        <DotsSixVertical size={15} weight="bold" />
-      </button>
-    </span>
-  </Tooltip>
-));
-
-StructureDragHandle.displayName = "StructureDragHandle";
-
-function SubsectionRow({
-  parentSectionId,
-  section,
-  itemCount,
-  dropTarget,
-  dragActiveRef,
-  onSelect,
-  onAction,
-}: {
-  parentSectionId: string;
-  section: TreeSection;
-  itemCount: number;
-  dropTarget: CatalogDropTarget;
-  dragActiveRef: RefObject<boolean>;
-  onSelect: (id: string) => void;
-  onAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
-}) {
-  const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
-
-  return (
-    <CatalogDndRow kind="section" id={section.id} containerId={parentSectionId} surface="composition">
-      {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
-        <div
-          ref={setNodeRef}
-          style={style}
-          role="button"
-          tabIndex={0}
-          onClick={() => {
-            if (dragActiveRef.current) return;
-            onSelect(section.id);
-          }}
-          onKeyDown={(event) => {
-            if ((event.target as HTMLElement | null)?.closest("[data-composition-dnd-handle]")) return;
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            onSelect(section.id);
-          }}
-          className={cn(
-            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-hidden border-b border-[#f0efe9] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
-            isDragging && "opacity-0",
-            isDropHere && !dropTarget?.valid && "cursor-not-allowed",
-          )}
-        >
-          <StructureDragHandle
-            ref={setActivatorNodeRef}
-            canDrag
-            ariaLabel={`Изменить порядок подраздела ${section.name}`}
-            dragProps={dragProps}
-          />
-          <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <CatalogThumbnail src={section.imageUrl} kind="section" className="h-6 w-6 rounded-[6px]" />
-            <TruncatedText className="flex-1 whitespace-nowrap text-[13px] font-medium leading-5 text-[#44403b] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
-              {section.name}
-            </TruncatedText>
-          </div>
-          <span className="shrink-0 whitespace-nowrap text-[12px] tabular-nums text-[#a8a29e]">
-            {itemCount}
-          </span>
-          <span
-            data-no-dnd
-            className="flex w-8 shrink-0 items-center justify-center"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  aria-label={`Действия с подразделом ${section.name}`}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <DotsThreeVertical size={18} weight="bold" />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownContent align="end">
-                <SectionActionMenuContent section={section} onAction={(action, anchor) => onAction(section, action, anchor)} />
-              </DropdownContent>
-            </DropdownMenu.Root>
-          </span>
-        </div>
-      )}
-    </CatalogDndRow>
-  );
-}
-
-function SubsectionList({
-  parentSectionId,
-  childSections,
-  dropTarget,
-  dragActiveRef,
-  onSelect,
-  onAction,
-}: {
-  parentSectionId: string;
-  childSections: Array<{ section: TreeSection; itemCount: number }>;
-  dropTarget: CatalogDropTarget;
-  dragActiveRef: RefObject<boolean>;
-  onSelect: (id: string) => void;
-  onAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
-}) {
-  return (
-    <SortableContext
-      items={childSections.map(({ section }) => catalogDndId("section", section.id))}
-      strategy={verticalListSortingStrategy}
-    >
-      <div>
-        {childSections.map(({ section, itemCount }) => (
-          <SubsectionRow
-            key={section.id}
-            parentSectionId={parentSectionId}
-            section={section}
-            itemCount={itemCount}
-            dropTarget={dropTarget}
-            dragActiveRef={dragActiveRef}
-            onSelect={onSelect}
-            onAction={onAction}
-          />
-        ))}
-      </div>
-    </SortableContext>
-  );
-}
 
 function SectionEditor({
   section,
@@ -7144,6 +6632,9 @@ function SectionEditor({
                   dragActiveRef={dragActiveRef}
                   onSelect={onSelectChildSection}
                   onAction={onChildSectionAction}
+                  renderActions={(subsection, onAction) => (
+                    <SectionActionMenuContent section={subsection} onAction={onAction} />
+                  )}
                 />
               </section>
             ) : (
@@ -8259,7 +7750,7 @@ function PopulatedWorkspace({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
   const [editorSource, setEditorSource] = useState<"tree" | "table" | "breadcrumb" | null>(null);
   const [unifiedTableOpenSignal, setUnifiedTableOpenSignal] = useState(0);
-  const [treeContentMode, setTreeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
+  const [treeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
   // Явный режим: обзор раздела ↔ редактор позиции. Раньше режим выводился из
   // selectedItem != null, из-за чего смена раздела (обнулявшая позицию) выкидывала
   // из редактора и ломала пустой раздел в editor mode.
@@ -8277,7 +7768,7 @@ function PopulatedWorkspace({
   const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
   const [positionCreationDialog, setPositionCreationDialog] = useState<{ initialSectionId: string | null } | null>(null);
-  const [revealSectionId, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
+  const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
   const [highlightItemId, setHighlightItemId] = useState<string | null>(() =>
@@ -10262,30 +9753,26 @@ function PopulatedWorkspace({
             sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
             items={allItems}
             allPositionsSelected={selectedSectionId === null}
-            scopeSectionId={scopeSectionId}
             selectedSectionId={selectedSectionId}
-            selectedItemId={editorSource === "tree" ? selectedItemId : null}
             sectionEditingEnabled
             includeArchived={editorNavMode === "entity" || editorNavMode === "unified"}
-            treeContentMode={treeContentMode}
-            positionOrderBySection={positionOrderBySection}
             onSelectSection={structurePositionDraft
               ? () => setFeedback("Завершите создание или нажмите «Отменить»")
               : handleTreeSelectSection}
-            onSelectAllPositions={selectAllPositions}
-            onSelectItem={structurePositionDraft
-              ? () => setFeedback("Завершите создание или нажмите «Отменить»")
-              : openItem}
-            onScopeChange={onScopeChange}
+              onSelectAllPositions={selectAllPositions}
             onCreateSection={() => openSectionCreation()}
-            onAddPositionToSection={addPositionToSection}
-            onTreeContentModeChange={setTreeContentMode}
             createSectionButtonRef={createSectionButtonRef}
-            revealSectionId={revealSectionId}
             onSectionAction={handleUnifiedSectionAction}
-            dragActiveRef={dragActiveRef}
+            renderSectionActions={(section, options, onAction) => (
+              <SectionActionMenuContent
+                section={section}
+                allowPositionCreation={options.allowPositionCreation}
+                subsectionDisabledReason={options.subsectionDisabledReason}
+                onAction={onAction}
+              />
+            )}
+            getSectionPath={getSectionFullPath}
             positionCreationEnabled={allowPositionCreation}
-            storageKeys={treeStorageKeys}
           />
         ) : editing ? (
           <SectionPositionNav

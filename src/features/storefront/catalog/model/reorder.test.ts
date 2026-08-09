@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CatalogItem } from "@/data/catalog";
 import {
   getDirectChildSections,
+  countItemsBySection,
   getSectionSubtreeIds,
   buildCatalogTree,
 } from "./tree";
@@ -47,6 +48,7 @@ describe("catalog pure model parity", () => {
     expect(tree[0]?.children?.[0]?.children?.map((section) => section.id)).toEqual(["leaf", "sibling"]);
     expect(getDirectChildSections("parent", sections).map((section) => section.id)).toEqual(["leaf", "sibling"]);
     expect([...getSectionSubtreeIds("parent", sections)]).toEqual(["parent", "leaf", "sibling"]);
+    expect([...countItemsBySection([item()], sections, false).entries()]).toEqual([["leaf", 1], ["parent", 1], ["root", 1]]);
   });
 
   it("rejects cycles and invalid mixed destinations while preserving sibling drops", () => {

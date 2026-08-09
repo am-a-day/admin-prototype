@@ -42,6 +42,26 @@ export function getDirectChildSections(parentId: string | null, sections: Catalo
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"));
 }
 
+export function countItemsBySection(
+  items: CatalogItem[],
+  sections: CatalogTreeSection[],
+  includeArchived: boolean,
+) {
+  const parentById = new Map(flattenCatalogTree(sections).map((section) => [section.id, section.parentId ?? null]));
+  const counts = new Map<string, number>();
+  items.forEach((item) => {
+    if (!includeArchived && item.status === "archive") return;
+    let current: string | null = item.sectionId;
+    const seen = new Set<string>();
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      counts.set(current, (counts.get(current) ?? 0) + 1);
+      current = parentById.get(current) ?? null;
+    }
+  });
+  return counts;
+}
+
 export function getSectionSubtreeIds(sectionId: string, sections: CatalogTreeSection[]) {
   const result = new Set<string>([sectionId]);
   let changed = true;
