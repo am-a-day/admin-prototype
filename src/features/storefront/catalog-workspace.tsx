@@ -1933,6 +1933,19 @@ function SectionEditor({
   const archived = section.status === "archive";
   const status = getSectionStatusMeta(section);
   const hasChildSections = childSections.length > 0;
+  const [selectedSubsectionIds, setSelectedSubsectionIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setSelectedSubsectionIds((current) => {
+      const availableIds = new Set(childSections.map(({ section: child }) => child.id));
+      const next = new Set([...current].filter((id) => availableIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [childSections]);
+
+  useEffect(() => {
+    setSelectedSubsectionIds(new Set());
+  }, [section.id]);
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2019,7 +2032,7 @@ function SectionEditor({
           </div>
           <div>
             <div data-editor-tabs>
-              {hideNavigationTabs ? (
+              {hideNavigationTabs ? activeTab === "composition" ? null : (
                 <div className="flex h-9 items-center border-b border-[#e7e5e4]">
                   <button type="button" onClick={() => onTabChange("composition")} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><ArrowLeft size={14} /> К позициям</button>
                 </div>
@@ -2057,6 +2070,17 @@ function SectionEditor({
                   childSections={childSections}
                   dropTarget={dropTarget}
                   dragActiveRef={dragActiveRef}
+                  selectedIds={selectedSubsectionIds}
+                  onSelectedChange={(id, selected) => setSelectedSubsectionIds((current) => {
+                    const next = new Set(current);
+                    if (selected) next.add(id);
+                    else next.delete(id);
+                    return next;
+                  })}
+                  onSelectAll={(selected) => setSelectedSubsectionIds(
+                    selected ? new Set(childSections.map(({ section: child }) => child.id)) : new Set(),
+                  )}
+                  onClearSelection={() => setSelectedSubsectionIds(new Set())}
                   onSelect={onSelectChildSection}
                   onAction={onChildSectionAction}
                   renderActions={(subsection, onAction) => (
@@ -5510,6 +5534,7 @@ function CompositionRow({
       {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
+          {...dragProps}
           data-composition-row={item.id}
           style={style}
           role="button"
@@ -5973,7 +5998,7 @@ function CatalogScopeSelect({
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
+      <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 max-w-[320px] rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
@@ -6642,7 +6667,7 @@ function OverviewWorkspace({
   const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
   const tableReorderSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(CatalogPointerSensor, { activationConstraint: { distance: 7 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const handleColumnVisibilityChange = useCallback((updater: Updater<VisibilityState>) => {
@@ -7743,7 +7768,7 @@ function OverviewWorkspace({
                       allOptionLabel="Все разделы"
                       compact
                     />
-                  ) : <span className="min-w-0 flex-1" />}
+                  ) : <span className="min-w-0 flex-1 text-[13px] font-medium text-[#44403b]">Позиции</span>}
                   {onAddPosition && allowPositionCreation && (
                     <Tooltip label={positionCreateDisabledReason ?? ""} side="top" disabled={!positionCreateDisabledReason}>
                       <span className="shrink-0">
@@ -7801,7 +7826,7 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <div className="overflow-x-auto [scrollbar-width:thin]">
+                <div className="[scrollbar-width:thin]">
                   <div className="w-full min-w-0">
                   <TableHeaderRow
                       query={workspaceQuery}

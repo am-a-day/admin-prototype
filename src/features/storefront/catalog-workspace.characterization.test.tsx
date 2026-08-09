@@ -114,8 +114,14 @@ describe("catalog observable behavior baseline", () => {
     await user.type(search, firstItemTitle);
     expect(screen.getByText(firstItemTitle, { exact: true })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Сортировать по возрастанию" }));
-    expect(screen.getByRole("button", { name: "Сортировать по убыванию" })).toBeInTheDocument();
+    const neutralPriceSort = screen.getByRole("button", { name: "Сортировать по возрастанию" });
+    expect(neutralPriceSort.querySelectorAll("svg").length).toBeGreaterThan(0);
+    await user.click(neutralPriceSort);
+    const ascendingPriceSort = screen.getByRole("button", { name: "Сортировать по убыванию" });
+    expect(ascendingPriceSort.querySelector("svg")).not.toBeNull();
+    await user.click(ascendingPriceSort);
+    await user.click(screen.getByRole("button", { name: "Сбросить сортировку" }));
+    expect(screen.getByRole("button", { name: "Сортировать по возрастанию" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Настроить колонки" }));
     const columnMenu = screen.getByRole("menu");
@@ -129,8 +135,58 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByText("1 выбрана", { exact: true })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Заполненность/ }));
+    const completenessMenu = screen.getByRole("menu");
+    ["Все позиции", "Без описания", "Без фото", "Без веса", "Без КБЖУ", "Без перевода"].forEach((label) => {
+      expect(within(completenessMenu).getByRole("menuitemradio", { name: new RegExp(label) })).toBeInTheDocument();
+    });
     await user.click(screen.getByRole("menuitemradio", { name: /Без описания/ }));
     expect(screen.getByRole("button", { name: /Без описания/ })).toBeInTheDocument();
+  });
+
+  it("keeps subsection rows dense and supports one, many, and select-all selection", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = screen.getByPlaceholderText("Поиск по разделам").closest("aside");
+    expect(sectionTree).not.toBeNull();
+    await user.click(within(sectionTree as HTMLElement).getByText("Кухня", { exact: true }));
+
+    expect(screen.queryByRole("button", { name: /К позициям/ })).not.toBeInTheDocument();
+    const breakfastCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
+    expect(breakfastCheckbox.closest("[role=button]")).toHaveClass("h-[38px]");
+    await user.click(breakfastCheckbox);
+    expect(screen.getByText("1 выбрано", { exact: true })).toBeInTheDocument();
+
+    const bakeryCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Выпечка" });
+    await user.click(bakeryCheckbox);
+    expect(screen.getByText("2 выбрано", { exact: true })).toBeInTheDocument();
+
+    const selectAll = screen.getByRole("checkbox", { name: "Выбрать все подразделы" });
+    await user.click(selectAll);
+    screen.getAllByRole("checkbox", { name: /Выбрать подраздел / }).forEach((checkbox) => expect(checkbox).toBeChecked());
+    await user.click(selectAll);
+    expect(breakfastCheckbox).not.toBeChecked();
+    expect(bakeryCheckbox).not.toBeChecked();
+  });
+
+  it("shows the local positions heading, sticky table header, and row-body reorder affordance in a leaf", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = screen.getByPlaceholderText("Поиск по разделам").closest("aside");
+    expect(sectionTree).not.toBeNull();
+    await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+
+    const card = document.querySelector("[data-catalog-items-card]");
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText("Позиции", { exact: true })).toBeInTheDocument();
+    const tableHeader = document.querySelector("[data-catalog-table-header]");
+    expect(tableHeader).toHaveClass("sticky", "top-0", "bg-white");
+    expect(tableHeader?.parentElement?.parentElement).not.toHaveClass("overflow-x-auto");
+
+    const reorderableRow = document.querySelector("[data-row-reorder-enabled=true]");
+    expect(reorderableRow).not.toBeNull();
+    expect(reorderableRow).toHaveAttribute("aria-roledescription", "sortable");
   });
 
   it("opens an item from the table and returns to the same table context", async () => {

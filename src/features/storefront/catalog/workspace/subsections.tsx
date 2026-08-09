@@ -12,6 +12,7 @@ import {
   type CatalogDropTarget,
 } from "./dnd";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
+import { TableCheckbox } from "../table/catalog-table";
 
 function TruncatedText({
   children,
@@ -55,7 +56,10 @@ export function SubsectionRow({
   itemCount,
   dropTarget,
   dragActiveRef,
+  selected,
+  selectionMode,
   onSelect,
+  onSelectedChange,
   onAction,
   renderActions,
 }: {
@@ -64,7 +68,10 @@ export function SubsectionRow({
   itemCount: number;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
+  selected: boolean;
+  selectionMode: boolean;
   onSelect: (id: string) => void;
+  onSelectedChange: (id: string, selected: boolean) => void;
   onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor) => void;
   renderActions: SubsectionActionRenderer;
 }) {
@@ -75,21 +82,25 @@ export function SubsectionRow({
       {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
+          {...dragProps}
           style={style}
           role="button"
           tabIndex={0}
           onClick={() => {
             if (dragActiveRef.current) return;
-            onSelect(section.id);
+            if (selectionMode) onSelectedChange(section.id, !selected);
+            else onSelect(section.id);
           }}
           onKeyDown={(event) => {
             if ((event.target as HTMLElement | null)?.closest("[data-composition-dnd-handle]")) return;
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
-            onSelect(section.id);
+            if (selectionMode) onSelectedChange(section.id, !selected);
+            else onSelect(section.id);
           }}
           className={cn(
-            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-hidden border-b border-[#f0efe9] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            "group relative flex h-[38px] min-h-[38px] max-h-[38px] cursor-pointer items-center gap-1 overflow-hidden border-b border-[#e5e7eb] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            selected && "bg-[#f7f6f2]",
             isDragging && "opacity-0",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
           )}
@@ -100,6 +111,19 @@ export function SubsectionRow({
             ariaLabel={`Изменить порядок подраздела ${section.name}`}
             dragProps={dragProps}
           />
+          <span
+            data-no-dnd
+            className="flex h-full w-[34px] shrink-0 items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <TableCheckbox
+              ariaLabel={`Выбрать подраздел ${section.name}`}
+              checked={selected}
+              forceVisible
+              onChange={(checked) => onSelectedChange(section.id, checked)}
+            />
+          </span>
           <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
             <CatalogThumbnail src={section.imageUrl} kind="section" className="h-6 w-6 rounded-[6px]" />
             <TruncatedText className="flex-1 whitespace-nowrap text-[13px] font-medium leading-5 text-[#44403b] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
@@ -141,6 +165,10 @@ export function SubsectionList({
   childSections,
   dropTarget,
   dragActiveRef,
+  selectedIds,
+  onSelectedChange,
+  onSelectAll,
+  onClearSelection,
   onSelect,
   onAction,
   renderActions,
@@ -149,16 +177,47 @@ export function SubsectionList({
   childSections: Array<{ section: CatalogTreeSection; itemCount: number }>;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
+  selectedIds: Set<string>;
+  onSelectedChange: (id: string, selected: boolean) => void;
+  onSelectAll: (selected: boolean) => void;
+  onClearSelection: () => void;
   onSelect: (id: string) => void;
   onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor) => void;
   renderActions: SubsectionActionRenderer;
 }) {
+  const selectedCount = selectedIds.size;
+  const allSelected = childSections.length > 0 && childSections.every(({ section }) => selectedIds.has(section.id));
+  const someSelected = childSections.some(({ section }) => selectedIds.has(section.id));
+
   return (
     <SortableContext
       items={childSections.map(({ section }) => catalogDndId("section", section.id))}
       strategy={verticalListSortingStrategy}
     >
       <div>
+        <div className="flex h-[38px] items-center border-b border-[#e5e7eb] px-2">
+          <span data-no-dnd className="flex h-full w-[50px] shrink-0 items-center justify-center">
+            <TableCheckbox
+              ariaLabel="Выбрать все подразделы"
+              checked={allSelected}
+              indeterminate={!allSelected && someSelected}
+              onChange={onSelectAll}
+            />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#79716b]">
+            {selectedCount > 0 ? `${selectedCount} выбрано` : "Подразделы"}
+          </span>
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              data-no-dnd
+              onClick={onClearSelection}
+              className="h-7 rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]"
+            >
+              Снять выбор
+            </button>
+          )}
+        </div>
         {childSections.map(({ section, itemCount }) => (
           <SubsectionRow
             key={section.id}
@@ -167,7 +226,10 @@ export function SubsectionList({
             itemCount={itemCount}
             dropTarget={dropTarget}
             dragActiveRef={dragActiveRef}
+            selected={selectedIds.has(section.id)}
+            selectionMode={selectedCount > 0}
             onSelect={onSelect}
+            onSelectedChange={onSelectedChange}
             onAction={onAction}
             renderActions={renderActions}
           />

@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowsOutCardinal,
   CaretDown,
+  CaretUp,
   Check,
   Clock,
   Columns,
@@ -340,6 +341,18 @@ export function TableHeaderRow({
                   )}
                 >
                   <span>Цена</span>
+                  <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                    {priceSort === "asc" ? (
+                      <CaretUp size={11} weight="bold" />
+                    ) : priceSort === "desc" ? (
+                      <CaretDown size={11} weight="bold" />
+                    ) : (
+                      <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
+                        <CaretUp size={8} weight="bold" />
+                        <CaretDown size={8} weight="bold" className="-mt-1" />
+                      </span>
+                    )}
+                  </span>
                 </button>
               </Tooltip>
             );
@@ -469,7 +482,10 @@ function AuditDishRow({
   return (
     <div
       ref={setSortableNodeRef}
+      {...(reorderEnabled ? reorderAttributes : {})}
+      {...(reorderEnabled ? reorderListeners : {})}
       data-catalog-table-row={item.id}
+      data-row-reorder-enabled={reorderEnabled || undefined}
       data-reordering={isReordering || undefined}
       style={{
         transform: CSS.Transform.toString(reorderTransform),
@@ -499,6 +515,7 @@ function AuditDishRow({
             return (
               <span
                 key={cell.id}
+                data-no-dnd
                 className="flex h-full w-[22px] shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
@@ -520,6 +537,7 @@ function AuditDishRow({
             return (
               <span
                 key={cell.id}
+                data-no-dnd
                 className="flex h-full w-[42px] shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
@@ -573,6 +591,7 @@ function AuditDishRow({
               <span key={cell.id} className={cn("flex shrink-0 items-center px-2", TABLE_COL.section)}>
                 <button
                   type="button"
+                  data-no-dnd
                   title={`Открыть раздел «${item.sectionName}»`}
                   onClick={(event) => { event.stopPropagation(); onAction(item, "Открыть в разделе"); }}
                   onKeyDown={(event) => event.stopPropagation()}
@@ -635,7 +654,7 @@ function AuditDishRow({
             );
           case "actions":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+              <span key={cell.id} data-no-dnd className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                 {renderActions?.(item, (action, anchor) => onAction(item, action, anchor))}
               </span>
             );
@@ -884,7 +903,14 @@ export function CatalogTableFilterBar({
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
 
   if (headerActionsOnly) {
-    const completenessIds: OverviewFilterId[] = ["quick:all", "quick:no-photo", "quick:no-description", "quick:no-weight", "quick:no-kbju"];
+    const completenessIds: OverviewFilterId[] = [
+      "quick:all",
+      "quick:no-description",
+      "quick:no-photo",
+      "quick:no-weight",
+      "quick:no-kbju",
+      "quick:no-translation",
+    ];
     const activeCompleteness = activeFilterIds[0] ?? "quick:all";
     return (
       <DropdownMenu.Root>
