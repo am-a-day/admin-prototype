@@ -56,12 +56,12 @@ import {
   CaretDown,
   CaretLeft,
   CaretRight,
-  CaretUp,
   Check,
   CheckCircle,
   CameraSlash,
   CircleNotch,
   Clock,
+  Columns,
   Dot,
   DotsThree,
   DotsThreeVertical,
@@ -71,6 +71,7 @@ import {
   ForkKnife,
   FolderPlus,
   FunnelSimple,
+  GearSix,
   ImageBroken,
   List,
   Lock,
@@ -81,7 +82,6 @@ import {
   PlusCircle,
   Prohibit,
   ShoppingCartSimple,
-  SlidersHorizontal,
   Sparkle,
   StopCircle,
   TextTSlash,
@@ -1092,9 +1092,9 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     emptyText: "Все позиции уже с фотографиями.",
   },
   "quick:no-weight": {
-    label: "Без граммовки",
-    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} граммовку`,
-    emptyTitle: "Нет позиций без граммовки",
+    label: "Без веса",
+    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} вес`,
+    emptyTitle: "Нет позиций без веса",
     emptyText: "У всех позиций указана граммовка или объём.",
   },
   "quick:no-kbju": {
@@ -1263,7 +1263,7 @@ const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
   "status:archived": "В архиве",
   "quick:no-description": "Без описания",
   "quick:no-photo": "Без фото",
-  "quick:no-weight": "Без граммовки",
+  "quick:no-weight": "Без веса",
   "quick:no-kbju": "Без КБЖУ",
   "quick:no-translation": "Без перевода",
   "quick:discount": "Со скидкой",
@@ -7457,7 +7457,176 @@ function findSectionPath(sections: TreeSection[], targetId: string): string[] {
   return [];
 }
 
+/**
+ * Structure-only navigation. Positions intentionally never render here: the
+ * left rail answers “where am I?” while the center surface owns operations.
+ * Reordering is available only in the selected parent's direct-child list or
+ * in a leaf section's position table.
+ */
 function UnifiedCatalogTreePanel({
+  sections,
+  items,
+  allPositionsSelected,
+  selectedSectionId,
+  sectionEditingEnabled,
+  includeArchived,
+  onSelectSection,
+  onSelectAllPositions,
+  onCreateSection,
+  createSectionButtonRef,
+  onSectionAction,
+  positionCreationEnabled = true,
+}: {
+  sections: TreeSection[];
+  items: CatalogItem[];
+  allPositionsSelected: boolean;
+  scopeSectionId?: string | null;
+  selectedSectionId: string | null;
+  selectedItemId?: string | null;
+  sectionEditingEnabled: boolean;
+  includeArchived: boolean;
+  showPositions?: boolean;
+  treeContentMode?: CatalogTreeContentMode;
+  positionOrderBySection?: Record<string, string[]>;
+  onSelectSection: (id: string) => void;
+  onSelectAllPositions: () => void;
+  onSelectItem?: (id: string) => void;
+  onScopeChange?: (id: string | null) => void;
+  onCreateSection: () => void;
+  onAddPositionToSection?: (sectionId: string) => void;
+  onTreeContentModeChange?: (mode: CatalogTreeContentMode) => void;
+  createSectionButtonRef?: RefObject<HTMLButtonElement | null>;
+  revealSectionId?: string | null;
+  onSectionAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
+  onInsertSection?: (draggedId: string, targetParentId: string | null, targetIndex: number) => void;
+  onInsertItem?: (draggedId: string, targetParentId: string, targetIndex: number) => void;
+  dragActiveRef?: RefObject<boolean>;
+  positionCreationEnabled?: boolean;
+  storageKeys?: { expanded: string; query: string; scroll: string };
+}) {
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const root = sections[0]?.id;
+    return root ? { [root]: true } : {};
+  });
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const flatSections = flattenSections(sections);
+  const visibleIds = useMemo(() => {
+    if (!normalizedQuery) return new Set(flatSections.map((section) => section.id));
+    return new Set(flatSections
+      .filter((section) => getSectionFullPath(section.id).toLocaleLowerCase("ru").includes(normalizedQuery))
+      .flatMap((section) => [section.id, ...findSectionPath(sections, section.id)]));
+  }, [flatSections, normalizedQuery, sections]);
+  const countBySection = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((item) => {
+      if (!includeArchived && item.status === "archive") return;
+      let current: string | null = item.sectionId;
+      const seen = new Set<string>();
+      while (current && !seen.has(current)) {
+        seen.add(current);
+        counts.set(current, (counts.get(current) ?? 0) + 1);
+        current = flatSections.find((section) => section.id === current)?.parentId ?? null;
+      }
+    });
+    return counts;
+  }, [flatSections, includeArchived, items]);
+
+  const renderSection = (section: TreeSection, depth = 0): ReactNode => {
+    if (normalizedQuery && !visibleIds.has(section.id)) return null;
+    const hasChildren = (section.children?.length ?? 0) > 0;
+    const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
+    const active = sectionEditingEnabled && selectedSectionId === section.id;
+    const isArchived = section.status === "archive";
+    const parentAvailability = getParentAvailability(section, items, flatSections);
+    const subsectionDisabledReason = parentAvailability.available ? null : parentAvailability.label;
+    return (
+      <div key={section.id}>
+        <div
+          data-tree-section-id={section.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => onSelectSection(section.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onSelectSection(section.id);
+            }
+          }}
+          className={cn(
+            "group flex min-h-8 items-center rounded-[8px] px-1.5 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            active ? "bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]",
+          )}
+          style={{ paddingLeft: 6 + depth * 12 }}
+        >
+          <button
+            type="button"
+            aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
+            disabled={!hasChildren}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
+            }}
+            className={cn("mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#a6a09b]", !hasChildren && "invisible")}
+          >
+            <CaretRight size={11} weight="fill" className={cn(isExpanded && "rotate-90")} />
+          </button>
+          <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
+          <span className={cn("ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]")}>{section.name}</span>
+          {isArchived && <span className="mr-1 shrink-0 text-[10px] text-[#a8a29e]">В архиве</span>}
+          <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{countBySection.get(section.id) ?? 0}</span>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label={`Действия с разделом ${section.name}`}
+                onClick={(event) => event.stopPropagation()}
+                className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none"
+              >
+                <DotsThreeVertical size={13} weight="bold" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="end">
+              <SectionActionMenuContent
+                section={section}
+                allowPositionCreation={positionCreationEnabled && !hasChildren}
+                subsectionDisabledReason={subsectionDisabledReason}
+                onAction={(action, anchor) => onSectionAction(section, action, anchor)}
+              />
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </div>
+        {hasChildren && isExpanded && <div className="space-y-0.5">{section.children?.map((child) => renderSection(child, depth + 1))}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <aside className="relative flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-3">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
+        <div className="flex h-[30px] min-w-0 items-center justify-between gap-4">
+          <span className="min-w-0 flex-1 truncate px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">Разделы</span>
+          <CatalogActionButton buttonRef={createSectionButtonRef} onClick={onCreateSection} ariaLabel="Добавить раздел" icon={PlusCircle}>Добавить</CatalogActionButton>
+        </div>
+        <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
+          <MagnifyingGlass size={14} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по разделам" className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#79716b] outline-none placeholder:text-[#79716b]" />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] py-2">
+        <button type="button" onClick={onSelectAllPositions} className={cn("mb-2 flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", allPositionsSelected ? "bg-[#f3f3ed]" : "hover:bg-[#f3f3ed]")}>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[#e6e6db] text-[#57534d]"><List size={13} /></span>
+          <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", allPositionsSelected ? "text-[#292524]" : "text-[#79716b]")}>Все позиции</span>
+          <span className="min-w-4 shrink-0 text-right text-[11px] tabular-nums text-[#a8a29e]">{items.length}</span>
+        </button>
+        <div className="space-y-0.5">{sections.map((section) => renderSection(section))}</div>
+        {normalizedQuery && visibleIds.size === 0 && <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы не найдены</p>}
+      </div>
+    </aside>
+  );
+}
+
+function LegacyUnifiedCatalogTreePanel({
   sections,
   items,
   allPositionsSelected,
@@ -8565,6 +8734,8 @@ function UnifiedCatalogTreePanel({
   );
 }
 
+void LegacyUnifiedCatalogTreePanel;
+
 const CatalogMoreButton = forwardRef<HTMLButtonElement, { ariaLabel: string; title?: string; variant?: "outline" | "ghost" } & ButtonHTMLAttributes<HTMLButtonElement>>(
   ({ ariaLabel, title, variant = "outline", className, ...props }, ref) => (
     <button
@@ -8837,6 +9008,7 @@ function SectionEditor({
   forcePositionsLabel = false,
   compositionCountOverride,
   allowPositionCreation = true,
+  hideNavigationTabs = false,
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -8872,6 +9044,7 @@ function SectionEditor({
   forcePositionsLabel?: boolean;
   compositionCountOverride?: number;
   allowPositionCreation?: boolean;
+  hideNavigationTabs?: boolean;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -8956,6 +9129,7 @@ function SectionEditor({
                   section={section}
                   allowPositionCreation={allowPositionCreation}
                   subsectionDisabledReason={subsectionCreateDisabledReason}
+                  showSettingsEntry={hideNavigationTabs}
                   onAction={onAction}
                 />
               </DropdownContent>
@@ -8963,29 +9137,35 @@ function SectionEditor({
           </div>
           <div>
             <div data-editor-tabs>
-              <WorkspaceLocalTabs
-                tabs={[
-                  {
-                    id: "composition",
-                    label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции",
-                    count: compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length),
-                  },
-                  { id: "basic", label: "Настройка раздела" },
-                  { id: "availability", label: "Доступность" },
-                ]}
-                value={activeTab}
-                onValueChange={onTabChange}
-                endAction={showOpenInPositions ? (
-                  <button
-                  type="button"
-                  onClick={onOpenInPositions}
-                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <ArrowsOut size={14} weight="regular" />
-                  Открыть в таблице
-                  </button>
-                ) : undefined}
-              />
+              {hideNavigationTabs ? (
+                <div className="flex h-9 items-center border-b border-[#e7e5e4]">
+                  <button type="button" onClick={() => onTabChange("composition")} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><ArrowLeft size={14} /> К позициям</button>
+                </div>
+              ) : (
+                <WorkspaceLocalTabs
+                  tabs={[
+                    {
+                      id: "composition",
+                      label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции",
+                      count: compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length),
+                    },
+                    { id: "basic", label: "Настройка раздела" },
+                    { id: "availability", label: "Доступность" },
+                  ]}
+                  value={activeTab}
+                  onValueChange={onTabChange}
+                  endAction={showOpenInPositions ? (
+                    <button
+                    type="button"
+                    onClick={onOpenInPositions}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    <ArrowsOut size={14} weight="regular" />
+                    Открыть в таблице
+                    </button>
+                  ) : undefined}
+                />
+              )}
               <div className="pt-3">
             {activeTab === "composition" ? (
             hasChildSections ? (
@@ -9151,71 +9331,44 @@ function UnifiedCatalogSelectionState() {
 function UnifiedSectionTableHeader({
   section,
   itemCount,
-  activeTab,
-  onTabChange,
-  onAddPosition,
   onAction,
-  positionCreateDisabledReason,
   subsectionCreateDisabledReason,
   allowPositionCreation = true,
 }: {
   section: TreeSection;
   itemCount: number;
-  activeTab: SectionEditorTab;
-  onTabChange: (tab: SectionEditorTab) => void;
-  onAddPosition: () => void;
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
-  positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
   allowPositionCreation?: boolean;
 }) {
-  const archived = section.status === "archive";
-  const status = getSectionStatusMeta(section);
   return (
-    <div className="pt-3">
-      <div className="flex items-center gap-2 pb-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#a8a29e]">
-            {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={14} />}
-          </span>
-          <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
-          {getSectionTreeStatusLabel(section) && (
-            <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
-          )}
-        </div>
-        {allowPositionCreation && <CatalogActionButton
-          onClick={onAddPosition}
-          disabled={archived}
-          disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
-          ariaLabel="Добавить позицию"
-          dataPositionCreateButton
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`Действия с разделом «${section.name}»`}
+          className="group flex min-w-0 items-center gap-1.5 rounded-[8px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          Добавить позицию
-        </CatalogActionButton>}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <CatalogMoreButton ariaLabel="Действия с разделом" variant="ghost" />
-          </DropdownMenu.Trigger>
-          <DropdownContent align="end">
-            <SectionActionMenuContent
-              section={section}
-              allowPositionCreation={allowPositionCreation}
-              subsectionDisabledReason={subsectionCreateDisabledReason}
-              onAction={onAction}
-            />
-          </DropdownContent>
-        </DropdownMenu.Root>
-      </div>
-      <WorkspaceLocalTabs
-        tabs={[
-          { id: "composition", label: "Позиции", count: itemCount },
-          { id: "basic", label: "Настройка раздела" },
-          { id: "availability", label: "Доступность" },
-        ]}
-        value={activeTab}
-        onValueChange={onTabChange}
-      />
-    </div>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
+            {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={13} />}
+          </span>
+          <span className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">{section.name}</span>
+          <span className="flex h-[17px] min-w-6 shrink-0 items-center justify-center rounded-[5px] bg-[#f3f3ed] px-1 text-[12px] font-medium leading-4 tabular-nums text-[#79716b]">
+            {itemCount}
+          </span>
+          <CaretDown size={14} className="shrink-0 text-[#57534d]" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownContent align="start">
+        <SectionActionMenuContent
+          section={section}
+          allowPositionCreation={allowPositionCreation}
+          subsectionDisabledReason={subsectionCreateDisabledReason}
+          showSettingsEntry
+          onAction={onAction}
+        />
+      </DropdownContent>
+    </DropdownMenu.Root>
   );
 }
 
@@ -9633,6 +9786,39 @@ type StructurePositionDraft = {
   returnItemId: string | null;
   returnEditing: boolean;
 };
+
+function CreatePositionDialog({
+  sections,
+  initialSectionId,
+  onCancel,
+  onContinue,
+}: {
+  sections: TreeSection[];
+  initialSectionId: string | null;
+  onCancel: () => void;
+  onContinue: (title: string, sectionId: string) => void;
+}) {
+  const leafSections = sections.filter((section) => section.status !== "archive" && !sections.some((candidate) => candidate.parentId === section.id));
+  const [title, setTitle] = useState("");
+  const [sectionId, setSectionId] = useState(initialSectionId ?? leafSections[0]?.id ?? "");
+  const selectedSection = leafSections.find((section) => section.id === sectionId);
+  useEffect(() => {
+    if (!selectedSection && leafSections[0]) setSectionId(leafSections[0].id);
+  }, [leafSections, selectedSection]);
+  return createPortal(
+    <div className="fixed inset-0 z-[100004] flex items-start justify-center bg-black/20 px-4 pt-[18vh]" role="dialog" aria-modal="true" aria-label="Новая позиция">
+      <div className="w-full max-w-[360px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_18px_42px_rgba(41,37,36,0.16)]">
+        <div className="border-b border-[#eceae7] px-4 py-3"><h2 className="text-[14px] font-medium text-[#292524]">Новая позиция</h2></div>
+        <div className="space-y-3 px-4 py-4">
+          <label className="block"><span className="mb-1 block text-[12px] font-medium text-[#57534d]">Название</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && title.trim() && selectedSection) onContinue(title, selectedSection.id); }} className="h-8 w-full rounded-[8px] border border-[#e7e5e4] px-2.5 text-[13px] text-[#292524] outline-none focus:border-[#a8a09b]" /></label>
+          <label className="block"><span className="mb-1 block text-[12px] font-medium text-[#57534d]">Раздел</span><select value={sectionId} onChange={(event) => setSectionId(event.target.value)} className="h-8 w-full rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none focus:border-[#a8a09b]"><option value="" disabled>Выберите раздел</option>{leafSections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}</select></label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-[#eceae7] px-4 py-3"><button type="button" onClick={onCancel} className="h-7 rounded-[8px] px-2.5 text-[12px] text-[#79716b] hover:bg-[#f5f5f4]">Отмена</button><button type="button" disabled={!title.trim() || !selectedSection} onClick={() => selectedSection && onContinue(title, selectedSection.id)} className="h-7 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:bg-[#d6d3d1]">Создать</button></div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 function getLinkedEntitiesCount(item: CatalogItem) {
   return item.recommendationsCount + item.optionsCount + item.modifiersCount;
@@ -10100,6 +10286,9 @@ function PopulatedWorkspace({
     : preferredItemId;
   const editorNavExperiment = editorNavMode !== "legacy";
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(firstSectionId);
+  const [globalTableScopeId, setGlobalTableScopeId] = useState<string | null>(() =>
+    firstSectionId === null ? scopeSectionId : null,
+  );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
   const [editorSource, setEditorSource] = useState<"tree" | "table" | "breadcrumb" | null>(null);
   const [unifiedTableOpenSignal, setUnifiedTableOpenSignal] = useState(0);
@@ -10120,6 +10309,7 @@ function PopulatedWorkspace({
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
+  const [positionCreationDialog, setPositionCreationDialog] = useState<{ initialSectionId: string | null } | null>(null);
   const [revealSectionId, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
@@ -10380,7 +10570,9 @@ function PopulatedWorkspace({
 
   useEffect(() => {
     writeJsonRecord(unifiedScopeStorageKey, selectedSectionId ?? "__all");
-    if (scopeSectionId !== selectedSectionId) onScopeChange(selectedSectionId);
+    // В глобальном режиме scope таблицы живёт отдельно от выбранного узла дерева:
+    // dropdown «Все разделы» может сузить список, не возвращая выбор в левое дерево.
+    if (selectedSectionId !== null && scopeSectionId !== selectedSectionId) onScopeChange(selectedSectionId);
   }, [onScopeChange, scopeSectionId, selectedSectionId, unifiedScopeStorageKey]);
 
   useEffect(() => {
@@ -10493,6 +10685,7 @@ function PopulatedWorkspace({
       return;
     }
     setSelectedSectionId(null);
+    setGlobalTableScopeId(null);
     setUnifiedTableOpenSignal((signal) => signal + 1);
     setSelectedItemId(null);
     setEditorSource(null);
@@ -10500,6 +10693,7 @@ function PopulatedWorkspace({
     setSelectedIds(new Set());
     setSectionEditorTab("composition");
     onScopeChange(null);
+    onFilterChange("quick:all");
   };
 
   const reorderItemsInSection = (sectionId: string, draggedId: string, targetId: string) => {
@@ -11419,7 +11613,7 @@ function PopulatedWorkspace({
 
   // «Добавить позицию» открывает локальный черновик. В каталог он попадёт
   // только после явного подтверждения в шапке редактора.
-  const addPositionToSection = (sectionId: string) => {
+  const addPositionToSection = (sectionId: string, initialTitle = "") => {
     const targetSection = allSections.find((candidate) => candidate.id === sectionId) ?? null;
     if (!targetSection) return;
     if (structurePositionDraft) {
@@ -11431,7 +11625,7 @@ function PopulatedWorkspace({
       setFeedback(restriction);
       return;
     }
-    const draft = makeDraftItem(targetSection);
+    const draft = { ...makeDraftItem(targetSection), title: initialTitle };
     setStructurePositionDraft({
       item: draft,
       targetSectionId: sectionId,
@@ -11452,8 +11646,13 @@ function PopulatedWorkspace({
       setEditing(true);
     });
   };
+  const openCreatePositionDialog = (initialSectionId: string | null) => {
+    const isLeaf = initialSectionId && !allSections.some((candidate) => candidate.parentId === initialSectionId);
+    setPositionCreationDialog({ initialSectionId: isLeaf ? initialSectionId : null });
+  };
   const addPosition = () => {
-    if (selectedSectionId) addPositionToSection(selectedSectionId);
+    if (selectedSectionId) openCreatePositionDialog(selectedSectionId);
+    else openCreatePositionDialog(null);
   };
   const setItemSelected = (id: string, selected: boolean) => {
     setSelectedIds((current) => {
@@ -11715,6 +11914,7 @@ function PopulatedWorkspace({
     }
     if (action === "Настроить раздел" || action === "Изменить раздел") {
       openSectionEditor(target.id);
+      setSectionEditorTab("basic");
       return;
     }
     if (action === "Настроить доступность") {
@@ -12055,6 +12255,12 @@ function PopulatedWorkspace({
   }, []);
 
   const handleUnifiedTableScopeChange = (id: string | null) => {
+    if (selectedSectionId === null) {
+      setGlobalTableScopeId(id);
+      setSelectedIds(new Set());
+      onScopeChange(id);
+      return;
+    }
     setSelectedSectionId(id);
     setSelectedItemId(null);
     setEditorSource(null);
@@ -12086,14 +12292,10 @@ function PopulatedWorkspace({
   const tableHeader = section ? (
     <UnifiedSectionTableHeader
       section={section}
-      itemCount={scopedItemCount}
-      activeTab={sectionEditorTab}
-      onTabChange={setSectionEditorTab}
-      onAddPosition={() => addPositionToSection(section.id)}
+      itemCount={allItems.filter((item) => item.sectionId === section.id && item.status !== "archive").length}
       onAction={(action, anchor) => handleUnifiedSectionAction(section, action, anchor)}
-      positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
       subsectionCreateDisabledReason={subsectionDisabledReason}
-      allowPositionCreation={allowPositionCreation}
+      allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
     />
   ) : null;
 
@@ -12102,7 +12304,7 @@ function PopulatedWorkspace({
       filterId={filterId}
       createdItems={createdItems}
       onFilterChange={onFilterChange}
-      sectionScopeId={selectedSectionId}
+      sectionScopeId={selectedSectionId ?? globalTableScopeId}
       onSectionScopeChange={handleUnifiedTableScopeChange}
       query={query}
       onQueryChange={onQueryChange}
@@ -12120,6 +12322,9 @@ function PopulatedWorkspace({
       positionsWorkspaceMode="legacy"
       embedded
       tableHeader={tableHeader}
+      onAddPosition={() => openCreatePositionDialog(section?.id ?? scopeSectionId)}
+      positionCreateDisabledReason={section?.status === "archive" || directChildSections.length > 0 ? "Выберите конечный раздел" : null}
+      allowPositionCreation={allowPositionCreation && (!section || (section.status !== "archive" && directChildSections.length === 0))}
       onActiveItemChange={handleOverviewActiveItemChange}
       structureSections={allSections}
       structuralPositionOrderBySection={positionOrderBySection}
@@ -12179,7 +12384,8 @@ function PopulatedWorkspace({
       showOpenInPositions={false}
       forcePositionsLabel
       compositionCountOverride={scopedItemCount}
-      allowPositionCreation={allowPositionCreation}
+      allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
+      hideNavigationTabs
     />
   ) : unifiedOverviewWorkspace;
 
@@ -12332,7 +12538,7 @@ function PopulatedWorkspace({
         ) : editorNavMode === "unified" ? (
           (editorSource === "tree" || editorSource === "breadcrumb") && selectedItem
             ? renderPositionEditor(selectedItem)
-            : section && sectionEditorTab !== "composition"
+          : section && (directChildSections.length > 0 || sectionEditorTab !== "composition")
               ? renderUnifiedSectionSettings()
               : unifiedOverviewWorkspace
         ) : editing ? (
@@ -12435,6 +12641,17 @@ function PopulatedWorkspace({
             onCancel={closeSectionCreation}
           />
         )}
+        {positionCreationDialog && (
+          <CreatePositionDialog
+            sections={allSections}
+            initialSectionId={positionCreationDialog.initialSectionId}
+            onCancel={() => setPositionCreationDialog(null)}
+            onContinue={(title, sectionId) => {
+              setPositionCreationDialog(null);
+              addPositionToSection(sectionId, title.trim());
+            }}
+          />
+        )}
       </div>
     </main>
   );
@@ -12454,16 +12671,16 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 // ── Audit table (Figma 979:10759) ─────────────────────────────────────────────
 
 const TABLE_COL = {
-  description: "w-[87px]",
-  weight: "w-[104px]",
+  description: "w-[76px]",
+  weight: "w-[60px]",
   kbju: "w-[62px]",
   translation: "w-[80px]",
   section: "w-[120px]",
-  price: "w-[82px]",
+  price: "w-[96px]",
   tags: "w-[120px]",
   stickers: "w-[112px]",
   upsells: "w-[88px]",
-  kebab: "w-[36px]",
+  kebab: "w-[51px]",
 };
 type CatalogInformationColumnId =
   | "section"
@@ -12516,8 +12733,8 @@ const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "selection", enableHiding: false },
   { id: "position", accessorKey: "title", enableHiding: false },
   { id: "section", accessorKey: "sectionName" },
-  { id: "description", accessorKey: "hasDescription" },
   { id: "weight", accessorKey: "weightLabel" },
+  { id: "description", accessorKey: "hasDescription" },
   { id: "kbju", accessorKey: "nutritionFilledCount" },
   { id: "translation", accessorKey: "translationFilledCount" },
   { id: "price", accessorKey: "price" },
@@ -12560,19 +12777,27 @@ function TableCheckbox({
   }, [indeterminate]);
 
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={checked}
-      onChange={(event) => onChange?.(event.target.checked)}
-      aria-label={ariaLabel}
-      className={cn(
-        "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[5px] border border-stone-300 bg-white accent-[#a8a29e] transition-opacity duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
-        quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-        (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
+    <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange?.(event.target.checked)}
+        aria-label={ariaLabel}
+        className={cn(
+          "absolute inset-0 h-4 w-4 cursor-pointer appearance-none rounded-[4.8px] border-[0.8px] border-stone-300 bg-white transition duration-150 ease-out checked:border-[#79716b] checked:bg-[#79716b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          indeterminate && "border-[#79716b] bg-[#79716b]",
+          quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
+          quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+          (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
+        )}
+      />
+      {(checked || indeterminate) && (
+        <span className="pointer-events-none relative z-[1] flex items-center justify-center text-white" aria-hidden="true">
+          {indeterminate ? <span className="h-px w-2 rounded-full bg-current" /> : <Check size={11} weight="bold" />}
+        </span>
       )}
-    />
+    </span>
   );
 }
 
@@ -12596,6 +12821,7 @@ function TableHeaderRow({
   priceSort,
   onPriceSortChange,
   table,
+  onResetColumns,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -12606,18 +12832,19 @@ function TableHeaderRow({
   priceSort: PriceSortDirection;
   onPriceSortChange: () => void;
   table: TanStackTable<CatalogItem>;
+  onResetColumns: () => void;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[#e7e5e4] bg-white py-1">
-      <div className="flex min-h-9 items-center">
+    <div className="sticky top-0 z-10 bg-white" data-catalog-table-header>
+      <div className="flex h-[38px] items-center">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
-          if (column.id === "reorder") return <span key={column.id} className="h-8 w-[24px] shrink-0" />;
+          if (column.id === "reorder") return <span key={column.id} className="h-[38px] w-[22px] shrink-0" />;
           if (column.id === "selection") {
             return (
-              <span key={column.id} className="flex h-full w-[26px] shrink-0 items-center">
+              <span key={column.id} className="flex h-full w-[42px] shrink-0 items-center justify-center">
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -12629,15 +12856,16 @@ function TableHeaderRow({
           }
           if (column.id === "position") {
             return hideSearch ? (
-              <span key={column.id} className="min-w-[260px] flex-1 truncate pr-2 text-[12px] leading-5 text-[#79716b]">Позиция</span>
+              <span key={column.id} className="min-w-[160px] flex-1 truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]">Позиция</span>
             ) : (
-              <div key={column.id} className="flex h-8 min-w-[260px] flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
+              <div key={column.id} className="mr-3 flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-[7px]" data-catalog-table-search>
                 <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
                 <input
                   value={query}
                   onChange={(event) => onQueryChange(event.target.value)}
-                  placeholder="Найти позицию..."
-                  className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#292524] outline-none placeholder:text-[#79716b]"
+                  placeholder="Поиск по названию"
+                  aria-label="Найти позицию"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] font-normal leading-4 text-[#57534d] outline-none placeholder:text-[#a6a09b]"
                 />
               </div>
             );
@@ -12650,25 +12878,43 @@ function TableHeaderRow({
                   onClick={onPriceSortChange}
                   aria-label={priceSortTooltip}
                   className={cn(
-                    "flex h-8 shrink-0 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    "flex h-[38px] shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                     TABLE_COL.price,
-                    priceSort === "none" ? "text-[#79716b]" : "font-medium text-[#292524]",
+                    priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
                   )}
                 >
                   <span>Цена</span>
-                  <span className="flex h-4 w-3 shrink-0 items-center justify-center">
-                    {priceSort === "asc" ? <CaretUp size={11} weight="bold" /> : priceSort === "desc" ? <CaretDown size={11} weight="bold" /> : (
-                      <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
-                        <CaretUp size={8} weight="bold" />
-                        <CaretDown size={8} weight="bold" className="-mt-1" />
-                      </span>
-                    )}
-                  </span>
                 </button>
               </Tooltip>
             );
           }
-          if (column.id === "actions") return <span key={column.id} className={cn("h-8 shrink-0", TABLE_COL.kebab)} />;
+          if (column.id === "actions") {
+            const informationColumns = table.getAllLeafColumns().filter((candidate) => candidate.getCanHide());
+            return (
+              <span key={column.id} className={cn("flex h-[38px] shrink-0 items-center justify-center", TABLE_COL.kebab)}>
+                <DropdownMenu.Root>
+                  <Tooltip label="Настроить колонки" side="top">
+                    <DropdownMenu.Trigger asChild>
+                      <button type="button" aria-label="Настроить колонки" className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                        <Columns size={18} weight="regular" />
+                      </button>
+                    </DropdownMenu.Trigger>
+                  </Tooltip>
+                  <DropdownContent align="end">
+                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
+                    {informationColumns.map((candidate) => (
+                      <DropdownMenu.CheckboxItem key={candidate.id} checked={candidate.getIsVisible()} onCheckedChange={(checked) => candidate.toggleVisibility(checked === true)} onSelect={(event) => event.preventDefault()} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
+                        {CATALOG_INFORMATION_COLUMN_LABELS[candidate.id as CatalogInformationColumnId]}
+                      </DropdownMenu.CheckboxItem>
+                    ))}
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                    <DropdownMenu.Item onSelect={onResetColumns} className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]">Сбросить колонки</DropdownMenu.Item>
+                  </DropdownContent>
+                </DropdownMenu.Root>
+              </span>
+            );
+          }
           const widths: Record<string, string> = {
             description: TABLE_COL.description,
             weight: TABLE_COL.weight,
@@ -12680,8 +12926,8 @@ function TableHeaderRow({
             upsells: TABLE_COL.upsells,
           };
           return (
-            <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] leading-5 text-[#79716b]", widths[column.id])}>
-              {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
+            <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", widths[column.id])}>
+              {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
             </span>
           );
         })}
@@ -12834,16 +13080,19 @@ function SectionActionMenuContent({
   section,
   subsectionDisabledReason,
   allowPositionCreation = true,
+  showSettingsEntry = false,
   onAction,
 }: {
   section: TreeSection;
   subsectionDisabledReason?: string | null;
   allowPositionCreation?: boolean;
+  showSettingsEntry?: boolean;
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   if (section.status === "archive") {
     return (
       <>
+        {showSettingsEntry && <><DropdownActionItem icon={GearSix} onSelect={() => onAction("Настроить раздел")}>Настройки раздела</DropdownActionItem><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /></>}
         <DropdownActionItem icon={ArrowCounterClockwise} onSelect={() => onAction("Восстановить раздел")}>Восстановить раздел</DropdownActionItem>
         <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
         <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
@@ -12852,6 +13101,7 @@ function SectionActionMenuContent({
   }
   return (
     <>
+      {showSettingsEntry && <><DropdownActionItem icon={GearSix} onSelect={() => onAction("Настроить раздел")}>Настройки раздела</DropdownActionItem><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /></>}
       {allowPositionCreation && <DropdownActionItem icon={Plus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
       <Tooltip label={subsectionDisabledReason ?? ""} side="left" disabled={!subsectionDisabledReason}>
         <span className="block">
@@ -13015,7 +13265,7 @@ function AuditDishRow({
         }
       }}
       className={cn(
-        "group flex h-11 cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "group flex h-[38px] cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
         highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
         isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
@@ -13028,7 +13278,7 @@ function AuditDishRow({
             return (
               <span
                 key={cell.id}
-                className="flex h-full w-[24px] shrink-0 items-center justify-center"
+                className="flex h-full w-[22px] shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
@@ -13039,9 +13289,9 @@ function AuditDishRow({
                   aria-label={`Изменить порядок позиции ${item.title}`}
                   {...reorderAttributes}
                   {...reorderListeners}
-                  className="flex h-7 w-5 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f1f1ea] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  className="flex h-7 w-6 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a6a09b] transition hover:bg-[#f1f1ea] hover:text-[#57534d] active:cursor-grabbing disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  <DotsSixVertical size={14} weight="bold" />
+                  <DotsSixVertical size={16} weight="bold" />
                 </button>
               </span>
             );
@@ -13049,14 +13299,13 @@ function AuditDishRow({
             return (
               <span
                 key={cell.id}
-                className="flex h-full w-[26px] shrink-0 items-center"
+                className="flex h-full w-[42px] shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
                 <TableCheckbox
                   ariaLabel={`Выбрать ${item.title}`}
                   checked={selected}
-                  quiet
                   forceVisible={selectionMode}
                   onChange={(checked) => onSelectedChange(item.id, checked)}
                 />
@@ -13064,10 +13313,10 @@ function AuditDishRow({
             );
           case "position":
             return (
-              <div key={cell.id} className="flex min-w-[260px] flex-1 items-center gap-[9px] pr-2">
-                <CatalogThumbnail src={item.thumbnailUrl} kind="item" />
+              <div key={cell.id} className="flex min-w-[160px] flex-1 items-center gap-[7px] pr-3">
+                <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[3px]" />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span className="block min-w-0 flex-1 truncate text-left text-[13px] leading-4 text-[#292524] transition-colors group-hover:text-[#1c1917] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+                  <span className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
                     {item.title}
                   </span>
                   {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
@@ -13082,7 +13331,7 @@ function AuditDishRow({
             );
           case "weight":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.weight)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]", TABLE_COL.weight)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
                 {item.weightLabel ? <span className="truncate whitespace-nowrap">{item.weightLabel}</span> : <span className="text-[#a6a09b]">—</span>}
               </span>
             );
@@ -13158,9 +13407,9 @@ function AuditDishRow({
             );
           case "price":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 flex-col items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.price)}>
+              <span key={cell.id} className={cn("relative flex shrink-0 items-center justify-end gap-1 px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.price)} title={salePrice != null ? `Цена без скидки: ${formatPrice(item.price)}` : undefined}>
                 {item.price === 0 && salePrice == null ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(salePrice ?? item.price)}</span>}
-                {salePrice != null && <span className="text-[11px] leading-3 text-[#a6a09b] line-through">{formatPrice(item.price)}</span>}
+                {salePrice != null && <span className="absolute left-1 top-[13px] flex h-3 min-w-[27px] items-center justify-center rounded-[26px] bg-[#79716b] px-0.5 text-[9px] font-bold leading-3 text-white">-{Math.round((1 - salePrice / Math.max(item.price, 1)) * 100)}%</span>}
               </span>
             );
           case "actions":
@@ -13177,7 +13426,7 @@ function AuditDishRow({
   );
 }
 
-const AUDIT_ROW_HEIGHT = 44;
+const AUDIT_ROW_HEIGHT = 38;
 const QUEUE_ROW_HEIGHT = 36;
 
 function useVirtualScrollMargin(
@@ -13654,15 +13903,18 @@ function SelectionFeedback({ message }: { message: string }) {
 function OverviewStatusBar({
   filterId,
   titleOverride,
+  count,
 }: {
   filterId: OverviewFilterId;
   titleOverride?: string;
+  count?: number;
 }) {
   return (
     <div className="flex min-h-[24px] min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium leading-[17px] text-[#292524]">
           {titleOverride ?? getFilterPanelTitle(filterId)}
+          {count != null && <span className="ml-1 text-[#79716b]">{count}</span>}
         </div>
       </div>
     </div>
@@ -13677,6 +13929,8 @@ function CatalogTableFilterBar({
   onActiveFilterChange,
   table,
   onResetColumns,
+  simple = false,
+  headerActionsOnly = false,
 }: {
   activeFilterIds: OverviewFilterId[];
   mandatoryFilterId?: OverviewFilterId;
@@ -13685,6 +13939,8 @@ function CatalogTableFilterBar({
   onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
+  simple?: boolean;
+  headerActionsOnly?: boolean;
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId), [sectionScopeId]);
@@ -13708,6 +13964,113 @@ function CatalogTableFilterBar({
   }, [activeFilterIds, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
 
+  if (headerActionsOnly) {
+    const completenessIds: OverviewFilterId[] = ["quick:all", "quick:no-photo", "quick:no-description", "quick:no-weight", "quick:no-kbju"];
+    const activeCompleteness = activeFilterIds[0] ?? "quick:all";
+    return (
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="inline-flex h-6 shrink-0 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+            <span>{activeCompleteness === "quick:all" ? "Заполненность" : HYBRID_PRIMARY_FILTER_LABELS[activeCompleteness]}</span>
+            <CaretDown size={12} />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="end">
+          <DropdownMenu.RadioGroup value={activeCompleteness} onValueChange={(value) => onActiveFilterChange(value as OverviewFilterId, value !== "quick:all")}>
+            {completenessIds.map((id) => (
+              <DropdownMenu.RadioItem key={id} value={id} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center"><DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator></span>
+                <span className="min-w-0 flex-1">{id === "quick:all" ? "Все позиции" : HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownContent>
+      </DropdownMenu.Root>
+    );
+  }
+  if (false && headerActionsOnly) {
+    return (
+      <div className="flex shrink-0 items-center gap-2.5" data-catalog-view-actions>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Настроить колонки"
+              className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <Columns size={16} weight="regular" />
+              <span>Колонки</span>
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
+            {informationColumns.map((column) => (
+              <DropdownMenu.CheckboxItem
+                key={column.id}
+                checked={column.getIsVisible()}
+                onCheckedChange={(checked) => column.toggleVisibility(checked === true)}
+                onSelect={(event) => event.preventDefault()}
+                className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
+                  <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
+                </span>
+                {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
+              </DropdownMenu.CheckboxItem>
+            ))}
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownMenu.Item
+              onSelect={onResetColumns}
+              className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+            >
+              Сбросить колонки
+            </DropdownMenu.Item>
+          </DropdownContent>
+        </DropdownMenu.Root>
+        <DropdownMenu.Root open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <FunnelSimple size={16} weight="regular" />
+              <span>Фильтры</span>
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <div className="max-h-[380px] min-w-[280px] overflow-y-auto">
+              <DropdownMenu.RadioGroup
+                value={activeFilterIds[0] ?? ""}
+                onValueChange={(value) => onActiveFilterChange(value as OverviewFilterId, true)}
+              >
+                {filterGroups.map((group, groupIndex) => (
+                  <div key={group.label}>
+                    {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                    {group.ids.map((id) => (
+                      <DropdownMenu.RadioItem
+                        key={id}
+                        value={id}
+                        className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-[#d6d3d1] bg-white">
+                          <DropdownMenu.ItemIndicator><span className="block h-2 w-2 rounded-full bg-[#57534d]" /></DropdownMenu.ItemIndicator>
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                        <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                      </DropdownMenu.RadioItem>
+                    ))}
+                  </div>
+                ))}
+              </DropdownMenu.RadioGroup>
+            </div>
+          </DropdownContent>
+        </DropdownMenu.Root>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-w-0 items-center gap-1" data-catalog-quick-filters>
       <DropdownMenu.Root open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
@@ -13718,6 +14081,7 @@ function CatalogTableFilterBar({
           >
             <FunnelSimple size={14} />
             <span>Фильтры</span>
+            {simple && activeFilterIds.length > 0 && <span className="text-[#a6a09b]">{activeFilterIds.length}</span>}
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="start">
@@ -13749,7 +14113,7 @@ function CatalogTableFilterBar({
           </div>
         </DropdownContent>
       </DropdownMenu.Root>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+      {!simple && <><div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {activeFilterIds.map((id) => {
             return (
               <div
@@ -13799,7 +14163,7 @@ function CatalogTableFilterBar({
               aria-label="Настроить колонки"
               className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
-              <SlidersHorizontal size={15} />
+              <Columns size={15} />
             </button>
           </DropdownMenu.Trigger>
         </Tooltip>
@@ -13828,6 +14192,7 @@ function CatalogTableFilterBar({
           </DropdownMenu.Item>
         </DropdownContent>
       </DropdownMenu.Root>
+      </>}
     </div>
   );
 }
@@ -13951,11 +14316,13 @@ function CatalogScopeSelect({
   onChange,
   onReset,
   allOptionLabel,
+  compact = false,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   onReset: () => void;
   allOptionLabel?: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -13989,6 +14356,7 @@ function CatalogScopeSelect({
       <DropdownMenu.Item
         key={section.id}
         onSelect={() => onChange(section.id)}
+        onClick={() => onChange(section.id)}
         title={parentName ? `${parentName} / ${section.name}` : section.name}
         style={{ paddingLeft: 8 + depth * 16 }}
         className={cn(
@@ -14015,17 +14383,17 @@ function CatalogScopeSelect({
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <div className="flex h-9 w-full min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5 transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10">
+      <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label={selected || allOptionLabel ? `Выбран раздел: ${selectedLabel}` : "Выбрать раздел"}
             className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-white text-[#57534d]">
+            <span className={cn("flex shrink-0 items-center justify-center overflow-hidden text-[#57534d]", compact ? "h-5 w-5 rounded-[5px] bg-white" : "h-5 w-5 rounded-[5px] bg-white")}>
               {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#44403b]">
+            <span className={cn("min-w-0 flex-1 truncate font-normal text-[#44403b]", compact ? "text-[12px] leading-4" : "text-[13px] leading-[18px]")}>
               {selectedLabel}
             </span>
           </button>
@@ -14039,7 +14407,7 @@ function CatalogScopeSelect({
             event.stopPropagation();
             setOpen((current) => !current);
           }}
-          className="flex h-[14px] w-5 shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[#57534d] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className={cn("flex shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[#57534d] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", compact ? "h-[14px] w-[14px]" : "h-[14px] w-5")}
         >
           <CaretDown size={12} weight="bold" />
         </button>
@@ -14055,6 +14423,7 @@ function CatalogScopeSelect({
               <>
                 <DropdownMenu.Item
                   onSelect={onReset}
+                  onClick={onReset}
                   className={cn(
                     "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
                     value === null && "bg-[#f3f3ed]",
@@ -14596,6 +14965,9 @@ function OverviewWorkspace({
   positionsWorkspaceMode,
   embedded = false,
   tableHeader,
+  onAddPosition,
+  positionCreateDisabledReason,
+  allowPositionCreation = true,
   onActiveItemChange,
   structureSections,
   structuralPositionOrderBySection,
@@ -14624,6 +14996,9 @@ function OverviewWorkspace({
   positionsWorkspaceMode: PositionsWorkspaceMode;
   embedded?: boolean;
   tableHeader?: ReactNode;
+  onAddPosition?: () => void;
+  positionCreateDisabledReason?: string | null;
+  allowPositionCreation?: boolean;
   onActiveItemChange?: (id: string | null) => void;
   structureSections?: TreeSection[];
   structuralPositionOrderBySection?: Record<string, string[]>;
@@ -14651,7 +15026,7 @@ function OverviewWorkspace({
   } = useCatalogStore();
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
   const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext(overviewContextStorageKey));
-  const activeFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v1`;
+  const activeFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v2`;
   const [activeFilterIds, setActiveFilterIds] = useState<OverviewFilterId[]>(() => {
     const stored = readJsonRecord<unknown>(activeFiltersStorageKey, []);
     const restored = Array.isArray(stored)
@@ -14786,7 +15161,13 @@ function OverviewWorkspace({
     else setPriceSort(value);
   };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
-    const next = active ? [id] : activeFilterIds[0] === id ? [] : activeFilterIds;
+    const next = id === "quick:all"
+      ? []
+      : active
+        ? [id]
+        : activeFilterIds[0] === id
+          ? []
+          : activeFilterIds;
     setActiveFilterIds(next);
     setWorkspaceFilterId(next[0] ?? "quick:all");
     setSelectedIds(new Set());
@@ -14801,6 +15182,10 @@ function OverviewWorkspace({
     const nextItems = activeFilterIds[0] ? getOverviewItems(activeFilterIds[0], baseItems) : baseItems;
     return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
   }, [activeFilterIds, items, mandatoryFilterId, scopeIds]);
+  const scopeTotalCount = useMemo(
+    () => items.filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length,
+    [items, scopeIds],
+  );
   const normalizedQuery = useMemo(() => workspaceQuery.trim().toLowerCase(), [workspaceQuery]);
   const searched = useMemo(
     () => normalizedQuery
@@ -14823,7 +15208,8 @@ function OverviewWorkspace({
     && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
   );
   const canReorderTable = Boolean(
-    embedded
+    tableHeader
+    && embedded
     && !mandatoryFilterId
     && scopeSection
     && scopeIsLeafSection
@@ -15259,6 +15645,10 @@ function OverviewWorkspace({
     setQueue(null);
     setBulkDialog(null);
     clearSelection();
+    if (embedded) {
+      setActivePositionId(null);
+      return;
+    }
     if (editorFirstEnabled) {
       setEditorFirstView("table");
       setEditorFirstSectionScopeId(sectionScopeId);
@@ -15271,7 +15661,7 @@ function OverviewWorkspace({
     }
     setActiveFilterIds([]);
     setActivePositionId(null);
-  }, [editorFirstEnabled, sectionScopeId, tableOpenSignal]);
+  }, [editorFirstEnabled, embedded, sectionScopeId, tableOpenSignal]);
   // Пока редактор открыт, смена фильтра/scope меняет ТОЛЬКО browse (список слева),
   // не закрывая редактор. Пересобираем очередь, сохраняя currentId (activePositionId);
   // если позиция не входит в новую выборку — строка просто не будет выделена.
@@ -15795,43 +16185,85 @@ function OverviewWorkspace({
             if (editorFirstEnabled) setEditorFirstTableScrollTop(event.currentTarget.scrollTop);
             else setOverviewScrollTop(event.currentTarget.scrollTop);
           }}
-          className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pb-10"
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-10",
+            embedded ? "px-1.5" : "px-6",
+          )}
         >
           <div className={cn(
             "mx-auto w-full min-w-0",
             catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px]" : "max-w-[800px]",
           )}>
-            {tableHeader}
-            {!tableHeader && (
-              <div className="pt-3">
-                <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} />
+            {tableHeader ? (
+              <div className="flex w-full items-center justify-between gap-3 px-1.5 pt-[18px]">
+                {tableHeader}
+                <CatalogTableFilterBar
+                  activeFilterIds={activeFilterIds}
+                  mandatoryFilterId={mandatoryFilterId}
+                  sectionScopeId={workspaceSectionScopeId}
+                  items={items}
+                  table={catalogTable}
+                  onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                  onActiveFilterChange={setWorkspaceActiveFilter}
+                  headerActionsOnly
+                />
+              </div>
+            ) : (
+              <div className="flex w-full items-center justify-between gap-3 px-1.5 pt-[18px]">
+                <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />
+                <CatalogTableFilterBar
+                  activeFilterIds={activeFilterIds}
+                  mandatoryFilterId={mandatoryFilterId}
+                  sectionScopeId={workspaceSectionScopeId}
+                  items={items}
+                  table={catalogTable}
+                  onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                  onActiveFilterChange={setWorkspaceActiveFilter}
+                  headerActionsOnly
+                />
               </div>
             )}
             <div className={cn(
-              "mt-3 min-w-0 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
-            )}>
+              "mt-3 min-w-0 overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white pb-1 pt-0.5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
+            )} data-catalog-items-card>
               {embedded && (
-                <div className="px-3 pb-1 pt-2">
-                  <CatalogTableFilterBar
-                    activeFilterIds={activeFilterIds}
-                    mandatoryFilterId={mandatoryFilterId}
-                    sectionScopeId={workspaceSectionScopeId}
-                    items={items}
-                    table={catalogTable}
-                    onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                    onActiveFilterChange={setWorkspaceActiveFilter}
-                  />
-                </div>
+                <div className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
+                  {!tableHeader ? (
+                    <CatalogScopeSelect
+                      value={workspaceSectionScopeId}
+                      onChange={setWorkspaceSectionScopeId}
+                      onReset={() => setWorkspaceSectionScopeId(null)}
+                      allOptionLabel="Все разделы"
+                      compact
+                    />
+                  ) : <span className="min-w-0 flex-1" />}
+                  {onAddPosition && allowPositionCreation && (
+                    <Tooltip label={positionCreateDisabledReason ?? ""} side="top" disabled={!positionCreateDisabledReason}>
+                      <span className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={onAddPosition}
+                          disabled={Boolean(positionCreateDisabledReason)}
+                          data-position-create-button
+                          className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white pl-1 pr-2 text-[12px] font-normal leading-[17px] text-[#292524] transition hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                        >
+                          <PlusCircle size={16} weight="regular" />
+                          <span>Новая позиция</span>
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
+                  </div>
               )}
               {visible.length === 0 ? (
                 <div className="p-6">
                   <div className="flex flex-col gap-4">
                     <div>
                       <p className="text-[16px] font-medium leading-[1.4] text-[#44403b]">
-                        {emptyTitle}
+                        {activeFilterIds.length > 0 && !workspaceQuery.trim() ? "По текущим фильтрам ничего не найдено" : emptyTitle}
                       </p>
                       <p className="mt-2 text-[14px] leading-[1.4] text-[#79716b]">
-                        {emptyText}
+                        {activeFilterIds.length > 0 && !workspaceQuery.trim() ? "Измените условия фильтрации или сбросьте фильтры." : emptyText}
                       </p>
                     </div>
                     {workspaceQuery.trim() ? (
@@ -15841,6 +16273,14 @@ function OverviewWorkspace({
                         className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
                       >
                         Очистить поиск
+                      </button>
+                    ) : activeFilterIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={resetFilter}
+                        className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
+                      >
+                        Сбросить фильтры
                       </button>
                     ) : (
                       <button
@@ -15855,22 +16295,20 @@ function OverviewWorkspace({
                 </div>
               ) : (
                 <div className="overflow-x-auto [scrollbar-width:thin]">
-                  <div className={cn(
-                    "px-3 pb-3",
-                    catalogTable.getColumn("section")?.getIsVisible() ? "min-w-[850px]" : "min-w-[730px]",
-                  )}>
+                  <div className="w-full min-w-0">
                   <TableHeaderRow
-                    query={workspaceQuery}
-                    onQueryChange={handleQueryChange}
-                    hideSearch={editorFirstEnabled}
-                    checked={allVisibleSelected}
-                    indeterminate={!allVisibleSelected && someVisibleSelected}
-                    onSelectAll={setVisibleSelected}
-                    priceSort={workspacePriceSort}
-                    onPriceSortChange={handlePriceSortChange}
-                    table={catalogTable}
-                  />
-                  <div className="pt-2">
+                      query={workspaceQuery}
+                      onQueryChange={handleQueryChange}
+                      hideSearch={editorFirstEnabled}
+                      checked={allVisibleSelected}
+                      indeterminate={!allVisibleSelected && someVisibleSelected}
+                      onSelectAll={setVisibleSelected}
+                      priceSort={workspacePriceSort}
+                      onPriceSortChange={handlePriceSortChange}
+                      table={catalogTable}
+                      onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                    />
+                  <div>
                     {selectedIds.size > 0 && (
                       <div className="sticky top-[58px] z-[9] flex items-center bg-white py-1">
                         <SelectionToolbar
@@ -15898,15 +16336,15 @@ function OverviewWorkspace({
                     >
                       <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
                         <VirtualizedAuditRows
-                          rows={catalogTable.getRowModel().rows}
-                          selectedIds={selectedIds}
-                          selectionMode={selectedIds.size > 0}
-                          scrollParentRef={scrollContainerRef}
-                          onSelectedChange={setItemSelected}
-                          onAction={prepareRowAction}
-                          highlightItemId={tableHighlightId}
-                          reorderEnabled={canReorderTable}
-                        />
+                            rows={catalogTable.getRowModel().rows}
+                            selectedIds={selectedIds}
+                            selectionMode={selectedIds.size > 0}
+                            scrollParentRef={scrollContainerRef}
+                            onSelectedChange={setItemSelected}
+                            onAction={prepareRowAction}
+                            highlightItemId={tableHighlightId}
+                            reorderEnabled={canReorderTable}
+                          />
                       </SortableContext>
                     </DndContext>
                   </div>
