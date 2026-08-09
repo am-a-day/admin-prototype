@@ -41,6 +41,22 @@ test("opens editor from a leaf and keeps the preview bridge mounted", async ({ p
   await expect(page).toHaveURL(/\/\?editorNav=unified$/);
 });
 
+test("keeps previous and next navigation inside the current editor selection", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const previous = page.getByRole("button", { name: "Предыдущая позиция в выборке" });
+  const next = page.getByRole("button", { name: "Следующая позиция в выборке" });
+  await expect(previous).toBeDisabled();
+  await expect(next).toBeEnabled();
+
+  await next.click();
+  await expect(page.getByRole("heading", { name: firstItemTitle })).not.toBeVisible();
+  await expect(previous).toBeEnabled();
+
+  await previous.click();
+  await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+});
+
 test("returns from an all-positions editor with the same search context", async ({ page }) => {
   await openItemFromAllPositions(page);
 

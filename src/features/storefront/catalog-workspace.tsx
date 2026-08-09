@@ -41,7 +41,6 @@ import {
   ArrowCounterClockwise,
   ArrowLeft,
   CaretDown,
-  CaretLeft,
   CaretRight,
   Check,
   CheckCircle,
@@ -181,6 +180,16 @@ import {
   TableHeaderRow,
   VirtualizedAuditRows,
 } from "./catalog/table/catalog-table";
+import {
+  deriveEditorQueue,
+  descriptionHasContent,
+  getQueueEditorContext,
+  isRepairQueueFilter,
+  type EditorFocusAnchor,
+  type EditorTab,
+} from "./catalog/editor/editor-queue";
+import { PositionQueueControls, PositionQueueReturnLink } from "./catalog/editor/editor-queue-controls";
+import { WorkspaceLocalTabs } from "./catalog/editor/editor-tabs";
 
 export type {
   CatalogPhase,
@@ -860,15 +869,6 @@ function readDirectCreatePendingOpen(): PendingOpen | null {
     } : undefined,
   };
 }
-const REPAIR_QUEUE_FILTER_IDS: AuditQueueFilterId[] = [
-  "quick:no-description",
-  "quick:no-photo",
-  "quick:no-weight",
-  "quick:no-kbju",
-  "quick:no-translation",
-  "quick:no-recommendations",
-  "status:stop",
-];
 const AUDIT_QUEUE_EMPTY_TITLE: Partial<Record<AuditQueueFilterId, string>> = {
   "quick:no-description": "У всех позиций есть описание",
   "quick:no-photo": "У всех позиций есть фото",
@@ -878,35 +878,6 @@ const AUDIT_QUEUE_EMPTY_TITLE: Partial<Record<AuditQueueFilterId, string>> = {
   "quick:no-recommendations": "У всех позиций есть рекомендации",
   "status:stop": "В стоп-листе нет позиций",
 };
-type EditorFocusAnchor = "description" | "media" | "weight" | "kbju";
-
-const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<AuditQueueFilterId, { tab: EditorTab; anchor?: EditorFocusAnchor }>> = {
-  "quick:no-description": { tab: "basic", anchor: "description" },
-  "quick:no-photo": { tab: "basic", anchor: "media" },
-  "quick:no-weight": { tab: "basic", anchor: "weight" },
-  "quick:no-kbju": { tab: "basic", anchor: "kbju" },
-  "quick:no-translation": { tab: "basic" },
-  "quick:no-recommendations": { tab: "promo" },
-  "status:stop": { tab: "availability" },
-};
-
-function isRepairQueueFilter(id: AuditQueueFilterId) {
-  return REPAIR_QUEUE_FILTER_IDS.includes(id);
-}
-
-function getQueueEditorContext(id: AuditQueueFilterId): { tab: EditorTab; anchor?: EditorFocusAnchor } {
-  return AUDIT_QUEUE_EDITOR_CONTEXT[id] ?? { tab: "basic" };
-}
-
-function descriptionHasContent(value: string) {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&[a-z]+;/gi, " ")
-    .trim().length > 0;
-}
-
 function getNextPriceSort(direction: PriceSortDirection): PriceSortDirection {
   if (direction === "none") return "asc";
   if (direction === "asc") return "desc";
@@ -1914,7 +1885,6 @@ function EmptyCatalog({
 
 // ── Position editor: back → summary header → tabs ─────────────────────────────
 
-type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
 type PositionEditorMode = "create" | "edit";
 type UnavailableDisplayMode = "hidden" | "comingSoon";
 type OutsideScheduleMode = "hidden" | "comingSoon";
@@ -1938,60 +1908,6 @@ const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "display", label: "Отображение" },
 ];
 const editorTabByItem = new Map<string, EditorTab>();
-
-type WorkspaceLocalTab<T extends string> = {
-  id: T;
-  label: string;
-  count?: number;
-};
-
-function WorkspaceLocalTabs<T extends string>({
-  tabs,
-  value,
-  onValueChange,
-  endAction,
-  className,
-}: {
-  tabs: readonly WorkspaceLocalTab<T>[];
-  value: T;
-  onValueChange: (value: T) => void;
-  endAction?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      data-workspace-local-tabs
-      className={cn("flex min-w-0 items-center gap-3 border-b border-[#e7e5e4]", className)}
-    >
-      <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
-        <div className="flex w-max min-w-full items-center gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onValueChange(tab.id)}
-              aria-current={value === tab.id ? "page" : undefined}
-              className={cn(
-                "flex shrink-0 items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
-                value === tab.id
-                  ? "border-[#1c1917] font-medium text-[#1c1917]"
-                  : "border-transparent text-[#79716b] hover:text-[#44403b]",
-              )}
-            >
-              {tab.label}
-              {tab.count != null && (
-                <span className="flex h-[14px] min-w-[20px] items-center justify-center rounded-[4px] bg-[#efefeb] px-0.5 text-[10px] font-medium tabular-nums text-[#79716b]">
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-      {endAction && <div className="shrink-0">{endAction}</div>}
-    </div>
-  );
-}
 
 type PositionOptionSelection = "single" | "multiple";
 type PositionOptionPricing = "total" | "surcharge";
@@ -5434,31 +5350,6 @@ function PositionEditor({
   );
 }
 
-function CatalogPickerContent({
-  children,
-  align = "start",
-  className,
-}: {
-  children: ReactNode;
-  align?: "start" | "center" | "end";
-  className?: string;
-}) {
-  return (
-    <DropdownMenu.Portal>
-      <DropdownMenu.Content
-        align={align}
-        sideOffset={6}
-        className={cn(
-          "z-[100002] w-[300px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none",
-          className,
-        )}
-      >
-        {children}
-      </DropdownMenu.Content>
-    </DropdownMenu.Portal>
-  );
-}
-
 function StructuralSectionCrumb({
   section,
   siblings,
@@ -5648,121 +5539,6 @@ function StructuralPositionBreadcrumb({
   );
 }
 
-function PositionQueueReturnLink({ filterLabel, onBack }: { filterLabel: string; onBack: () => void }) {
-  return (
-    <Tooltip label="Вернуться к результатам" side="bottom" delayDuration={250}>
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex h-7 max-w-[150px] shrink-0 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        <ArrowLeft size={13} weight="bold" />
-        <span className="truncate">{filterLabel}</span>
-      </button>
-    </Tooltip>
-  );
-}
-
-function PositionQueueControls({
-  filterLabel,
-  itemIds,
-  currentId,
-  itemsById,
-  onSelect,
-  previousId,
-  nextId,
-}: {
-  filterLabel: string;
-  itemIds: string[];
-  currentId: string;
-  itemsById: Record<string, CatalogItem>;
-  onSelect: (id: string) => void;
-  previousId: string | null;
-  nextId: string | null;
-}) {
-  const [query, setQuery] = useState("");
-  const queueIndex = itemIds.indexOf(currentId);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleIds = normalizedQuery
-    ? itemIds.filter((id) => itemsById[id]?.title.toLocaleLowerCase().includes(normalizedQuery))
-    : itemIds;
-
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <DropdownMenu.Root onOpenChange={(open) => { if (!open) setQuery(""); }}>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label={`Открыть очередь, ${Math.max(0, queueIndex + 1)} из ${itemIds.length}`}
-            className="inline-flex h-7 shrink-0 items-center rounded-[7px] px-2 text-[12px] tabular-nums text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            {Math.max(0, queueIndex + 1)} из {itemIds.length}
-          </button>
-        </DropdownMenu.Trigger>
-        <CatalogPickerContent align="end" className="w-[320px]">
-          <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
-            {filterLabel} · {itemIds.length}
-          </div>
-          <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-[#fafaf9] px-2.5">
-            <MagnifyingGlass size={14} className="shrink-0 text-[#a8a29e]" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-              placeholder="Найти в очереди"
-              aria-label="Поиск по сохранённой очереди"
-              className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-            />
-          </label>
-          <div className="max-h-[320px] overflow-y-auto py-0.5">
-            {visibleIds.map((id) => {
-              const candidate = itemsById[id];
-              if (!candidate) return null;
-              return (
-                <DropdownMenu.Item
-                  key={id}
-                  onSelect={() => onSelect(id)}
-                  className={cn(
-                    "flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-[#f5f5f4]",
-                    id === currentId && "bg-[#f5f5f4] font-medium",
-                  )}
-                >
-                  <CatalogThumbnail src={candidate.thumbnailUrl} kind="item" className="h-7 w-7" />
-                  <span className="min-w-0 flex-1 truncate text-[#44403b]">{candidate.title}</span>
-                  {id === currentId && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-                </DropdownMenu.Item>
-              );
-            })}
-            {visibleIds.length === 0 && <div className="px-2.5 py-3 text-[12px] text-[#79716b]">Ничего не найдено</div>}
-          </div>
-        </CatalogPickerContent>
-      </DropdownMenu.Root>
-      <span className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          onClick={() => previousId && onSelect(previousId)}
-          disabled={!previousId}
-          aria-label="Предыдущая позиция в выборке"
-          title="Предыдущая позиция"
-          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <CaretLeft size={14} weight="bold" />
-        </button>
-        <button
-          type="button"
-          onClick={() => nextId && onSelect(nextId)}
-          disabled={!nextId}
-          aria-label="Следующая позиция в выборке"
-          title="Следующая позиция"
-          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <CaretRight size={14} weight="bold" />
-        </button>
-      </span>
-    </div>
-  );
-}
-
 function PositionEditorHost({
   intent,
   onCurrentIdChange,
@@ -5819,14 +5595,14 @@ function PositionEditorHost({
     ? getQueueEditorContext(intent.snapshot.entryFilterId)
     : { tab: "basic" as EditorTab, anchor: undefined };
   const existingItemIds = new Set(items.map((candidate) => candidate.id));
-  const currentSelectionIds = (intent.snapshot?.itemIds ?? intent.orderedIds)
-    .filter((id) => existingItemIds.has(id));
+  const editorQueue = deriveEditorQueue(
+    intent.snapshot?.itemIds ?? intent.orderedIds,
+    intent.currentId,
+    existingItemIds,
+  );
+  const currentSelectionIds = editorQueue.itemIds;
   const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
-  const queueIndex = currentSelectionIds.indexOf(intent.currentId);
-  const previousQueueId = queueIndex > 0 ? currentSelectionIds[queueIndex - 1] : null;
-  const nextQueueId = queueIndex >= 0 && queueIndex < currentSelectionIds.length - 1
-    ? currentSelectionIds[queueIndex + 1]
-    : null;
+  const { previousId: previousQueueId, nextId: nextQueueId } = editorQueue;
 
   useEffect(() => {
     writeCatalogUpsellState(upsellByItem);
