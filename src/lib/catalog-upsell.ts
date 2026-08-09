@@ -1,5 +1,6 @@
 import type { CatalogItem } from "@/data/catalog";
 import { catalogStorageKey } from "@/lib/catalog-preview";
+import { readCatalogJson, writeCatalogJson } from "@/features/storefront/catalog/persistence";
 
 export type CatalogLocalizedValue = {
   ru: string;
@@ -30,18 +31,12 @@ export type GeneratedRecommendation = {
 };
 
 export function readCatalogUpsellState(): CatalogUpsellStateByItem {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(CATALOG_UPSELL_STORAGE_KEY);
-    return raw ? JSON.parse(raw) as CatalogUpsellStateByItem : {};
-  } catch {
-    return {};
-  }
+  return readCatalogJson<CatalogUpsellStateByItem>(CATALOG_UPSELL_STORAGE_KEY, {});
 }
 
 export function writeCatalogUpsellState(value: CatalogUpsellStateByItem) {
-  window.localStorage.setItem(CATALOG_UPSELL_STORAGE_KEY, JSON.stringify(value));
-  window.dispatchEvent(new CustomEvent(CATALOG_UPSELL_CHANGE_EVENT, { detail: value }));
+  writeCatalogJson(CATALOG_UPSELL_STORAGE_KEY, value);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATALOG_UPSELL_CHANGE_EVENT, { detail: value }));
 }
 
 export function buildDefaultRecommendationIds(item: CatalogItem, items: CatalogItem[]) {

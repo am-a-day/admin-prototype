@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { catalogItems, catalogSections, type CatalogItem, type CatalogSection } from "@/data/catalog";
-import { catalogStorageKey } from "@/lib/catalog-preview";
+import {
+  CATALOG_PERSISTENCE_KEYS,
+  readCatalogJson,
+  readCreatedCatalogItems,
+  writeCatalogJson,
+} from "@/features/storefront/catalog/persistence";
 
 export type CatalogSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -37,30 +42,14 @@ type CatalogAction =
   | { type: "replace-item-order"; order: Record<string, string[]> }
   | { type: "set-autosave"; id: string; status: CatalogSaveStatus };
 
-const STATUS_STORAGE_KEY = catalogStorageKey("statusOverrides");
-const SCHEDULE_STORAGE_KEY = catalogStorageKey("scheduleOverrides");
-const ITEM_SECTION_STORAGE_KEY = catalogStorageKey("itemSectionOverrides");
-const POSITION_ORDER_STORAGE_KEY = catalogStorageKey("positionOrderBySection");
-const CREATED_ITEMS_STORAGE_KEY = catalogStorageKey("createdItems");
+const STATUS_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.statusOverrides;
+const SCHEDULE_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.scheduleOverrides;
+const ITEM_SECTION_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.itemSectionOverrides;
+const POSITION_ORDER_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.positionOrderBySection;
 
 function readRecord<T>(key: string): Record<string, T> {
-  if (typeof window === "undefined") return {};
-  try {
-    const value = JSON.parse(window.localStorage.getItem(key) ?? "{}");
-    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function readCreatedItems(): CatalogItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = JSON.parse(window.localStorage.getItem(CREATED_ITEMS_STORAGE_KEY) ?? "[]");
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
+  const value = readCatalogJson<unknown>(key, {});
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, T> : {};
 }
 
 function buildInitialState(): CatalogState {
@@ -69,7 +58,7 @@ function buildInitialState(): CatalogState {
   const sectionOverrides = readRecord<string>(ITEM_SECTION_STORAGE_KEY);
   const storedOrder = readRecord<string[]>(POSITION_ORDER_STORAGE_KEY);
   const sectionsById = Object.fromEntries(catalogSections.map((section) => [section.id, section]));
-  const sourceItems = [...catalogItems, ...readCreatedItems()].filter(
+  const sourceItems = [...catalogItems, ...readCreatedCatalogItems()].filter(
     (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index,
   );
   const items = sourceItems.map((item) => {
@@ -219,7 +208,10 @@ type CatalogStoreValue = CatalogState & {
 };
 
 export type CatalogMutationFacade = {
-  createItem: (item: CatalogItem, order?: Record<string, string[]>) => void;
+  createItem: (item: CatalogItem, options?: {
+    order?: Record<string, string[]>;
+    preserveLegacyOrderPersistence?: boolean;
+  }) => void;
   updateItem: (id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => void;
   deleteItem: (id: string) => void;
   deleteItems: (ids: Iterable<string>) => void;
@@ -245,10 +237,10 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
       scheduled[item.id] = item.scheduled;
       sections[item.id] = item.sectionId;
     });
-    window.localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(statuses));
-    window.localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(scheduled));
-    window.localStorage.setItem(ITEM_SECTION_STORAGE_KEY, JSON.stringify(sections));
-    window.localStorage.setItem(POSITION_ORDER_STORAGE_KEY, JSON.stringify(state.itemOrderBySection));
+    writeCatalogJson(STATUS_STORAGE_KEY, statuses);
+    writeCatalogJson(SCHEDULE_STORAGE_KEY, scheduled);
+    writeCatalogJson(ITEM_SECTION_STORAGE_KEY, sections);
+    writeCatalogJson(POSITION_ORDER_STORAGE_KEY, state.itemOrderBySection);
     window.dispatchEvent(new Event("tasko-catalog-status-change"));
   }, [state.itemsById, state.itemOrderBySection]);
 
@@ -279,10 +271,26 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const replaceItemOrder = useCallback((order: Record<string, string[]>) => {
     dispatch({ type: "replace-item-order", order });
   }, []);
-  const createItem = useCallback((item: CatalogItem, order?: Record<string, string[]>) => {
+  const createItem = useCallback((item: CatalogItem, options?: {
+    order?: Record<string, string[]>;
+    preserveLegacyOrderPersistence?: boolean;
+  }) => {
+    if (options?.preserveLegacyOrderPersistence) {
+      const storedOrder = readCatalogJson<Record<string, string[]>>(POSITION_ORDER_STORAGE_KEY, {});
+      const sectionIds = storedOrder[item.sectionId]
+        ?? Object.values(state.itemsById)
+          .filter((candidate) => candidate.sectionId === item.sectionId)
+          .map((candidate) => candidate.id);
+      writeCatalogJson(POSITION_ORDER_STORAGE_KEY, {
+        ...storedOrder,
+        [item.sectionId]: [item.id, ...sectionIds.filter((id) => id !== item.id)],
+      });
+      dispatch({ type: "add-item", item });
+      return;
+    }
     dispatch({ type: "add-item", item });
-    if (order) dispatch({ type: "replace-item-order", order });
-  }, []);
+    if (options?.order) dispatch({ type: "replace-item-order", order: options.order });
+  }, [state.itemsById]);
   const deleteItems = useCallback((ids: Iterable<string>) => {
     for (const id of ids) dispatch({ type: "delete-item", id });
   }, []);
