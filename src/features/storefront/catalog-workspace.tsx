@@ -93,6 +93,7 @@ import type {
 } from "./catalog/model/types";
 import type {
   CatalogCreateNavigationGuard,
+  CatalogNavigationBoundary,
   CatalogPriceSortDirection,
   CatalogReturnContext,
   CatalogSectionEditorTab,
@@ -374,6 +375,7 @@ export function CatalogTabs({
 }
 
 type CatalogWorkspaceProps = {
+  navigation: CatalogNavigationBoundary;
   selectedDishId: string;
   catalogPhase: CatalogPhase;
   catalogTab: CatalogTab;
@@ -579,59 +581,9 @@ function plural(count: number, one: string, few: string, many: string) {
 
 type AuditQueueFilterId = OverviewFilterId;
 type StructureReturnContext = Extract<CatalogReturnContext, { tab: "sections" }>;
-const CATALOG_CREATE_QUERY_PARAM = "createPosition";
-const CATALOG_HISTORY_CONTEXT_KEY = "taskoCatalogContext";
-const CATALOG_HISTORY_CREATE_KEY = "taskoCatalogCreate";
-
-function historyStateRecord(): Record<string, unknown> {
-  return window.history.state && typeof window.history.state === "object"
-    ? window.history.state as Record<string, unknown>
-    : {};
-}
-
-function getCatalogReturnContextFromHistory(): CatalogReturnContext | null {
-  const value = historyStateRecord()[CATALOG_HISTORY_CONTEXT_KEY];
-  if (!value || typeof value !== "object" || !("tab" in value)) return null;
-  const context = value as Partial<CatalogReturnContext>;
-  return context.tab === "sections" || context.tab === "overview" ? context as CatalogReturnContext : null;
-}
 
 function getCatalogSectionPath(sectionId: string | null): CatalogSectionCrumb[] {
   return getCatalogSectionPathFromSections(sectionId, catalogSections);
-}
-
-function pushCatalogCreateHistory(sectionId: string | null, returnContext: CatalogReturnContext) {
-  const returnUrl = new URL(window.location.href);
-  returnUrl.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
-  returnUrl.searchParams.delete("positionId");
-  const returnState = {
-    ...historyStateRecord(),
-    [CATALOG_HISTORY_CONTEXT_KEY]: returnContext,
-    [CATALOG_HISTORY_CREATE_KEY]: false,
-  };
-  window.history.replaceState(returnState, "", returnUrl);
-
-  const createUrl = new URL(returnUrl);
-  createUrl.searchParams.set(CATALOG_CREATE_QUERY_PARAM, "1");
-  if (sectionId) createUrl.searchParams.set("sectionId", sectionId);
-  else createUrl.searchParams.delete("sectionId");
-  window.history.pushState({
-    ...returnState,
-    [CATALOG_HISTORY_CREATE_KEY]: true,
-  }, "", createUrl);
-}
-
-function replaceCatalogHistoryDestination(returnContext: CatalogReturnContext, sectionId: string | null) {
-  const url = new URL(window.location.href);
-  url.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
-  url.searchParams.delete("positionId");
-  if (sectionId) url.searchParams.set("sectionId", sectionId);
-  else url.searchParams.delete("sectionId");
-  window.history.replaceState({
-    ...historyStateRecord(),
-    [CATALOG_HISTORY_CONTEXT_KEY]: returnContext,
-    [CATALOG_HISTORY_CREATE_KEY]: false,
-  }, "", url);
 }
 
 type PositionsWorkspaceMode = "legacy" | "editor-first";
@@ -722,13 +674,12 @@ type PendingOpen = {
   returnContext?: CatalogReturnContext;
 };
 
-function readDirectCreatePendingOpen(): PendingOpen | null {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get(CATALOG_CREATE_QUERY_PARAM) !== "1") return null;
-  const sectionId = params.get("sectionId");
+function readDirectCreatePendingOpen(route: CatalogNavigationBoundary["route"]): PendingOpen | null {
+  if (!route.createPosition) return null;
+  const sectionId = route.sectionId;
   const section = sectionId ? catalogSections.find((candidate) => candidate.id === sectionId) ?? null : null;
   const draft = makeDraftItem(section);
-  const returnContext = getCatalogReturnContextFromHistory() ?? {
+  const returnContext = route.returnContext ?? {
     tab: "overview" as const,
     filterId: "quick:all" as const,
     sectionScopeId: section?.id ?? null,
@@ -3095,6 +3046,7 @@ function writeRecentPositionId(id: string, items: CatalogItem[]) {
 }
 
 function PopulatedWorkspace({
+  navigation,
   sections,
   createdItems,
   filterId,
@@ -3119,6 +3071,7 @@ function PopulatedWorkspace({
   allowPositionCreation = true,
   workspaceKind = "catalog",
 }: {
+  navigation: CatalogNavigationBoundary;
   sections: TreeSection[];
   createdItems: CatalogItem[];
   filterId: OverviewFilterId;
@@ -3178,7 +3131,7 @@ function PopulatedWorkspace({
     preferredSectionItems[2]?.id ??
     preferredSectionItems[0]?.id ??
     null;
-  const editorNavParam = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("editorNav");
+  const editorNavParam = navigation.route.editorNav;
   const editorNavMode: "entity" | "unified" | "section" | "legacy" = editorNavParam === "legacy"
     ? "legacy"
     : editorNavParam === "section"
@@ -3186,9 +3139,9 @@ function PopulatedWorkspace({
       : editorNavParam === "entity"
         ? "entity"
         : "unified";
-  const directPositionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("positionId");
-  const directHighlightItemId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("highlightPositionId");
-  const directSectionId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sectionId");
+  const directPositionId = navigation.route.positionId;
+  const directHighlightItemId = navigation.route.highlightPositionId;
+  const directSectionId = navigation.route.sectionId;
   const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
   const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
   const retainedItem = initialSelectedItemId ? sourceCatalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
@@ -3269,10 +3222,8 @@ function PopulatedWorkspace({
   useEffect(() => {
     if (!directHighlightItemId) return;
     setHighlightItemId(directHighlightItemId);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("highlightPositionId");
-    window.history.replaceState(window.history.state, "", url);
-  }, [directHighlightItemId]);
+    navigation.consumeHighlightPosition();
+  }, [directHighlightItemId, navigation]);
   useEffect(() => {
     removeCatalogValue(CATALOG_SECTION_HIGHLIGHT_ITEM_STORAGE_KEY);
   }, []);
@@ -3568,10 +3519,7 @@ function PopulatedWorkspace({
     setSectionEditorTab("composition");
     setSectionEditorScrollTop(0);
     if (editorNavMode === "entity") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("positionId");
-      url.searchParams.set("sectionId", id);
-      window.history.replaceState(null, "", url);
+      navigation.replaceSection(id);
     }
   };
 
@@ -3585,10 +3533,7 @@ function PopulatedWorkspace({
     setEditing(true);
     rememberItem(id);
     if (editorNavMode === "entity") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("sectionId");
-      url.searchParams.set("positionId", id);
-      window.history.replaceState(null, "", url);
+      navigation.replacePosition(id);
     }
   };
   const openItemFromEditorBreadcrumb = (id: string) => {
@@ -4360,10 +4305,7 @@ function PopulatedWorkspace({
       setActiveEditorItemId(returnItem.id);
       setEditing(true);
       if (editorNavMode === "entity") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("sectionId");
-        url.searchParams.set("positionId", returnItem.id);
-        window.history.replaceState(null, "", url);
+        navigation.replacePosition(returnItem.id);
       }
       return;
     }
@@ -4378,10 +4320,7 @@ function PopulatedWorkspace({
     setActiveEditorItemId(null);
     setEditing(pendingDraft.returnEditing && editorNavMode !== "entity");
     if (editorNavMode === "entity") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("positionId");
-      url.searchParams.set("sectionId", returnSectionId);
-      window.history.replaceState(null, "", url);
+      navigation.replaceSection(returnSectionId);
     }
   };
 
@@ -4428,10 +4367,7 @@ function PopulatedWorkspace({
     writeRecentPositionId(createdItem.id, [...allItems, createdItem]);
     registerChange("catalog");
     if (editorNavMode === "entity") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("sectionId");
-      url.searchParams.set("positionId", createdItem.id);
-      window.history.replaceState(null, "", url);
+      navigation.replacePosition(createdItem.id);
     }
     setFeedback("Позиция создана в выбранном разделе");
   };
@@ -5127,6 +5063,7 @@ function PopulatedWorkspace({
 
   const unifiedOverviewWorkspace = (
     <OverviewWorkspace
+      navigation={navigation}
       filterId={filterId}
       createdItems={createdItems}
       onFilterChange={onFilterChange}
@@ -6694,6 +6631,7 @@ function EditorFirstPositionEmptyState() {
 }
 
 function OverviewWorkspace({
+  navigation,
   filterId,
   createdItems,
   onFilterChange,
@@ -6725,6 +6663,7 @@ function OverviewWorkspace({
   titleOverride,
   overviewContextStorageKey = OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY,
 }: {
+  navigation: CatalogNavigationBoundary;
   filterId: OverviewFilterId;
   createdItems: CatalogItem[];
   onFilterChange: (id: OverviewFilterId) => void;
@@ -7320,12 +7259,12 @@ function OverviewWorkspace({
   };
   const backFromCreateDraft = () => {
     requestCreateBackNavigation(() => {
-      if (historyStateRecord()[CATALOG_HISTORY_CREATE_KEY] === true) {
-        window.history.back();
+      if (navigation.route.createHistoryEntry) {
+        navigation.back();
         return;
       }
       const fallbackSectionId = draftItem?.sectionId && draftItem.sectionId !== "no-section" ? draftItem.sectionId : null;
-      replaceCatalogHistoryDestination({
+      navigation.replaceDirectCreateDestination({
         tab: "overview",
         filterId: "quick:all",
         sectionScopeId: fallbackSectionId,
@@ -7338,7 +7277,7 @@ function OverviewWorkspace({
   };
   const openCreateSectionNow = (sectionId: string | null) => {
     const destination: CatalogReturnContext = { tab: "sections", sectionId };
-    replaceCatalogHistoryDestination(destination, sectionId);
+    navigation.replaceDirectCreateDestination(destination, sectionId);
     onOpenSectionInSections(sectionId);
   };
   const openCreateSection = (sectionId: string | null) => {
@@ -7358,7 +7297,7 @@ function OverviewWorkspace({
     onRegisterCreateNavigationGuard({
       request: requestCreateNavigation,
       requestBack: requestCreateBackNavigation,
-      location: { url: window.location.href, state: window.history.state },
+      location: navigation.route.location,
     });
     return () => onRegisterCreateNavigationGuard(null);
   }, [draftDirty, isCreateDraftOpen, onRegisterCreateNavigationGuard, queue]);
@@ -7544,7 +7483,7 @@ function OverviewWorkspace({
       setActivePositionId(createdItem.id);
       completeDirectCreate(createdItem.id);
       onCreateClosed?.();
-      replaceCatalogHistoryDestination(
+      navigation.replaceDirectCreateDestination(
         queue?.snapshot.returnContext ?? {
           tab: "overview",
           filterId: "quick:all",
@@ -8589,6 +8528,7 @@ export function RecommendationsContextWorkspace({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function CatalogWorkspace({
+  navigation,
   catalogPhase,
   catalogTab,
   stopListActive,
@@ -8611,11 +8551,11 @@ export function CatalogWorkspace({
   const [createdSectionName, setCreatedSectionName] = useState(CREATED_SECTION.name);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
-  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen());
+  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen(navigation.route));
   const directPositionHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (catalogTab !== "overview" || pendingOpen) return;
-    const directPositionId = new URLSearchParams(window.location.search).get("positionId");
+    const directPositionId = navigation.route.positionId;
     if (!directPositionId || directPositionHandledRef.current === directPositionId) return;
     const directItem = sharedCatalogItems.find((item) => item.id === directPositionId);
     if (!directItem) return;
@@ -8640,15 +8580,14 @@ export function CatalogWorkspace({
         scrollTop: readOverviewWorkspaceContext().scrollTop,
       },
     });
-  }, [catalogTab, pendingOpen, sectionScopeId, sharedCatalogItems, viewMode]);
+  }, [catalogTab, navigation.route.positionId, pendingOpen, sectionScopeId, sharedCatalogItems, viewMode]);
   const directCreateHistoryReadyRef = useRef(false);
   useEffect(() => {
     if (directCreateHistoryReadyRef.current) return;
     directCreateHistoryReadyRef.current = true;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get(CATALOG_CREATE_QUERY_PARAM) !== "1") return;
-    if (historyStateRecord()[CATALOG_HISTORY_CREATE_KEY] === true) return;
-    const sectionId = params.get("sectionId");
+    if (!navigation.route.createPosition) return;
+    if (navigation.route.createHistoryEntry) return;
+    const sectionId = navigation.route.sectionId;
     const returnContext = pendingOpen?.returnContext ?? {
       tab: "overview" as const,
       filterId: "quick:all" as const,
@@ -8658,16 +8597,12 @@ export function CatalogWorkspace({
       sort: "none" as const,
       scrollTop: 0,
     };
-    pushCatalogCreateHistory(sectionId, returnContext);
-  }, [pendingOpen]);
+    navigation.prepareDirectCreate(sectionId, returnContext);
+  }, [navigation, pendingOpen]);
   useEffect(() => {
-    const handleCreateRoutePopState = () => {
-      if (new URLSearchParams(window.location.search).get(CATALOG_CREATE_QUERY_PARAM) !== "1") return;
-      setPendingOpen((current) => current ?? readDirectCreatePendingOpen());
-    };
-    window.addEventListener("popstate", handleCreateRoutePopState);
-    return () => window.removeEventListener("popstate", handleCreateRoutePopState);
-  }, []);
+    if (!navigation.route.createPosition) return;
+    setPendingOpen((current) => current ?? readDirectCreatePendingOpen(navigation.route));
+  }, [navigation.route.createPosition, navigation.route.revision]);
   const sections: TreeSection[] =
     catalogPhase === "empty"
       ? []
@@ -8740,6 +8675,7 @@ export function CatalogWorkspace({
   const structureWorkspace = catalogPhase === "has-items" ? (
     <PopulatedWorkspace
       key="catalog-workspace"
+      navigation={navigation}
       sections={sections}
       createdItems={createdItems}
       filterId={viewMode === "sections" ? "quick:all" : viewMode}
@@ -8783,6 +8719,7 @@ export function CatalogWorkspace({
   const stopListWorkspace = catalogPhase === "has-items" ? (
     <PopulatedWorkspace
       key="stop-list-workspace"
+      navigation={navigation}
       sections={sections}
       createdItems={createdItems}
       filterId={stopListFilterId}

@@ -13,7 +13,9 @@ export type {
 } from "./model/types";
 
 export type {
+  CatalogBrowserRoute,
   CatalogCreateNavigationGuard,
+  CatalogNavigationBoundary,
   CatalogPriceSortDirection,
   CatalogReturnContext,
   CatalogSectionEditorTab,

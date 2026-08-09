@@ -60,7 +60,9 @@ import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace"
 import {
   CatalogTabs,
   CatalogWorkspace,
+  type CatalogBrowserRoute,
   type CatalogCreateNavigationGuard,
+  type CatalogNavigationBoundary,
   type CatalogPhase,
   type CatalogPrimaryTab,
   type CatalogReturnContext,
@@ -85,6 +87,36 @@ function getCatalogHistoryContext(state: unknown = window.history.state): Catalo
   if (!context || typeof context !== "object" || !("tab" in context)) return null;
   const tab = (context as { tab?: unknown }).tab;
   return tab === "sections" || tab === "overview" ? context as CatalogReturnContext : null;
+}
+
+const CATALOG_CREATE_QUERY_PARAM = "createPosition";
+const CATALOG_HISTORY_CONTEXT_KEY = "taskoCatalogContext";
+const CATALOG_HISTORY_CREATE_KEY = "taskoCatalogCreate";
+
+function getCatalogBrowserRoute(revision: number): CatalogBrowserRoute {
+  const params = new URLSearchParams(window.location.search);
+  const state = window.history.state;
+  return {
+    editorNav: params.get("editorNav"),
+    sectionId: params.get("sectionId"),
+    positionId: params.get("positionId"),
+    highlightPositionId: params.get("highlightPositionId"),
+    createPosition: params.get(CATALOG_CREATE_QUERY_PARAM) === "1",
+    createHistoryEntry: Boolean(
+      state
+      && typeof state === "object"
+      && (state as Record<string, unknown>)[CATALOG_HISTORY_CREATE_KEY] === true
+    ),
+    returnContext: getCatalogHistoryContext(state),
+    location: { url: window.location.href, state },
+    revision,
+  };
+}
+
+function catalogHistoryStateRecord(): Record<string, unknown> {
+  return window.history.state && typeof window.history.state === "object"
+    ? window.history.state as Record<string, unknown>
+    : {};
 }
 
 const SIDEBAR_PREFERENCE_KEY = "admin-prototype:sidebar-preference";
@@ -569,6 +601,7 @@ function AuthenticatedShell() {
         : initialCatalogContext?.sectionId ?? null,
   );
   const [catalogResetSignal] = useState(0);
+  const [catalogRouteRevision, setCatalogRouteRevision] = useState(0);
   const catalogCreateNavigationGuardRef = useRef<CatalogCreateNavigationGuard | null>(null);
   const skipNextCatalogPopGuardRef = useRef(false);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
@@ -606,6 +639,64 @@ function AuthenticatedShell() {
       return;
     }
     navigate();
+  };
+  const catalogNavigation: CatalogNavigationBoundary = {
+    route: getCatalogBrowserRoute(catalogRouteRevision),
+    replaceSection: (sectionId) => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("positionId");
+      url.searchParams.set("sectionId", sectionId);
+      window.history.replaceState(null, "", url);
+      setCatalogRouteRevision((revision) => revision + 1);
+    },
+    replacePosition: (positionId) => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sectionId");
+      url.searchParams.set("positionId", positionId);
+      window.history.replaceState(null, "", url);
+      setCatalogRouteRevision((revision) => revision + 1);
+    },
+    consumeHighlightPosition: () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("highlightPositionId");
+      window.history.replaceState(window.history.state, "", url);
+      setCatalogRouteRevision((revision) => revision + 1);
+    },
+    prepareDirectCreate: (sectionId, returnContext) => {
+      const returnUrl = new URL(window.location.href);
+      returnUrl.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
+      returnUrl.searchParams.delete("positionId");
+      const returnState = {
+        ...catalogHistoryStateRecord(),
+        [CATALOG_HISTORY_CONTEXT_KEY]: returnContext,
+        [CATALOG_HISTORY_CREATE_KEY]: false,
+      };
+      window.history.replaceState(returnState, "", returnUrl);
+
+      const createUrl = new URL(returnUrl);
+      createUrl.searchParams.set(CATALOG_CREATE_QUERY_PARAM, "1");
+      if (sectionId) createUrl.searchParams.set("sectionId", sectionId);
+      else createUrl.searchParams.delete("sectionId");
+      window.history.pushState({
+        ...returnState,
+        [CATALOG_HISTORY_CREATE_KEY]: true,
+      }, "", createUrl);
+      setCatalogRouteRevision((revision) => revision + 1);
+    },
+    replaceDirectCreateDestination: (returnContext, sectionId) => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
+      url.searchParams.delete("positionId");
+      if (sectionId) url.searchParams.set("sectionId", sectionId);
+      else url.searchParams.delete("sectionId");
+      window.history.replaceState({
+        ...catalogHistoryStateRecord(),
+        [CATALOG_HISTORY_CONTEXT_KEY]: returnContext,
+        [CATALOG_HISTORY_CREATE_KEY]: false,
+      }, "", url);
+      setCatalogRouteRevision((revision) => revision + 1);
+    },
+    back: () => window.history.back(),
   };
   const changeCatalogTab = (next: CatalogTab) => {
     requestCatalogNavigation(() => {
@@ -887,6 +978,7 @@ function AuthenticatedShell() {
         return;
       }
       if (skipNextCatalogPopGuardRef.current) skipNextCatalogPopGuardRef.current = false;
+      setCatalogRouteRevision((revision) => revision + 1);
       if (isTrainingPath(window.location.pathname)) {
         setSection("training");
         setTrainingTab(getInitialTrainingTab());
@@ -989,6 +1081,7 @@ function AuthenticatedShell() {
         />
       ) : (
         <CatalogWorkspace
+          navigation={catalogNavigation}
           selectedDishId={selectedDishId}
           catalogPhase={catalogPhase}
           catalogTab={catalogTab}

@@ -30,3 +30,28 @@ export type CatalogCreateNavigationGuard = {
   requestBack: (continueNavigation: () => void) => void;
   location: { url: string; state: unknown };
 };
+
+export type CatalogBrowserRoute = {
+  editorNav: string | null;
+  sectionId: string | null;
+  positionId: string | null;
+  highlightPositionId: string | null;
+  createPosition: boolean;
+  createHistoryEntry: boolean;
+  returnContext: CatalogReturnContext | null;
+  location: { url: string; state: unknown };
+  revision: number;
+};
+
+export type CatalogNavigationBoundary = {
+  route: CatalogBrowserRoute;
+  replaceSection: (sectionId: string) => void;
+  replacePosition: (positionId: string) => void;
+  consumeHighlightPosition: () => void;
+  prepareDirectCreate: (sectionId: string | null, returnContext: CatalogReturnContext) => void;
+  replaceDirectCreateDestination: (
+    returnContext: CatalogReturnContext,
+    sectionId: string | null,
+  ) => void;
+  back: () => void;
+};

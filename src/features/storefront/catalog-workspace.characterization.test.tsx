@@ -8,6 +8,7 @@ import { MockAuthProvider } from "@/contexts/mock-auth-context";
 import { PublishProvider } from "@/contexts/publish-context";
 import {
   CatalogWorkspace,
+  type CatalogNavigationBoundary,
   type CatalogTab,
   type CatalogViewMode,
 } from "@/features/storefront/catalog";
@@ -30,9 +31,30 @@ function CatalogHarness() {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CatalogViewMode>("sections");
+  const params = new URLSearchParams(window.location.search);
+  const navigation: CatalogNavigationBoundary = {
+    route: {
+      editorNav: params.get("editorNav"),
+      sectionId: params.get("sectionId"),
+      positionId: params.get("positionId"),
+      highlightPositionId: params.get("highlightPositionId"),
+      createPosition: params.get("createPosition") === "1",
+      createHistoryEntry: false,
+      returnContext: null,
+      location: { url: window.location.href, state: window.history.state },
+      revision: 0,
+    },
+    replaceSection: vi.fn(),
+    replacePosition: vi.fn(),
+    consumeHighlightPosition: vi.fn(),
+    prepareDirectCreate: vi.fn(),
+    replaceDirectCreateDestination: vi.fn(),
+    back: vi.fn(),
+  };
 
   return (
     <CatalogWorkspace
+      navigation={navigation}
       selectedDishId="669204cd-0d0d-4782-8784-27df185f169e"
       catalogPhase="has-items"
       catalogTab={catalogTab}
