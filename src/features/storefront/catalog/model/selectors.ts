@@ -29,6 +29,10 @@ export function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[
   return items.filter(CATALOG_FILTER_PREDICATES[filterId]);
 }
 
+export function getItemSearchText(item: CatalogItem) {
+  return `${item.title} ${item.sectionName}`.toLowerCase();
+}
+
 export function getCombinedOverviewItems(
   filterId: OverviewFilterId,
   items: CatalogItem[],

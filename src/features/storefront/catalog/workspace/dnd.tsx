@@ -1,10 +1,26 @@
-import { forwardRef, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DotsSixVertical } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
 
 export const DND_TRANSITION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" };
+
+export const restrictTableSortToVerticalAxis = ({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({ ...transform, x: 0 });
+
+export function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return reduced;
+}
 
 export type CatalogDndKind = "section" | "item";
 export type CatalogDndSurface = "tree" | "composition";
