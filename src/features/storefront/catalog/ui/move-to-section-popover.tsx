@@ -14,7 +14,7 @@ import {
 import type { MovePopoverAnchor } from "./move-anchor";
 
 type TreeSection = CatalogTreeSection;
-export type MoveOperation = "position" | "section" | "bulk";
+export type MoveOperation = "position" | "section" | "sections" | "bulk";
 
 export type MoveToSectionPopoverProps = {
   operation: MoveOperation;
@@ -34,6 +34,7 @@ const MOVE_SEARCH_THRESHOLD = 10;
 
 export function MoveToSectionPopover({
   operation,
+  entityIds,
   currentSectionIds,
   movingSectionId,
   sections,
@@ -61,19 +62,29 @@ export function MoveToSectionPopover({
   const uniqueCurrentSectionIds = useMemo(() => [...new Set(currentSectionIds)], [currentSectionIds]);
   const showCurrentLabel = operation !== "bulk" || uniqueCurrentSectionIds.length === 1;
   const movingSubtreeIds = useMemo(
-    () => movingSectionId ? getSectionSubtreeIds(movingSectionId, flatSections) : new Set<string>(),
-    [flatSections, movingSectionId],
+    () => {
+      const ids = new Set<string>();
+      if (movingSectionId) getSectionSubtreeIds(movingSectionId, flatSections).forEach((id) => ids.add(id));
+      if (operation === "sections") {
+        entityIds.forEach((id) => getSectionSubtreeIds(id, flatSections).forEach((subtreeId) => ids.add(subtreeId)));
+      }
+      return ids;
+    },
+    [entityIds, flatSections, movingSectionId, operation],
   );
   const movingSubtreeHeight = useMemo(() => {
-    if (!movingSectionId) return 0;
-    const baseDepth = getSectionTreeDepth(movingSectionId, flatSections);
-    return Math.max(
-      0,
-      ...flatSections
-        .filter((section) => movingSubtreeIds.has(section.id))
-        .map((section) => getSectionTreeDepth(section.id, flatSections) - baseDepth),
-    );
-  }, [flatSections, movingSectionId, movingSubtreeIds]);
+    const movingIds = movingSectionId ? [movingSectionId] : operation === "sections" ? entityIds : [];
+    if (movingIds.length === 0) return 0;
+    return Math.max(0, ...movingIds.map((id) => {
+      const baseDepth = getSectionTreeDepth(id, flatSections);
+      return Math.max(
+        0,
+        ...flatSections
+          .filter((section) => getSectionSubtreeIds(id, flatSections).has(section.id))
+          .map((section) => getSectionTreeDepth(section.id, flatSections) - baseDepth),
+      );
+    }));
+  }, [entityIds, flatSections, movingSectionId, operation]);
 
   const pathFor = useCallback((section: TreeSection) => {
     const names: string[] = [section.name];
@@ -90,8 +101,8 @@ export function MoveToSectionPopover({
   }, [sectionById]);
 
   const disabledReasonFor = useCallback((section: TreeSection): string | null => {
-    if (operation === "section") {
-      if (section.id === movingSectionId) return "Нельзя переместить раздел внутрь самого себя";
+    if (operation === "section" || operation === "sections") {
+      if (section.id === movingSectionId || entityIds.includes(section.id)) return "Нельзя переместить раздел внутрь самого себя";
       if (movingSubtreeIds.has(section.id)) return "Нельзя переместить раздел в его подраздел";
       if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
       if (getSectionTreeDepth(section.id, flatSections) + 1 + movingSubtreeHeight > MAX_CATALOG_SECTION_DEPTH) {
@@ -106,9 +117,9 @@ export function MoveToSectionPopover({
     if (showCurrentLabel && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
     if ((childIdsByParent.get(section.id)?.length ?? 0) > 0) return "В разделе уже есть подразделы";
     return null;
-  }, [childIdsByParent, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, showCurrentLabel, uniqueCurrentSectionIds]);
+  }, [childIdsByParent, entityIds, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, showCurrentLabel, uniqueCurrentSectionIds]);
 
-  const rootDisabledReason = operation === "section" && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
+  const rootDisabledReason = (operation === "section" || operation === "sections") && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
     ? "Текущее расположение"
     : forbiddenTargets.__root__ ?? null;
   const visibleSections = normalizedQuery
@@ -203,7 +214,7 @@ export function MoveToSectionPopover({
         >
           <div
             role="dialog"
-            aria-label={operation === "section" ? "Переместить раздел" : "Переместить в раздел"}
+            aria-label={operation === "section" || operation === "sections" ? "Переместить раздел" : "Переместить в раздел"}
             className="flex w-[300px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
           >
           {showSearch && (
@@ -220,7 +231,7 @@ export function MoveToSectionPopover({
             </label>
           )}
           <div className="max-h-[340px] overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-            {operation === "section" && !normalizedQuery && (
+            {(operation === "section" || operation === "sections") && !normalizedQuery && (
               <Tooltip label={rootDisabledReason ?? ""} side="left" disabled={!rootDisabledReason} delayDuration={180}>
                 <span className="block">
                   <button

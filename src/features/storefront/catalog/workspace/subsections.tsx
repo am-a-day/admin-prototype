@@ -168,8 +168,8 @@ export function SubsectionList({
   selectedIds,
   onSelectedChange,
   onSelectAll,
-  onClearSelection,
   headerAction,
+  bulkToolbar,
   onSelect,
   onAction,
   renderActions,
@@ -181,8 +181,8 @@ export function SubsectionList({
   selectedIds: Set<string>;
   onSelectedChange: (id: string, selected: boolean) => void;
   onSelectAll: (selected: boolean) => void;
-  onClearSelection: () => void;
   headerAction?: ReactNode;
+  bulkToolbar?: ReactNode;
   onSelect: (id: string) => void;
   onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor) => void;
   renderActions: SubsectionActionRenderer;
@@ -198,30 +198,20 @@ export function SubsectionList({
     >
       <div>
         <div className="flex h-[38px] items-center border-b border-[#e5e7eb] px-2">
-          <span data-no-dnd className="flex h-full w-[50px] shrink-0 items-center justify-center">
-            <TableCheckbox
-              ariaLabel="Выбрать все подразделы"
-              checked={allSelected}
-              indeterminate={!allSelected && someSelected}
-              onChange={onSelectAll}
-            />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#79716b]">
-            {selectedCount > 0 ? `${selectedCount} выбрано` : "Подразделы"}
-          </span>
-          <div className="flex shrink-0 items-center gap-1">
-            {selectedCount > 0 && (
-              <button
-                type="button"
-                data-no-dnd
-                onClick={onClearSelection}
-                className="h-7 rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]"
-              >
-                Снять выбор
-              </button>
-            )}
-            {headerAction}
-          </div>
+          {selectedCount > 0 ? bulkToolbar : (
+            <>
+              <span data-no-dnd className="flex h-full w-[50px] shrink-0 items-center justify-center">
+                <TableCheckbox
+                  ariaLabel="Выбрать все подразделы"
+                  checked={allSelected}
+                  indeterminate={!allSelected && someSelected}
+                  onChange={onSelectAll}
+                />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#79716b]">Подразделы</span>
+              <div className="flex shrink-0 items-center gap-1">{headerAction}</div>
+            </>
+          )}
         </div>
         {childSections.map(({ section, itemCount }) => (
           <SubsectionRow
