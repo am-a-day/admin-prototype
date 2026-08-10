@@ -119,9 +119,13 @@ test("walks the empty catalog first-user flow and records current persistence", 
   await secondSectionDialog.getByLabel("Название раздела").fill("Второй раздел");
   await secondSectionDialog.getByRole("button", { name: "Добавить раздел" }).click();
   await page.locator("aside").getByText("Второй раздел", { exact: true }).click();
-  // Current first-run finding: an empty leaf opens in positions mode and does
-  // not expose the existing composition-only "Добавить подраздел" action.
-  await expect(page.getByRole("button", { name: "Добавить подраздел", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Добавить подраздел", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Добавить подраздел", exact: true }).click();
+  const subsectionDialog = page.getByRole("dialog", { name: "Новый раздел" });
+  await expect(subsectionDialog.getByRole("button", { name: "Расположение: Второй раздел" })).toBeVisible();
+  await subsectionDialog.getByLabel("Название раздела").fill("Первый подраздел");
+  await subsectionDialog.getByRole("button", { name: "Добавить раздел" }).click();
+  await expect(page.locator("aside").getByText("Первый подраздел", { exact: true })).toBeVisible();
 
   await page.reload();
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("tasko.prototype.catalogDataScenario.v1"))).toBe("empty");
@@ -131,6 +135,7 @@ test("walks the empty catalog first-user flow and records current persistence", 
   }, firstPositionName)).toBe(true);
   await expect(page.locator("aside").getByText(firstSectionName, { exact: true })).toHaveCount(1);
   await expect(page.locator("aside").getByText("Второй раздел", { exact: true })).toHaveCount(1);
+  await expect(page.locator("aside").getByText("Первый подраздел", { exact: true })).toHaveCount(1);
 
   await page.locator("aside").getByText(firstSectionName, { exact: true }).click();
   await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstPositionName })).toBeVisible();

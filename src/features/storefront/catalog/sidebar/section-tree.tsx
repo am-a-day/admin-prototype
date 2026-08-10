@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { CaretRight, DotsThreeVertical, List, MagnifyingGlass } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
@@ -111,6 +111,24 @@ export function UnifiedCatalogTreePanel({
     () => countItemsBySection(items, sections, includeArchived),
     [includeArchived, items, sections],
   );
+
+  useEffect(() => {
+    if (!selectedSectionId) return;
+    const sectionById = new Map(flatSections.map((section) => [section.id, section]));
+    setExpanded((current) => {
+      const next = { ...current };
+      let parentId = sectionById.get(selectedSectionId)?.parentId ?? null;
+      let changed = false;
+      while (parentId) {
+        if (!next[parentId]) {
+          next[parentId] = true;
+          changed = true;
+        }
+        parentId = sectionById.get(parentId)?.parentId ?? null;
+      }
+      return changed ? next : current;
+    });
+  }, [flatSections, selectedSectionId]);
 
   const renderSection = (section: CatalogTreeSection, depth = 0): ReactNode => {
     if (normalizedQuery && !visibleIds.has(section.id)) return null;

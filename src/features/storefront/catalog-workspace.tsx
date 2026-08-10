@@ -4977,6 +4977,9 @@ function PopulatedWorkspace({
         if (section) addPositionToSection(section.id);
         else openCreatePositionDialog(scopeSectionId);
       }}
+      onAddSubsection={section && directChildSections.length === 0 && activeSectionItems.length === 0 && subsectionDisabledReason === null
+        ? () => openSectionCreation(section.id)
+        : undefined}
       positionCreateDisabledReason={section?.status === "archive" || directChildSections.length > 0 ? "Выберите конечный раздел" : null}
       allowPositionCreation={allowPositionCreation && (!section || (section.status !== "archive" && directChildSections.length === 0))}
       onActiveItemChange={handleOverviewActiveItemChange}
@@ -6536,6 +6539,7 @@ function OverviewWorkspace({
   embedded = false,
   tableHeader,
   onAddPosition,
+  onAddSubsection,
   positionCreateDisabledReason,
   allowPositionCreation = true,
   onActiveItemChange,
@@ -6568,6 +6572,7 @@ function OverviewWorkspace({
   embedded?: boolean;
   tableHeader?: ReactNode;
   onAddPosition?: () => void;
+  onAddSubsection?: () => void;
   positionCreateDisabledReason?: string | null;
   allowPositionCreation?: boolean;
   onActiveItemChange?: (id: string | null) => void;
@@ -7831,6 +7836,16 @@ function OverviewWorkspace({
                             </button>
                           </span>
                         </Tooltip>
+                      )}
+                      {onAddSubsection && (
+                        <button
+                          type="button"
+                          onClick={onAddSubsection}
+                          className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-normal leading-[17px] text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                        >
+                          <Plus size={13} />
+                          Добавить подраздел
+                        </button>
                       )}
                     </>
                   )}
