@@ -42,7 +42,6 @@ import { CATALOG_RECOMMENDATION_LIMIT, buildAutomaticRecommendations, resolveRec
 import type { CatalogAvailabilityMode } from "../model/tree";
 import { getItemSearchText } from "../model/selectors";
 import { CatalogActionButton } from "../ui/catalog-action-button";
-import { CatalogMoreButton } from "../ui/catalog-more-button";
 import { DropdownActionItem, DropdownContent } from "../ui/catalog-dropdown";
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "../ui/move-anchor";
 import { DND_TRANSITION, restrictTableSortToVerticalAxis, usePrefersReducedMotion } from "../workspace/dnd";
@@ -3264,39 +3263,78 @@ export function PositionEditor({
   const addRowClass =
     "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
 
+  const renderPositionActionsMenu = (trigger: ReactNode) => (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+      <DropdownContent align="end">
+        {isArchived ? (
+          <>
+            <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
+            <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
+              Удалить навсегда
+            </DropdownActionItem>
+          </>
+        ) : (
+          <>
+            {(item.status === "active" || item.status === "stopped") && (
+              <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
+                {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
+              </DropdownActionItem>
+            )}
+            <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
+          </>
+        )}
+      </DropdownContent>
+    </DropdownMenu.Root>
+  );
+
   const positionActions = (
     <div className="ml-auto flex shrink-0 items-center gap-2">
       {headerMeta}
       {showStopQuickAction && <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <CatalogMoreButton ariaLabel="Действия с позицией" title="Действия с позицией" />
-        </DropdownMenu.Trigger>
-        <DropdownContent align="end">
-          {isArchived ? (
-            <>
-              <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
-              <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
-                Удалить навсегда
-              </DropdownActionItem>
-            </>
-          ) : (
-            <>
-              {(item.status === "active" || item.status === "stopped") && (
-                <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
-                  {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
-                </DropdownActionItem>
-              )}
-              <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить в раздел…</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
-            </>
-          )}
-        </DropdownContent>
-      </DropdownMenu.Root>
     </div>
+  );
+
+  const positionTitleTrigger = (className: string) => renderPositionActionsMenu(
+    <button
+      type="button"
+      aria-label={`Действия с позицией «${item.title || "Новая позиция"}»`}
+      data-position-actions-trigger
+      className={className}
+    >
+      <span className="min-w-0 truncate">{item.title || "Новая позиция"}</span>
+      <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
+    </button>,
+  );
+
+  const positionStatus = (
+    <>
+      {isArchived && (
+        <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+          В архиве
+        </span>
+      )}
+      {item.status === "stopped" && !isArchived && (
+        <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
+          На стопе
+        </span>
+      )}
+    </>
+  );
+
+  /*
+   * The action menu is intentionally anchored to the position title. The old
+   * standalone dots button was a second entry point for the same commands.
+   */
+  const editPositionHeaderActions = (
+    <>
+      {positionActions}
+      {positionTitleTrigger("flex h-8 min-w-0 max-w-[280px] items-center gap-1 rounded-[8px] px-2 text-[14px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10")}
+    </>
   );
 
   return (
@@ -3363,22 +3401,13 @@ export function PositionEditor({
                 </Tooltip>
               )}
               <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
-              {positionActions}
+              {editPositionHeaderActions}
             </div>
           ) : (
             <div className="flex items-center gap-2 pb-2 pt-6">
               <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
-                <span className="truncate">{item.title || "Новая позиция"}</span>
-                {isArchived && (
-                  <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-                    В архиве
-                  </span>
-                )}
-                {item.status === "stopped" && !isArchived && (
-                  <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-                    На стопе
-                  </span>
-                )}
+                {positionTitleTrigger("flex min-w-0 items-center gap-1 rounded-[8px] px-2 text-left text-[14px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10")}
+                {positionStatus}
               </h2>
               {positionActions}
             </div>

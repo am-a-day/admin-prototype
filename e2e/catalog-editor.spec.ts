@@ -187,6 +187,40 @@ test("persists the complete basic position editor record across reload", async (
   await expect(page.getByRole("button", { name: /Без кнопки/ })).toHaveClass(/border-\[#292524\]/);
 });
 
+test("uses the position title chevron for actions and preserves queue plus destructive semantics", async ({ page }) => {
+  await openEntityItem(page);
+
+  const actionTrigger = page.getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
+  await expect(actionTrigger).toBeVisible();
+  await expect(page.getByRole("button", { name: "Действия с позицией", exact: true })).toHaveCount(0);
+  await expect(actionTrigger).toHaveCSS("max-width", "280px");
+
+  await actionTrigger.click();
+  await expect(page.getByRole("menuitem", { name: "Переместить", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toHaveCount(0);
+
+  await actionTrigger.click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toHaveCount(0);
+
+  await actionTrigger.click();
+  await page.getByRole("menuitem", { name: "Архивировать", exact: true }).click();
+  await expect.poll(async () => page.getByRole("button", { name: /Действия с позицией «/ }).count()).toBe(1);
+  await page.getByRole("button", { name: /Действия с позицией «/ }).click();
+  await page.getByRole("menuitem", { name: "Удалить навсегда", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Удалить позицию навсегда?" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Удалить позицию навсегда?" })).toHaveCount(0);
+
+  await openItemFromLeaf(page);
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
+  await page.getByRole("button", { name: "Следующая позиция в выборке" }).click();
+  await expect(page.getByRole("button", { name: /Действия с позицией «/ })).toHaveCount(1);
+});
 
 test("restores structured promo, options, and availability editor state", async ({ page }) => {
   await openEntityItem(page);

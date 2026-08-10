@@ -124,6 +124,7 @@ function StructuralPositionBreadcrumb({
   onOpenSection,
   onRevealSection,
   onOpenPosition,
+  showPosition = true,
 }: {
   item: CatalogItem;
   sections: TreeSection[];
@@ -132,6 +133,7 @@ function StructuralPositionBreadcrumb({
   onOpenSection: (id: string) => void;
   onRevealSection: (id: string) => void;
   onOpenPosition: (id: string) => void;
+  showPosition?: boolean;
 }) {
   const [positionQuery, setPositionQuery] = useState("");
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
@@ -172,8 +174,8 @@ function StructuralPositionBreadcrumb({
           </Fragment>
         );
       })}
-      {sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-      <HoverCard
+      {showPosition && sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
+      {showPosition && <HoverCard
         open={positionMenuOpen}
         onOpenChange={(open) => {
           setPositionMenuOpen(open);
@@ -238,7 +240,7 @@ function StructuralPositionBreadcrumb({
             )}
           </div>
         </HoverCardContent>
-      </HoverCard>
+      </HoverCard>}
     </nav>
   );
 }
@@ -428,6 +430,7 @@ export function PositionEditorHost({
             onOpenSection={onOpenStructuralSection ?? (() => {})}
             onRevealSection={onRevealStructuralSection ?? onOpenStructuralSection ?? (() => {})}
             onOpenPosition={onOpenStructuralItem ?? onCurrentIdChange}
+            showPosition={false}
           />
         </div>
       )}
