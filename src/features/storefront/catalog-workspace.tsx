@@ -4973,7 +4973,10 @@ function PopulatedWorkspace({
       positionsWorkspaceMode="legacy"
       embedded
       tableHeader={tableHeader}
-      onAddPosition={() => openCreatePositionDialog(section?.id ?? scopeSectionId)}
+      onAddPosition={() => {
+        if (section) addPositionToSection(section.id);
+        else openCreatePositionDialog(scopeSectionId);
+      }}
       positionCreateDisabledReason={section?.status === "archive" || directChildSections.length > 0 ? "Выберите конечный раздел" : null}
       allowPositionCreation={allowPositionCreation && (!section || (section.status !== "archive" && directChildSections.length === 0))}
       onActiveItemChange={handleOverviewActiveItemChange}
