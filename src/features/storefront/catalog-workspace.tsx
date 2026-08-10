@@ -168,10 +168,12 @@ import { useCreateSession } from "./catalog/editor/create-session";
 import { WorkspaceLocalTabs } from "./catalog/editor/editor-tabs";
 import {
   readCatalogJson as readJsonRecord,
+  readCreatedCatalogSections,
   readCreatedCatalogItems,
   removeCreatedCatalogItems,
   removeCatalogValue,
   writeCatalogJson as writeJsonRecord,
+  writeCreatedCatalogSections,
   writeCreatedCatalogItems,
 } from "./catalog/persistence";
 import { DropdownActionItem, DropdownContent } from "./catalog/ui/catalog-dropdown";
@@ -3444,6 +3446,10 @@ function PopulatedWorkspace({
       status: "active",
     };
     setExtraSections((current) => [...current, created]);
+    writeCreatedCatalogSections([
+      ...readCreatedCatalogSections().filter((section) => section.id !== created.id),
+      created,
+    ]);
     setSectionOrderByParent((current) => ({
       ...current,
       [parent?.id ?? "__root__"]: [
@@ -4431,6 +4437,7 @@ function PopulatedWorkspace({
     setDeletedSectionIds((prev) => new Set([...prev, ...subtreeIds]));
     deleteCatalogItems(deletedItemIdSet);
     writeCreatedCatalogItems(readCreatedCatalogItems().filter((item) => !deletedItemIdSet.has(item.id)));
+    writeCreatedCatalogSections(readCreatedCatalogSections().filter((section) => !subtreeIds.has(section.id)));
     setSectionStatusOverrides((prev) => {
       const next = { ...prev };
       subtreeIds.forEach((id) => delete next[id]);
@@ -8435,6 +8442,7 @@ export function CatalogWorkspace({
   onAdvancePhase,
 }: CatalogWorkspaceProps) {
   const { activeEditorItemId, items: sharedCatalogItems } = useCatalogStore();
+  const persistedCreatedSections = readCreatedCatalogSections();
   const createdItems = readCreatedCatalogItems();
   const [firstRunSection, setFirstRunSection] = useState<TreeSection | null>(null);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
@@ -8491,14 +8499,23 @@ export function CatalogWorkspace({
     if (!navigation.route.createPosition) return;
     setPendingOpen((current) => current ?? readDirectCreatePendingOpen(navigation.route));
   }, [navigation.route.createPosition, navigation.route.revision]);
-  const seedSectionTree = buildSectionTree(catalogSections);
+  const sectionRecordsById = new Map<string, CatalogSection>();
+  [...catalogSections, ...persistedCreatedSections].forEach((section) => sectionRecordsById.set(section.id, section));
+  if (firstRunSection) {
+    sectionRecordsById.set(firstRunSection.id, {
+      id: firstRunSection.id,
+      parentId: firstRunSection.parentId ?? null,
+      name: firstRunSection.name,
+      imageUrl: firstRunSection.imageUrl ?? null,
+      sortOrder: firstRunSection.sortOrder ?? 0,
+    });
+  }
+  const hydratedSectionTree = buildSectionTree([...sectionRecordsById.values()]);
   const sections: TreeSection[] = catalogPhase === "empty"
     ? []
-    : catalogPhase === "has-sections"
-      ? [firstRunSection ?? CREATED_SECTION]
-      : firstRunSection
-        ? [...seedSectionTree, firstRunSection]
-        : seedSectionTree;
+    : catalogPhase === "has-sections" && hydratedSectionTree.length === 0
+      ? [CREATED_SECTION]
+      : hydratedSectionTree;
   const [flatQuery, setFlatQuery] = useState("");
   const [stopListQuery, setStopListQuery] = useState("");
   const overviewSectionScopeRef = useRef<string | null>(readOverviewWorkspaceContext().sectionScopeId);
@@ -8656,6 +8673,10 @@ export function CatalogWorkspace({
               id: `draft-section-${Date.now()}-1`,
               name,
             };
+            writeCreatedCatalogSections([
+              ...readCreatedCatalogSections().filter((section) => section.id !== createdSection.id),
+              createdSection,
+            ]);
             setFirstRunSection(createdSection);
             setRetainedSectionId(createdSection.id);
             setSectionDialogOpen(false);

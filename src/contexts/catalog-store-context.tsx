@@ -14,6 +14,7 @@ import { catalogItems, catalogSections, type CatalogItem, type CatalogSection } 
 import {
   CATALOG_PERSISTENCE_KEYS,
   readCatalogJson,
+  readCreatedCatalogSections,
   readCreatedCatalogItems,
   writeCatalogJson,
 } from "@/features/storefront/catalog/persistence";
@@ -64,7 +65,8 @@ function buildInitialState(): CatalogState {
   const scheduledOverrides = readRecord<boolean>(SCHEDULE_STORAGE_KEY);
   const sectionOverrides = readRecord<string>(ITEM_SECTION_STORAGE_KEY);
   const storedOrder = readRecord<string[]>(POSITION_ORDER_STORAGE_KEY);
-  const sectionsById = Object.fromEntries(catalogSections.map((section) => [section.id, section]));
+  const sourceSections = [...catalogSections, ...readCreatedCatalogSections()];
+  const sectionsById = Object.fromEntries(sourceSections.map((section) => [section.id, section]));
   const sourceItems = [...catalogItems, ...readCreatedCatalogItems()].filter(
     (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index,
   );
@@ -80,7 +82,7 @@ function buildInitialState(): CatalogState {
   });
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
   const itemOrderBySection: Record<string, string[]> = {};
-  catalogSections.forEach((section) => {
+  sourceSections.forEach((section) => {
     const actualIds = items.filter((item) => item.sectionId === section.id).map((item) => item.id);
     const persisted = storedOrder[section.id] ?? [];
     itemOrderBySection[section.id] = [
@@ -91,7 +93,7 @@ function buildInitialState(): CatalogState {
   return {
     sectionsById,
     itemsById,
-    sectionOrder: [...catalogSections].sort((a, b) => a.sortOrder - b.sortOrder).map((section) => section.id),
+    sectionOrder: [...sourceSections].sort((a, b) => a.sortOrder - b.sortOrder).map((section) => section.id),
     itemOrderBySection,
     autosaveByItem: {},
     revision: 0,

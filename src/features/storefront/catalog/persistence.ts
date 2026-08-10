@@ -1,5 +1,6 @@
-import type { CatalogItem } from "@/data/catalog";
+import type { CatalogItem, CatalogSection } from "@/data/catalog";
 import { catalogStorageKey } from "@/lib/catalog-preview";
+import type { CatalogTreeSection } from "./model/tree";
 
 export const CATALOG_CREATED_ITEMS_EVENT = "tasko-catalog-created-items-change";
 
@@ -9,6 +10,7 @@ export const CATALOG_PERSISTENCE_KEYS = {
   itemSectionOverrides: catalogStorageKey("itemSectionOverrides"),
   positionOrderBySection: catalogStorageKey("positionOrderBySection"),
   createdItems: catalogStorageKey("createdItems"),
+  createdSections: catalogStorageKey("createdSections"),
 } as const;
 
 export function readCatalogJson<T>(key: string, fallback: T): T {
@@ -48,4 +50,32 @@ export function writeCreatedCatalogItems(items: CatalogItem[]) {
 export function removeCreatedCatalogItems(ids: Iterable<string>) {
   const removedIds = new Set(ids);
   writeCreatedCatalogItems(readCreatedCatalogItems().filter((item) => !removedIds.has(item.id)));
+}
+
+export type CatalogPersistedSection = CatalogSection & { emoji?: string };
+
+function isPersistedCatalogSection(value: unknown): value is CatalogPersistedSection {
+  if (!value || typeof value !== "object") return false;
+  const section = value as Record<string, unknown>;
+  return typeof section.id === "string"
+    && typeof section.name === "string"
+    && (section.parentId === null || typeof section.parentId === "string")
+    && (section.imageUrl === null || typeof section.imageUrl === "string")
+    && (section.sortOrder === undefined || typeof section.sortOrder === "number");
+}
+
+export function readCreatedCatalogSections() {
+  const value = readCatalogJson<unknown>(CATALOG_PERSISTENCE_KEYS.createdSections, []);
+  return Array.isArray(value) ? value.filter(isPersistedCatalogSection) : [];
+}
+
+export function writeCreatedCatalogSections(sections: CatalogTreeSection[]) {
+  writeCatalogJson<CatalogPersistedSection[]>(CATALOG_PERSISTENCE_KEYS.createdSections, sections.map((section) => ({
+    id: section.id,
+    parentId: section.parentId ?? null,
+    name: section.name,
+    imageUrl: section.imageUrl ?? null,
+    sortOrder: section.sortOrder ?? 0,
+    ...(section.emoji ? { emoji: section.emoji } : {}),
+  })));
 }

@@ -136,7 +136,11 @@ test("walks the empty catalog first-user flow and records current persistence", 
     const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
     return stored.some((item) => item.title === title);
   }, firstPositionName)).toBe(true);
-  // Current baseline: created positions persist, while the locally created first
-  // section is not restored after reload and therefore disappears from structure.
-  await expect(page.getByText(firstSectionName, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(firstSectionName, { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Второй раздел", { exact: true })).toHaveCount(1);
+
+  await page.locator("aside").getByText(firstSectionName, { exact: true }).click();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstPositionName })).toBeVisible();
+  await page.locator("aside").getByText("Второй раздел", { exact: true }).click();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstPositionName })).toHaveCount(0);
 });
