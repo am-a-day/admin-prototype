@@ -3170,7 +3170,8 @@ function PopulatedWorkspace({
   const directHighlightItemId = navigation.route.highlightPositionId;
   const directSectionId = navigation.route.sectionId;
   const directItem = directPositionId ? sourceCatalogItems.find((item) => item.id === directPositionId) ?? null : null;
-  const directSection = directSectionId ? catalogSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
+  const providedSections = flattenSections(sections);
+  const directSection = directSectionId ? providedSections.find((candidate) => candidate.id === directSectionId) ?? null : null;
   const retainedItem = initialSelectedItemId ? sourceCatalogItems.find((item) => item.id === initialSelectedItemId) ?? null : null;
   const unifiedScopeStorageKey = workspaceKind === "stop-list"
     ? STOP_LIST_UNIFIED_SCOPE_STORAGE_KEY
@@ -3187,12 +3188,12 @@ function PopulatedWorkspace({
     : undefined;
   const storedUnifiedScope = readJsonRecord<string | "__all">(unifiedScopeStorageKey, "__all");
   const storedUnifiedSectionId = storedUnifiedScope !== "__all"
-    && catalogSections.some((section) => section.id === storedUnifiedScope)
+    && providedSections.some((section) => section.id === storedUnifiedScope)
     ? storedUnifiedScope
     : null;
   const firstSectionId = directSection?.id
-    ?? (initialSelectedSectionId && catalogSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
-    ?? (scopeSectionId && catalogSections.some((section) => section.id === scopeSectionId) ? scopeSectionId : null)
+    ?? (initialSelectedSectionId && providedSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
+    ?? (scopeSectionId && providedSections.some((section) => section.id === scopeSectionId) ? scopeSectionId : null)
     ?? storedUnifiedSectionId;
   const firstItemId = editorNavMode === "entity" || editorNavMode === "unified"
     ? activeEditorItemId ?? retainedItem?.id ?? directItem?.id ?? null
@@ -8681,6 +8682,7 @@ export function CatalogWorkspace({
             setRetainedSectionId(createdSection.id);
             setSectionDialogOpen(false);
             onAdvancePhase("has-items");
+            navigation.replaceSection(createdSection.id);
             return true;
           }}
           onCancel={() => setSectionDialogOpen(false)}

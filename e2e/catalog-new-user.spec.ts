@@ -76,13 +76,11 @@ test("walks the empty catalog first-user flow and records current persistence", 
   const sectionDialog = page.getByRole("dialog", { name: "Новый раздел" });
   await sectionDialog.getByLabel("Название раздела").fill(firstSectionName);
   await sectionDialog.getByRole("button", { name: "Добавить раздел" }).click();
-  await expect(page.getByRole("button", { name: `Действия с разделом ${firstSectionName}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Все позиции 0" })).toBeVisible();
+  await expect(page).toHaveURL(/sectionId=draft-section-/);
+  await expect(page.getByRole("button", { name: `Действия с разделом «${firstSectionName}»`, exact: true })).toBeVisible();
+  await expect(page.getByText("В меню пока нет позиций", { exact: true })).toBeVisible();
   await expect(page.getByText("Пепперони Фреш", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: `${screenshotDirectory}/02-first-section.png` });
-
-  await page.locator("aside").getByText(firstSectionName, { exact: true }).click();
-  await expect(page.getByText("В меню пока нет позиций", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Новая позиция", exact: true }).click();
   const createPositionDialog = page.getByRole("dialog", { name: "Новая позиция" });
@@ -90,7 +88,6 @@ test("walks the empty catalog first-user flow and records current persistence", 
   await page.screenshot({ path: `${screenshotDirectory}/03-create-position.png` });
   await createPositionDialog.getByRole("textbox", { name: "Название" }).fill(firstPositionName);
   await createPositionDialog.getByRole("button", { name: "Создать", exact: true }).click();
-
   const draft = page.locator("[data-structure-position-draft]");
   await expect(draft.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
   await expect(draft.getByRole("textbox", { name: "Например, Пицца" })).toHaveValue(firstPositionName);
@@ -112,6 +109,7 @@ test("walks the empty catalog first-user flow and records current persistence", 
   await secondPositionDialog.getByRole("textbox", { name: "Название" }).fill("Вторая позиция");
   await secondPositionDialog.getByRole("button", { name: "Создать", exact: true }).click();
   const secondDraft = page.locator("[data-structure-position-draft]");
+  await expect(secondDraft.getByRole("textbox", { name: "Например, Пицца" })).toHaveValue("Вторая позиция");
   await secondDraft.getByRole("button", { name: "Создать", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Вторая позиция" })).toBeVisible();
   await page.getByRole("navigation", { name: "Положение позиции в каталоге" })
@@ -136,8 +134,8 @@ test("walks the empty catalog first-user flow and records current persistence", 
     const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
     return stored.some((item) => item.title === title);
   }, firstPositionName)).toBe(true);
-  await expect(page.getByText(firstSectionName, { exact: true })).toHaveCount(1);
-  await expect(page.getByText("Второй раздел", { exact: true })).toHaveCount(1);
+  await expect(page.locator("aside").getByText(firstSectionName, { exact: true })).toHaveCount(1);
+  await expect(page.locator("aside").getByText("Второй раздел", { exact: true })).toHaveCount(1);
 
   await page.locator("aside").getByText(firstSectionName, { exact: true }).click();
   await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstPositionName })).toBeVisible();
