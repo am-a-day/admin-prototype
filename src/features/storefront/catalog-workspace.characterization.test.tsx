@@ -155,11 +155,11 @@ describe("catalog observable behavior baseline", () => {
     const breakfastCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
     expect(breakfastCheckbox.closest("[role=button]")).toHaveClass("h-[38px]");
     await user.click(breakfastCheckbox);
-    expect(screen.getByText("1 выбрано", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("Выбрано: 1");
 
     const bakeryCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Выпечка" });
     await user.click(bakeryCheckbox);
-    expect(screen.getByText("2 выбрано", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("Выбрано: 2");
 
     const selectAll = screen.getByRole("checkbox", { name: "Выбрать все подразделы" });
     await user.click(selectAll);
@@ -215,10 +215,15 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
     await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" }));
+    expect(screen.queryByRole("menuitem", { name: "Настройки раздела" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Переименовать…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Сменить иконку…" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Доступность" }));
+    expect(screen.getByRole("menuitem", { name: "Доступно" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Показывать «Скоро будет»" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Скрыть" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /Настроить расписание/ })).not.toBeInTheDocument();
-    const availabilitySubmenu = screen.getByRole("menuitem", { name: "Ограничения доступности" });
-    await user.hover(availabilitySubmenu);
-    await user.click(await screen.findByRole("menuitemradio", { name: "По расписанию" }));
+    await user.click(screen.getByRole("menuitem", { name: "По расписанию…" }));
     expect(await screen.findByRole("radiogroup", { name: "Доступность раздела" })).toBeInTheDocument();
   });
 

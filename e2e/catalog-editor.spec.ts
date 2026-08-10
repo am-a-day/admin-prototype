@@ -74,6 +74,45 @@ function directChildRows(page: Page, parentName: string) {
   return parentRow.locator("xpath=..").locator(":scope > div").nth(1).locator(":scope > div > div[data-tree-section-id]");
 }
 
+test("keeps catalog add and table controls compact and aligned", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+
+  const addSection = page.getByRole("button", { name: "Добавить раздел", exact: true });
+  await expect(addSection).toBeVisible();
+  await expect(addSection).toHaveCSS("width", "28px");
+  await expect(addSection).toHaveCSS("height", "28px");
+  await expect(addSection.locator("svg")).toHaveAttribute("width", "20");
+  await expect(addSection.locator("svg")).toHaveAttribute("height", "20");
+  await expect(addSection).toHaveCSS("color", "rgb(87, 83, 77)");
+  await expect(addSection).toHaveAttribute("title", "Добавить новый раздел");
+
+  const localHeader = page.locator("[data-catalog-local-header]");
+  await localHeader.getByRole("button", { name: "Выбран раздел: Все разделы" }).click();
+  await page.getByRole("menuitem", { name: /^Кухня/ }).click();
+  const scopeButton = localHeader.getByRole("button", { name: "Выбран раздел: Кухня" });
+  const scopeContainer = scopeButton.locator("xpath=..");
+  await expect(scopeContainer).toHaveCSS("max-width", "160px");
+  await expect(scopeButton.locator("span").first()).toHaveClass(/rounded-full/);
+  await expect(localHeader.getByRole("button", { name: "Открыть список разделов" })).toHaveClass(/rounded-full/);
+
+  await expect(page.getByRole("button", { name: "Сортировать по возрастанию" })).toHaveClass(/justify-end/);
+
+  const breakfastRow = page.locator("[data-tree-section-id]").filter({ hasText: "Завтраки" }).first();
+  const breakfastActions = breakfastRow.getByRole("button", { name: "Действия с разделом Завтраки" });
+  await expect(breakfastActions).toHaveCSS("position", "absolute");
+  const rowBeforeHover = await breakfastRow.boundingBox();
+  await breakfastRow.hover();
+  await expect(breakfastActions).toHaveCSS("opacity", "1");
+  const rowAfterHover = await breakfastRow.boundingBox();
+  expect(rowBeforeHover && rowAfterHover).toBeTruthy();
+  expect(rowAfterHover!.width).toBe(rowBeforeHover!.width);
+
+  const languageSettings = page.getByRole("button", { name: "Управлять языками", exact: true });
+  await expect(languageSettings).toHaveCSS("width", "24px");
+  await expect(languageSettings).toHaveCSS("height", "24px");
+  await expect(languageSettings.locator("svg")).toHaveAttribute("width", "15");
+});
+
 test("opens editor from a leaf and keeps the preview bridge mounted", async ({ page }) => {
   await openItemFromLeaf(page);
 
@@ -323,16 +362,149 @@ test("uses the section chevron for actions and creates a subsection from the wor
   await expect(page.getByText("Сезонное меню", { exact: true }).first()).toBeVisible();
 });
 
+test("opens compact section rename and icon overlays from the section chevron", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Кухня", { exact: true }).first().click();
+
+  const sectionActions = page.getByRole("button", { name: "Действия с разделом «Кухня»" });
+  await sectionActions.click();
+  await expect(page.getByRole("menuitem", { name: "Переместить…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Переименовать…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Сменить иконку…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Удалить", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Настройки раздела", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Показывать на витрине", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Доступен для заказа", exact: true })).toHaveCount(0);
+
+  await page.getByRole("menuitem", { name: "Доступность" }).click();
+  await expect(page.getByRole("menuitem", { name: "Доступно", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Показывать «Скоро будет»", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Скрыть", exact: true })).toBeVisible();
+
+  await page.getByRole("menuitem", { name: "Переименовать…" }).click();
+  const renameDialog = page.getByRole("dialog", { name: "Переименовать раздел" });
+  await expect(renameDialog.getByLabel("Название раздела на Русский")).toHaveValue("Кухня");
+  await expect(renameDialog.getByLabel("Название раздела на Қазақша")).toBeVisible();
+  await expect(renameDialog.getByLabel("Название раздела на English")).toBeVisible();
+  await expect(renameDialog.getByLabel("Название раздела на Srpski")).toBeVisible();
+  await renameDialog.getByLabel("Название раздела на Русский").fill("Кухня обновлённая");
+  await renameDialog.getByLabel("Название раздела на Қазақша").fill("Жаңартылған ас үй");
+  await renameDialog.getByRole("button", { name: "Готово" }).click();
+  await expect(page.getByText("Кухня обновлённая", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Действия с разделом «Кухня обновлённая»" }).click();
+  await page.getByRole("menuitem", { name: "Переименовать…" }).click();
+  const reopenedRenameDialog = page.getByRole("dialog", { name: "Переименовать раздел" });
+  await expect(reopenedRenameDialog.getByLabel("Название раздела на Русский")).toHaveValue("Кухня обновлённая");
+  await expect(reopenedRenameDialog.getByLabel("Название раздела на Қазақша")).toHaveValue("Жаңартылған ас үй");
+  await reopenedRenameDialog.getByRole("button", { name: "Готово" }).click();
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect(page.getByText("Кухня обновлённая", { exact: true }).first()).toBeVisible();
+  await page.getByText("Кухня обновлённая", { exact: true }).first().click();
+
+  await page.getByRole("button", { name: "Действия с разделом «Кухня обновлённая»" }).click();
+  await page.getByRole("menuitem", { name: "Сменить иконку…" }).click();
+  const iconDialog = page.getByRole("dialog", { name: "Сменить иконку раздела" });
+  await expect(iconDialog.getByRole("button", { name: "Выбрать изображение" })).toBeVisible();
+  await iconDialog.locator("input[type=file]").setInputFiles({
+    name: "section.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  });
+  await expect(iconDialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Изменить иконку" }).first().locator("img")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => Object.values(localStorage).some((value) => value.includes("Жаңартылған ас үй")))).toBe(true);
+
+  await page.reload();
+  await page.getByText("Кухня обновлённая", { exact: true }).first().click();
+  await expect(page.getByRole("button", { name: "Изменить иконку" }).first().locator("img")).toBeVisible();
+});
+
+test("uses the shared availability and move toolbar for subsection selection", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Кухня", { exact: true }).first().click();
+
+  const breakfastCheckbox = page.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
+  await breakfastCheckbox.check();
+  const toolbar = page.locator("[data-subsection-bulk-toolbar]");
+  await expect(toolbar).toContainText("Выбрано: 1");
+  await expect(toolbar.getByRole("button", { name: "Доступность" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Переместить", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "⋯" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Снять выбор" })).toBeVisible();
+
+  await toolbar.getByRole("button", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Показывать «Скоро будет»", exact: true }).click();
+  await expect(page.getByText("Подразделы поставлены на стоп: «Скоро будет»", { exact: true })).toBeVisible();
+  await expect(toolbar).not.toBeVisible();
+
+  await breakfastCheckbox.check();
+  await toolbar.getByRole("button", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Скрыть", exact: true }).click();
+  await expect(page.getByText("Подразделы поставлены на стоп и скрыты", { exact: true })).toBeVisible();
+  await expect(toolbar).not.toBeVisible();
+
+  await breakfastCheckbox.check();
+  await toolbar.getByRole("button", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Доступно", exact: true }).click();
+  await expect(page.getByText("Подразделы доступны", { exact: true })).toBeVisible();
+  await expect(toolbar).not.toBeVisible();
+
+  await breakfastCheckbox.check();
+  await toolbar.getByRole("button", { name: "⋯", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Удалить", exact: true }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Удалить подразделы" });
+  await expect(deleteDialog).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Отмена" }).click();
+  await expect(deleteDialog).toHaveCount(0);
+
+  await toolbar.getByRole("button", { name: "Переместить", exact: true }).click();
+  const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  await expect(moveDialog.getByRole("button", { name: "В корень каталога" })).toBeVisible();
+  await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
+  await expect(moveDialog.locator("img")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(toolbar).not.toBeVisible();
+});
+
 test("opens the existing schedule settings from the single schedule action", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();
   await page.getByRole("button", { name: "Действия с разделом «Завтраки»" }).click();
 
   await expect(page.getByRole("menuitem", { name: /Настроить расписание/ })).toHaveCount(0);
-  const availabilitySubmenu = page.getByRole("menuitem", { name: "Ограничения доступности" });
-  await availabilitySubmenu.hover();
-  await page.getByRole("menuitemradio", { name: "По расписанию" }).click();
+  await page.getByRole("menuitem", { name: "Доступность" }).click();
+  await expect(page.getByRole("menuitem", { name: "Доступно", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Показывать «Скоро будет»", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Скрыть" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "По расписанию…", exact: true }).click();
   await expect(page.getByRole("radiogroup", { name: "Доступность раздела" })).toBeVisible();
+});
+
+test("maps section availability choices to the current status badge", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+  const sectionActions = page.getByRole("button", { name: "Действия с разделом «Завтраки»" });
+
+  await sectionActions.click();
+  await page.getByRole("menuitem", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Показывать «Скоро будет»", exact: true }).click();
+  await expect(page.getByText("На стопе", { exact: true })).toBeVisible();
+
+  await sectionActions.click();
+  await page.getByRole("menuitem", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Скрыть", exact: true }).click();
+  await expect(page.getByText("На стопе", { exact: true })).toBeVisible();
+  await expect(page.getByText("Скрыт", { exact: true })).toHaveCount(0);
+
+  await sectionActions.click();
+  await page.getByRole("menuitem", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Доступно", exact: true }).click();
+  await expect(page.getByText("На стопе", { exact: true })).toHaveCount(0);
 });
 
 test("records explicit position move parent/order and current reload behavior", async ({ page }) => {
@@ -409,8 +581,9 @@ test("keeps bulk selection commands in the sticky local header without shifting 
   await firstCheckbox.check();
   const toolbar = page.locator("[data-catalog-selection-toolbar]");
   await expect(toolbar).toContainText("Выбрано: 1");
-  await expect(page.getByRole("button", { name: "Витрина" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Для заказа" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Доступность" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Витрина" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Для заказа" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Переместить", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Ещё действия" })).toBeVisible();
 
@@ -434,8 +607,8 @@ test("keeps bulk selection commands in the sticky local header without shifting 
   await expect(toolbar).not.toBeVisible();
 
   await firstCheckbox.check();
-  await page.getByRole("button", { name: "Для заказа" }).click();
-  await page.getByRole("menuitem", { name: "Всегда доступно" }).click();
+  await page.getByRole("button", { name: "Доступность" }).click();
+  await page.getByRole("menuitem", { name: "Доступно" }).click();
   await expect(page.getByText("Позиции всегда доступны", { exact: true })).toBeVisible();
   await expect(toolbar).not.toBeVisible();
 
