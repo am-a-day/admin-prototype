@@ -1,23 +1,13 @@
-import type { CatalogItem } from "@/data/catalog";
+import type {
+  CatalogItem,
+  CatalogItemUpsell,
+  CatalogRecommendationSource,
+} from "@/data/catalog";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { readCatalogJson, writeCatalogJson } from "@/features/storefront/catalog/persistence";
 
-export type CatalogLocalizedValue = {
-  ru: string;
-  kk?: string;
-  en?: string;
-  sr?: string;
-};
-
-export type CatalogRecommendationSource = "manual" | "automatic";
-
-export type CatalogItemUpsellState = {
-  recommendationIds?: string[];
-  recommendationSources?: Record<string, CatalogRecommendationSource>;
-  sticker?: CatalogLocalizedValue | null;
-  tags?: CatalogLocalizedValue[];
-  keywords?: CatalogLocalizedValue[];
-};
+export type { CatalogLocalizedValue, CatalogRecommendationSource } from "@/data/catalog";
+export type CatalogItemUpsellState = CatalogItemUpsell;
 
 export type CatalogUpsellStateByItem = Record<string, CatalogItemUpsellState>;
 

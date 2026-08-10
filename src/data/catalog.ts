@@ -16,6 +16,57 @@ export type CatalogSection = {
 
 export type CatalogSectionNode = CatalogSection & { children: CatalogSectionNode[] };
 
+export type CatalogLanguageCode = "ru" | "kk" | "en" | "sr";
+export type CatalogTranslations = Partial<Record<CatalogLanguageCode, string>>;
+
+export type CatalogNutrition = {
+  calories: string;
+  protein: string;
+  fat: string;
+  carbs: string;
+};
+
+export type CatalogOptionVariant = {
+  id: string;
+  name: string;
+  price: string;
+};
+
+export type CatalogOptionGroup = {
+  id: string;
+  name: string;
+  expanded: boolean;
+  required: boolean;
+  selection: "single" | "multiple";
+  pricing: "total" | "surcharge";
+  variants: CatalogOptionVariant[];
+};
+
+export type CatalogScheduleDay =
+  | { mode: "allDay" }
+  | { mode: "unavailable" }
+  | { mode: "custom"; intervals: Array<{ start: string; end: string }> };
+
+export type CatalogScheduleDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+export type CatalogWeeklySchedule = Record<CatalogScheduleDayKey, CatalogScheduleDay>;
+
+export type CatalogLocalizedValue = {
+  ru: string;
+  kk?: string;
+  en?: string;
+  sr?: string;
+};
+
+export type CatalogRecommendationSource = "manual" | "automatic";
+
+export type CatalogItemUpsell = {
+  recommendationIds?: string[];
+  recommendationSources?: Record<string, CatalogRecommendationSource>;
+  sticker?: CatalogLocalizedValue | null;
+  tags?: CatalogLocalizedValue[];
+  keywords?: CatalogLocalizedValue[];
+};
+
 /** Rebuild the section hierarchy from flat parentId links. */
 export function buildSectionTree(sections: CatalogSection[]): CatalogSectionNode[] {
   const nodes = new Map(sections.map((s) => [s.id, { ...s, children: [] as CatalogSectionNode[] }]));
@@ -54,6 +105,14 @@ export type CatalogItem = {
   translationFilledCount: number;
   translationTotalCount: number;
   hasDiscount: boolean;
+  /** Canonical editor values restored with the item record. */
+  titleTranslations?: CatalogTranslations;
+  nutrition?: CatalogNutrition;
+  optionGroups?: CatalogOptionGroup[];
+  unavailableDisplayMode?: "hidden" | "comingSoon";
+  outsideScheduleMode?: "hidden" | "comingSoon";
+  weeklySchedule?: CatalogWeeklySchedule;
+  upsell?: CatalogItemUpsell;
 };
 
 type CatalogFixture = {

@@ -5,7 +5,6 @@ import { usePublish } from "@/contexts/publish-context";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
-import { catalogStorageKey } from "@/lib/catalog-preview";
 import type { CatalogPriceSortDirection, CatalogReturnContext } from "../navigation/types";
 import type { OverviewFilterId } from "../model/types";
 import { getCatalogSectionPathFromSections, type CatalogSectionCrumb } from "../model/section-path";
@@ -16,8 +15,6 @@ import { deriveEditorQueue, descriptionHasContent, getQueueEditorContext, isRepa
 import { DescriptionQueueComplete } from "./description-queue-complete";
 import { PositionQueueControls, PositionQueueReturnLink } from "./editor-queue-controls";
 import { PositionEditor, createDefaultWeeklySchedule } from "./position-editor";
-import type { OutsideScheduleMode, UnavailableDisplayMode, WeeklySchedule } from "./position-editor";
-import { readJsonRecord, writeJsonRecord } from "../storage";
 import type { MovePopoverAnchor } from "../ui/move-anchor";
 import { MoveToSectionPopover } from "../ui/move-to-section-popover";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
@@ -56,10 +53,6 @@ export type OpenPositionIntent = {
   returnContext: { label: string };
   revision: number;
 };
-
-const CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY = catalogStorageKey("unavailableDisplay");
-const CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY = catalogStorageKey("outsideSchedule");
-const CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY = catalogStorageKey("weeklySchedule");
 
 function StructuralSectionCrumb({
   section,
@@ -289,15 +282,6 @@ export function PositionEditorHost({
     setUpsellByItem,
   } = useCatalogStore();
   const { registerChange } = usePublish();
-  const [unavailableDisplayByItem, setUnavailableDisplayByItem] = useState<Record<string, UnavailableDisplayMode>>(() =>
-    readJsonRecord<Record<string, UnavailableDisplayMode>>(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, {}),
-  );
-  const [outsideScheduleByItem, setOutsideScheduleByItem] = useState<Record<string, OutsideScheduleMode>>(() =>
-    readJsonRecord<Record<string, OutsideScheduleMode>>(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, {}),
-  );
-  const [weeklyScheduleByItem, setWeeklyScheduleByItem] = useState<Record<string, WeeklySchedule>>(() =>
-    readJsonRecord<Record<string, WeeklySchedule>>(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, {}),
-  );
   const [moveRequest, setMoveRequest] = useState<{ itemId: string; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ itemId: string; sectionId: string; sectionName: string; message: string } | null>(null);
   const saveTimersRef = useRef<Record<string, number>>({});
@@ -314,10 +298,6 @@ export function PositionEditorHost({
   const currentSelectionIds = editorQueue.itemIds;
   const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
   const { previousId: previousQueueId, nextId: nextQueueId } = editorQueue;
-
-  useEffect(() => writeJsonRecord(CATALOG_UNAVAILABLE_DISPLAY_STORAGE_KEY, unavailableDisplayByItem), [unavailableDisplayByItem]);
-  useEffect(() => writeJsonRecord(CATALOG_OUTSIDE_SCHEDULE_STORAGE_KEY, outsideScheduleByItem), [outsideScheduleByItem]);
-  useEffect(() => writeJsonRecord(CATALOG_WEEKLY_SCHEDULE_STORAGE_KEY, weeklyScheduleByItem), [weeklyScheduleByItem]);
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
@@ -373,9 +353,10 @@ export function PositionEditorHost({
       <PositionEditor
       item={item}
       allItems={items}
-      upsell={upsellByItem[item.id] ?? {}}
+      upsell={item.upsell ?? upsellByItem[item.id] ?? {}}
       onUpsellChange={(next) => {
         setUpsellByItem((current) => ({ ...current, [item.id]: next }));
+        updateItem(item.id, { upsell: next });
         registerChange("catalog");
       }}
       stopBusy={false}
@@ -390,12 +371,21 @@ export function PositionEditorHost({
       onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
       onToggleStop={(target) => setItemStatus(target.id, target.status === "stopped" ? "active" : "stopped")}
       onSetAvailabilityMode={setAvailability}
-      unavailableDisplayMode={unavailableDisplayByItem[item.id] ?? "hidden"}
-      outsideScheduleMode={outsideScheduleByItem[item.id] ?? "hidden"}
-      weeklySchedule={weeklyScheduleByItem[item.id] ?? createDefaultWeeklySchedule()}
-      onUnavailableDisplayModeChange={(mode) => setUnavailableDisplayByItem((current) => ({ ...current, [item.id]: mode }))}
-      onOutsideScheduleModeChange={(mode) => setOutsideScheduleByItem((current) => ({ ...current, [item.id]: mode }))}
-      onWeeklyScheduleChange={(schedule) => setWeeklyScheduleByItem((current) => ({ ...current, [item.id]: schedule }))}
+      unavailableDisplayMode={item.unavailableDisplayMode ?? "hidden"}
+      outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
+      weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
+      onUnavailableDisplayModeChange={(mode) => {
+        updateItem(item.id, { unavailableDisplayMode: mode });
+        registerChange("catalog");
+      }}
+      onOutsideScheduleModeChange={(mode) => {
+        updateItem(item.id, { outsideScheduleMode: mode });
+        registerChange("catalog");
+      }}
+      onWeeklyScheduleChange={(schedule) => {
+        updateItem(item.id, { weeklySchedule: schedule });
+        registerChange("catalog");
+      }}
       onRequestPermanentDelete={(target) => {
         if (onRequestPermanentDelete) onRequestPermanentDelete(target);
         else {
@@ -404,6 +394,10 @@ export function PositionEditorHost({
         }
       }}
       onDescriptionChange={saveDescription}
+      onDraftChange={(patch) => {
+        updateItem(item.id, patch);
+        registerChange("catalog");
+      }}
       onMediaAdded={(target, previewUrl) => {
         updateItem(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
         registerChange("catalog");

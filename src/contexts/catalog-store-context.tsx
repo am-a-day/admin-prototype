@@ -10,14 +10,24 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { catalogItems, catalogSections, type CatalogItem, type CatalogSection } from "@/data/catalog";
+import {
+  catalogItems,
+  catalogSections,
+  type CatalogItem,
+  type CatalogOptionGroup,
+  type CatalogSection,
+  type CatalogWeeklySchedule,
+} from "@/data/catalog";
 import {
   CATALOG_PERSISTENCE_KEYS,
   readCatalogJson,
+  readCatalogItemRecords,
   readCreatedCatalogSections,
   readCreatedCatalogItems,
+  writeCatalogItemRecords,
   writeCatalogJson,
 } from "@/features/storefront/catalog/persistence";
+import { catalogStorageKey } from "@/lib/catalog-preview";
 import {
   readCatalogUpsellState,
   writeCatalogUpsellState,
@@ -54,6 +64,10 @@ const STATUS_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.statusOverrides;
 const SCHEDULE_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.scheduleOverrides;
 const ITEM_SECTION_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.itemSectionOverrides;
 const POSITION_ORDER_STORAGE_KEY = CATALOG_PERSISTENCE_KEYS.positionOrderBySection;
+const POSITION_OPTIONS_STORAGE_KEY = catalogStorageKey("positionOptionGroups");
+const UNAVAILABLE_DISPLAY_STORAGE_KEY = catalogStorageKey("unavailableDisplay");
+const OUTSIDE_SCHEDULE_STORAGE_KEY = catalogStorageKey("outsideSchedule");
+const WEEKLY_SCHEDULE_STORAGE_KEY = catalogStorageKey("weeklySchedule");
 
 function readRecord<T>(key: string): Record<string, T> {
   const value = readCatalogJson<unknown>(key, {});
@@ -65,19 +79,32 @@ function buildInitialState(): CatalogState {
   const scheduledOverrides = readRecord<boolean>(SCHEDULE_STORAGE_KEY);
   const sectionOverrides = readRecord<string>(ITEM_SECTION_STORAGE_KEY);
   const storedOrder = readRecord<string[]>(POSITION_ORDER_STORAGE_KEY);
+  const persistedItems = readCatalogItemRecords();
+  const legacyOptionGroups = readRecord<CatalogOptionGroup[]>(POSITION_OPTIONS_STORAGE_KEY);
+  const legacyUnavailableDisplay = readRecord<CatalogItem["unavailableDisplayMode"]>(UNAVAILABLE_DISPLAY_STORAGE_KEY);
+  const legacyOutsideSchedule = readRecord<CatalogItem["outsideScheduleMode"]>(OUTSIDE_SCHEDULE_STORAGE_KEY);
+  const legacyWeeklySchedule = readRecord<CatalogWeeklySchedule>(WEEKLY_SCHEDULE_STORAGE_KEY);
+  const legacyUpsell = readCatalogUpsellState();
   const sourceSections = [...catalogSections, ...readCreatedCatalogSections()];
   const sectionsById = Object.fromEntries(sourceSections.map((section) => [section.id, section]));
   const sourceItems = [...catalogItems, ...readCreatedCatalogItems()].filter(
     (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index,
   );
   const items = sourceItems.map((item) => {
-    const sectionId = sectionOverrides[item.id] ?? item.sectionId;
+    const persisted = persistedItems[item.id] ?? {};
+    const sectionId = sectionOverrides[item.id] ?? persisted.sectionId ?? item.sectionId;
     return {
       ...item,
+      ...persisted,
       sectionId,
       sectionName: sectionsById[sectionId]?.name ?? item.sectionName,
-      status: statusOverrides[item.id] ?? item.status,
-      scheduled: scheduledOverrides[item.id] ?? item.scheduled,
+      status: statusOverrides[item.id] ?? persisted.status ?? item.status,
+      scheduled: scheduledOverrides[item.id] ?? persisted.scheduled ?? item.scheduled,
+      ...(persisted.optionGroups || legacyOptionGroups[item.id] ? { optionGroups: persisted.optionGroups ?? legacyOptionGroups[item.id] } : {}),
+      ...(persisted.unavailableDisplayMode || legacyUnavailableDisplay[item.id] ? { unavailableDisplayMode: persisted.unavailableDisplayMode ?? legacyUnavailableDisplay[item.id] } : {}),
+      ...(persisted.outsideScheduleMode || legacyOutsideSchedule[item.id] ? { outsideScheduleMode: persisted.outsideScheduleMode ?? legacyOutsideSchedule[item.id] } : {}),
+      ...(persisted.weeklySchedule || legacyWeeklySchedule[item.id] ? { weeklySchedule: persisted.weeklySchedule ?? legacyWeeklySchedule[item.id] } : {}),
+      ...(persisted.upsell || legacyUpsell[item.id] ? { upsell: persisted.upsell ?? legacyUpsell[item.id] } : {}),
     };
   });
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
@@ -238,7 +265,15 @@ const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
   const [activeEditorItemId, setActiveEditorItemId] = useState<string | null>(null);
-  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() => readCatalogUpsellState());
+  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() => {
+    const legacy = readCatalogUpsellState();
+    const canonical = Object.fromEntries(
+      Object.values(state.itemsById)
+        .filter((item) => item.upsell)
+        .map((item) => [item.id, item.upsell]),
+    ) as CatalogUpsellStateByItem;
+    return { ...legacy, ...canonical };
+  });
 
   useEffect(() => {
     const statuses: Record<string, CatalogItem["status"]> = {};
@@ -253,10 +288,16 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     writeCatalogJson(SCHEDULE_STORAGE_KEY, scheduled);
     writeCatalogJson(ITEM_SECTION_STORAGE_KEY, sections);
     writeCatalogJson(POSITION_ORDER_STORAGE_KEY, state.itemOrderBySection);
+    writeCatalogItemRecords(Object.values(state.itemsById));
     window.dispatchEvent(new Event("tasko-catalog-status-change"));
   }, [state.itemsById, state.itemOrderBySection]);
 
   useEffect(() => {
+    Object.entries(upsellByItem).forEach(([id, upsell]) => {
+      const item = state.itemsById[id];
+      if (!item || JSON.stringify(item.upsell ?? {}) === JSON.stringify(upsell)) return;
+      dispatch({ type: "update-item", id, patch: { upsell }, autosave: true });
+    });
     writeCatalogUpsellState(upsellByItem);
   }, [upsellByItem]);
 

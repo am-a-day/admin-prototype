@@ -137,7 +137,7 @@ test("keeps the editor route after a hard reload", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Основное" })).toBeVisible();
 });
 
-test("keeps the current autosave UI stable and records unsaved reload behavior", async ({ page }) => {
+test("keeps the current autosave UI stable and restores the saved description", async ({ page }) => {
   await openEntityItem(page);
   const description = page.getByRole("textbox", { name: "Описание" });
 
@@ -146,12 +146,102 @@ test("keeps the current autosave UI stable and records unsaved reload behavior",
   await page.waitForTimeout(650);
   await expect(page.getByRole("button", { name: "Основное" })).toBeVisible();
 
-  // Current baseline: the editor remains open, but this local description is
-  // not restored after a full reload.
+  await preserveLocalStorageOnReload(page);
   await page.reload();
   const reloadedDescription = page.getByRole("textbox", { name: "Описание" });
-  await expect(reloadedDescription).toHaveText("");
-  await expect(reloadedDescription).toHaveAttribute("data-placeholder", "Кратко опишите состав, вкус или способ подачи");
+  await expect(reloadedDescription).toHaveText("Baseline browser smoke");
+});
+
+test("persists the complete basic position editor record across reload", async ({ page }) => {
+  await openEntityItem(page);
+
+  await page.getByLabel("Цена позиции").fill("2450");
+  await page.getByLabel("Цена позиции").blur();
+  await page.getByLabel("Объем позиции").fill("350");
+  await page.getByLabel("Объем позиции").blur();
+  await page.getByRole("textbox", { name: "Описание" }).fill("Сохраняемое описание позиции");
+  await page.getByRole("button", { name: "Добавить скидку" }).click();
+  await page.getByLabel("Цена после скидки").fill("1990");
+  await page.getByLabel("Цена после скидки").blur();
+  await page.getByRole("button", { name: "Добавить КБЖУ" }).click();
+  await page.getByLabel("Калорийность").fill("560");
+  await page.getByRole("button", { name: "Отображение" }).click();
+  await page.getByRole("button", { name: /Без кнопки/ }).click();
+  await page.waitForTimeout(700);
+  await page.getByRole("button", { name: "Основное" }).click();
+  const expectedDiscountValue = await page.evaluate((itemId) => {
+    const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}");
+    return String(records[itemId]?.priceWithSale ?? "");
+  }, firstItemId);
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("2450");
+  await expect(page.getByLabel("Объем позиции")).toHaveValue("350");
+  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Сохраняемое описание позиции");
+  await expect(page.getByRole("button", { name: "Добавить КБЖУ" })).toHaveCount(0);
+  await expect(page.getByLabel("Калорийность")).toHaveValue("560");
+  await expect(page.getByRole("button", { name: "Добавить скидку" })).toHaveCount(0);
+  await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(expectedDiscountValue);
+  await page.getByRole("button", { name: "Отображение" }).click();
+  await expect(page.getByRole("button", { name: /Без кнопки/ })).toHaveClass(/border-\[#292524\]/);
+});
+
+
+test("restores structured promo, options, and availability editor state", async ({ page }) => {
+  await openEntityItem(page);
+
+  await page.getByRole("button", { name: "Допродажа" }).click();
+  await page.getByRole("button", { name: "Добавить стикер", exact: true }).click();
+  const stickerDialog = page.getByRole("dialog", { name: "Стикер" });
+  await stickerDialog.getByLabel("Русский").fill("Хит");
+  await stickerDialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByText("Хит", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Опции" }).click();
+  await page.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
+  await page.getByLabel("Название группы").fill("Размер порции");
+  await page.getByRole("button", { name: "Создать группу", exact: true }).click();
+  await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Доступность" }).click();
+  const schedule = page.getByRole("radio", { name: /По расписанию/ });
+  await schedule.click();
+  await page.getByLabel("Понедельник: начало интервала 1").fill("10:00");
+  await page.getByLabel("Понедельник: конец интервала 1").fill("19:00");
+  await page.waitForTimeout(350);
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+
+  await page.getByRole("button", { name: "Допродажа" }).click();
+  await expect(page.getByText("Хит", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Опции" }).click();
+  await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Доступность" }).click();
+  await expect(page.getByRole("radio", { name: /По расписанию/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("Понедельник: начало интервала 1")).toHaveValue("10:00");
+  await expect(page.getByLabel("Понедельник: конец интервала 1")).toHaveValue("19:00");
+});
+
+test("does not leak editor values between queued positions", async ({ page }) => {
+  await openItemFromLeaf(page);
+  const firstDescription = page.getByRole("textbox", { name: "Описание" });
+  await firstDescription.fill("Описание позиции A");
+  await page.getByLabel("Цена позиции").fill("3100");
+  await page.getByLabel("Цена позиции").blur();
+  await page.waitForTimeout(500);
+
+  await page.getByRole("button", { name: "Следующая позиция в выборке" }).click();
+  await expect(page.getByRole("textbox", { name: "Описание" })).not.toHaveText("Описание позиции A");
+  await page.getByRole("textbox", { name: "Описание" }).fill("Описание позиции B");
+  await page.getByLabel("Цена позиции").fill("4200");
+  await page.getByLabel("Цена позиции").blur();
+  await page.waitForTimeout(500);
+
+  await page.getByRole("button", { name: "Предыдущая позиция в выборке" }).click();
+  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание позиции A");
+  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("3100");
 });
 
 test("records direct subsection reorder and current reload behavior", async ({ page }) => {
@@ -381,9 +471,14 @@ test("characterizes structure create draft context and cancel/back behavior", as
 test("characterizes structure create completion, active item, section, queue, and reload", async ({ page }) => {
   const draft = await openStructureCreateDraft(page);
   await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(structureCreateTitle);
+  await draft.getByLabel("Цена позиции").fill("1750");
+  await draft.getByLabel("Цена позиции").blur();
+  await draft.getByRole("textbox", { name: "Описание" }).fill("Описание структурно созданной позиции");
   await draft.getByRole("button", { name: "Создать", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
+  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("1750");
+  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание структурно созданной позиции");
   const createdUrl = new URL(page.url());
   expect(createdUrl.searchParams.get("sectionId")).toBeNull();
   expect(createdUrl.searchParams.get("positionId")).toBeTruthy();
@@ -398,6 +493,8 @@ test("characterizes structure create completion, active item, section, queue, an
   await page.reload();
   await expect(page).toHaveURL(createdUrl.toString());
   await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
+  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("1750");
+  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание структурно созданной позиции");
   await expect(
     page.getByRole("navigation", { name: "Положение позиции в каталоге" })
       .getByRole("button", { name: "Завтраки", exact: true }),
@@ -467,4 +564,25 @@ test("characterizes direct create Back/Forward, active queue, and reload behavio
   // legacy reload does not expose that created title in the visible catalog UI.
   await expect(page.getByText(directCreateTitle, { exact: true })).not.toBeVisible();
   await expect(page.getByRole("heading", { name: directCreateTitle })).not.toBeVisible();
+});
+
+test("restores complete fields for a position created through the direct flow", async ({ page }) => {
+  await openDirectCreateDraft(page);
+  await page.getByPlaceholder("Например, Пицца").fill("Direct persisted position");
+  await page.getByLabel("Цена позиции").fill("2850");
+  await page.getByLabel("Цена позиции").blur();
+  await page.getByRole("textbox", { name: "Описание" }).fill("Описание direct-created позиции");
+  await page.getByRole("button", { name: "Создать", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
+
+  const created = await page.evaluate(() => {
+    const items = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ id?: string; title?: string }>;
+    return items.find((item) => item.title === "Direct persisted position");
+  });
+  expect(created?.id).toBeTruthy();
+  await preserveLocalStorageOnReload(page);
+  await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}&positionId=${created?.id}`);
+  await expect(page.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
+  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("2850");
+  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание direct-created позиции");
 });

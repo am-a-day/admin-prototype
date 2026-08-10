@@ -1,4 +1,4 @@
-import type { CatalogItem, CatalogSection } from "@/data/catalog";
+import type { CatalogItem, CatalogSection, CatalogTranslations } from "@/data/catalog";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import type { CatalogTreeSection } from "./model/tree";
 
@@ -11,6 +11,7 @@ export const CATALOG_PERSISTENCE_KEYS = {
   positionOrderBySection: catalogStorageKey("positionOrderBySection"),
   createdItems: catalogStorageKey("createdItems"),
   createdSections: catalogStorageKey("createdSections"),
+  itemRecords: catalogStorageKey("itemRecords"),
 } as const;
 
 export function readCatalogJson<T>(key: string, fallback: T): T {
@@ -35,6 +36,46 @@ export function writeCatalogJson<T>(key: string, value: T) {
 export function removeCatalogValue(key: string) {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(key);
+}
+
+export type CatalogPersistedItemRecord = Partial<CatalogItem> & { id: string };
+
+function isPersistedCatalogItemRecord(value: unknown): value is CatalogPersistedItemRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && typeof (value as { id?: unknown }).id === "string");
+}
+
+/**
+ * Canonical item-record boundary. Older per-concern keys are still read by the
+ * store as compatibility inputs, but all new editor values are written here.
+ */
+export function readCatalogItemRecords(): Record<string, CatalogPersistedItemRecord> {
+  const value = readCatalogJson<unknown>(CATALOG_PERSISTENCE_KEYS.itemRecords, {});
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => isPersistedCatalogItemRecord(item)),
+  ) as Record<string, CatalogPersistedItemRecord>;
+}
+
+export function writeCatalogItemRecords(items: CatalogItem[]) {
+  const records = Object.fromEntries(items.map((item) => {
+    // Browser object URLs are session-only previews, not durable media records.
+    const thumbnailUrl = item.thumbnailUrl?.startsWith("blob:") ? null : item.thumbnailUrl;
+    return [item.id, { ...item, thumbnailUrl }];
+  }));
+  writeCatalogJson<Record<string, CatalogItem>>(CATALOG_PERSISTENCE_KEYS.itemRecords, records);
+}
+
+export function readLegacyCatalogTitleTranslations(accountId: string | null | undefined, itemId: string): CatalogTranslations | null {
+  if (typeof window === "undefined" || !accountId) return null;
+  try {
+    const raw = window.localStorage.getItem(`tasko.catalog.translations.${accountId}.item-name-${itemId}`);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return value as CatalogTranslations;
+  } catch {
+    return null;
+  }
 }
 
 export function readCreatedCatalogItems() {

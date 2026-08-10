@@ -25,7 +25,17 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
-import { catalogSections, type CatalogItem } from "@/data/catalog";
+import {
+  catalogSections,
+  type CatalogItem,
+  type CatalogNutrition,
+  type CatalogOptionGroup,
+  type CatalogOptionVariant,
+  type CatalogScheduleDay,
+  type CatalogScheduleDayKey,
+  type CatalogTranslations,
+  type CatalogWeeklySchedule,
+} from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { CATALOG_RECOMMENDATION_LIMIT, buildAutomaticRecommendations, resolveRecommendationIds, resolveRecommendationSource, type CatalogItemUpsellState, type CatalogLocalizedValue, type CatalogRecommendationSource } from "@/lib/catalog-upsell";
@@ -38,7 +48,8 @@ import { getMovePopoverAnchor, type MovePopoverAnchor } from "../ui/move-anchor"
 import { DND_TRANSITION, restrictTableSortToVerticalAxis, usePrefersReducedMotion } from "../workspace/dnd";
 import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from "./editor-queue";
 import { WorkspaceLocalTabs } from "./editor-tabs";
-import { readJsonRecord, writeJsonRecord } from "../storage";
+import { readLegacyCatalogTitleTranslations } from "../persistence";
+import { readJsonRecord } from "../storage";
 
 type AvailabilityMode = CatalogAvailabilityMode;
 const VIDEO_LIMIT_TOTAL = 10;
@@ -82,12 +93,9 @@ const optionKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
 export type PositionEditorMode = "create" | "edit";
 export type UnavailableDisplayMode = "hidden" | "comingSoon";
 export type OutsideScheduleMode = "hidden" | "comingSoon";
-export type ScheduleDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
-export type DaySchedule =
-  | { mode: "allDay" }
-  | { mode: "unavailable" }
-  | { mode: "custom"; intervals: Array<{ start: string; end: string }> };
-export type WeeklySchedule = Record<ScheduleDayKey, DaySchedule>;
+export type ScheduleDayKey = CatalogScheduleDayKey;
+export type DaySchedule = CatalogScheduleDay;
+export type WeeklySchedule = CatalogWeeklySchedule;
 export type PreviousAvailabilityState = {
   status: CatalogItem["status"];
   scheduled: boolean;
@@ -105,20 +113,8 @@ const editorTabByItem = new Map<string, EditorTab>();
 
 type PositionOptionSelection = "single" | "multiple";
 type PositionOptionPricing = "total" | "surcharge";
-type PositionOptionVariant = {
-  id: string;
-  name: string;
-  price: string;
-};
-type PositionOptionGroup = {
-  id: string;
-  name: string;
-  expanded: boolean;
-  required: boolean;
-  selection: PositionOptionSelection;
-  pricing: PositionOptionPricing;
-  variants: PositionOptionVariant[];
-};
+type PositionOptionVariant = CatalogOptionVariant;
+type PositionOptionGroup = CatalogOptionGroup;
 
 const CATALOG_POSITION_OPTIONS_STORAGE_KEY = catalogStorageKey("positionOptionGroups");
 
@@ -515,6 +511,7 @@ function BasicTab({
   weightUnit,
   discountOpen,
   discountAutofocusKey,
+  onDiscountChange,
   onWeightUnitChange,
   onBasePriceChange,
   onBasePriceBlur,
@@ -530,6 +527,7 @@ function BasicTab({
   onNameChange,
   onWeightChange,
   onTitleChange,
+  onTitleTranslationsChange,
 }: {
   item: CatalogItem;
   media: MediaEntry[];
@@ -538,6 +536,7 @@ function BasicTab({
   weightUnit: string;
   discountOpen: boolean;
   discountAutofocusKey: number;
+  onDiscountChange: (priceWithSale: number | null) => void;
   onWeightUnitChange: (unit: string) => void;
   onBasePriceChange: (value: string) => void;
   onBasePriceBlur: () => void;
@@ -553,7 +552,9 @@ function BasicTab({
   onNameChange?: (value: string) => void;
   onWeightChange?: (value: string, unit: string) => void;
   onTitleChange?: (value: string) => void;
+  onTitleTranslationsChange?: (translations: CatalogTranslations) => void;
 }) {
+  const { account } = useMockAuth();
   const [initialWeightValue, initialWeightUnit] = item.weightLabel
     ? [item.weightLabel.replace(/[^\d.,]/g, "").trim(), item.weightLabel.replace(/[\d.,\s]/g, "").trim() || "г"]
     : ["", "г"];
@@ -565,6 +566,9 @@ function BasicTab({
 
   const inlineInputClass =
     "min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]";
+  const initialTranslations = item.titleTranslations
+    ?? readLegacyCatalogTitleTranslations(account?.id, item.id)
+    ?? { ru: item.title };
 
   return (
     <div className="space-y-3">
@@ -582,21 +586,23 @@ function BasicTab({
       <TranslatableField
         key={`name-${item.id}`}
         label="Название"
-        initialTranslations={{ ru: item.title }}
-        storageKey={autoFocusName ? undefined : `item-name-${item.id}`}
+        initialTranslations={initialTranslations}
         showTranslationMeta={false}
         plain
         autoFocus={autoFocusName}
-        persist={!autoFocusName}
+        persist={false}
         placeholder={namePlaceholder}
         onValueChange={onNameChange}
-        onChange={(translations) => onTitleChange?.(translations.ru ?? item.title)}
+        onChange={(translations) => {
+          onTitleChange?.(translations.ru ?? item.title);
+          onTitleTranslationsChange?.(translations);
+        }}
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
           <EditorField label="Цена">
-            <input value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
+            <input aria-label="Цена позиции" value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
             <span className="shrink-0 text-[13px] text-[#a6a09b]">₸</span>
           </EditorField>
           {!discountOpen && (
@@ -614,6 +620,7 @@ function BasicTab({
         <div data-weight-editor-anchor>
           <EditorField label="Объем">
             <input
+              aria-label="Объем позиции"
               value={weightText}
               onChange={(event) => {
                 if (isFormattedNumericDraft(event.target.value)) {
@@ -651,6 +658,7 @@ function BasicTab({
           item={item}
           basePrice={basePrice}
           autofocusKey={discountAutofocusKey}
+          onChange={onDiscountChange}
           onRemove={onRemoveDiscount}
         />
       )}
@@ -754,11 +762,13 @@ function DiscountBlock({
   item,
   basePrice,
   autofocusKey,
+  onChange,
   onRemove,
 }: {
   item: CatalogItem;
   basePrice: number | null;
   autofocusKey: number;
+  onChange: (priceWithSale: number | null) => void;
   onRemove: () => void;
 }) {
   const initialFinalPrice = item.priceWithSale ?? (item.price > 0 ? calculateDiscountedPrice(item.price, 10) : null);
@@ -816,7 +826,9 @@ function DiscountBlock({
     setPercentText(value);
     const percent = parseMoneyInput(value);
     if (baseMissing || percent == null || percent < 0 || percent > 100) return;
-    setFinalPriceText(formatMoneyInput(calculateDiscountedPrice(basePrice, percent)));
+    const nextFinalPrice = calculateDiscountedPrice(basePrice, percent);
+    setFinalPriceText(formatMoneyInput(nextFinalPrice));
+    onChange(nextFinalPrice);
   };
 
   const handleFinalPriceChange = (value: string) => {
@@ -827,6 +839,7 @@ function DiscountBlock({
     const finalPrice = parseMoneyInput(value);
     if (baseMissing || finalPrice == null || finalPrice < 0 || finalPrice > basePrice) return;
     setPercentText(formatDiscountPercent(calculateDiscountPercent(basePrice, finalPrice)));
+    onChange(finalPrice);
   };
 
   const normalizePercentOnBlur = () => {
@@ -835,7 +848,11 @@ function DiscountBlock({
     const normalized = Math.min(100, Math.max(0, percent));
     discountSourceRef.current = "percent";
     setPercentText(formatDiscountPercent(normalized));
-    if (!baseMissing) setFinalPriceText(formatMoneyInput(calculateDiscountedPrice(basePrice, normalized)));
+    if (!baseMissing) {
+      const nextFinalPrice = calculateDiscountedPrice(basePrice, normalized);
+      setFinalPriceText(formatMoneyInput(nextFinalPrice));
+      onChange(nextFinalPrice);
+    }
   };
 
   const normalizeFinalPriceOnBlur = () => {
@@ -845,6 +862,9 @@ function DiscountBlock({
       setFinalPriceText("0");
       setPercentText("100");
       discountSourceRef.current = "finalPrice";
+      onChange(0);
+    } else if (finalPrice <= basePrice) {
+      onChange(finalPrice);
     }
   };
 
@@ -918,7 +938,7 @@ function DiscountBlock({
 }
 
 type NutritionBase = "100g" | "100ml" | "portion";
-type NutritionKey = "calories" | "protein" | "fat" | "carbs";
+type NutritionKey = keyof CatalogNutrition;
 
 const NUTRITION_BASE_LABELS: Record<NutritionBase, string> = {
   "100g": "На 100 г",
@@ -940,16 +960,43 @@ function getAutoNutritionBase(unit: string): NutritionBase {
   return "portion";
 }
 
-function KbjuBlock({ weightUnit, onRemove }: { weightUnit: string; onRemove: () => void }) {
-  const [values, setValues] = useState<Record<NutritionKey, string>>({
-    calories: "",
-    protein: "",
-    fat: "",
-    carbs: "",
-  });
+const EMPTY_NUTRITION: CatalogNutrition = {
+  calories: "",
+  protein: "",
+  fat: "",
+  carbs: "",
+};
 
-  const base = getAutoNutritionBase(weightUnit);
+function KbjuBlock({
+  weightUnit,
+  initialValues,
+  onChange,
+  onRemove,
+}: {
+  weightUnit: string;
+  initialValues?: CatalogNutrition;
+  onChange: (values: CatalogNutrition) => void;
+  onRemove: () => void;
+}) {
+  const [values, setValues] = useState<CatalogNutrition>(() => initialValues ?? EMPTY_NUTRITION);
+
+  useEffect(() => {
+    setValues(initialValues ?? EMPTY_NUTRITION);
+  }, [initialValues]);
+
+  const updateValue = (key: NutritionKey, value: string) => {
+    const next = { ...values, [key]: value };
+    setValues(next);
+    onChange(next);
+  };
+
+  const clearValues = () => {
+    setValues(EMPTY_NUTRITION);
+    onChange(EMPTY_NUTRITION);
+  };
+
   const hasValues = Object.values(values).some((value) => value.trim() !== "");
+  const base = getAutoNutritionBase(weightUnit);
   const calories = parseMoneyInput(values.calories);
   const protein = parseMoneyInput(values.protein);
   const fat = parseMoneyInput(values.fat);
@@ -964,7 +1011,7 @@ function KbjuBlock({ weightUnit, onRemove }: { weightUnit: string; onRemove: () 
 
   const removeNutrition = () => {
     if (hasValues && !window.confirm("Удалить заполненное КБЖУ?")) return;
-    setValues({ calories: "", protein: "", fat: "", carbs: "" });
+    clearValues();
     onRemove();
   };
 
@@ -990,7 +1037,7 @@ function KbjuBlock({ weightUnit, onRemove }: { weightUnit: string; onRemove: () 
                   onChange={(event) => {
                     const next = event.target.value;
                     if (!isNumericDraft(next)) return;
-                    setValues((current) => ({ ...current, [field.key]: next }));
+                    updateValue(field.key, next);
                   }}
                   placeholder="0"
                   className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 shadow-none"
@@ -2431,7 +2478,7 @@ function DisplayModeCard({
   );
 }
 
-function DisplayTab({ item }: { item: CatalogItem }) {
+function DisplayTab({ item, onChange }: { item: CatalogItem; onChange: (mode: DisplayModeOption) => void }) {
   const [displayMode, setDisplayMode] = useState<DisplayModeOption>(item.displayMode);
 
   useEffect(() => {
@@ -2452,7 +2499,10 @@ function DisplayTab({ item }: { item: CatalogItem }) {
               item={item}
               option={option}
               selected={displayMode === option.id}
-              onSelect={() => setDisplayMode(option.id)}
+              onSelect={() => {
+                setDisplayMode(option.id);
+                onChange(option.id);
+              }}
             />
           ))}
         </div>
@@ -2792,15 +2842,17 @@ function SortableOptionGroupCard(props: Omit<OptionGroupCardProps, "dragHandle">
 function OptionsTab({
   item,
   onSavedGroupsChange,
+  onGroupsChange,
 }: {
   item: CatalogItem;
   onSavedGroupsChange: (count: number) => void;
+  onGroupsChange: (groups: PositionOptionGroup[]) => void;
 }) {
   const { account } = useMockAuth();
   const currency = account?.workspace.currency ?? "KZT";
   const [groups, setGroups] = useState<PositionOptionGroup[]>(() => {
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
-    return Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount);
+    return item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount));
   });
   const [draft, setDraft] = useState<PositionOptionGroup | null>(null);
   const [activeDrag, setActiveDrag] = useState<{ kind: "option-group"; group: PositionOptionGroup } | { kind: "option-variant"; variant: PositionOptionVariant } | null>(null);
@@ -2815,7 +2867,7 @@ function OptionsTab({
 
   useEffect(() => {
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
-    setGroups(Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount));
+    setGroups(item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount)));
     setDraft(null);
     setTransientVariantIds(new Set());
     setFocusedVariantId(null);
@@ -2823,8 +2875,7 @@ function OptionsTab({
 
   const commitGroups = (next: PositionOptionGroup[]) => {
     setGroups(next);
-    const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
-    writeJsonRecord(CATALOG_POSITION_OPTIONS_STORAGE_KEY, { ...stored, [item.id]: next });
+    onGroupsChange(next);
     onSavedGroupsChange(next.length);
   };
 
@@ -3353,6 +3404,7 @@ export function PositionEditor({
                     weightUnit={weightUnit}
                     discountOpen={discountOpen}
                     discountAutofocusKey={discountAutofocusKey}
+                    onDiscountChange={(priceWithSale) => onDraftChange?.({ hasDiscount: true, priceWithSale })}
                     onWeightUnitChange={(unit) => {
                       setWeightUnit(unit);
                       onDraftChange?.({ weightLabel: item.weightLabel ? item.weightLabel.replace(/[A-Za-zА-Яа-я]+$/, unit) : null });
@@ -3377,6 +3429,10 @@ export function PositionEditor({
                       onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
                     }}
                     onTitleChange={(value) => onItemChange?.(item, { title: value })}
+                    onTitleTranslationsChange={(titleTranslations) => onItemChange?.(item, {
+                      title: titleTranslations.ru ?? item.title,
+                      titleTranslations,
+                    })}
                   />
               </div>
             ) : activeTab === "promo" ? (
@@ -3400,6 +3456,10 @@ export function PositionEditor({
                   if (mode === "create") onDraftChange?.({ optionsCount: count });
                   else onItemChange?.(item, { optionsCount: count });
                 }}
+                onGroupsChange={(optionGroups) => {
+                  if (mode === "create") onDraftChange?.({ optionGroups });
+                  else onItemChange?.(item, { optionGroups });
+                }}
               />
             ) : (
               <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
@@ -3416,7 +3476,12 @@ export function PositionEditor({
                     onWeeklyScheduleChange={onWeeklyScheduleChange}
                   />
                 )}
-                {activeTab === "display" && <DisplayTab item={item} />}
+                {activeTab === "display" && (
+                  <DisplayTab
+                    item={item}
+                    onChange={(displayMode) => onItemChange?.(item, { displayMode })}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -3425,7 +3490,19 @@ export function PositionEditor({
           {activeTab === "basic" && (
             <div className="mt-4 space-y-4">
               <div data-kbju-editor-anchor>
-                {kbjuOpen && <KbjuBlock weightUnit={weightUnit} onRemove={() => { setKbjuOpen(false); onDraftChange?.({}); }} />}
+                {kbjuOpen && (
+                  <KbjuBlock
+                    weightUnit={weightUnit}
+                    initialValues={item.nutrition}
+                    onChange={(nutrition) => {
+                      onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
+                    }}
+                    onRemove={() => {
+                      setKbjuOpen(false);
+                      onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
+                    }}
+                  />
+                )}
                 {!kbjuOpen && (
                   <div className="px-1.5 pt-1">
                     <div className="flex flex-col items-start">
