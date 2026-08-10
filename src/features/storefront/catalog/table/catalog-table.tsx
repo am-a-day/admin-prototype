@@ -331,7 +331,7 @@ export function TableHeaderRow({
                   onClick={onPriceSortChange}
                   aria-label={priceSortTooltip}
                   className={cn(
-                    "flex h-[38px] shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    "flex h-[38px] shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                     TABLE_COL.price,
                     priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
                   )}
@@ -647,7 +647,7 @@ function AuditDishRow({
             return (
               <span key={cell.id} className={cn("relative flex shrink-0 items-center justify-end gap-1 px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.price)} title={salePrice != null ? `Цена без скидки: ${formatPrice(item.price)}` : undefined}>
                 {item.price === 0 && salePrice == null ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(salePrice ?? item.price)}</span>}
-                {salePrice != null && <span className="absolute left-1 top-[13px] flex h-3 min-w-[27px] items-center justify-center rounded-[26px] bg-[#79716b] px-0.5 text-[9px] font-bold leading-3 text-white">-{Math.round((1 - salePrice / Math.max(item.price, 1)) * 100)}%</span>}
+                {salePrice != null && <span className="absolute left-1 top-1/2 flex h-3 min-w-[27px] -translate-y-1/2 items-center justify-center rounded-[26px] bg-[#79716b] px-0.5 text-[9px] font-bold leading-3 text-white">-{Math.round((1 - salePrice / Math.max(item.price, 1)) * 100)}%</span>}
               </span>
             );
           case "actions":
@@ -762,7 +762,7 @@ export function SelectionToolbar({
   count,
   onClear,
   onSetStatus,
-  onSetAvailable,
+  onSetAvailability,
   onClearDiscount,
   onOpenSchedule,
   onOpenDiscount,
@@ -773,7 +773,7 @@ export function SelectionToolbar({
   count: number;
   onClear: () => void;
   onSetStatus: (status: CatalogItem["status"]) => void;
-  onSetAvailable: () => void;
+  onSetAvailability: (selection: "available" | "stop-soon" | "stop-hidden") => void;
   onClearDiscount: () => void;
   onOpenSchedule: () => void;
   onOpenDiscount: () => void;
@@ -796,7 +796,6 @@ export function SelectionToolbar({
     return () => observer.disconnect();
   }, []);
 
-  const showStatus = layout === "full" || layout === "medium";
   const showAvailability = layout === "full" || layout === "medium";
   const showMove = layout !== "minimal";
   const showDiscount = layout === "full";
@@ -811,24 +810,15 @@ export function SelectionToolbar({
       <span className="shrink-0 px-2.5 text-[13px] font-medium tabular-nums text-[#292524]">
         Выбрано: <span className="font-semibold">{count}</span>
       </span>
-      {showStatus && (
-        <>
-          <ToolbarDivider />
-          <ToolbarDropdown label="Витрина">
-            <DropdownActionItem onSelect={() => onSetStatus("active")}>В меню</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">В архив</DropdownActionItem>
-          </ToolbarDropdown>
-        </>
-      )}
       {showAvailability && (
         <>
           <ToolbarDivider />
-          <ToolbarDropdown label="Для заказа">
-            <DropdownActionItem onSelect={() => onSetStatus("stopped")}>Поставить на стоп</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSetStatus("active")}>Убрать со стопа</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSetStatus("coming-soon")}>Скоро будет</DropdownActionItem>
-            <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
-            <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
+          <ToolbarDropdown label="Доступность">
+            <DropdownActionItem onSelect={() => onSetAvailability("available")}>Доступно</DropdownActionItem>
+            <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">На стопе</DropdownMenu.Label>
+            <DropdownActionItem onSelect={() => onSetAvailability("stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
+            <DropdownActionItem onSelect={() => onSetAvailability("stop-hidden")}>Скрыть</DropdownActionItem>
+            <DropdownActionItem onSelect={onOpenSchedule}>По расписанию…</DropdownActionItem>
           </ToolbarDropdown>
         </>
       )}
@@ -867,22 +857,13 @@ export function SelectionToolbar({
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="end">
-          {!showStatus && (
-            <>
-              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Витрина</DropdownMenu.Label>
-              <DropdownActionItem onSelect={() => onSetStatus("active")}>В меню</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">В архив</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            </>
-          )}
           {!showAvailability && (
             <>
-              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Для заказа</DropdownMenu.Label>
-              <DropdownActionItem onSelect={() => onSetStatus("stopped")}>Поставить на стоп</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSetStatus("active")}>Убрать со стопа</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSetStatus("coming-soon")}>Скоро будет</DropdownActionItem>
-              <DropdownActionItem onSelect={onSetAvailable}>Всегда доступно</DropdownActionItem>
-              <DropdownActionItem onSelect={onOpenSchedule}>По расписанию</DropdownActionItem>
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Доступность</DropdownMenu.Label>
+              <DropdownActionItem onSelect={() => onSetAvailability("available")}>Доступно</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSetAvailability("stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
+              <DropdownActionItem onSelect={() => onSetAvailability("stop-hidden")}>Скрыть</DropdownActionItem>
+              <DropdownActionItem onSelect={onOpenSchedule}>По расписанию…</DropdownActionItem>
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
             </>
           )}
@@ -904,6 +885,7 @@ export function SelectionToolbar({
           <DropdownActionItem onSelect={() => onOpenPlaceholder("Убрать тег", "Удаление тегов будет добавлено позже")}>Убрать тег</DropdownActionItem>
           <DropdownActionItem onSelect={() => onOpenPlaceholder("Дублировать", "Дублирование будет добавлено позже")}>Дублировать</DropdownActionItem>
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">Архивировать</DropdownActionItem>
           <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
         </DropdownContent>
       </DropdownMenu.Root>

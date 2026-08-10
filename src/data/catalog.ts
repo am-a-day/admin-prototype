@@ -10,6 +10,7 @@ export type CatalogSection = {
   id: string;
   parentId: string | null;
   name: string;
+  nameTranslations?: CatalogTranslations;
   imageUrl: string | null;
   sortOrder: number;
 };

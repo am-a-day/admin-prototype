@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretRight, DotsThreeVertical, List, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretRight, DotsThreeVertical, List, MagnifyingGlass, PlusCircle } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   countItemsBySection,
   findSectionPath,
@@ -10,7 +11,6 @@ import {
   getParentAvailability,
   type CatalogTreeSection,
 } from "../model/tree";
-import { CatalogActionButton } from "../ui/catalog-action-button";
 
 export type CatalogSectionActionAnchor = {
   left: number;
@@ -172,26 +172,30 @@ export function UnifiedCatalogTreePanel({
           <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
           <span className={cn("ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]")}>{section.name}</span>
           {isArchived && <span className="mr-1 shrink-0 text-[10px] text-[#a8a29e]">В архиве</span>}
-          <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">{countBySection.get(section.id) ?? 0}</span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label={`Действия с разделом ${section.name}`}
-                onClick={(event) => event.stopPropagation()}
-                className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none"
-              >
-                <DotsThreeVertical size={13} weight="bold" />
-              </button>
-            </DropdownMenu.Trigger>
-            <SectionTreeDropdown>
-              {renderSectionActions(
-                section,
-                { allowPositionCreation: positionCreationEnabled && !hasChildren, subsectionDisabledReason },
-                (action, anchor) => onSectionAction(section, action, anchor),
-              )}
-            </SectionTreeDropdown>
-          </DropdownMenu.Root>
+          <span className="relative ml-1 flex h-5 min-w-5 shrink-0 items-center justify-end">
+            <span className="text-[11px] tabular-nums text-[#a8a29e] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+              {countBySection.get(section.id) ?? 0}
+            </span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Действия с разделом ${section.name}`}
+                  onClick={(event) => event.stopPropagation()}
+                  className="absolute inset-0 flex h-5 w-5 items-center justify-center rounded-[5px] text-[#79716b] opacity-0 transition hover:bg-[#e6e6db] hover:text-[#292524] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none"
+                >
+                  <DotsThreeVertical size={13} weight="bold" />
+                </button>
+              </DropdownMenu.Trigger>
+              <SectionTreeDropdown>
+                {renderSectionActions(
+                  section,
+                  { allowPositionCreation: positionCreationEnabled && !hasChildren, subsectionDisabledReason },
+                  (action, anchor) => onSectionAction(section, action, anchor),
+                )}
+              </SectionTreeDropdown>
+            </DropdownMenu.Root>
+          </span>
         </div>
         {hasChildren && isExpanded && <div className="space-y-0.5">{section.children?.map((child) => renderSection(child, depth + 1))}</div>}
       </div>
@@ -203,7 +207,18 @@ export function UnifiedCatalogTreePanel({
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex h-[30px] min-w-0 items-center justify-between gap-4">
           <span className="min-w-0 flex-1 truncate px-2 text-[14px] font-normal leading-[1.4] text-[#292524]">Разделы</span>
-          <CatalogActionButton buttonRef={createSectionButtonRef} onClick={onCreateSection} ariaLabel="Добавить раздел">Добавить</CatalogActionButton>
+          <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
+            <button
+              type="button"
+              ref={createSectionButtonRef}
+              onClick={onCreateSection}
+              aria-label="Добавить раздел"
+              title="Добавить новый раздел"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#57534d] transition hover:bg-[#e6e6db] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <PlusCircle size={20} weight="regular" />
+            </button>
+          </Tooltip>
         </div>
         <label className="flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">
           <MagnifyingGlass size={14} />

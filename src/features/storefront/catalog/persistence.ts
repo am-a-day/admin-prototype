@@ -115,6 +115,7 @@ export function writeCreatedCatalogSections(sections: CatalogTreeSection[]) {
     id: section.id,
     parentId: section.parentId ?? null,
     name: section.name,
+    ...(section.nameTranslations ? { nameTranslations: section.nameTranslations } : {}),
     imageUrl: section.imageUrl ?? null,
     sortOrder: section.sortOrder ?? 0,
     ...(section.emoji ? { emoji: section.emoji } : {}),

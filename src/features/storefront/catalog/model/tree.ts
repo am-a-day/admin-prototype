@@ -1,4 +1,5 @@
 import type { CatalogItem } from "@/data/catalog";
+import type { CatalogTranslations } from "@/data/catalog";
 
 export type CatalogAvailabilityMode = "always" | "unavailable" | "schedule";
 
@@ -6,6 +7,7 @@ export type CatalogTreeSection = {
   id: string;
   parentId?: string | null;
   name: string;
+  nameTranslations?: CatalogTranslations;
   imageUrl?: string | null;
   emoji?: string;
   sortOrder?: number;

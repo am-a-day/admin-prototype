@@ -48,7 +48,6 @@ import {
   EyeSlash,
   ForkKnife,
   FunnelSimple,
-  GearSix,
   ImageBroken,
   List,
   MagnifyingGlass,
@@ -68,9 +67,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
-import type { CatalogItem, CatalogSection, CatalogSectionNode } from "@/data/catalog";
+import type { CatalogItem, CatalogSection, CatalogSectionNode, CatalogTranslations } from "@/data/catalog";
+import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
@@ -388,6 +389,7 @@ type SectionStatus = "active" | "archive";
 type SectionVisibility = "visible" | "hidden";
 type SectionDraftOverride = {
   name?: string;
+  nameTranslations?: CatalogTranslations;
   imageUrl?: string | null;
 };
 type PanelRow = {
@@ -399,12 +401,21 @@ type PanelRow = {
   accent?: boolean;
 };
 
+type SectionAvailabilitySelection = "available" | "stop-soon" | "stop-hidden" | "schedule";
+
+function getSectionAvailabilitySelection(
+  section: Pick<TreeSection, "visibility" | "availabilityMode">,
+): SectionAvailabilitySelection {
+  if (section.availabilityMode === "schedule") return "schedule";
+  if (section.availabilityMode === "unavailable") {
+    return section.visibility === "hidden" ? "stop-hidden" : "stop-soon";
+  }
+  return "available";
+}
+
 function getSectionStatusMeta(section: Pick<TreeSection, "status" | "visibility" | "availabilityMode">) {
   if (section.status === "archive") {
     return { label: "В архиве", className: "bg-[#f1f1ea] text-[#79716b]" };
-  }
-  if (section.visibility === "hidden") {
-    return { label: "Скрыт", className: "bg-[#fff1f0] text-[#9f3a31]" };
   }
   if (section.availabilityMode === "unavailable") {
     return { label: "На стопе", className: "bg-[#fff7e6] text-[#9a6700]" };
@@ -412,12 +423,11 @@ function getSectionStatusMeta(section: Pick<TreeSection, "status" | "visibility"
   if (section.availabilityMode === "schedule") {
     return { label: "По расписанию", className: "bg-[#fff7e6] text-[#9a6700]" };
   }
-  return { label: "На витрине", className: "bg-[#edf8f0] text-[#287a42]" };
+  return { label: null, className: "" };
 }
 
 function getSectionTreeStatusLabel(section: Pick<TreeSection, "status" | "visibility" | "availabilityMode">) {
   if (section.status === "archive") return "В архиве";
-  if (section.visibility === "hidden") return "Скрыт";
   if (section.availabilityMode === "unavailable") return "На стопе";
   if (section.availabilityMode === "schedule") return "По расписанию";
   return null;
@@ -1273,6 +1283,177 @@ function CreateSectionDialog({
   );
 }
 
+function SectionPopoverFrame({
+  anchor,
+  label,
+  children,
+  onClose,
+}: {
+  anchor?: MovePopoverAnchor;
+  label: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const fallbackLeft = typeof window === "undefined" ? 24 : Math.max(12, Math.round(window.innerWidth / 2 - 200));
+  const ignoreInitialOutsidePointerRef = useRef(true);
+  const triggerStyle = anchor
+    ? {
+        left: anchor.left,
+        top: anchor.top,
+        width: Math.max(1, anchor.right - anchor.left),
+        height: Math.max(1, anchor.bottom - anchor.top),
+      }
+    : { left: fallbackLeft, top: 96, width: 1, height: 1 };
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      ignoreInitialOutsidePointerRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <DropdownMenu.Root open modal={false} onOpenChange={() => {}}>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" tabIndex={-1} aria-hidden="true" className="pointer-events-none fixed opacity-0" style={triggerStyle} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          side="bottom"
+          sideOffset={6}
+          collisionPadding={12}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            onClose();
+          }}
+          onPointerDownOutside={() => {
+            if (ignoreInitialOutsidePointerRef.current) return;
+            onClose();
+          }}
+          className="z-[100006] bg-transparent p-0 outline-none"
+        >
+          <div role="dialog" aria-label={label} className="w-[min(400px,calc(100vw-24px))] rounded-[12px] border border-[#e7e5e4] bg-white p-3 shadow-[0_14px_36px_rgba(41,37,36,0.16)]">
+            {children}
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+function SectionRenamePopover({
+  section,
+  anchor,
+  onChange,
+  onClose,
+}: {
+  section: TreeSection;
+  anchor?: MovePopoverAnchor;
+  onChange: (translations: CatalogTranslations) => void;
+  onClose: () => void;
+}) {
+  const { account } = useMockAuth();
+  const languages = useMemo(() => {
+    const enabled = new Set((account?.workspace.languages ?? []).filter((language) => language.visible !== false).map((language) => language.code));
+    const available = LANGUAGES.filter((language) => enabled.has(language.code));
+    return available.length > 0 ? available : [LANGUAGES[0]];
+  }, [account?.workspace.languages]);
+  const [translations, setTranslations] = useState<CatalogTranslations>(() => ({
+    ru: section.name,
+    ...section.nameTranslations,
+  }));
+
+  useEffect(() => {
+    setTranslations({ ru: section.name, ...section.nameTranslations });
+  }, [section.id, section.name, section.nameTranslations]);
+
+  const updateTranslation = (language: LanguageCode, value: string) => {
+    const next = { ...translations, [language]: value };
+    setTranslations(next);
+    onChange(next);
+  };
+
+  return (
+    <SectionPopoverFrame anchor={anchor} label="Переименовать раздел" onClose={onClose}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[14px] font-semibold leading-5 text-[#292524]">Название раздела</h2>
+          <p className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">Изменения сохраняются автоматически</p>
+        </div>
+        <button type="button" aria-label="Закрыть переименование" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] leading-none text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#292524]">×</button>
+      </div>
+      <div className="mt-3 space-y-2.5">
+        {languages.map((language) => (
+          <label key={language.code} className="block">
+            <span className="mb-1 block text-[12px] font-medium text-[#57534d]">{language.label}</span>
+            <input
+              value={translations[language.code] ?? ""}
+              aria-label={`Название раздела на ${language.label}`}
+              onChange={(event) => updateTranslation(language.code, event.target.value)}
+              placeholder="Введите название"
+              className="h-8 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#a8a29e] focus:ring-2 focus:ring-[#292524]/5"
+            />
+          </label>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button type="button" onClick={onClose} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">Готово</button>
+      </div>
+    </SectionPopoverFrame>
+  );
+}
+
+function SectionIconPopover({
+  section,
+  anchor,
+  onChange,
+  onClose,
+}: {
+  section: TreeSection;
+  anchor?: MovePopoverAnchor;
+  onChange: (imageUrl: string | null) => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onChange(reader.result);
+        onClose();
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <SectionPopoverFrame anchor={anchor} label="Сменить иконку раздела" onClose={onClose}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[14px] font-semibold leading-5 text-[#292524]">Иконка раздела</h2>
+          <p className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">Выберите изображение для раздела</p>
+        </div>
+        <button type="button" aria-label="Закрыть выбор иконки" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] leading-none text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#292524]">×</button>
+      </div>
+      <div className="mt-3 flex items-center gap-3 rounded-[9px] bg-[#fafaf9] p-2">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#a8a29e]">
+          {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={16} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <button type="button" onClick={() => inputRef.current?.click()} className="h-8 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4]">Выбрать изображение</button>
+          {section.imageUrl && <button type="button" onClick={() => { onChange(null); onClose(); }} className="ml-2 h-8 rounded-[8px] px-2 text-[12px] font-medium text-[#9f3a31] transition hover:bg-[#fff7f6]">Удалить</button>}
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    </SectionPopoverFrame>
+  );
+}
+
 function CatalogEmptyState({ onCreateSection }: { onCreateSection: () => void }) {
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-white p-8">
@@ -1487,12 +1668,12 @@ function EditorPositionEmptyState({
   sectionName,
   itemCount,
   onAddItem,
-  onSectionSettings,
+  onRename,
 }: {
   sectionName: string;
   itemCount: number;
   onAddItem: () => void;
-  onSectionSettings: () => void;
+  onRename: () => void;
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center justify-center p-8">
@@ -1515,10 +1696,10 @@ function EditorPositionEmptyState({
           )}
           <button
             type="button"
-            onClick={onSectionSettings}
+            onClick={onRename}
             className="inline-flex h-8 items-center rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524]"
           >
-            Настройки раздела
+            Переименовать…
           </button>
         </div>
       </div>
@@ -1598,7 +1779,7 @@ function SectionItemList({
   onBulkAction,
   onOpenItem,
 }: {
-  section: { name: string; imageUrl?: string | null; status?: SectionStatus } | null;
+  section: TreeSection | null;
   items: CatalogItem[];
   selectedIds: Set<string>;
   feedback: string;
@@ -1611,6 +1792,8 @@ function SectionItemList({
 }) {
   const sectionName = section?.name ?? "Раздел";
   const isArchivedSection = section?.status === "archive";
+  const sectionStatus = section ? getSectionStatusMeta(section) : null;
+  const sectionStatusLabel = section ? getSectionTreeStatusLabel(section) : null;
   const selectedCount = selectedIds.size;
   const allSelected = items.length > 0 && items.every((item) => selectedIds.has(item.id));
   const someSelected = items.some((item) => selectedIds.has(item.id));
@@ -1630,10 +1813,8 @@ function SectionItemList({
             <div className="min-w-0">
               <h2 className="flex min-w-0 items-center gap-2 text-[20px] font-semibold leading-6 text-[#292524]">
                 <span className="truncate">{sectionName}</span>
-                {isArchivedSection && (
-                  <span className="shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-                    В архиве
-                  </span>
+                {sectionStatusLabel && sectionStatus && (
+                  <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium leading-4", sectionStatus.className)}>{sectionStatus.label}</span>
                 )}
               </h2>
               <p className="mt-1 text-[13px] text-[#a8a29e]">
@@ -1656,69 +1837,14 @@ function SectionItemList({
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524]"
+                  aria-label={`Действия с разделом «${sectionName}»`}
+                  className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[7px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                 >
-                  Изменить раздел
-                  <CaretDown size={12} weight="bold" />
+                  <CaretDown size={13} weight="bold" />
                 </button>
               </DropdownMenu.Trigger>
               <DropdownContent align="end">
-                {isArchivedSection ? (
-                  <DropdownActionItem onSelect={() => onSectionAction("Восстановить из архива")}>Восстановить из архива</DropdownActionItem>
-                ) : (
-                  <>
-                    {["Переименовать", "Поменять иконку", "Настроить доступность", "Переместить"].map((action) => (
-                      <DropdownActionItem key={action} icon={action === "Переместить" ? ArrowsOutCardinal : undefined} onSelect={(event) => onSectionAction(action, action === "Переместить" ? getMovePopoverAnchor(event) : undefined)}>{action === "Переместить" ? "Переместить…" : action}</DropdownActionItem>
-                    ))}
-                  </>
-                )}
-                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                {isArchivedSection ? (
-                  <DropdownActionItem onSelect={() => onSectionAction("Удалить навсегда")} tone="danger">
-                    Удалить навсегда
-                  </DropdownActionItem>
-                ) : (
-                  <>
-                    <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">
-                      Архивировать
-                    </DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction("Удалить раздел")} tone="danger">
-                      Удалить раздел
-                    </DropdownActionItem>
-                  </>
-                )}
-              </DropdownContent>
-            </DropdownMenu.Root>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  aria-label="Ещё"
-                  className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#e7e5e4] bg-white text-[#79716b] transition hover:bg-[#fafaf9] hover:text-[#292524]"
-                >
-                  <DotsThreeVertical size={18} weight="bold" />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownContent align="end">
-                {isArchivedSection ? (
-                  <DropdownActionItem onSelect={() => onSectionAction("Восстановить из архива")}>Восстановить из архива</DropdownActionItem>
-                ) : (
-                  <>
-                    <DropdownActionItem onSelect={() => onSectionAction("Переименовать")}>Переименовать</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction("Поменять иконку")}>Поменять иконку</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction("Настроить доступность")}>Настроить доступность</DropdownActionItem>
-                    <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onSectionAction("Переместить", getMovePopoverAnchor(event))}>Переместить…</DropdownActionItem>
-                  </>
-                )}
-                <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                {isArchivedSection ? (
-                  <DropdownActionItem onSelect={() => onSectionAction("Удалить навсегда")} tone="danger">Удалить навсегда</DropdownActionItem>
-                ) : (
-                  <>
-                    <DropdownActionItem onSelect={() => onSectionAction("Архивировать")} tone="danger">Архивировать</DropdownActionItem>
-                    <DropdownActionItem onSelect={() => onSectionAction("Удалить раздел")} tone="danger">Удалить раздел</DropdownActionItem>
-                  </>
-                )}
+                {section && <SectionActionMenuContent section={section} allowPositionCreation={!isArchivedSection} onAction={onSectionAction} />}
               </DropdownContent>
             </DropdownMenu.Root>
           </div>
@@ -1851,6 +1977,53 @@ function SectionBulkToolbar({
   );
 }
 
+function SubsectionBulkToolbar({
+  count,
+  checked,
+  indeterminate,
+  onSelectAll,
+  onClear,
+  onAction,
+}: {
+  count: number;
+  checked: boolean;
+  indeterminate: boolean;
+  onSelectAll: (selected: boolean) => void;
+  onClear: () => void;
+  onAction: (action: string, anchor?: MovePopoverAnchor) => void;
+}) {
+  return (
+    <div data-subsection-bulk-toolbar className="flex h-8 max-w-full items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2]">
+      <TableCheckbox ariaLabel="Выбрать все подразделы" checked={checked} indeterminate={indeterminate} onChange={onSelectAll} />
+      <span className="flex h-full items-center whitespace-nowrap px-2.5 text-[12px] font-medium text-[#2563eb]">Выбрано: {count}</span>
+      <ToolbarDivider />
+      <ToolbarDropdown label="Доступность">
+        <DropdownActionItem onSelect={() => onAction("availability:available")}>Доступно</DropdownActionItem>
+        <DropdownMenu.Label className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-[#a8a29e]">На стопе</DropdownMenu.Label>
+        <DropdownActionItem onSelect={() => onAction("availability:stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("availability:stop-hidden")}>Скрыть</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("availability:schedule")}>По расписанию…</DropdownActionItem>
+      </ToolbarDropdown>
+      <ToolbarDivider />
+      <button
+        type="button"
+        onClick={(event) => onAction("Переместить подразделы", getMovePopoverAnchor(event))}
+        className="flex h-full items-center gap-1.5 whitespace-nowrap px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <ArrowsOutCardinal size={14} />
+        Переместить
+      </button>
+      <ToolbarDivider />
+      <ToolbarDropdown label="⋯">
+        <DropdownActionItem onSelect={() => onAction("Архивировать подразделы")}>Архивировать</DropdownActionItem>
+        <DropdownActionItem onSelect={() => onAction("Удалить подразделы")} tone="danger">Удалить</DropdownActionItem>
+      </ToolbarDropdown>
+      <ToolbarDivider />
+      <button type="button" aria-label="Снять выбор" onClick={onClear} className="flex h-full w-8 items-center justify-center text-[17px] leading-none text-[#79716b] transition hover:bg-white/70 hover:text-[#292524]">×</button>
+    </div>
+  );
+}
+
 function orderItemsByStoredPositionOrder(items: CatalogItem[]) {
   const orders = readJsonRecord<Record<string, string[]>>(CATALOG_POSITION_ORDER_STORAGE_KEY, {});
   return orderItemsByPositionOrder(items, orders);
@@ -1876,6 +2049,7 @@ function SectionEditor({
   onOpenInPositions,
   onSelectChildSection,
   onChildSectionAction,
+  onChildSectionBulkAction,
   positionCreateDisabledReason,
   subsectionCreateDisabledReason,
   onCompositionQueryChange,
@@ -1912,6 +2086,7 @@ function SectionEditor({
   onOpenInPositions: () => void;
   onSelectChildSection: (id: string) => void;
   onChildSectionAction: (section: TreeSection, action: string, anchor?: MovePopoverAnchor) => void;
+  onChildSectionBulkAction?: (sectionIds: string[], action: string, anchor?: MovePopoverAnchor) => void;
   positionCreateDisabledReason?: string | null;
   subsectionCreateDisabledReason?: string | null;
   onCompositionQueryChange: (value: string) => void;
@@ -1947,6 +2122,9 @@ function SectionEditor({
   useEffect(() => {
     setSelectedSubsectionIds(new Set());
   }, [section.id]);
+
+  const allSubsectionsSelected = childSections.length > 0 && childSections.every(({ section: child }) => selectedSubsectionIds.has(child.id));
+  const someSubsectionsSelected = childSections.some(({ section: child }) => selectedSubsectionIds.has(child.id));
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2015,7 +2193,6 @@ function SectionEditor({
                   <SectionActionMenuContent
                     section={section}
                     allowPositionCreation={allowPositionCreation}
-                    showSettingsEntry={hideNavigationTabs}
                     onAction={onAction}
                   />
                 </DropdownContent>
@@ -2048,7 +2225,6 @@ function SectionEditor({
                       label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции",
                       count: compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length),
                     },
-                    { id: "basic", label: "Настройка раздела" },
                     { id: "availability", label: "Доступность" },
                   ]}
                   value={activeTab}
@@ -2084,7 +2260,19 @@ function SectionEditor({
                   onSelectAll={(selected) => setSelectedSubsectionIds(
                     selected ? new Set(childSections.map(({ section: child }) => child.id)) : new Set(),
                   )}
-                  onClearSelection={() => setSelectedSubsectionIds(new Set())}
+                  bulkToolbar={selectedSubsectionIds.size > 0 ? (
+                    <SubsectionBulkToolbar
+                      count={selectedSubsectionIds.size}
+                      checked={allSubsectionsSelected}
+                      indeterminate={!allSubsectionsSelected && someSubsectionsSelected}
+                      onSelectAll={(selected) => setSelectedSubsectionIds(selected ? new Set(childSections.map(({ section: child }) => child.id)) : new Set())}
+                      onClear={() => setSelectedSubsectionIds(new Set())}
+                      onAction={(action, anchor) => {
+                        onChildSectionBulkAction?.([...selectedSubsectionIds], action, anchor);
+                        if (action !== "Удалить подразделы") setSelectedSubsectionIds(new Set());
+                      }}
+                    />
+                  ) : undefined}
                   headerAction={(
                     <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
                       <span data-no-dnd>
@@ -2267,6 +2455,8 @@ function UnifiedSectionTableHeader({
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
   allowPositionCreation?: boolean;
 }) {
+  const status = getSectionStatusMeta(section);
+  const statusLabel = getSectionTreeStatusLabel(section);
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -2282,6 +2472,7 @@ function UnifiedSectionTableHeader({
           <span className="flex h-[17px] min-w-6 shrink-0 items-center justify-center rounded-[5px] bg-[#f3f3ed] px-1 text-[12px] font-medium leading-4 tabular-nums text-[#79716b]">
             {itemCount}
           </span>
+          {statusLabel && <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>}
           <CaretDown size={14} className="shrink-0 text-[#57534d]" />
         </button>
       </DropdownMenu.Trigger>
@@ -2289,7 +2480,6 @@ function UnifiedSectionTableHeader({
         <SectionActionMenuContent
           section={section}
           allowPositionCreation={allowPositionCreation}
-          showSettingsEntry
           onAction={onAction}
         />
       </DropdownContent>
@@ -3033,9 +3223,47 @@ function SectionDeleteDialog({
   );
 }
 
+function SectionBulkDeleteDialog({
+  sections,
+  onCancel,
+  onConfirm,
+}: {
+  sections: TreeSection[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label="Удалить подразделы">
+      <div className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]">
+        <h2 className="text-[16px] font-semibold leading-6 text-[#292524]">Удалить подразделы?</h2>
+        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
+          Будет удалено: {sections.map((section) => section.name).join(", ")}. Восстановить их после удаления нельзя.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4]">Отмена</button>
+          <button type="button" onClick={onConfirm} className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337]">Удалить</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function normalizeSectionEditorTab(tab: SectionEditorTab | undefined): Exclude<SectionEditorTab, "basic"> {
+  return tab === "availability" ? "availability" : "composition";
+}
+
 function readSectionEditorTab() {
   const tab = readJsonRecord<SectionEditorTab>(CATALOG_SECTION_EDITOR_TAB_STORAGE_KEY, "composition");
-  return tab === "composition" || tab === "basic" || tab === "availability" ? tab : "composition";
+  return normalizeSectionEditorTab(tab);
 }
 
 function readSectionPriceSort() {
@@ -3238,6 +3466,8 @@ function PopulatedWorkspace({
   });
   const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
   const [positionCreationDialog, setPositionCreationDialog] = useState<{ initialSectionId: string | null } | null>(null);
+  const [sectionRenameRequest, setSectionRenameRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
+  const [sectionIconRequest, setSectionIconRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
@@ -3287,10 +3517,11 @@ function PopulatedWorkspace({
   const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
   const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
+  const [pendingSectionBulkDelete, setPendingSectionBulkDelete] = useState<TreeSection[] | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
   const [sectionEditorTab, setSectionEditorTab] = useState<SectionEditorTab>(() =>
-    initialReturnContext?.sectionEditorTab ?? readSectionEditorTab(),
+    normalizeSectionEditorTab(initialReturnContext?.sectionEditorTab ?? readSectionEditorTab()),
   );
   const [sectionTableQuery, setSectionTableQuery] = useState(() =>
     initialReturnContext?.compositionQuery ?? readJsonRecord<string>(CATALOG_SECTION_TABLE_QUERY_STORAGE_KEY, ""),
@@ -3314,7 +3545,7 @@ function PopulatedWorkspace({
 
   useEffect(() => {
     if (!initialReturnContext) return;
-    if (initialReturnContext.sectionEditorTab) setSectionEditorTab(initialReturnContext.sectionEditorTab);
+    if (initialReturnContext.sectionEditorTab) setSectionEditorTab(initialReturnContext.sectionEditorTab === "availability" ? "availability" : "composition");
     if (initialReturnContext.compositionQuery !== undefined) setSectionTableQuery(initialReturnContext.compositionQuery);
     if (initialReturnContext.workspaceScrollTop !== undefined) setSectionEditorScrollTop(initialReturnContext.workspaceScrollTop);
   }, [initialReturnContext]);
@@ -4471,6 +4702,13 @@ function PopulatedWorkspace({
     setFeedback("Раздел удалён навсегда");
   };
 
+  const confirmDeleteSections = (targets: TreeSection[]) => {
+    targets.forEach((target) => confirmDeleteSection(target));
+    setPendingSectionBulkDelete(null);
+    setSelectedIds(new Set());
+    setFeedback(`${targets.length} ${plural(targets.length, "подраздел удалён", "подраздела удалены", "подразделов удалено")}`);
+  };
+
   const requestDeleteArchivedSection = requestSectionDelete;
 
   const openSectionAvailability = (target: TreeSection) => {
@@ -4484,7 +4722,7 @@ function PopulatedWorkspace({
       [target.id]: visible ? "visible" : "hidden",
     }));
     registerChange("catalog");
-    setFeedback(visible ? "Раздел снова показывается на витрине" : "Раздел скрыт с витрины");
+    setFeedback(visible ? "Раздел снова виден гостям" : "Раздел скрыт от гостей");
   };
 
   const setSectionAvailability = (target: TreeSection, mode: AvailabilityMode) => {
@@ -4499,6 +4737,28 @@ function PopulatedWorkspace({
       return;
     }
     setFeedback(mode === "always" ? "Раздел доступен для заказа" : "Раздел поставлен на стоп");
+  };
+
+  const setSectionAvailabilitySelection = (target: TreeSection, selection: SectionAvailabilitySelection) => {
+    if (selection === "available") {
+      setSectionVisibilityBySection((current) => ({ ...current, [target.id]: "visible" }));
+      setSectionAvailability(target, "always");
+      return;
+    }
+    if (selection === "stop-soon") {
+      setSectionVisibilityBySection((current) => ({ ...current, [target.id]: "visible" }));
+      setSectionAvailability(target, "unavailable");
+      setFeedback("Раздел поставлен на стоп: «Скоро будет»");
+      return;
+    }
+    if (selection === "stop-hidden") {
+      setSectionVisibilityBySection((current) => ({ ...current, [target.id]: "hidden" }));
+      setSectionAvailability(target, "unavailable");
+      setFeedback("Раздел поставлен на стоп и скрыт");
+      return;
+    }
+    setSectionVisibilityBySection((current) => ({ ...current, [target.id]: "visible" }));
+    setSectionAvailability(target, "schedule");
   };
 
   const handleSectionAction = (action: string, anchor?: MovePopoverAnchor) => {
@@ -4526,6 +4786,14 @@ function PopulatedWorkspace({
       if (section) openSectionAvailability(section);
       return;
     }
+    if (action === "Переименовать") {
+      if (section) setSectionRenameRequest({ sectionId: section.id, anchor });
+      return;
+    }
+    if (action === "Сменить иконку") {
+      if (section) setSectionIconRequest({ sectionId: section.id, anchor });
+      return;
+    }
     if (action === "Скрыть с витрины" || action === "Показать на витрине" || action === "Показывать на витрине") {
       if (section) setSectionVisibility(section, action !== "Скрыть с витрины");
       return;
@@ -4535,9 +4803,11 @@ function PopulatedWorkspace({
       return;
     }
     if (action.startsWith("availability:")) {
-      const mode = action.slice("availability:".length);
-      if (section && (mode === "always" || mode === "unavailable" || mode === "schedule")) {
-        setSectionAvailability(section, mode);
+      const selection = action.slice("availability:".length);
+      if (section && (selection === "available" || selection === "stop-soon" || selection === "stop-hidden" || selection === "schedule")) {
+        setSectionAvailabilitySelection(section, selection);
+      } else if (section && (selection === "always" || selection === "unavailable")) {
+        setSectionAvailability(section, selection);
       }
       return;
     }
@@ -4566,8 +4836,15 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Настроить раздел" || action === "Изменить раздел") {
-      openSectionEditor(target.id);
-      setSectionEditorTab("basic");
+      setSectionRenameRequest({ sectionId: target.id, anchor });
+      return;
+    }
+    if (action === "Переименовать") {
+      setSectionRenameRequest({ sectionId: target.id, anchor });
+      return;
+    }
+    if (action === "Сменить иконку") {
+      setSectionIconRequest({ sectionId: target.id, anchor });
       return;
     }
     if (action === "Настроить доступность") {
@@ -4583,9 +4860,11 @@ function PopulatedWorkspace({
       return;
     }
     if (action.startsWith("availability:")) {
-      const mode = action.slice("availability:".length);
-      if (mode === "always" || mode === "unavailable" || mode === "schedule") {
-        setSectionAvailability(target, mode);
+      const selection = action.slice("availability:".length);
+      if (selection === "available" || selection === "stop-soon" || selection === "stop-hidden" || selection === "schedule") {
+        setSectionAvailabilitySelection(target, selection);
+      } else if (selection === "always" || selection === "unavailable") {
+        setSectionAvailability(target, selection);
       }
       return;
     }
@@ -4614,6 +4893,54 @@ function PopulatedWorkspace({
       return;
     }
     showPlaceholderFeedback(`${action}: placeholder`);
+  };
+
+  const handleUnifiedSectionBulkAction = (sectionIds: string[], action: string, anchor?: MovePopoverAnchor) => {
+    const targets = sectionIds
+      .map((id) => allSections.find((candidate) => candidate.id === id))
+      .filter((candidate): candidate is TreeSection => candidate != null && candidate.status !== "archive");
+    if (targets.length === 0) return;
+    if (action === "Переместить подразделы" && anchor) {
+      setMoveRequest({
+        operation: "sections",
+        entityIds: targets.map((target) => target.id),
+        currentSectionIds: targets.map((target) => target.parentId ?? "__root__"),
+        anchor,
+      });
+      return;
+    }
+    if (action.startsWith("availability:")) {
+      const selection = action.slice("availability:".length);
+      if (selection !== "available" && selection !== "stop-soon" && selection !== "stop-hidden" && selection !== "schedule") return;
+      setSectionAvailabilityBySection((current) => Object.fromEntries([
+        ...Object.entries(current),
+        ...targets.map((target) => [target.id, selection === "schedule" ? "schedule" : selection === "available" ? "always" : "unavailable"] as const),
+      ]));
+      setSectionVisibilityBySection((current) => Object.fromEntries([
+        ...Object.entries(current),
+        ...targets.map((target) => [target.id, selection === "stop-hidden" ? "hidden" : "visible"] as const),
+      ]));
+      registerChange("catalog");
+      setFeedback(selection === "available" ? "Подразделы доступны" : selection === "schedule" ? "Подразделы доступны по расписанию" : selection === "stop-hidden" ? "Подразделы поставлены на стоп и скрыты" : "Подразделы поставлены на стоп: «Скоро будет»");
+      if (selection === "schedule") setSectionEditorTab("availability");
+      return;
+    }
+    if (action === "Архивировать подразделы") {
+      const subtreeIds = new Set(targets.flatMap((target) => [...getSectionSubtreeIds(target.id, allSections)]));
+      setSectionStatusOverrides((current) => Object.fromEntries([
+        ...Object.entries(current),
+        ...[...subtreeIds].map((id) => [id, "archive"] as const),
+      ]));
+      registerChange("catalog");
+      setSelectedIds(new Set());
+      setFeedback(`${targets.length} ${plural(targets.length, "подраздел отправлен", "подраздела отправлены", "подразделов отправлено")} в архив`);
+      return;
+    }
+    if (action === "Удалить подразделы") {
+      setPendingSectionBulkDelete(targets);
+      return;
+    }
+    showPlaceholderFeedback(`${action}: ${targets.length} подраздела`);
   };
 
   const restoreItem = (item: CatalogItem) => {
@@ -4730,7 +5057,7 @@ function PopulatedWorkspace({
   };
 
   const moveForbiddenTargets = useMemo(() => {
-    if (moveRequest?.operation !== "section") return {};
+    if (moveRequest?.operation !== "section" && moveRequest?.operation !== "sections") return {};
     return Object.fromEntries(allSections.flatMap((target) => {
       if (allItems.some((item) => item.sectionId === target.id)) {
         return [[target.id, "Нельзя переместить раздел в раздел с позициями"]];
@@ -4743,20 +5070,47 @@ function PopulatedWorkspace({
     if (!moveRequest) return;
     const snapshot = captureTreeMoveSnapshot();
     try {
-      if (moveRequest.operation === "section") {
-        const movingSectionId = moveRequest.movingSectionId;
-        if (!movingSectionId) return;
-        moveTreeSection(movingSectionId, targetSectionId, null, "inside", false);
+      if (moveRequest.operation === "section" || moveRequest.operation === "sections") {
+        const movingSectionIds = moveRequest.operation === "sections"
+          ? moveRequest.entityIds
+          : moveRequest.movingSectionId ? [moveRequest.movingSectionId] : [];
+        if (movingSectionIds.length === 0) return;
+        const movingSet = new Set(movingSectionIds);
+        setSectionOrderByParent((current) => {
+          const next = { ...current };
+          const sourceParents = new Set(
+            movingSectionIds.map((id) => allSections.find((candidate) => candidate.id === id)?.parentId ?? null),
+          );
+          sourceParents.forEach((parentId) => {
+            next[parentId ?? "__root__"] = allSections
+              .filter((candidate) => (candidate.parentId ?? null) === parentId && !movingSet.has(candidate.id))
+              .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+              .map((candidate) => candidate.id);
+          });
+          const destinationIds = allSections
+            .filter((candidate) => (candidate.parentId ?? null) === targetSectionId && !movingSet.has(candidate.id))
+            .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+            .map((candidate) => candidate.id);
+          next[targetSectionId ?? "__root__"] = [...destinationIds, ...movingSectionIds];
+          return next;
+        });
+        setSectionParentOverrides((current) => Object.fromEntries([
+          ...Object.entries(current),
+          ...movingSectionIds.map((id) => [id, targetSectionId] as const),
+        ]));
         await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
         registerChange("catalog");
         const destinationName = targetSectionId
           ? allSections.find((candidate) => candidate.id === targetSectionId)?.name ?? "выбранный раздел"
           : null;
         offerTreeMoveUndo(
-          destinationName ? `Раздел перемещён в «${destinationName}»` : "Раздел перемещён в корень каталога",
+          moveRequest.operation === "sections"
+            ? `${movingSectionIds.length} ${plural(movingSectionIds.length, "подраздел перемещён", "подраздела перемещены", "подразделов перемещено")}${destinationName ? ` в «${destinationName}»` : " в корень каталога"}`
+            : destinationName ? `Раздел перемещён в «${destinationName}»` : "Раздел перемещён в корень каталога",
           snapshot,
         );
-        setSelectedSectionId(movingSectionId);
+        setSelectedSectionId(movingSectionIds[0] ?? null);
+        if (moveRequest.operation === "sections") setSelectedIds(new Set());
         return;
       }
 
@@ -4923,7 +5277,7 @@ function PopulatedWorkspace({
   };
 
   const restoreUnifiedStructureContext = (context: StructureReturnContext, openItemId: string | null) => {
-    if (context.sectionEditorTab) setSectionEditorTab(context.sectionEditorTab);
+    if (context.sectionEditorTab) setSectionEditorTab(normalizeSectionEditorTab(context.sectionEditorTab));
     if (context.treeQuery !== undefined) writeJsonRecord(treeStorageKeys?.query ?? CATALOG_SECTION_TREE_QUERY_STORAGE_KEY, context.treeQuery);
     if (context.treeExpanded) writeJsonRecord(treeStorageKeys?.expanded ?? CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY, context.treeExpanded);
     if (context.treeScrollTop !== undefined) writeJsonRecord(treeStorageKeys?.scroll ?? CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY, context.treeScrollTop);
@@ -5025,6 +5379,7 @@ function PopulatedWorkspace({
       onOpenInPositions={() => {}}
       onSelectChildSection={handleTreeSelectSection}
       onChildSectionAction={handleUnifiedSectionAction}
+      onChildSectionBulkAction={handleUnifiedSectionBulkAction}
       positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
       subsectionCreateDisabledReason={subsectionDisabledReason}
       onCompositionQueryChange={setSectionTableQuery}
@@ -5159,6 +5514,7 @@ function PopulatedWorkspace({
               onOpenInPositions={() => onOpenSectionInOverview(section.id)}
               onSelectChildSection={handleTreeSelectSection}
               onChildSectionAction={handleUnifiedSectionAction}
+              onChildSectionBulkAction={handleUnifiedSectionBulkAction}
               positionCreateDisabledReason={getPositionCreateRestriction(section.id, allSections)}
               subsectionCreateDisabledReason={(() => {
                 const availability = getParentAvailability(section, allItems, allSections);
@@ -5198,7 +5554,7 @@ function PopulatedWorkspace({
               sectionName={section?.name ?? "Раздел"}
               itemCount={activeSectionItems.length}
               onAddItem={addPosition}
-              onSectionSettings={() => handleSectionAction("Изменить раздел")}
+              onRename={() => handleSectionAction("Переименовать")}
             />
           ) : (
             <SectionEmptyState sectionName={section?.name ?? "Раздел"} onAddItem={addPosition} />
@@ -5280,6 +5636,13 @@ function PopulatedWorkspace({
             }}
           />
         )}
+        {pendingSectionBulkDelete && (
+          <SectionBulkDeleteDialog
+            sections={pendingSectionBulkDelete}
+            onCancel={() => setPendingSectionBulkDelete(null)}
+            onConfirm={() => confirmDeleteSections(pendingSectionBulkDelete)}
+          />
+        )}
         {sectionCreationDialog && (
           <CreateSectionDialog
             sections={activeSectionTree}
@@ -5299,6 +5662,29 @@ function PopulatedWorkspace({
               setPositionCreationDialog(null);
               addPositionToSection(sectionId, title.trim());
             }}
+          />
+        )}
+        {sectionRenameRequest && allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId) && (
+          <SectionRenamePopover
+            section={allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId)!}
+            anchor={sectionRenameRequest.anchor}
+            onChange={(translations) => {
+              const target = allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId);
+              if (!target) return;
+              updateSectionDraft(target.id, {
+                name: translations.ru?.trim() || target.name,
+                nameTranslations: translations,
+              });
+            }}
+            onClose={() => setSectionRenameRequest(null)}
+          />
+        )}
+        {sectionIconRequest && allSections.find((candidate) => candidate.id === sectionIconRequest.sectionId) && (
+          <SectionIconPopover
+            section={allSections.find((candidate) => candidate.id === sectionIconRequest.sectionId)!}
+            anchor={sectionIconRequest.anchor}
+            onChange={(imageUrl) => updateSectionDraft(sectionIconRequest.sectionId, { imageUrl })}
+            onClose={() => setSectionIconRequest(null)}
           />
         )}
       </div>
@@ -5349,78 +5735,44 @@ function ToolbarDropdown({ label, children }: { label: string; children: ReactNo
   );
 }
 
-function SectionVisibilityMenuItem({
-  visible,
-  onChange,
-}: {
-  visible: boolean;
-  onChange: (visible: boolean) => void;
-}) {
-  return (
-    <DropdownMenu.CheckboxItem
-      checked={visible}
-      onCheckedChange={(checked) => onChange(checked === true)}
-      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-    >
-      {visible ? <Eye size={15} weight="regular" className="shrink-0" /> : <EyeSlash size={15} weight="regular" className="shrink-0" />}
-      <span className="min-w-0 flex-1">Показывать на витрине</span>
-      <DropdownMenu.ItemIndicator className="ml-auto flex shrink-0 items-center text-[#57534d]">
-        <Check size={14} weight="bold" />
-      </DropdownMenu.ItemIndicator>
-    </DropdownMenu.CheckboxItem>
-  );
-}
-
 function SectionAvailabilitySubmenu({
   mode,
+  visibility,
   onAction,
 }: {
   mode: AvailabilityMode;
+  visibility: SectionVisibility;
   onAction: (action: string) => void;
 }) {
-  const options: Array<{ value: AvailabilityMode; label: string }> = [
-    { value: "unavailable", label: "На стопе" },
-    { value: "schedule", label: "По расписанию" },
-  ];
+  const selection = getSectionAvailabilitySelection({ availabilityMode: mode, visibility });
+  const itemClass = "flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]";
+  const check = (value: SectionAvailabilitySelection) => selection === value ? <Check size={14} weight="bold" className="ml-auto shrink-0 text-[#57534d]" /> : null;
   return (
     <>
       <DropdownMenu.Item
         onSelect={() => onAction("availability:always")}
-        className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+        className={itemClass}
       >
         <ShoppingCartSimple size={15} weight="regular" className="shrink-0" />
-        <span className="min-w-0 flex-1">Доступен для заказа</span>
-        {mode === "always" && <Check size={14} weight="bold" className="shrink-0 text-[#57534d]" />}
+        <span className="min-w-0 flex-1">Доступно</span>
+        {check("available")}
       </DropdownMenu.Item>
-      <DropdownMenu.Sub>
-        <DropdownMenu.SubTrigger className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
-          <Clock size={15} weight="regular" className="shrink-0" />
-          <span className="min-w-0 flex-1">Ограничения доступности</span>
-          <CaretRight size={13} className="shrink-0 text-[#a8a29e]" />
-        </DropdownMenu.SubTrigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.SubContent
-            sideOffset={6}
-            alignOffset={-4}
-            className="z-[100003] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
-          >
-            <DropdownMenu.RadioGroup value={mode} onValueChange={(value) => onAction(`availability:${value}`)}>
-              {options.map((option) => (
-                <DropdownMenu.RadioItem
-                  key={option.value}
-                  value={option.value}
-                  className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                >
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                    <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
-                  </span>
-                  {option.label}
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.SubContent>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Sub>
+      <DropdownMenu.Label className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-[#a8a29e]">На стопе</DropdownMenu.Label>
+      <DropdownMenu.Item onSelect={() => onAction("availability:stop-soon")} className={cn(itemClass, "pl-6")}>
+        <Eye size={15} weight="regular" className="shrink-0" />
+        <span className="min-w-0 flex-1">Показывать «Скоро будет»</span>
+        {check("stop-soon")}
+      </DropdownMenu.Item>
+      <DropdownMenu.Item onSelect={() => onAction("availability:stop-hidden")} className={cn(itemClass, "pl-6")}>
+        <EyeSlash size={15} weight="regular" className="shrink-0" />
+        <span className="min-w-0 flex-1">Скрыть</span>
+        {check("stop-hidden")}
+      </DropdownMenu.Item>
+      <DropdownMenu.Item onSelect={() => onAction("availability:schedule")} className={itemClass}>
+        <Clock size={15} weight="regular" className="shrink-0" />
+        <span className="min-w-0 flex-1">По расписанию…</span>
+        {check("schedule")}
+      </DropdownMenu.Item>
     </>
   );
 }
@@ -5428,18 +5780,15 @@ function SectionAvailabilitySubmenu({
 function SectionActionMenuContent({
   section,
   allowPositionCreation = true,
-  showSettingsEntry = false,
   onAction,
 }: {
   section: TreeSection;
   allowPositionCreation?: boolean;
-  showSettingsEntry?: boolean;
   onAction: (action: string, anchor?: MovePopoverAnchor) => void;
 }) {
   if (section.status === "archive") {
     return (
       <>
-        {showSettingsEntry && <><DropdownActionItem icon={GearSix} onSelect={() => onAction("Настроить раздел")}>Настройки раздела</DropdownActionItem><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /></>}
         <DropdownActionItem icon={ArrowCounterClockwise} onSelect={() => onAction("Восстановить раздел")}>Восстановить раздел</DropdownActionItem>
         <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
         <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
@@ -5448,19 +5797,26 @@ function SectionActionMenuContent({
   }
   return (
     <>
-      {showSettingsEntry && <><DropdownActionItem icon={GearSix} onSelect={() => onAction("Настроить раздел")}>Настройки раздела</DropdownActionItem><DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" /></>}
       {allowPositionCreation && <DropdownActionItem icon={Plus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
       {allowPositionCreation && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
       <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event))}>Переместить…</DropdownActionItem>
+      <DropdownActionItem icon={PencilSimple} onSelect={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}>Переименовать…</DropdownActionItem>
+      <DropdownActionItem icon={ImageBroken} onSelect={(event) => onAction("Сменить иконку", getMovePopoverAnchor(event))}>Сменить иконку…</DropdownActionItem>
       <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-      <SectionVisibilityMenuItem
-        visible={section.visibility !== "hidden"}
-        onChange={(visible) => onAction(visible ? "Показывать на витрине" : "Скрыть с витрины")}
-      />
-      <SectionAvailabilitySubmenu mode={section.availabilityMode ?? "always"} onAction={onAction} />
+      <DropdownMenu.Sub>
+        <DropdownMenu.SubTrigger className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[state=open]:bg-[#f5f5f4] data-[highlighted]:bg-[#f5f5f4]">
+          <span className="min-w-0 flex-1">Доступность</span>
+          <CaretRight size={13} weight="bold" className="shrink-0 text-[#a8a29e]" />
+        </DropdownMenu.SubTrigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.SubContent sideOffset={5} alignOffset={-5} className="z-[100003] min-w-[240px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+            <SectionAvailabilitySubmenu mode={section.availabilityMode ?? "always"} visibility={section.visibility ?? "visible"} onAction={onAction} />
+          </DropdownMenu.SubContent>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Sub>
       <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-      <DropdownActionItem icon={Archive} onSelect={() => onAction("Архивировать раздел")}>Архивировать раздел</DropdownActionItem>
-      <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить раздел")}>Удалить раздел</DropdownActionItem>
+      <DropdownActionItem icon={Archive} onSelect={() => onAction("Архивировать")}>Архивировать</DropdownActionItem>
+      <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить раздел")}>Удалить</DropdownActionItem>
     </>
   );
 }
@@ -6019,14 +6375,14 @@ function CatalogScopeSelect({
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 max-w-[320px] rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
+      <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 max-w-[160px] rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label={selected || allOptionLabel ? `Выбран раздел: ${selectedLabel}` : "Выбрать раздел"}
             className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
           >
-            <span className={cn("flex shrink-0 items-center justify-center overflow-hidden text-[#57534d]", compact ? "h-5 w-5 rounded-[5px] bg-white" : "h-5 w-5 rounded-[5px] bg-white")}>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-[#57534d]">
               {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
             </span>
             <span className={cn("min-w-0 flex-1 truncate font-normal text-[#44403b]", compact ? "text-[12px] leading-4" : "text-[13px] leading-[18px]")}>
@@ -6043,7 +6399,7 @@ function CatalogScopeSelect({
             event.stopPropagation();
             setOpen((current) => !current);
           }}
-          className={cn("flex shrink-0 items-center justify-center rounded-[4px] bg-[#efefeb] text-[#57534d] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", compact ? "h-[14px] w-[14px]" : "h-[14px] w-5")}
+          className={cn("flex shrink-0 items-center justify-center rounded-full bg-[#efefeb] text-[#57534d] transition hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", compact ? "h-[14px] w-[14px]" : "h-[14px] w-5")}
         >
           <CaretDown size={12} weight="bold" />
         </button>
@@ -6972,8 +7328,16 @@ function OverviewWorkspace({
     const label = status === "archive" ? "Позиции перенесены в архив" : status === "stopped" ? "Позиции поставлены на стоп" : status === "coming-soon" ? "Позиции отмечены как скоро доступные" : "Позиции возвращены в меню";
     updateSelectedItems((item) => ({ ...item, status }), label);
   };
-  const setSelectedAvailable = () => {
-    updateSelectedItems((item) => ({ ...item, status: "active", scheduled: false }), "Позиции всегда доступны");
+  const setSelectedAvailability = (selection: "available" | "stop-soon" | "stop-hidden") => {
+    if (selection === "available") {
+      updateSelectedItems((item) => ({ ...item, status: "active", scheduled: false }), "Позиции всегда доступны");
+      return;
+    }
+    if (selection === "stop-soon") {
+      updateSelectedItems((item) => ({ ...item, status: "coming-soon", scheduled: false }), "Позиции отмечены как скоро доступные");
+      return;
+    }
+    updateSelectedItems((item) => ({ ...item, status: "stopped", scheduled: false }), "Позиции поставлены на стоп");
   };
   const applySelectedDiscount = (percent: number) => {
     const clamped = Math.max(0, Math.min(99, percent));
@@ -7802,7 +8166,7 @@ function OverviewWorkspace({
                       count={selectedIds.size}
                       onClear={clearSelection}
                       onSetStatus={setSelectedStatus}
-                      onSetAvailable={setSelectedAvailable}
+                      onSetAvailability={setSelectedAvailability}
                       onClearDiscount={clearSelectedDiscount}
                       onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
                       onOpenDiscount={() => setBulkDialog({ type: "discount" })}

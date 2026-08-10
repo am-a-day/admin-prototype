@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AlertTriangle } from "lucide-react";
+import { GearSix } from "@phosphor-icons/react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
@@ -118,9 +119,11 @@ export function PageLangSwitcher({
           <button
             type="button"
             onClick={onManageLanguages}
-            className="ml-1 h-6 whitespace-nowrap rounded-md px-2 text-[12px] font-medium text-[#79716b] transition hover:bg-white hover:text-[#292524]"
+            aria-label="Управлять языками"
+            title="Управлять языками"
+            className="ml-1 flex h-6 w-6 items-center justify-center rounded-full text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            Управлять языками
+            <GearSix size={15} weight="regular" aria-hidden="true" />
           </button>
         )}
       </div>

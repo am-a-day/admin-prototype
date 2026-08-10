@@ -2377,13 +2377,13 @@ export function SectionAvailabilityTab({
       options={[
         {
           id: "always",
-          title: "Показывать всегда",
-          description: "Раздел отображается в меню в любое время",
+          title: "Доступно",
+          description: "Раздел виден гостям и доступен для заказа в любое время",
         },
         {
           id: "unavailable",
           title: "На стопе",
-          description: "Раздел остаётся на витрине, но позиции нельзя заказать",
+          description: "Раздел остаётся видимым гостям, но позиции нельзя заказать",
         },
         {
           id: "schedule",
