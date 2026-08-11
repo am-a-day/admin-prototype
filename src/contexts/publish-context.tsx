@@ -220,8 +220,8 @@ export function PublishProvider({ children }: { children: ReactNode }) {
     if (typeof opts?.catalogHasVisibleItems === "boolean") {
       lastCatalogHasVisibleItems.current = opts.catalogHasVisibleItems;
     }
-    if (!lastCatalogHasVisibleItems.current) return;
     isFirstPublication.current = !account?.workspace.publishedSnapshot;
+    if (!isFirstPublication.current && !lastCatalogHasVisibleItems.current) return;
     publishTimers.current.forEach((t) => window.clearTimeout(t));
     publishTimers.current = [];
     setPublishResult(null);

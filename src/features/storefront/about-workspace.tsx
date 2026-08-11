@@ -1857,7 +1857,7 @@ function VenueTypeChipGroup({
       <div
         role="radiogroup"
         aria-labelledby={`${groupId}-label`}
-        className="flex flex-wrap gap-2"
+        className="flex flex-wrap gap-1"
       >
         {VENUE_TYPE_OPTIONS.map((option) => (
           <label key={option.value} className="relative">
@@ -1908,11 +1908,11 @@ function VenueTypeChipGroup({
             />
             <span
               className={cn(
-                "flex h-9 cursor-pointer items-center whitespace-nowrap rounded-[8px] border border-[#d6d3d1] bg-white px-3 text-[13px] font-medium text-[#57534d] transition",
-                "hover:border-[#a8a29e] hover:bg-[#fafaf9]",
-                "peer-checked:border-[#292524] peer-checked:bg-[#292524] peer-checked:text-white peer-checked:hover:bg-[#292524]",
+                "flex h-8 cursor-pointer items-center whitespace-nowrap rounded-[9px] px-3 text-[14px] text-[#79716b] transition",
+                "hover:bg-[#f5f5f4]",
+                "peer-checked:bg-[#e7e5e4] peer-checked:font-medium peer-checked:text-[#1c1917] peer-checked:hover:bg-[#e7e5e4]",
                 "peer-focus-visible:ring-2 peer-focus-visible:ring-[#292524]/20 peer-focus-visible:ring-offset-2",
-                "peer-disabled:cursor-not-allowed peer-disabled:border-[#e7e5e4] peer-disabled:bg-[#f5f5f4] peer-disabled:text-[#a8a29e]",
+                "peer-disabled:cursor-not-allowed peer-disabled:text-[#a8a29e]",
               )}
             >
               {option.label}
@@ -1997,6 +1997,20 @@ function BasicInfoWorkspace({
     onChange();
   };
 
+  const saveWorkspaceName = () => {
+    if (!account) return;
+    const nextName = name.trim();
+    setName(nextName);
+    updateWorkspace({
+      name: nextName,
+      localizedNames: {
+        ...account.workspace.localizedNames,
+        [account.workspace.primaryLanguage]: nextName,
+      },
+    });
+    touchBasicField("name");
+  };
+
   const addRowClass =
     "flex h-9 items-center gap-2 rounded-[8px] px-1.5 text-[14px] text-[#44403b] transition hover:bg-[#f5f5f4]";
 
@@ -2050,7 +2064,7 @@ function BasicInfoWorkspace({
           label="Название заведения"
           value={name}
           onChange={edit(setName)}
-          onBlur={() => touchBasicField("name")}
+          onBlur={saveWorkspaceName}
           error={basicErrors.name}
           className="flex-1"
         />
@@ -2067,7 +2081,7 @@ function BasicInfoWorkspace({
                 : venueType === "services"
                   ? "services"
                   : "other";
-          updateWorkspace({ venueType, organizationType });
+          updateWorkspace({ venueType, organizationType, organizationTypeConfirmed: true });
           onChange();
         }}
       />

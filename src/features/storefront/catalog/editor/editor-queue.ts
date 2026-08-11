@@ -1,6 +1,6 @@
 import type { OverviewFilterId } from "../model/types";
 
-export type EditorTab = "basic" | "promo" | "options" | "availability" | "display";
+export type EditorTab = "basic" | "promo" | "options" | "display";
 export type EditorFocusAnchor = "description" | "media" | "weight" | "kbju";
 
 export type EditorQueueNavigation = {
@@ -49,7 +49,7 @@ const AUDIT_QUEUE_EDITOR_CONTEXT: Partial<Record<OverviewFilterId, { tab: Editor
   "quick:no-kbju": { tab: "basic", anchor: "kbju" },
   "quick:no-translation": { tab: "basic" },
   "quick:no-recommendations": { tab: "promo" },
-  "status:stop": { tab: "availability" },
+  "status:stop": { tab: "basic" },
 };
 
 export function isRepairQueueFilter(id: OverviewFilterId) {

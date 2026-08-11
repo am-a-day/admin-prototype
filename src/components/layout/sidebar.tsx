@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import {
   Ellipsis,
   FileSearch,
+  FolderPlus,
+  ImagePlus,
   Import,
+  ListPlus,
   Menu,
   Pin,
+  Plus,
   QrCode,
   Search,
+  Sheet,
+  ShieldCheck,
   Tag,
   X,
 } from "lucide-react";
@@ -32,7 +39,7 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { MiniLogo } from "@/components/ui/mini-logo";
 import { cn } from "@/lib/utils";
-import { dishes, RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
+import { CURRENT_ROLE, dishes, RESTAURANT_NAME, type SectionId } from "@/data/mock-data";
 import { usePlan } from "@/contexts/plan-context";
 import {
   useMockAuth,
@@ -40,6 +47,7 @@ import {
 } from "@/contexts/mock-auth-context";
 
 export type SidebarMode = "full" | "rail" | "topbar";
+export type QuickCreateAction = "position" | "section" | "promo" | "qr" | "banner" | "iiko" | "sheets";
 
 type NavItem = {
   label: string;
@@ -124,9 +132,10 @@ type MoreItem =
 
 const MORE_ITEMS: MoreItem[] = [
   { label: "QR-коды",         icon: QrCode,     section: "qr",         tab: "qr"   },
-  { label: "Промокоды",       icon: Tag,         soon: true                          },
+  { label: "Промокоды",       icon: Tag,         section: "qr",         tab: "promo" },
   { label: "SEO",             icon: FileSearch,  section: "management", tab: "seo"  },
   { label: "Импорт / экспорт",icon: Import,      section: "management", tab: "io"   },
+  ...(CURRENT_ROLE === "am" ? [{ label: "АМ-панель", icon: ShieldCheck, section: "am" as const, tab: "review" }] : []),
 ];
 
 function MoreMenu({
@@ -403,6 +412,71 @@ function SidebarSearch({
   );
 }
 
+function QuickCreateMenu({ compact, onAction }: { compact: boolean; onAction?: (action: QuickCreateAction) => void }) {
+  const { account } = useMockAuth();
+  const { planId } = usePlan();
+  const canCreate = account?.role !== "Наблюдатель";
+  const canImportIiko = planId === "Ultra";
+
+  if (!canCreate || !onAction) return null;
+
+  const Item = ({ action, icon: Icon, children, disabled, hint }: {
+    action: QuickCreateAction;
+    icon: LucideIcon;
+    children: ReactNode;
+    disabled?: boolean;
+    hint?: string;
+  }) => (
+    <DropdownMenu.Item
+      disabled={disabled}
+      onSelect={() => onAction(action)}
+      title={hint}
+      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[7px] px-2 text-[12px] text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4] data-[disabled]:cursor-default data-[disabled]:text-[#a6a09b]"
+    >
+      <Icon size={14} className="shrink-0" />
+      <span className="min-w-0 flex-1">{children}</span>
+      {disabled && <span className="rounded bg-[#f5f5f4] px-1 py-0.5 text-[9px] font-semibold">ULTRA</span>}
+    </DropdownMenu.Item>
+  );
+
+  return (
+    <DropdownMenu.Root>
+      <Tooltip label="Создать" disabled={!compact} delayDuration={0}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={compact ? "Создать" : undefined}
+            data-sidebar-create-trigger
+            className={cn(
+              "flex items-center justify-center gap-2 bg-white font-medium text-[#44403b] shadow-[0_2px_6px_rgba(12,12,13,0.16),0_1px_2px_rgba(12,12,13,0.08)] transition hover:bg-[#fafaf9] hover:shadow-[0_3px_8px_rgba(12,12,13,0.18),0_1px_2px_rgba(12,12,13,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a8a29e]/30 focus-visible:ring-offset-2",
+              compact
+                ? "h-8 w-8 rounded-full"
+                : "h-8 w-full rounded-[10px] px-3 text-[13px]",
+            )}
+          >
+            <Plus size={compact ? 18 : 16} strokeWidth={compact ? 2 : 2.4} />
+            {!compact && <span>Создать</span>}
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content side="right" align="start" sideOffset={8} className="z-[220] w-[238px] rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-xl shadow-zinc-300/40">
+          <DropdownMenu.Label className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#a6a09b]">Создание</DropdownMenu.Label>
+          <Item action="position" icon={ListPlus}>Создать позицию</Item>
+          <Item action="section" icon={FolderPlus}>Создать раздел</Item>
+          <Item action="promo" icon={Tag}>Создать промокод</Item>
+          <Item action="qr" icon={QrCode}>Создать QR-код</Item>
+          <Item action="banner" icon={ImagePlus}>Создать баннер</Item>
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <DropdownMenu.Label className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#a6a09b]">Импорт данных</DropdownMenu.Label>
+          <Item action="iiko" icon={Import} disabled={!canImportIiko} hint={!canImportIiko ? "Импорт из iiko доступен на тарифе Ultra" : undefined}>Импортировать из iiko</Item>
+          <Item action="sheets" icon={Sheet}>Импортировать из Google Таблиц</Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 // ── Shared nav list ────────────────────────────────────────────────────────────
 
 // Заголовок группы (full) и разделитель (rail) занимают одинаковый ряд 28px,
@@ -493,12 +567,14 @@ export function NavDrawer({
   section,
   activeTab,
   onNavigate,
+  onQuickCreate,
 }: {
   open: boolean;
   onClose: () => void;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
+  onQuickCreate?: (action: QuickCreateAction) => void;
 }) {
   const { account } = useMockAuth();
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -549,6 +625,9 @@ export function NavDrawer({
         <div className="h-px bg-border" />
         <div className="px-3 pt-2">
           <SidebarSearch compact={false} onNavigate={handleNavigate} />
+          <div className="mt-2">
+            <QuickCreateMenu compact={false} onAction={(action) => { onQuickCreate?.(action); onClose(); }} />
+          </div>
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
       </div>
@@ -566,6 +645,7 @@ type NavProps = {
   onToggleSidebar?: () => void;
   onPin?: () => void;
   pinned?: boolean;
+  onQuickCreate?: (action: QuickCreateAction) => void;
 };
 
 function StartPlanBlock() {
@@ -596,7 +676,7 @@ function StartPlanBlock() {
   );
 }
 
-export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false }: NavProps) {
+export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate }: NavProps) {
   const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -621,6 +701,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
       {/* Search */}
       <div className="px-3 pb-1">
         <SidebarSearch compact={false} onNavigate={onNavigate} />
+        <div className="mt-2"><QuickCreateMenu compact={false} onAction={onQuickCreate} /></div>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
       {planId === "Start" ? <StartPlanBlock /> : <PlanWidget onNavigate={onNavigate} compact={false} />}
@@ -630,7 +711,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate, showTooltips = false }: NavProps & { showTooltips?: boolean }) {
+function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate }: NavProps & { showTooltips?: boolean }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header row: mini logo, aligns with app header height */}
@@ -640,6 +721,7 @@ function RailSidebar({ section, activeTab, onNavigate, showTooltips = false }: N
       {/* Search — тот же wrapper (px-3 pb-1), что и в FullSidebar: одинаковый Y-ритм */}
       <div className="shrink-0 px-[7px] pb-1">
         <SidebarSearch compact onNavigate={onNavigate} showTooltip={showTooltips} />
+        <div className="mt-2"><QuickCreateMenu compact onAction={onQuickCreate} /></div>
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
@@ -659,7 +741,7 @@ type SidebarProps = NavProps & {
   showTooltips?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false, onQuickCreate }: SidebarProps) {
   const isRail = mode === "rail";
 
   if (mode === "topbar") return null;
@@ -667,9 +749,9 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
   return (
     <TooltipProvider delayDuration={0}>
       {isRail ? (
-        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} />
+        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} onQuickCreate={onQuickCreate} />
       ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} onQuickCreate={onQuickCreate} />
       )}
     </TooltipProvider>
   );

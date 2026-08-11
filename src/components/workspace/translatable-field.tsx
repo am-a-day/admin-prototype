@@ -31,6 +31,7 @@ export function TranslatableField({
   plain = false,
   storageKey,
   autoFocus = false,
+  inputAriaLabel,
   onValueChange,
   persist = true,
   onChange,
@@ -47,6 +48,7 @@ export function TranslatableField({
   plain?: boolean;
   storageKey?: string;
   autoFocus?: boolean;
+  inputAriaLabel?: string;
   onValueChange?: (value: string) => void;
   persist?: boolean;
   onChange?: (translations: Translations) => void;
@@ -126,6 +128,7 @@ export function TranslatableField({
       {multiline ? (
         <textarea
           ref={(el) => { inputRef.current = el; }}
+          aria-label={inputAriaLabel}
           autoFocus={autoFocus}
           rows={rows}
           value={currentValue}
@@ -140,6 +143,7 @@ export function TranslatableField({
       ) : (
         <input
           ref={(el) => { inputRef.current = el; }}
+          aria-label={inputAriaLabel}
           autoFocus={autoFocus}
           value={currentValue}
           onChange={(e) => saveTranslation(e.target.value)}

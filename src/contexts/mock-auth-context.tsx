@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -29,6 +30,29 @@ export type VenueType =
   | "beauty-salon"
   | "other";
 export type WorkspaceLanguageStatus = "empty" | "partial" | "ready";
+export type StorefrontReviewStatus =
+  | "unpublished"
+  | "pending"
+  | "verified"
+  | "disabled-manual"
+  | "disabled-timeout";
+
+export type ReviewHistoryEntry = {
+  id: string;
+  type: "published" | "verified" | "disabled-manual" | "disabled-timeout" | "notification";
+  at: number;
+  actor: string;
+  reason?: string;
+  details?: string;
+};
+
+export type StorefrontReview = {
+  status: StorefrontReviewStatus;
+  publishedAt: number | null;
+  deadlineAt: number | null;
+  disabledReason: string | null;
+  history: ReviewHistoryEntry[];
+};
 
 export type WorkspaceLanguage = {
   code: LanguageCode;
@@ -55,6 +79,7 @@ export type MockWorkspace = {
   contactVerified: boolean;
   setupCompleted: boolean;
   organizationType: OrganizationType;
+  organizationTypeConfirmed: boolean;
   venueType: VenueType;
   primaryLanguage: LanguageCode;
   languages: WorkspaceLanguage[];
@@ -65,6 +90,7 @@ export type MockWorkspace = {
   marketCode: "KZ" | "RS";
   firstEntry: boolean;
   publishedSnapshot: PublishedMenuSnapshot | null;
+  review: StorefrontReview;
 };
 
 export type MockAccount = {
@@ -72,6 +98,8 @@ export type MockAccount = {
   contact: string;
   password?: string | null;
   displayName: string;
+  firstName: string;
+  lastName: string;
   role: string;
   workspace: MockWorkspace;
   catalogSnapshot: Record<string, string>;
@@ -110,11 +138,43 @@ type MockAuthContextValue = {
   logout: () => void;
   resetTestAccount: () => void;
   updateWorkspace: (patch: Partial<MockWorkspace>) => void;
+  updateAccountProfile: (patch: { firstName?: string; lastName?: string }) => void;
   markDraftChanged: () => void;
   publishWorkspace: (catalogHasVisibleItems: boolean) => boolean;
   choosePrettyAddress: () => void;
   getAccountById: (accountId: string) => MockAccount | null;
+  confirmStorefrontReview: (accountId: string) => void;
+  disableStorefrontReview: (accountId: string, reason: string) => void;
+  expireStorefrontReview: (accountId: string) => void;
 };
+
+export type PublicationRequirement = {
+  id: "organization-type" | "organization-name" | "domain" | "first-name" | "last-name";
+  label: string;
+};
+
+export function getPublicationRequirements(account: MockAccount | null): PublicationRequirement[] {
+  if (!account) return [];
+  const requirements: PublicationRequirement[] = [];
+  const workspace = account.workspace;
+  if (!workspace.name.trim()) {
+    requirements.push({ id: "organization-name", label: "Укажите название организации" });
+  }
+  const alias = workspace.webAddress.replace(/\.tsqr\.me$/i, "").trim();
+  if (!alias) {
+    requirements.push({ id: "domain", label: "Выберите адрес витрины" });
+  }
+  if (!workspace.organizationType) {
+    requirements.push({ id: "organization-type", label: "Выберите тип организации" });
+  }
+  if (!account.firstName.trim()) {
+    requirements.push({ id: "first-name", label: "Укажите имя" });
+  }
+  if (!account.lastName.trim()) {
+    requirements.push({ id: "last-name", label: "Укажите фамилию" });
+  }
+  return requirements;
+}
 
 const AUTH_STATE_KEY = previewScopedStorageKey("tasko.mockAuth.v1");
 const SESSION_KEY = previewScopedStorageKey("tasko.mockAuth.session.v1");
@@ -148,11 +208,12 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   name: firstEntry ? "Новое меню" : "Kimchi Astana",
   status: firstEntry ? "draft" : "published",
   technicalAddress: `tasko.menu/m/${stableMenuId(seed)}`,
-  webAddress: firstEntry ? "" : "kimchi.tasko.app",
+  webAddress: firstEntry ? `${Date.now()}.tsqr.me` : "kimchi.tsqr.me",
   privatePreviewAvailable: true,
   contactVerified: !firstEntry,
   setupCompleted,
   organizationType: "restaurant",
+  organizationTypeConfirmed: !firstEntry,
   venueType: "restaurant",
   primaryLanguage: "ru",
   languages: setupCompleted
@@ -175,6 +236,13 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
         publishedLanguages: LANGUAGES.map(({ code }) => code),
         localizedNames: { ru: "Kimchi Astana" },
       },
+  review: {
+    status: firstEntry ? "unpublished" : "verified",
+    publishedAt: firstEntry ? null : Date.now(),
+    deadlineAt: null,
+    disabledReason: null,
+    history: [],
+  },
 });
 
 const createSeedAccount = (): MockAccount => ({
@@ -182,6 +250,8 @@ const createSeedAccount = (): MockAccount => ({
   contact: MOCK_USER.email,
   password: DEFAULT_EXISTING_PASSWORD,
   displayName: MOCK_USER.name,
+  firstName: MOCK_USER.name.split(" ")[0] || "Айдана",
+  lastName: MOCK_USER.name.split(" ").slice(1).join(" ") || "Садыкова",
   role: MOCK_USER.role,
   workspace: createWorkspace(false, MOCK_USER.email),
   catalogSnapshot: {},
@@ -192,6 +262,8 @@ const createSeedPhoneAccount = (): MockAccount => ({
   contact: SEED_PHONE_CONTACT,
   password: DEFAULT_EXISTING_PASSWORD,
   displayName: "Тестовый владелец",
+  firstName: "Тестовый",
+  lastName: "Владелец",
   role: "Владелец",
   workspace: createWorkspace(false, SEED_PHONE_CONTACT),
   catalogSnapshot: {},
@@ -218,6 +290,8 @@ const createAccount = (
     contact,
     password: null,
     displayName: contact.includes("@") ? contact : `Пользователь ${contact.slice(-4)}`,
+    firstName: "",
+    lastName: "",
     role: "Владелец",
     workspace: {
       ...createWorkspace(true, contact, false),
@@ -227,6 +301,7 @@ const createAccount = (
       contactVerified: true,
       setupCompleted: true,
       organizationType: "restaurant",
+      organizationTypeConfirmed: false,
       venueType: "restaurant",
       primaryLanguage: registrationLanguage,
       languages: [{ code: registrationLanguage, status: "ready", visible: true }],
@@ -316,6 +391,8 @@ function readAuthState(): StoredAuthState {
               id,
               {
                 ...account,
+                firstName: account.firstName ?? account.displayName?.trim().split(/\s+/)[0] ?? "",
+                lastName: account.lastName ?? account.displayName?.trim().split(/\s+/).slice(1).join(" ") ?? "",
                 password: Object.prototype.hasOwnProperty.call(account, "password")
                   ? account.password
                   : account.workspace.contactVerified
@@ -328,6 +405,8 @@ function readAuthState(): StoredAuthState {
                   technicalAddress: account.workspace.technicalAddress || fallback.technicalAddress,
                   setupCompleted: account.workspace.setupCompleted ?? true,
                   organizationType: account.workspace.organizationType ?? "restaurant",
+                  organizationTypeConfirmed:
+                    account.workspace.organizationTypeConfirmed ?? !account.workspace.firstEntry,
                   primaryLanguage,
                   languages,
                   localizedNames: account.workspace.localizedNames ?? {
@@ -349,6 +428,13 @@ function readAuthState(): StoredAuthState {
                         },
                       }
                     : null,
+                  review: account.workspace.review ?? {
+                    status: publishedSnapshot ? "verified" : "unpublished",
+                    publishedAt: publishedSnapshot?.publishedAt ?? null,
+                    deadlineAt: null,
+                    disabledReason: null,
+                    history: [],
+                  },
                 },
               },
             ];
@@ -710,6 +796,27 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     [account],
   );
 
+  const updateAccountProfile = useCallback(
+    (patch: { firstName?: string; lastName?: string }) => {
+      if (!account) return;
+      setAuthState((prev) => {
+        const current = prev.accounts[account.id];
+        if (!current) return prev;
+        const firstName = patch.firstName ?? current.firstName;
+        const lastName = patch.lastName ?? current.lastName;
+        const nextAccount = {
+          ...current,
+          ...patch,
+          displayName: [firstName, lastName].filter(Boolean).join(" ") || current.displayName,
+        };
+        const next = { ...prev, accounts: { ...prev.accounts, [account.id]: nextAccount } };
+        writeAuthState(next);
+        return next;
+      });
+    },
+    [account],
+  );
+
   const markDraftChanged = useCallback(() => {
     if (account?.workspace.status === "published") {
       updateWorkspace({ status: "changes" });
@@ -718,16 +825,20 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
 
   const publishWorkspace = useCallback(
     (catalogHasVisibleItems: boolean) => {
-      if (!account || !catalogHasVisibleItems) return false;
+      if (!account) return false;
+      const isFirstPublication = !account.workspace.publishedSnapshot;
+      if (!isFirstPublication && !catalogHasVisibleItems) return false;
+      if (isFirstPublication && getPublicationRequirements(account).length > 0) return false;
+      const now = Date.now();
       const previousVersion = account.workspace.publishedSnapshot?.version ?? 0;
       updateWorkspace({
         status: "published",
         firstEntry: false,
         publishedSnapshot: {
           version: previousVersion + 1,
-          publishedAt: Date.now(),
+          publishedAt: now,
           name: account.workspace.name || "Новое меню",
-          catalogPhase: "has-items",
+          catalogPhase: catalogHasVisibleItems ? "has-items" : "empty",
           catalogSnapshot: snapshotCatalog(),
           publishedLanguages: account.workspace.languages
             .filter(
@@ -737,6 +848,30 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
             .map(({ code }) => code),
           localizedNames: account.workspace.localizedNames,
         },
+        review: isFirstPublication
+          ? {
+              status: "pending",
+              publishedAt: now,
+              deadlineAt: now + 48 * 60 * 60 * 1000,
+              disabledReason: null,
+              history: [
+                {
+                  id: `published-${now}`,
+                  type: "published",
+                  at: now,
+                  actor: [account.firstName, account.lastName].filter(Boolean).join(" ") || "Владелец",
+                  details: "Витрина опубликована владельцем",
+                },
+                {
+                  id: `notification-${now}`,
+                  type: "notification",
+                  at: now,
+                  actor: "Система",
+                  details: "Уведомление отправлено на new-client@tasko.group",
+                },
+              ],
+            }
+          : account.workspace.review,
       });
       return true;
     },
@@ -752,8 +887,100 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
           .replace(/[^a-z0-9а-яё]+/gi, "-")
           .replace(/^-|-$/g, "")
           .slice(0, 28);
-    updateWorkspace({ webAddress: `${slug || `menu-${stableMenuId(account.contact)}`}.tasko.menu` });
+    updateWorkspace({ webAddress: `${slug || `menu-${stableMenuId(account.contact)}`}.tsqr.me` });
   }, [account, updateWorkspace]);
+
+  const updateReview = useCallback((accountId: string, updater: (account: MockAccount) => MockAccount) => {
+    setAuthState((prev) => {
+      const current = prev.accounts[accountId];
+      if (!current) return prev;
+      const nextAccount = updater(current);
+      const next = { ...prev, accounts: { ...prev.accounts, [accountId]: nextAccount } };
+      writeAuthState(next);
+      return next;
+    });
+  }, []);
+
+  const confirmStorefrontReview = useCallback((accountId: string) => {
+    const now = Date.now();
+    updateReview(accountId, (current) => ({
+      ...current,
+      workspace: {
+        ...current.workspace,
+        review: {
+          ...current.workspace.review,
+          status: "verified",
+          deadlineAt: null,
+          disabledReason: null,
+          history: [
+            ...current.workspace.review.history,
+            { id: `verified-${now}`, type: "verified", at: now, actor: "Айгерим · AM" },
+          ],
+        },
+      },
+    }));
+  }, [updateReview]);
+
+  const disableStorefrontReview = useCallback((accountId: string, rawReason: string) => {
+    const reason = rawReason.trim();
+    if (!reason) return;
+    const now = Date.now();
+    updateReview(accountId, (current) => ({
+      ...current,
+      workspace: {
+        ...current.workspace,
+        review: {
+          ...current.workspace.review,
+          status: "disabled-manual",
+          deadlineAt: null,
+          disabledReason: reason,
+          history: [
+            ...current.workspace.review.history,
+            { id: `disabled-${now}`, type: "disabled-manual", at: now, actor: "Айгерим · AM", reason },
+          ],
+        },
+      },
+    }));
+  }, [updateReview]);
+
+  const expireStorefrontReview = useCallback((accountId: string) => {
+    const now = Date.now();
+    updateReview(accountId, (current) => {
+      if (current.workspace.review.status !== "pending") return current;
+      const reason = "Проверка витрины не завершена за 48 часов";
+      return {
+        ...current,
+        workspace: {
+          ...current.workspace,
+          review: {
+            ...current.workspace.review,
+            status: "disabled-timeout",
+            deadlineAt: null,
+            disabledReason: reason,
+            history: [
+              ...current.workspace.review.history,
+              { id: `expired-${now}`, type: "disabled-timeout", at: now, actor: "Система", reason },
+              { id: `notification-repeat-${now}`, type: "notification", at: now, actor: "Система", details: "Повторное уведомление отправлено на new-client@tasko.group" },
+            ],
+          },
+        },
+      };
+    });
+  }, [updateReview]);
+
+  useEffect(() => {
+    const expireOverdue = () => {
+      Object.values(authState.accounts).forEach((candidate) => {
+        const review = candidate.workspace.review;
+        if (review.status === "pending" && review.deadlineAt && review.deadlineAt <= Date.now()) {
+          expireStorefrontReview(candidate.id);
+        }
+      });
+    };
+    expireOverdue();
+    const timer = window.setInterval(expireOverdue, 30_000);
+    return () => window.clearInterval(timer);
+  }, [authState.accounts, expireStorefrontReview]);
 
   const getAccountById = useCallback(
     (accountId: string) => authState.accounts[accountId] ?? null,
@@ -780,10 +1007,14 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       logout,
       resetTestAccount,
       updateWorkspace,
+      updateAccountProfile,
       markDraftChanged,
       publishWorkspace,
       choosePrettyAddress,
       getAccountById,
+      confirmStorefrontReview,
+      disableStorefrontReview,
+      expireStorefrontReview,
     }),
     [
       account,
@@ -801,10 +1032,14 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       logout,
       resetTestAccount,
       updateWorkspace,
+      updateAccountProfile,
       markDraftChanged,
       publishWorkspace,
       choosePrettyAddress,
       getAccountById,
+      confirmStorefrontReview,
+      disableStorefrontReview,
+      expireStorefrontReview,
     ],
   );
 

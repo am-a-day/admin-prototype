@@ -46,10 +46,11 @@ export type CatalogOptionGroup = {
 export type CatalogScheduleDay =
   | { mode: "allDay" }
   | { mode: "unavailable" }
-  | { mode: "custom"; intervals: Array<{ start: string; end: string }> };
+  | { mode: "custom"; timeRange: { start: string; end: string } };
 
 export type CatalogScheduleDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 export type CatalogWeeklySchedule = Record<CatalogScheduleDayKey, CatalogScheduleDay>;
+export type CatalogAvailabilityScheduleMode = "available" | "unavailable";
 
 export type CatalogLocalizedValue = {
   ru: string;
@@ -113,6 +114,7 @@ export type CatalogItem = {
   unavailableDisplayMode?: "hidden" | "comingSoon";
   outsideScheduleMode?: "hidden" | "comingSoon";
   weeklySchedule?: CatalogWeeklySchedule;
+  availabilityScheduleMode?: CatalogAvailabilityScheduleMode;
   upsell?: CatalogItemUpsell;
 };
 

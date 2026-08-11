@@ -12,6 +12,7 @@ import {
   type CatalogDropTarget,
 } from "./dnd";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
+import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import { TableCheckbox } from "../table/catalog-table";
 
 function TruncatedText({
@@ -47,7 +48,7 @@ function TruncatedText({
 
 type SubsectionActionRenderer = (
   section: CatalogTreeSection,
-  onAction: (action: string, anchor?: CatalogSectionActionAnchor) => void,
+  onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void,
 ) => ReactNode;
 
 export function SubsectionRow({
@@ -72,7 +73,7 @@ export function SubsectionRow({
   selectionMode: boolean;
   onSelect: (id: string) => void;
   onSelectedChange: (id: string, selected: boolean) => void;
-  onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor) => void;
+  onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void;
   renderActions: SubsectionActionRenderer;
 }) {
   const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
@@ -149,7 +150,7 @@ export function SubsectionRow({
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content align="end" sideOffset={6} className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
-                  {renderActions(section, (action, anchor) => onAction(section, action, anchor))}
+                  {renderActions(section, (action, anchor, schedule) => onAction(section, action, anchor, schedule))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -184,7 +185,7 @@ export function SubsectionList({
   headerAction?: ReactNode;
   bulkToolbar?: ReactNode;
   onSelect: (id: string) => void;
-  onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor) => void;
+  onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void;
   renderActions: SubsectionActionRenderer;
 }) {
   const selectedCount = selectedIds.size;

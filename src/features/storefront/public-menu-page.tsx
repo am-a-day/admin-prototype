@@ -16,12 +16,19 @@ export function PublicMenuPage({ account }: { account: MockAccount | null }) {
     }
   }, [account?.workspace.primaryLanguage, language, snapshot]);
 
-  if (!account || !snapshot) {
+  const reviewStatus = account?.workspace.review.status;
+  const unavailable = !account || !snapshot || reviewStatus === "unpublished" || reviewStatus === "disabled-manual" || reviewStatus === "disabled-timeout";
+
+  if (unavailable) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f7f6f2] px-6 text-center">
         <div>
-          <div className="text-[18px] font-semibold text-[#292524]">Меню пока не опубликовано</div>
-          <p className="mt-2 text-[14px] text-[#79716b]">Ссылка станет доступна после первой публикации.</p>
+          <div className="text-[18px] font-semibold text-[#292524]">
+            {reviewStatus === "disabled-manual" || reviewStatus === "disabled-timeout" ? "Витрина временно недоступна" : "Меню пока не опубликовано"}
+          </div>
+          <p className="mt-2 text-[14px] text-[#79716b]">
+            {reviewStatus === "disabled-manual" || reviewStatus === "disabled-timeout" ? "Владелец уже получил информацию о необходимых исправлениях." : "Ссылка станет доступна после первой публикации."}
+          </p>
         </div>
       </main>
     );

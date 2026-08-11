@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
-import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type SidebarMode } from "@/components/layout/sidebar";
+import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type QuickCreateAction, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
 import { PreviewToggle } from "@/components/layout/preview-toggle";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
@@ -218,7 +218,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "management:order-settings": { title: "Настройка заказов", description: "Настройте способы получения заказов и обслуживание гостей.", showLanguage: true },
   "management:order-history":  { title: "История заказов",   description: "Все входящие заказы — доставка и самовывоз." },
   "management:billing":    { title: "Тарифы",             description: "Текущий план, ограничения и возможности следующего." },
-  "management:account":    { title: "Аккаунт",            description: "Данные заведения, владелец и доступы." },
+  "management:account":    { title: "Аккаунт",            description: "Личные данные владельца и доступ к аккаунту." },
   "management:io":         { title: "Импорт / экспорт",   description: "Загрузка и выгрузка меню, данных и настроек." },
   "management:seo":        { title: "SEO",                 description: "Метатеги, заголовок и описание для поисковиков." },
   "analytics:scans":       { title: "Сканирования",       description: "Количество сканирований QR-кода и переходов." },
@@ -244,7 +244,7 @@ function PrototypeToolsFloating() {
   const { stage, forceStage } = useVitrineLaunch();
   const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
-  const { account, updateWorkspace } = useMockAuth();
+  const { account, updateWorkspace, confirmStorefrontReview, disableStorefrontReview } = useMockAuth();
 
   return (
     <div className="fixed bottom-5 right-5 z-[210] flex flex-col items-end gap-2">
@@ -444,6 +444,34 @@ function PrototypeToolsFloating() {
                   );
                 })}
               </div>
+              {account && account.workspace.review.status !== "unpublished" && (
+                <div className="mt-1 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => confirmStorefrontReview(account.id)}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      account.workspace.review.status !== "disabled-manual" && account.workspace.review.status !== "disabled-timeout"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    Доступна
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => disableStorefrontReview(account.id, "Добавьте актуальные контакты и уточните данные заведения")}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      account.workspace.review.status === "disabled-manual" || account.workspace.review.status === "disabled-timeout"
+                        ? "border-red-500 bg-red-50 text-red-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    Отключена
+                  </button>
+                </div>
+              )}
             </div>
 
             {IS_PRAGMATIC_CATALOG_PREVIEW && (
@@ -619,6 +647,9 @@ function AuthenticatedShell() {
   const catalogCreateNavigationGuardRef = useRef<CatalogCreateNavigationGuard | null>(null);
   const skipNextCatalogPopGuardRef = useRef(false);
   const [homeTab, setHomeTab] = useState<HomeTab>("banners");
+  const [quickCatalogCreate, setQuickCatalogCreate] = useState<{ id: number; action: "section" | "iiko" | "sheets" } | null>(null);
+  const [quickStandaloneCreate, setQuickStandaloneCreate] = useState<{ id: number; action: "promo" | "qr" } | null>(null);
+  const [qrToolTab, setQrToolTab] = useState<"promo" | "qr">("qr");
   const updateCatalogPhase = (next: CatalogPhase) => {
     setCatalogPhase(next);
     window.localStorage.setItem(CATALOG_PHASE_STORAGE_KEY, next);
@@ -878,6 +909,7 @@ function AuthenticatedShell() {
     section === "management" ? manageTab :
     section === "analytics" ? analyticsTab :
     section === "training" ? trainingTab :
+    section === "qr" ? qrToolTab :
     null;
 
   const updateBanner = (id: string, patch: Partial<Banner>) =>
@@ -963,6 +995,7 @@ function AuthenticatedShell() {
       if (tab === "order-settings") markVisited("ordering");
     }
     if (next === "analytics") setAnalyticsTab(tab as AnalyticsTabId);
+    if (next === "qr") setQrToolTab(tab === "promo" ? "promo" : "qr");
   };
 
   const openOrderAcceptance = () => {
@@ -978,6 +1011,37 @@ function AuthenticatedShell() {
       return;
     }
     continueNavigation();
+  };
+
+  const handleQuickCreate = (action: QuickCreateAction) => {
+    if (action === "banner") {
+      guardedNavigate("storefront", "home");
+      setHomeTab("banners");
+      addBanner();
+      return;
+    }
+    if (action === "promo" || action === "qr") {
+      setQuickStandaloneCreate({ id: Date.now(), action });
+      setQrToolTab(action);
+      guardedNavigate("qr", action);
+      return;
+    }
+    if (action === "position") {
+      requestCatalogNavigation(() => {
+        navigate("storefront", "catalog");
+        setCatalogTab("overview");
+        setCatalogViewMode("quick:all");
+        setCatalogOverviewFilterId("quick:all");
+        const url = new URL(window.location.href);
+        url.searchParams.set(CATALOG_CREATE_QUERY_PARAM, "1");
+        url.searchParams.delete("positionId");
+        window.history.pushState({ [CATALOG_HISTORY_CREATE_KEY]: true }, "", url);
+        setCatalogRouteRevision((revision) => revision + 1);
+      });
+      return;
+    }
+    setQuickCatalogCreate({ id: Date.now(), action });
+    guardedNavigate("storefront", "catalog");
   };
 
   useEffect(() => {
@@ -1118,6 +1182,8 @@ function AuthenticatedShell() {
             updateCatalogPhase(next);
             if (next === "has-items") markVisited("catalog");
           }}
+          quickCreateRequest={quickCatalogCreate}
+          onQuickCreateHandled={() => setQuickCatalogCreate(null)}
         />
       );
     }
@@ -1165,7 +1231,13 @@ function AuthenticatedShell() {
       />
     );
   } else {
-    content = <QRPage />;
+    content = (
+      <QRPage
+        mode={qrToolTab}
+        createRequestId={quickStandaloneCreate?.id ?? null}
+        onCreateHandled={() => setQuickStandaloneCreate(null)}
+      />
+    );
   }
 
   // После активации витрины страница запуска исчезает — точкой входа становится Каталог.
@@ -1252,6 +1324,7 @@ function AuthenticatedShell() {
               onPin={inlineSidebarMode === "full" ? unpinSidebar : undefined}
               pinned={inlineSidebarMode === "full"}
               showTooltips={!wide}
+              onQuickCreate={handleQuickCreate}
             />
           </div>
 
@@ -1272,6 +1345,7 @@ function AuthenticatedShell() {
                   onNavigate={guardedNavigate}
                   onPin={pinSidebar}
                   pinned={false}
+                  onQuickCreate={handleQuickCreate}
                 />
               </div>
             </div>
@@ -1308,6 +1382,7 @@ function AuthenticatedShell() {
             section={section}
             activeTab={activeTab}
             onNavigate={guardedNavigate}
+            onQuickCreate={handleQuickCreate}
           />
 
           {/* Work area */}
@@ -1378,7 +1453,10 @@ function AuthenticatedShell() {
             )}
 
             {/* Editor card */}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
+            <div
+              data-workspace-editor-card
+              className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]"
+            >
               <ContentHeader
                 title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
                 description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
@@ -1411,7 +1489,6 @@ function AuthenticatedShell() {
                   onNavUpsell={navUpsellPage}
                   onNavAbout={navAbout}
                   onNavCatalogDish={navCatalogDish}
-                  onCreateFirstItem={() => navigate("storefront", "catalog")}
                   seoTitle={seoTitle}
                   seoDescription={seoDescription}
                   catalogItem={activeEditorItemId ? itemsById[activeEditorItemId] ?? null : null}

@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useReducer,
   useState,
   type Dispatch,
   type ReactNode,
@@ -51,9 +50,15 @@ type CatalogState = {
   revision: number;
 };
 
+export type CatalogMenu = {
+  id: string;
+  name: string;
+};
+
 type CatalogAction =
   | { type: "update-item"; id: string; patch: Partial<CatalogItem>; autosave: boolean }
   | { type: "add-item"; item: CatalogItem }
+  | { type: "add-section"; section: CatalogSection }
   | { type: "delete-item"; id: string }
   | { type: "move-item"; id: string; sectionId: string; sectionName: string; index?: number }
   | { type: "set-item-order"; sectionId: string; ids: string[] }
@@ -72,6 +77,85 @@ const WEEKLY_SCHEDULE_STORAGE_KEY = catalogStorageKey("weeklySchedule");
 function readRecord<T>(key: string): Record<string, T> {
   const value = readCatalogJson<unknown>(key, {});
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, T> : {};
+}
+
+function createCatalogState(sections: CatalogSection[], items: CatalogItem[]): CatalogState {
+  const sectionsById = Object.fromEntries(sections.map((section) => [section.id, section]));
+  const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
+  const itemOrderBySection = Object.fromEntries(sections.map((section) => [
+    section.id,
+    items.filter((item) => item.sectionId === section.id).map((item) => item.id),
+  ]));
+  return {
+    sectionsById,
+    itemsById,
+    sectionOrder: [...sections].sort((left, right) => left.sortOrder - right.sortOrder).map((section) => section.id),
+    itemOrderBySection,
+    autosaveByItem: {},
+    revision: 0,
+  };
+}
+
+function createMenuItem(
+  id: string,
+  title: string,
+  section: CatalogSection,
+  price: number,
+): CatalogItem {
+  return {
+    id,
+    title,
+    sectionId: section.id,
+    sectionName: section.name,
+    thumbnailUrl: null,
+    price,
+    priceWithSale: null,
+    status: "active",
+    scheduled: false,
+    guestLabels: [],
+    tags: [],
+    optionsCount: 0,
+    modifiersCount: 0,
+    recommendationsCount: 0,
+    displayMode: "full",
+    description: "",
+    hasDescription: false,
+    weightLabel: null,
+    nutritionFilledCount: 0,
+    translationFilledCount: 0,
+    translationTotalCount: 2,
+    hasDiscount: false,
+  };
+}
+
+const SUMMER_MENU_SECTIONS: CatalogSection[] = [
+  { id: "menu-summer-drinks", parentId: null, name: "Летние напитки", imageUrl: null, sortOrder: 0 },
+  { id: "menu-summer-desserts", parentId: null, name: "Летние десерты", imageUrl: null, sortOrder: 1 },
+];
+
+const BREAKFAST_MENU_SECTIONS: CatalogSection[] = [
+  { id: "menu-breakfast-main", parentId: null, name: "Завтраки", imageUrl: null, sortOrder: 0 },
+  { id: "menu-breakfast-drinks", parentId: null, name: "Утренние напитки", imageUrl: null, sortOrder: 1 },
+];
+
+function buildDemoMenuState(menuId: "summer" | "breakfast") {
+  const sections = menuId === "summer" ? SUMMER_MENU_SECTIONS : BREAKFAST_MENU_SECTIONS;
+  const items = menuId === "summer"
+    ? [
+        createMenuItem("menu-summer-lemonade", "Клубничный лимонад", sections[0], 1900),
+        createMenuItem("menu-summer-iced-tea", "Холодный чай с персиком", sections[0], 1700),
+        createMenuItem("menu-summer-tart", "Лимонная тарталетка", sections[1], 1500),
+      ]
+    : [
+        createMenuItem("menu-breakfast-omelet", "Омлет с томатами и сыром", sections[0], 2400),
+        createMenuItem("menu-breakfast-pancakes", "Панкейки с ягодами", sections[0], 2100),
+        createMenuItem("menu-breakfast-coffee", "Капучино", sections[1], 1100),
+      ];
+  return createCatalogState(sections, items);
+}
+
+function createEmptyCatalogState(): CatalogState {
+  return createCatalogState([], []);
 }
 
 function buildInitialState(): CatalogState {
@@ -171,6 +255,16 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
       revision: state.revision + 1,
     };
   }
+  if (action.type === "add-section") {
+    if (state.sectionsById[action.section.id]) return state;
+    return {
+      ...state,
+      sectionsById: { ...state.sectionsById, [action.section.id]: action.section },
+      sectionOrder: [...state.sectionOrder, action.section.id],
+      itemOrderBySection: { ...state.itemOrderBySection, [action.section.id]: [] },
+      revision: state.revision + 1,
+    };
+  }
   if (action.type === "delete-item") {
     if (!state.itemsById[action.id]) return state;
     const itemsById = { ...state.itemsById };
@@ -229,8 +323,16 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
 type CatalogStoreValue = CatalogState & {
   sections: CatalogSection[];
   items: CatalogItem[];
+  menus: CatalogMenu[];
+  activeMenuId: string;
+  activeMenu: CatalogMenu;
+  guestFacingMenuId: string;
+  selectMenu: (id: string) => void;
+  createMenu: (name: string) => void;
+  publishMenu: (id?: string) => void;
   updateItem: (id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => void;
   addItem: (item: CatalogItem) => void;
+  addSection: (section: CatalogSection) => void;
   deleteItem: (id: string) => void;
   moveItem: (id: string, sectionId: string, options?: { index?: number; sectionName?: string }) => void;
   archiveItem: (id: string) => void;
@@ -263,19 +365,50 @@ export type CatalogMutationFacade = {
 const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 
 export function CatalogStoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
-  const [activeEditorItemId, setActiveEditorItemId] = useState<string | null>(null);
-  const [upsellByItem, setUpsellByItem] = useState<CatalogUpsellStateByItem>(() => {
+  const [menus, setMenus] = useState<CatalogMenu[]>([
+    { id: "primary", name: "Основное меню" },
+    { id: "summer", name: "Летнее меню" },
+    { id: "breakfast", name: "Завтраки" },
+  ]);
+  const [activeMenuId, setActiveMenuId] = useState("primary");
+  const [guestFacingMenuId, setGuestFacingMenuId] = useState("primary");
+  const [menuStates, setMenuStates] = useState<Record<string, CatalogState>>(() => ({
+    primary: buildInitialState(),
+    summer: buildDemoMenuState("summer"),
+    breakfast: buildDemoMenuState("breakfast"),
+  }));
+  const state = menuStates[activeMenuId] ?? createEmptyCatalogState();
+  const dispatch = useCallback((action: CatalogAction) => {
+    setMenuStates((current) => ({
+      ...current,
+      [activeMenuId]: reducer(current[activeMenuId] ?? createEmptyCatalogState(), action),
+    }));
+  }, [activeMenuId]);
+  const [activeEditorItemByMenu, setActiveEditorItemByMenu] = useState<Record<string, string | null>>({});
+  const activeEditorItemId = activeEditorItemByMenu[activeMenuId] ?? null;
+  const setActiveEditorItemId = useCallback((id: string | null) => {
+    setActiveEditorItemByMenu((current) => ({ ...current, [activeMenuId]: id }));
+  }, [activeMenuId]);
+  const [upsellByMenu, setUpsellByMenu] = useState<Record<string, CatalogUpsellStateByItem>>(() => {
     const legacy = readCatalogUpsellState();
     const canonical = Object.fromEntries(
       Object.values(state.itemsById)
         .filter((item) => item.upsell)
         .map((item) => [item.id, item.upsell]),
     ) as CatalogUpsellStateByItem;
-    return { ...legacy, ...canonical };
+    return { primary: { ...legacy, ...canonical } };
   });
+  const upsellByItem = upsellByMenu[activeMenuId] ?? {};
+  const setUpsellByItem = useCallback<Dispatch<SetStateAction<CatalogUpsellStateByItem>>>((update) => {
+    setUpsellByMenu((current) => {
+      const previous = current[activeMenuId] ?? {};
+      const next = typeof update === "function" ? update(previous) : update;
+      return { ...current, [activeMenuId]: next };
+    });
+  }, [activeMenuId]);
 
   useEffect(() => {
+    if (activeMenuId !== "primary") return;
     const statuses: Record<string, CatalogItem["status"]> = {};
     const scheduled: Record<string, boolean> = {};
     const sections: Record<string, string> = {};
@@ -290,7 +423,7 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     writeCatalogJson(POSITION_ORDER_STORAGE_KEY, state.itemOrderBySection);
     writeCatalogItemRecords(Object.values(state.itemsById));
     window.dispatchEvent(new Event("tasko-catalog-status-change"));
-  }, [state.itemsById, state.itemOrderBySection]);
+  }, [activeMenuId, state.itemsById, state.itemOrderBySection]);
 
   useEffect(() => {
     Object.entries(upsellByItem).forEach(([id, upsell]) => {
@@ -298,22 +431,23 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
       if (!item || JSON.stringify(item.upsell ?? {}) === JSON.stringify(upsell)) return;
       dispatch({ type: "update-item", id, patch: { upsell }, autosave: true });
     });
-    writeCatalogUpsellState(upsellByItem);
-  }, [upsellByItem]);
+    if (activeMenuId === "primary") writeCatalogUpsellState(upsellByItem);
+  }, [activeMenuId, dispatch, state.itemsById, upsellByItem]);
 
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
-  }, []);
-  const addItem = useCallback((item: CatalogItem) => dispatch({ type: "add-item", item }), []);
-  const deleteItem = useCallback((id: string) => dispatch({ type: "delete-item", id }), []);
+  }, [dispatch]);
+  const addItem = useCallback((item: CatalogItem) => dispatch({ type: "add-item", item }), [dispatch]);
+  const addSection = useCallback((section: CatalogSection) => dispatch({ type: "add-section", section }), [dispatch]);
+  const deleteItem = useCallback((id: string) => dispatch({ type: "delete-item", id }), [dispatch]);
   const moveItem = useCallback((id: string, sectionId: string, options?: { index?: number; sectionName?: string }) => {
     const sectionName = options?.sectionName ?? state.sectionsById[sectionId]?.name;
     if (!sectionName) return;
     dispatch({ type: "move-item", id, sectionId, sectionName, index: options?.index });
-  }, [state.sectionsById]);
+  }, [dispatch, state.sectionsById]);
   const archiveItem = useCallback((id: string) => {
     dispatch({ type: "update-item", id, patch: { status: "archive" }, autosave: true });
-  }, []);
+  }, [dispatch]);
   const setItemStatus = useCallback((id: string, status: CatalogItem["status"], scheduled?: boolean) => {
     dispatch({
       type: "update-item",
@@ -321,18 +455,18 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
       patch: { status, ...(scheduled === undefined ? {} : { scheduled }) },
       autosave: true,
     });
-  }, []);
+  }, [dispatch]);
   const setItemOrder = useCallback((sectionId: string, ids: string[]) => {
     dispatch({ type: "set-item-order", sectionId, ids });
-  }, []);
+  }, [dispatch]);
   const replaceItemOrder = useCallback((order: Record<string, string[]>) => {
     dispatch({ type: "replace-item-order", order });
-  }, []);
+  }, [dispatch]);
   const createItem = useCallback((item: CatalogItem, options?: {
     order?: Record<string, string[]>;
     preserveLegacyOrderPersistence?: boolean;
   }) => {
-    if (options?.preserveLegacyOrderPersistence) {
+    if (options?.preserveLegacyOrderPersistence && activeMenuId === "primary") {
       const storedOrder = readCatalogJson<Record<string, string[]>>(POSITION_ORDER_STORAGE_KEY, {});
       const sectionIds = storedOrder[item.sectionId]
         ?? Object.values(state.itemsById)
@@ -347,15 +481,15 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     }
     dispatch({ type: "add-item", item });
     if (options?.order) dispatch({ type: "replace-item-order", order: options.order });
-  }, [state.itemsById]);
+  }, [activeMenuId, dispatch, state.itemsById]);
   const deleteItems = useCallback((ids: Iterable<string>) => {
     for (const id of ids) dispatch({ type: "delete-item", id });
-  }, []);
+  }, [dispatch]);
   const moveItems = useCallback((ids: Iterable<string>, sectionId: string, options?: { sectionName?: string }) => {
     const sectionName = options?.sectionName ?? state.sectionsById[sectionId]?.name;
     if (!sectionName) return;
     for (const id of ids) dispatch({ type: "move-item", id, sectionId, sectionName });
-  }, [state.sectionsById]);
+  }, [dispatch, state.sectionsById]);
   const mutations = useMemo<CatalogMutationFacade>(() => ({
     createItem,
     updateItem,
@@ -369,14 +503,37 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   }), [createItem, updateItem, deleteItems, moveItem, moveItems, setItemStatus, setItemOrder, replaceItemOrder]);
   const setAutosaveStatus = useCallback((id: string, status: CatalogSaveStatus) => {
     dispatch({ type: "set-autosave", id, status });
+  }, [dispatch]);
+  const selectMenu = useCallback((id: string) => {
+    if (menus.some((menu) => menu.id === id)) setActiveMenuId(id);
+  }, [menus]);
+  const createMenu = useCallback((rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+    const id = `menu-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setMenus((current) => [...current, { id, name }]);
+    setMenuStates((current) => ({ ...current, [id]: createEmptyCatalogState() }));
+    setActiveMenuId(id);
   }, []);
+  const publishMenu = useCallback((id = activeMenuId) => {
+    if (menus.some((menu) => menu.id === id)) setGuestFacingMenuId(id);
+  }, [activeMenuId, menus]);
+  const activeMenu = menus.find((menu) => menu.id === activeMenuId) ?? menus[0];
 
   const value = useMemo<CatalogStoreValue>(() => ({
     ...state,
     sections: state.sectionOrder.map((id) => state.sectionsById[id]).filter(Boolean),
     items: Object.values(state.itemsById),
+    menus,
+    activeMenuId,
+    activeMenu,
+    guestFacingMenuId,
+    selectMenu,
+    createMenu,
+    publishMenu,
     updateItem,
     addItem,
+    addSection,
     deleteItem,
     moveItem,
     archiveItem,
@@ -391,8 +548,16 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     mutations,
   }), [
     state,
+    menus,
+    activeMenuId,
+    activeMenu,
+    guestFacingMenuId,
+    selectMenu,
+    createMenu,
+    publishMenu,
     updateItem,
     addItem,
+    addSection,
     deleteItem,
     moveItem,
     archiveItem,

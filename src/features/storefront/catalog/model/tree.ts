@@ -1,5 +1,4 @@
-import type { CatalogItem } from "@/data/catalog";
-import type { CatalogTranslations } from "@/data/catalog";
+import type { CatalogAvailabilityScheduleMode, CatalogItem, CatalogTranslations, CatalogWeeklySchedule } from "@/data/catalog";
 
 export type CatalogAvailabilityMode = "always" | "unavailable" | "schedule";
 
@@ -14,6 +13,10 @@ export type CatalogTreeSection = {
   status?: "active" | "archive";
   visibility?: "visible" | "hidden";
   availabilityMode?: CatalogAvailabilityMode;
+  outsideScheduleMode?: "hidden" | "comingSoon";
+  weeklySchedule?: CatalogWeeklySchedule;
+  hasSchedule?: boolean;
+  availabilityScheduleMode?: CatalogAvailabilityScheduleMode;
   children?: CatalogTreeSection[];
 };
 

@@ -1,0 +1,378 @@
+import { useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { CaretUpDown, Copy } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
+import type {
+  CatalogAvailabilityScheduleMode,
+  CatalogScheduleDay,
+  CatalogScheduleDayKey,
+  CatalogWeeklySchedule,
+} from "@/data/catalog";
+import { cn } from "@/lib/utils";
+import {
+  CATALOG_DROPDOWN_CONTENT_CLASS,
+  CATALOG_DROPDOWN_ITEM_CLASS,
+  CATALOG_DROPDOWN_SEPARATOR_CLASS,
+} from "./catalog-dropdown";
+
+export type ScheduleDay = CatalogScheduleDay;
+export type ScheduleDayKey = CatalogScheduleDayKey;
+export type WeeklySchedule = CatalogWeeklySchedule;
+export type AvailabilityScheduleMode = CatalogAvailabilityScheduleMode;
+
+type ScheduleTimeRange = { start: string; end: string };
+
+const DEFAULT_TIME_RANGE: ScheduleTimeRange = { start: "09:00", end: "18:00" };
+
+export const DAY_LABELS: { key: ScheduleDayKey; label: string }[] = [
+  { key: "monday", label: "Понедельник" },
+  { key: "tuesday", label: "Вторник" },
+  { key: "wednesday", label: "Среда" },
+  { key: "thursday", label: "Четверг" },
+  { key: "friday", label: "Пятница" },
+  { key: "saturday", label: "Суббота" },
+  { key: "sunday", label: "Воскресенье" },
+];
+
+export function createDefaultWeeklySchedule(): WeeklySchedule {
+  return {
+    monday: { mode: "custom", timeRange: { ...DEFAULT_TIME_RANGE } },
+    tuesday: { mode: "allDay" },
+    wednesday: { mode: "unavailable" },
+    thursday: { mode: "allDay" },
+    friday: { mode: "unavailable" },
+    saturday: { mode: "allDay" },
+    sunday: { mode: "allDay" },
+  };
+}
+
+export function createEmptyWeeklySchedule(): WeeklySchedule {
+  return {
+    monday: { mode: "unavailable" },
+    tuesday: { mode: "unavailable" },
+    wednesday: { mode: "unavailable" },
+    thursday: { mode: "unavailable" },
+    friday: { mode: "unavailable" },
+    saturday: { mode: "unavailable" },
+    sunday: { mode: "unavailable" },
+  };
+}
+
+function timeToMinutes(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/** Converts schedules saved by the former multi-interval prototype to the new single-range model. */
+function getTimeRange(day: Extract<ScheduleDay, { mode: "custom" }>): ScheduleTimeRange {
+  const legacyDay = day as unknown as { timeRange?: ScheduleTimeRange; intervals?: ScheduleTimeRange[] };
+  return legacyDay.timeRange ?? legacyDay.intervals?.[0] ?? DEFAULT_TIME_RANGE;
+}
+
+function cloneDay(day: ScheduleDay): ScheduleDay {
+  return day.mode === "custom"
+    ? { mode: "custom", timeRange: { ...getTimeRange(day) } }
+    : { ...day };
+}
+
+function normalizeWeeklySchedule(schedule: WeeklySchedule): WeeklySchedule {
+  return DAY_LABELS.reduce<WeeklySchedule>((normalized, { key }) => {
+    normalized[key] = cloneDay(schedule[key]);
+    return normalized;
+  }, {} as WeeklySchedule);
+}
+
+export function validateDaySchedule(day: ScheduleDay): string[] {
+  if (day.mode !== "custom") return [];
+  const range = getTimeRange(day);
+  const start = timeToMinutes(range.start);
+  const end = timeToMinutes(range.end);
+  if (start == null || end == null) return ["Укажите время"];
+  if (start >= end) return ["Время начала должно быть раньше времени окончания"];
+  return [];
+}
+
+export function isWeeklyScheduleValid(schedule: WeeklySchedule) {
+  return DAY_LABELS.every((day) => validateDaySchedule(schedule[day.key]).length === 0);
+}
+
+const JS_DAY_TO_SCHEDULE_KEY: Record<number, ScheduleDayKey> = {
+  0: "sunday",
+  1: "monday",
+  2: "tuesday",
+  3: "wednesday",
+  4: "thursday",
+  5: "friday",
+  6: "saturday",
+};
+
+export function isWeeklyScheduleOrderable(
+  schedule: WeeklySchedule,
+  mode: AvailabilityScheduleMode,
+  now: Date,
+) {
+  const day = schedule[JS_DAY_TO_SCHEDULE_KEY[now.getDay()]];
+  if (day.mode === "allDay") return true;
+  if (day.mode === "unavailable") return false;
+  const range = getTimeRange(day);
+  const start = timeToMinutes(range.start);
+  const end = timeToMinutes(range.end);
+  const minute = now.getHours() * 60 + now.getMinutes();
+  const insideRange = start != null && end != null && start < end && minute >= start && minute < end;
+  return mode === "available" ? insideRange : !insideRange;
+}
+
+const DAY_MODE_OPTIONS = [
+  { value: "allDay", label: "Весь день" },
+  { value: "custom", label: "По часам" },
+  { value: "unavailable", label: "Недоступно" },
+] as const;
+
+function WeeklyScheduleRows({
+  scheduleId,
+  weeklySchedule,
+  onWeeklyScheduleChange,
+}: {
+  scheduleId: string;
+  weeklySchedule: WeeklySchedule;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
+  const schedule = normalizeWeeklySchedule(weeklySchedule);
+
+  const updateDay = (dayKey: ScheduleDayKey, day: ScheduleDay) => {
+    onWeeklyScheduleChange({ ...schedule, [dayKey]: cloneDay(day) });
+  };
+
+  const applyToAllDays = (day: ScheduleDay) => {
+    const next = DAY_LABELS.reduce<WeeklySchedule>((allDays, { key }) => {
+      allDays[key] = cloneDay(day);
+      return allDays;
+    }, {} as WeeklySchedule);
+    onWeeklyScheduleChange(next);
+  };
+
+  return (
+    <div data-weekly-schedule-id={scheduleId} className="overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white">
+      {DAY_LABELS.map(({ key, label }) => {
+        const day = schedule[key];
+        const timeRange = day.mode === "custom" ? getTimeRange(day) : null;
+        const errors = validateDaySchedule(day);
+        const statusLabel = day.mode === "allDay" ? "Весь день" : "Недоступно";
+        const setDayMode = (nextMode: ScheduleDay["mode"]) => {
+          updateDay(
+            key,
+            nextMode === "custom"
+              ? { mode: "custom", timeRange: day.mode === "custom" ? { ...getTimeRange(day) } : { ...DEFAULT_TIME_RANGE } }
+              : { mode: nextMode },
+          );
+        };
+
+        return (
+          <div
+            key={key}
+            data-schedule-day={key}
+            data-day-mode={day.mode}
+            className="flex h-[42px] items-center gap-2 border-b border-[#e7e5e4] px-3 last:border-b-0"
+          >
+            <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", day.mode === "unavailable" ? "text-[#a6a09b]" : "text-[#1c1917]")}>{label}</span>
+            <DropdownMenu.Root open={openDayMenu === key} onOpenChange={(open) => setOpenDayMenu(open ? key : null)}>
+              <div className={cn("flex shrink-0 items-center justify-end", day.mode === "custom" ? "w-[162px] gap-1" : "w-[120px]")}>
+                {timeRange ? (
+                  <>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={timeRange.start}
+                      aria-label={`${label}: начало интервала`}
+                      aria-invalid={errors.length > 0}
+                      onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, start: event.target.value } })}
+                      className={cn("h-7 w-[52px] rounded-[9px] border bg-white px-1 text-center text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5", errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]")}
+                    />
+                    <span className="px-0.5 text-[14px] leading-none text-[#79716b]">–</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={timeRange.end}
+                      aria-label={`${label}: конец интервала`}
+                      aria-invalid={errors.length > 0}
+                      onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, end: event.target.value } })}
+                      className={cn("h-7 w-[52px] rounded-[9px] border bg-white px-1 text-center text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5", errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]")}
+                    />
+                    <DropdownMenu.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`${label}: режим расписания`}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                      >
+                        <CaretUpDown size={16} className="shrink-0" />
+                      </button>
+                    </DropdownMenu.Trigger>
+                  </>
+                ) : (
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${label}: режим расписания`}
+                      className="flex h-8 w-full items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 text-[#57534d] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    >
+                      <span>{statusLabel}</span>
+                      <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                )}
+              </div>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                  collisionPadding={12}
+                  className={cn("z-[100006] min-w-[184px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+                >
+                  <DropdownMenu.RadioGroup
+                    value={day.mode}
+                    onValueChange={(value) => {
+                      setDayMode(value as ScheduleDay["mode"]);
+                      setOpenDayMenu(null);
+                    }}
+                  >
+                    {DAY_MODE_OPTIONS.map((option) => (
+                      <DropdownMenu.RadioItem
+                        key={option.value}
+                        value={option.value}
+                        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "w-full justify-start text-left text-[#44403b]")}
+                      >
+                        <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", day.mode === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
+                          <DropdownMenu.ItemIndicator>
+                            <span className="block size-2 rounded-full bg-[#292524]" />
+                          </DropdownMenu.ItemIndicator>
+                        </span>
+                        <span className="min-w-0 flex-1 text-left">{option.label}</span>
+                      </DropdownMenu.RadioItem>
+                    ))}
+                  </DropdownMenu.RadioGroup>
+                  <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      applyToAllDays(day);
+                      setOpenDayMenu(null);
+                    }}
+                    className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+                  >
+                    <Copy size={15} className="shrink-0 text-[#57534d]" />
+                    <span>Применить ко всем</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function CatalogWeeklyScheduleEditor({
+  scheduleId,
+  weeklySchedule,
+  onWeeklyScheduleChange,
+}: {
+  scheduleId: string;
+  weeklySchedule: WeeklySchedule;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  return (
+    <div data-weekly-schedule-editor={scheduleId}>
+      <WeeklyScheduleRows
+        scheduleId={scheduleId}
+        weeklySchedule={weeklySchedule}
+        onWeeklyScheduleChange={onWeeklyScheduleChange}
+      />
+    </div>
+  );
+}
+
+export function CatalogSchedulePopover({
+  scheduleId,
+  hasSchedule,
+  initialMode,
+  initialSchedule,
+  onSave,
+  onDelete,
+  onCancel,
+}: {
+  scheduleId: string;
+  hasSchedule: boolean;
+  initialMode: AvailabilityScheduleMode;
+  initialSchedule: WeeklySchedule;
+  onSave: (schedule: WeeklySchedule, mode: AvailabilityScheduleMode) => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  const [mode, setMode] = useState<AvailabilityScheduleMode>(initialMode);
+  const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(initialSchedule));
+
+  return (
+    <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
+      <div className="border-b border-[#e7e5e4] p-2.5">
+        <div role="group" aria-label="Способ задания расписания" className="grid h-8 grid-cols-2 rounded-lg bg-[#f5f5f4] p-0.5">
+          {(["available", "unavailable"] as AvailabilityScheduleMode[]).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              aria-pressed={mode === candidate}
+              onClick={() => setMode(candidate)}
+              className={cn(
+                "rounded-md px-2 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                mode === candidate
+                  ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-sm"
+                  : "text-[#79716b] hover:text-[#292524]",
+              )}
+            >
+              {candidate === "available" ? "Когда доступно" : "Когда недоступно"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <WeeklyScheduleRows
+        scheduleId={scheduleId}
+        weeklySchedule={schedule}
+        onWeeklyScheduleChange={setSchedule}
+      />
+
+      {hasSchedule && (
+        <div className="border-t border-[#e7e5e4] px-3 py-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onDelete}
+            className="px-2.5 text-[13px] font-medium text-[#c10007] hover:bg-[#fef2f2] hover:text-[#c10007]"
+          >
+            Удалить расписание
+          </Button>
+        </div>
+      )}
+      <div className="flex h-[55px] items-center justify-end gap-2 border-t border-[#e7e5e4] px-3">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel} className="h-8 rounded-[10px] text-[14px] font-medium text-[#79716b]">
+          Отмена
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!isWeeklyScheduleValid(schedule)}
+          onClick={() => onSave(schedule, mode)}
+          className="h-8 rounded-[10px] bg-[#4f39f6] px-3 text-[14px] font-medium text-white hover:bg-[#4338ca]"
+        >
+          {hasSchedule ? "Сохранить" : "Добавить расписание"}
+        </Button>
+      </div>
+    </div>
+  );
+}

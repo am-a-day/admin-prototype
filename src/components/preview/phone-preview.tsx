@@ -66,7 +66,6 @@ type PhonePreviewProps = {
   onNavUpsell: () => void;
   onNavAbout: () => void;
   onNavCatalogDish: (id: string) => void;
-  onCreateFirstItem: () => void;
   // SEO-сценарий
   seoTitle?: string;
   seoDescription?: string;
@@ -87,7 +86,6 @@ export function PhonePreview({
   onNavUpsell,
   onNavAbout,
   onNavCatalogDish,
-  onCreateFirstItem,
   seoTitle = "",
   seoDescription = "",
   catalogItem = null,
@@ -282,10 +280,10 @@ export function PhonePreview({
       );
     }
   } else if (scenario === "catalog-empty") {
-    screen = <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />;
+    screen = <PhoneCatalogEmpty restaurantName={restaurantName} />;
   } else if (activeTab === "catalog") {
     screen = catalogItems.length === 0 ? (
-      <PhoneCatalogEmpty restaurantName={restaurantName} onAddItem={onCreateFirstItem} />
+      <PhoneCatalogEmpty restaurantName={restaurantName} />
     ) : (
       <PhoneCatalog
         selectedDishId={selectedDishId}

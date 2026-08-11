@@ -7,8 +7,6 @@ import { usePlan } from "@/contexts/plan-context";
 import { usePlanStatus } from "@/lib/use-plan-status";
 import { cn } from "@/lib/utils";
 import { useMockAuth } from "@/contexts/mock-auth-context";
-import { usePublish } from "@/contexts/publish-context";
-import { useAppSettings } from "@/contexts/app-settings-context";
 
 // ── Plan features config ───────────────────────────────────────────────────────
 
@@ -324,35 +322,14 @@ function BillingWorkspace() {
 // ── Generic stub ──────────────────────────────────────────────────────────────
 
 function AccountWorkspace() {
-  const { account, updateWorkspace, updateWorkspaceNameTranslation } = useMockAuth();
-  const { contentLanguage } = useAppSettings();
-  const { registerChange } = usePublish();
-  const workspaceName =
-    account?.workspace.localizedNames[contentLanguage] ||
-    (account
-      ? account.workspace.localizedNames[account.workspace.primaryLanguage]
-      : undefined) ||
-    account?.workspace.name ||
-    "Новое меню";
-  const [name, setName] = useState(workspaceName);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const { account, updateAccountProfile } = useMockAuth();
+  const [firstName, setFirstName] = useState(account?.firstName ?? "");
+  const [lastName, setLastName] = useState(account?.lastName ?? "");
 
   useEffect(() => {
-    setName(workspaceName);
-  }, [account?.id, contentLanguage, workspaceName]);
-
-  const saveName = () => {
-    const nextName = name.trim() || "Новое меню";
-    if (nextName === workspaceName) return;
-    setSaveState("saving");
-    window.setTimeout(() => {
-      updateWorkspaceNameTranslation(contentLanguage, nextName);
-      registerChange("about");
-      setName(nextName);
-      setSaveState("saved");
-      window.setTimeout(() => setSaveState("idle"), 1800);
-    }, 350);
-  };
+    setFirstName(account?.firstName ?? "");
+    setLastName(account?.lastName ?? "");
+  }, [account?.id, account?.firstName, account?.lastName]);
 
   if (!account) return null;
 
@@ -361,90 +338,37 @@ function AccountWorkspace() {
       <PageContent>
         <SectionCard>
           <div className="max-w-[560px]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-[16px] font-semibold text-zinc-900">Основные данные</h2>
-                <p className="mt-1 text-[13px] text-zinc-500">Настройки сохраняются автоматически.</p>
-              </div>
-              {saveState !== "idle" && (
-                <span className="text-[12px] font-medium text-zinc-500">
-                  {saveState === "saving" ? "Сохранение…" : "Сохранено"}
-                </span>
-              )}
+            <div className="mb-4">
+              <h2 className="text-[16px] font-semibold text-zinc-900">Данные аккаунта</h2>
+              <p className="mt-1 text-[13px] text-zinc-500">Личные данные владельца аккаунта.</p>
             </div>
 
-            <label className="block text-[12px] font-semibold text-zinc-700" htmlFor="workspace-name">
-              Название заведения
-            </label>
-            <input
-              id="workspace-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              onBlur={saveName}
-              className="mt-1.5 h-10 w-full rounded-[10px] border border-zinc-200 bg-white px-3 text-[14px] text-zinc-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="text-[12px] font-semibold text-zinc-700">Имя</span>
+                <input
+                  id="profile-first-name"
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  onBlur={() => updateAccountProfile({ firstName: firstName.trim() })}
+                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <label>
+                <span className="text-[12px] font-semibold text-zinc-700">Фамилия</span>
+                <input
+                  id="profile-last-name"
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  onBlur={() => updateAccountProfile({ lastName: lastName.trim() })}
+                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+            </div>
 
-            <div className="mt-5 grid gap-3 border-t border-zinc-100 pt-4 sm:grid-cols-2">
-              <label>
-                <span className="text-[11px] font-semibold uppercase text-zinc-400">Тип заведения</span>
-                <select
-                  value={account.workspace.organizationType}
-                  onChange={(event) => {
-                    updateWorkspace({
-                      organizationType: event.target.value as typeof account.workspace.organizationType,
-                    });
-                    registerChange("about");
-                  }}
-                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="restaurant">Ресторан / общепит</option>
-                  <option value="store">Магазин</option>
-                  <option value="services">Услуги</option>
-                  <option value="other">Другое</option>
-                </select>
-              </label>
-              <div>
-                <div className="text-[11px] font-semibold uppercase text-zinc-400">Технический адрес</div>
-                <div className="mt-1 truncate text-[13px] font-medium text-zinc-700">
-                  {account.workspace.technicalAddress}
-                </div>
-              </div>
-              <label>
-                <span className="text-[11px] font-semibold uppercase text-zinc-400">Валюта</span>
-                <select
-                  value={account.workspace.currency}
-                  onChange={(event) => {
-                    updateWorkspace({ currency: event.target.value });
-                    registerChange("about");
-                  }}
-                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="KZT">KZT</option>
-                  <option value="RSD">RSD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                </select>
-              </label>
-              <div>
-                <div className="text-[11px] font-semibold uppercase text-zinc-400">Основной язык</div>
-                <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.workspace.primaryLanguage.toUpperCase()}</div>
-              </div>
-              <label>
-                <span className="text-[11px] font-semibold uppercase text-zinc-400">Часовой пояс</span>
-                <select
-                  value={account.workspace.timezone}
-                  onChange={(event) => {
-                    updateWorkspace({ timezone: event.target.value });
-                    registerChange("about");
-                  }}
-                  className="mt-1 h-9 w-full rounded-[8px] border border-zinc-200 bg-white px-2 text-[13px] font-medium text-zinc-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="Asia/Almaty">Казахстан · Asia/Almaty</option>
-                  <option value="Europe/Belgrade">Сербия · Europe/Belgrade</option>
-                  <option value="Europe/Warsaw">Central European Time</option>
-                  <option value="UTC">UTC</option>
-                </select>
-              </label>
+            <div className="mt-5 border-t border-zinc-100 pt-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Контакт для входа</div>
+              <div className="mt-1 text-[13px] font-medium text-zinc-700">{account.contact}</div>
             </div>
           </div>
         </SectionCard>

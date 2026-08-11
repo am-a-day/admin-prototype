@@ -15,13 +15,15 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowsOutCardinal, ArrowCounterClockwise, ArrowLeft, CaretDown, CaretRight, CheckCircle, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, Trash, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, Trash, X, XCircle } from "@phosphor-icons/react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { CatalogSaveStatus } from "@/contexts/catalog-store-context";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
@@ -41,7 +43,19 @@ import { catalogStorageKey } from "@/lib/catalog-preview";
 import { CATALOG_RECOMMENDATION_LIMIT, buildAutomaticRecommendations, resolveRecommendationIds, resolveRecommendationSource, type CatalogItemUpsellState, type CatalogLocalizedValue, type CatalogRecommendationSource } from "@/lib/catalog-upsell";
 import type { CatalogAvailabilityMode } from "../model/tree";
 import { getItemSearchText } from "../model/selectors";
-import { CatalogActionButton } from "../ui/catalog-action-button";
+import {
+  CatalogContextMenuContent,
+  type CatalogMenuAvailability,
+  type CatalogPositionAvailabilityMenuProps,
+  type CatalogStopDisplayMode,
+} from "../ui/catalog-context-menu";
+import {
+  CatalogWeeklyScheduleEditor,
+  CatalogSchedulePopover,
+  createDefaultWeeklySchedule,
+  isWeeklyScheduleOrderable,
+  type AvailabilityScheduleMode,
+} from "../ui/catalog-schedule-editor";
 import { DropdownActionItem, DropdownContent } from "../ui/catalog-dropdown";
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "../ui/move-anchor";
 import { DND_TRANSITION, restrictTableSortToVerticalAxis, usePrefersReducedMotion } from "../workspace/dnd";
@@ -49,6 +63,8 @@ import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from ".
 import { WorkspaceLocalTabs } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
+
+export { createDefaultWeeklySchedule, createEmptyWeeklySchedule, isWeeklyScheduleValid } from "../ui/catalog-schedule-editor";
 
 type AvailabilityMode = CatalogAvailabilityMode;
 const VIDEO_LIMIT_TOTAL = 10;
@@ -89,23 +105,18 @@ const optionKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
 };
 
 
-export type PositionEditorMode = "create" | "edit";
+export type PositionEditorMode = "create" | "create-modal" | "edit";
 export type UnavailableDisplayMode = "hidden" | "comingSoon";
 export type OutsideScheduleMode = "hidden" | "comingSoon";
 export type ScheduleDayKey = CatalogScheduleDayKey;
 export type DaySchedule = CatalogScheduleDay;
 export type WeeklySchedule = CatalogWeeklySchedule;
-export type PreviousAvailabilityState = {
-  status: CatalogItem["status"];
-  scheduled: boolean;
-};
 type LocalizedValue = CatalogLocalizedValue;
 
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
   { id: "promo", label: "Допродажа" },
   { id: "options", label: "Опции" },
-  { id: "availability", label: "Доступность" },
   { id: "display", label: "Отображение" },
 ];
 const editorTabByItem = new Map<string, EditorTab>();
@@ -318,7 +329,7 @@ function MediaTile({
             <DotsThreeVertical size={16} weight="bold" />
           </button>
         </DropdownMenu.Trigger>
-        <DropdownContent align="start">
+        <DropdownContent align="end">
           <DropdownActionItem onSelect={onReplace}>{isVideo ? "Заменить видео" : "Заменить фото"}</DropdownActionItem>
           {isVideo && <DropdownActionItem onSelect={onReplace}>Поменять обложку</DropdownActionItem>}
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
@@ -522,6 +533,7 @@ function BasicTab({
   onRemoveMedia,
   onDescriptionChange,
   autoFocusName = false,
+  hideName = false,
   namePlaceholder = "Введите перевод…",
   onNameChange,
   onWeightChange,
@@ -547,6 +559,7 @@ function BasicTab({
   onRemoveMedia: (id: string) => void;
   onDescriptionChange?: (value: string) => void;
   autoFocusName?: boolean;
+  hideName?: boolean;
   namePlaceholder?: string;
   onNameChange?: (value: string) => void;
   onWeightChange?: (value: string, unit: string) => void;
@@ -582,21 +595,24 @@ function BasicTab({
         />
       </div>
 
-      <TranslatableField
-        key={`name-${item.id}`}
-        label="Название"
-        initialTranslations={initialTranslations}
-        showTranslationMeta={false}
-        plain
-        autoFocus={autoFocusName}
-        persist={false}
-        placeholder={namePlaceholder}
-        onValueChange={onNameChange}
-        onChange={(translations) => {
-          onTitleChange?.(translations.ru ?? item.title);
-          onTitleTranslationsChange?.(translations);
-        }}
-      />
+      {!hideName && (
+        <TranslatableField
+          key={`name-${item.id}`}
+          label="Название"
+          initialTranslations={initialTranslations}
+          showTranslationMeta={false}
+          plain
+          autoFocus={autoFocusName}
+          inputAriaLabel="Название позиции"
+          persist={false}
+          placeholder={namePlaceholder}
+          onValueChange={onNameChange}
+          onChange={(translations) => {
+            onTitleChange?.(translations.ru ?? item.title);
+            onTitleTranslationsChange?.(translations);
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
@@ -1879,112 +1895,161 @@ export function PromoTab({
   );
 }
 
-function StopQuickActionButton({
+function PositionAvailabilityControl({
   item,
+  menuProps,
   busy,
-  onToggleStop,
 }: {
   item: CatalogItem;
+  menuProps: CatalogPositionAvailabilityMenuProps;
   busy: boolean;
-  onToggleStop: (item: CatalogItem) => void;
 }) {
-  if (item.status !== "active" && item.status !== "stopped") return null;
-  const stopped = item.status === "stopped";
-  const label = stopped ? "Снять со стопа" : "Поставить на стоп";
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"main" | "schedule" | "behavior">("main");
+  useEffect(() => {
+    if (!open) setView("main");
+  }, [open]);
+  if (item.status === "archive") return null;
+  const effective = getEffectiveAvailability(item, new Date(), {
+    unavailableDisplayMode: menuProps.unavailableDisplayMode,
+    outsideScheduleMode: menuProps.unavailableDisplayMode,
+    weeklySchedule: menuProps.weeklySchedule,
+    scheduleMode: menuProps.scheduleMode,
+  });
+  const state = menuProps.manualStopped ? "stopped" : effective.orderable ? "available" : "unavailable";
+  const label = state === "stopped" ? "На стопе" : state === "unavailable" ? "Недоступно" : "Доступно";
+  const Icon = state === "stopped" ? Prohibit : state === "unavailable" ? Clock : CheckCircle;
 
   return (
-    <CatalogActionButton
-      icon={stopped ? ArrowCounterClockwise : Prohibit}
-      onClick={() => onToggleStop(item)}
-      disabled={busy}
-      loading={busy}
-      tooltipLabel={label}
-      ariaLabel={label}
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setView("main");
+      }}
     >
-      {label}
-    </CatalogActionButton>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-position-availability-trigger
+          disabled={busy}
+          className={cn(
+            "flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[#e7e5e4] bg-white px-2.5 text-[13px] font-medium text-[#292524] shadow-sm transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50",
+            state === "stopped" && "border-[#fde68a] bg-[#fffbeb] hover:bg-[#fef3c7]",
+          )}
+        >
+          <Icon size={16} className={cn("shrink-0", state === "stopped" ? "text-[#a16207]" : "text-[#57534d]")} />
+          <span>{label}</span>
+          <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="end"
+        sideOffset={4}
+        collisionPadding={12}
+        className={cn(
+          "z-[100005] p-1",
+          view === "schedule" ? "w-auto border-0 bg-transparent p-0 shadow-none" : "w-[230px] rounded-[10px]",
+        )}
+      >
+        {view === "main" && (
+          <div className="space-y-0.5" role="menu" aria-label="Доступность позиции">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                menuProps.onManualStopChange(!menuProps.manualStopped);
+                setOpen(false);
+              }}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {menuProps.manualStopped ? <CheckCircle size={15} /> : <Prohibit size={15} />}
+              {menuProps.manualStopped ? "Снять со стопа" : "Поставить на стоп"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => setView("schedule")}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <Clock size={15} />
+              <span className="min-w-0 flex-1 truncate">{menuProps.hasSchedule ? "Расписание" : "Добавить расписание"}</span>
+              <CaretRight size={13} weight="bold" className="text-[#a8a29e]" />
+            </button>
+            <div className="my-1 h-px bg-[#e7e5e4]" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => setView("behavior")}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <span className="min-w-0 flex-1 truncate">Когда недоступно</span>
+              <CaretRight size={13} weight="bold" className="text-[#a8a29e]" />
+            </button>
+          </div>
+        )}
+        {view === "schedule" && (
+          <CatalogSchedulePopover
+            scheduleId={menuProps.scheduleId}
+            hasSchedule={menuProps.hasSchedule}
+            initialMode={menuProps.scheduleMode}
+            initialSchedule={menuProps.weeklySchedule}
+            onCancel={() => setView("main")}
+            onDelete={() => {
+              menuProps.onScheduleDelete();
+              setOpen(false);
+            }}
+            onSave={(schedule, mode) => {
+              menuProps.onScheduleSave(schedule, mode);
+              setOpen(false);
+            }}
+          />
+        )}
+        {view === "behavior" && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setView("main")}
+              className="mb-1 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] hover:bg-[#f5f5f4]"
+            >
+              <ArrowLeft size={14} weight="bold" />
+              Когда недоступно
+            </button>
+            {([
+              { value: "hidden", label: "Скрывать позицию" },
+              { value: "comingSoon", label: "Показывать «Скоро будет»" },
+            ] as const).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={menuProps.unavailableDisplayMode === option.value}
+                onClick={() => {
+                  menuProps.onUnavailableDisplayModeChange(option.value);
+                  setOpen(false);
+                }}
+                className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-[#44403b] hover:bg-[#f5f5f4]"
+              >
+                <span className="min-w-0 flex-1">{option.label}</span>
+                {menuProps.unavailableDisplayMode === option.value && <Check size={14} weight="bold" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-function getAvailabilityMode(item: CatalogItem): AvailabilityMode {
-  if (item.status === "stopped") return "unavailable";
-  if (item.scheduled) return "schedule";
-  return "always";
+type ItemBaseAvailabilityMode = Exclude<AvailabilityMode, "unavailable">;
+
+export function isItemStopOverrideActive(item: CatalogItem) {
+  return item.status === "stopped" || item.status === "coming-soon";
 }
 
-const DAY_LABELS: { key: ScheduleDayKey; label: string }[] = [
-  { key: "monday", label: "Понедельник" },
-  { key: "tuesday", label: "Вторник" },
-  { key: "wednesday", label: "Среда" },
-  { key: "thursday", label: "Четверг" },
-  { key: "friday", label: "Пятница" },
-  { key: "saturday", label: "Суббота" },
-  { key: "sunday", label: "Воскресенье" },
-];
-
-const JS_DAY_TO_SCHEDULE_KEY: Record<number, ScheduleDayKey> = {
-  0: "sunday",
-  1: "monday",
-  2: "tuesday",
-  3: "wednesday",
-  4: "thursday",
-  5: "friday",
-  6: "saturday",
-};
-
-export function createDefaultWeeklySchedule(): WeeklySchedule {
-  return {
-    monday: { mode: "custom", intervals: [{ start: "09:00", end: "18:00" }] },
-    tuesday: { mode: "allDay" },
-    wednesday: { mode: "unavailable" },
-    thursday: { mode: "allDay" },
-    friday: { mode: "unavailable" },
-    saturday: { mode: "allDay" },
-    sunday: { mode: "allDay" },
-  };
-}
-
-function timeToMinutes(value: string) {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours > 23 || minutes > 59) return null;
-  return hours * 60 + minutes;
-}
-
-function validateDaySchedule(day: DaySchedule): string[] {
-  if (day.mode !== "custom") return [];
-  const errors: string[] = [];
-  const intervals = day.intervals;
-  const normalized = intervals.map((interval) => ({
-    start: timeToMinutes(interval.start),
-    end: timeToMinutes(interval.end),
-  }));
-
-  normalized.forEach((interval) => {
-    if (interval.start == null || interval.end == null) {
-      errors.push("Укажите время");
-    } else if (interval.start >= interval.end) {
-      errors.push("Время начала должно быть раньше времени окончания");
-    }
-  });
-
-  const valid = normalized
-    .filter((interval): interval is { start: number; end: number } => interval.start != null && interval.end != null && interval.start < interval.end)
-    .sort((a, b) => a.start - b.start);
-  for (let index = 1; index < valid.length; index += 1) {
-    if (valid[index - 1].end > valid[index].start) {
-      errors.push("Интервалы не должны пересекаться");
-      break;
-    }
-  }
-
-  return Array.from(new Set(errors));
-}
-
-export function isWeeklyScheduleValid(schedule: WeeklySchedule) {
-  return DAY_LABELS.every((day) => validateDaySchedule(schedule[day.key]).length === 0);
+export function getItemBaseAvailabilityMode(item: CatalogItem): ItemBaseAvailabilityMode {
+  return item.scheduled ? "schedule" : "always";
 }
 
 export function getEffectiveAvailability(
@@ -1994,39 +2059,31 @@ export function getEffectiveAvailability(
     unavailableDisplayMode: UnavailableDisplayMode;
     outsideScheduleMode: OutsideScheduleMode;
     weeklySchedule: WeeklySchedule;
+    scheduleMode?: AvailabilityScheduleMode;
   },
 ) {
+  const unavailableDisplay = settings.unavailableDisplayMode ?? settings.outsideScheduleMode;
   if (item.status === "archive") return { visible: false, orderable: false, badge: "В архиве" as const };
-  if (getAvailabilityMode(item) === "unavailable") {
+  if (isItemStopOverrideActive(item)) {
     return {
-      visible: settings.unavailableDisplayMode === "comingSoon",
+      visible: unavailableDisplay === "comingSoon",
       orderable: false,
-      badge: settings.unavailableDisplayMode === "comingSoon" ? ("Скоро будет" as const) : null,
+      badge: unavailableDisplay === "comingSoon" ? ("Скоро будет" as const) : null,
     };
   }
-  if (getAvailabilityMode(item) === "always") return { visible: true, orderable: true, badge: null };
+  if (getItemBaseAvailabilityMode(item) === "always") return { visible: true, orderable: true, badge: null };
 
-  const day = settings.weeklySchedule[JS_DAY_TO_SCHEDULE_KEY[now.getDay()]];
-  if (day.mode === "allDay") return { visible: true, orderable: true, badge: null };
-  if (day.mode === "unavailable") {
-    return {
-      visible: settings.outsideScheduleMode === "comingSoon",
-      orderable: false,
-      badge: settings.outsideScheduleMode === "comingSoon" ? ("Скоро будет" as const) : null,
-    };
-  }
-  const minute = now.getHours() * 60 + now.getMinutes();
-  const inside = day.intervals.some((interval) => {
-    const start = timeToMinutes(interval.start);
-    const end = timeToMinutes(interval.end);
-    return start != null && end != null && start < end && minute >= start && minute < end;
-  });
-  return inside
+  const orderable = isWeeklyScheduleOrderable(
+    settings.weeklySchedule,
+    settings.scheduleMode ?? "available",
+    now,
+  );
+  return orderable
     ? { visible: true, orderable: true, badge: null }
     : {
-        visible: settings.outsideScheduleMode === "comingSoon",
+        visible: unavailableDisplay === "comingSoon",
         orderable: false,
-        badge: settings.outsideScheduleMode === "comingSoon" ? ("Скоро будет" as const) : null,
+        badge: unavailableDisplay === "comingSoon" ? ("Скоро будет" as const) : null,
       };
 }
 
@@ -2072,10 +2129,6 @@ function AvailabilityEditor({
   unavailableNested?: AvailabilityNestedDisplayCopy;
   scheduleNested: AvailabilityNestedDisplayCopy;
 }) {
-  const updateDay = (dayKey: ScheduleDayKey, day: DaySchedule) => {
-    onWeeklyScheduleChange({ ...weeklySchedule, [dayKey]: day });
-  };
-
   const renderSegmented = <T extends string,>(
     value: T,
     onChange: (next: T) => void,
@@ -2119,112 +2172,6 @@ function AvailabilityEditor({
       </div>
     </div>
   );
-
-  const renderDayRow = (dayKey: ScheduleDayKey, label: string) => {
-    const day = weeklySchedule[dayKey];
-    const errors = validateDaySchedule(day);
-    const muted = day.mode === "unavailable";
-    const setMode = (nextMode: DaySchedule["mode"]) => {
-      if (nextMode === "custom") {
-        updateDay(dayKey, day.mode === "custom" ? day : { mode: "custom", intervals: [{ start: "09:00", end: "18:00" }] });
-      } else {
-        updateDay(dayKey, { mode: nextMode });
-      }
-    };
-    const intervals = day.mode === "custom" ? day.intervals : [];
-
-    return (
-      <div key={dayKey} className={cn("border-b border-[#eceae7] last:border-b-0", muted && "text-[#a8a29e]")}>
-        <div className="flex min-h-[46px] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-          <div className={cn("w-[112px] shrink-0 text-[13px] font-medium leading-5", muted ? "text-[#a8a29e]" : "text-[#44403b]")}>
-            {label}
-          </div>
-          <div className="min-w-[190px] flex-1">
-            {day.mode === "allDay" && <div className="text-[13px] leading-5 text-[#79716b]">Круглосуточно</div>}
-            {day.mode === "unavailable" && <div className="text-[13px] leading-5 text-[#a8a29e]">Недоступно</div>}
-            {day.mode === "custom" && (
-              <div className="space-y-1.5">
-                {intervals.map((interval, index) => {
-                  const errorId = `${scheduleId}-${dayKey}-${index}-time-error`;
-                  const intervalErrors = validateDaySchedule({ mode: "custom", intervals: [interval] });
-                  return (
-                    <div key={index} className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="time"
-                        value={interval.start}
-                        aria-label={`${label}: начало интервала ${index + 1}`}
-                        aria-describedby={intervalErrors.length > 0 ? errorId : undefined}
-                        onChange={(event) => {
-                          const nextIntervals = intervals.map((current, currentIndex) =>
-                            currentIndex === index ? { ...current, start: event.target.value } : current,
-                          );
-                          updateDay(dayKey, { mode: "custom", intervals: nextIntervals });
-                        }}
-                        className="h-[30px] rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
-                      />
-                      <span className="text-[13px] text-[#a8a29e]">—</span>
-                      <input
-                        type="time"
-                        value={interval.end}
-                        aria-label={`${label}: конец интервала ${index + 1}`}
-                        aria-describedby={intervalErrors.length > 0 ? errorId : undefined}
-                        onChange={(event) => {
-                          const nextIntervals = intervals.map((current, currentIndex) =>
-                            currentIndex === index ? { ...current, end: event.target.value } : current,
-                          );
-                          updateDay(dayKey, { mode: "custom", intervals: nextIntervals });
-                        }}
-                        className="h-[30px] rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd]"
-                      />
-                      {index > 0 && (
-                        <button
-                          type="button"
-                          aria-label={`${label}: удалить интервал ${index + 1}`}
-                          onClick={() => updateDay(dayKey, { mode: "custom", intervals: intervals.filter((_, currentIndex) => currentIndex !== index) })}
-                          className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                        >
-                          <Trash size={14} />
-                        </button>
-                      )}
-                      {intervalErrors.length > 0 && <div id={errorId} className="basis-full text-[12px] leading-4 text-[#b42318]">{intervalErrors[0]}</div>}
-                    </div>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => updateDay(dayKey, { mode: "custom", intervals: [...intervals, { start: "17:00", end: "22:00" }] })}
-                  className="inline-flex h-7 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <PlusCircle size={13} />
-                  Добавить интервал
-                </button>
-              </div>
-            )}
-          </div>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="ml-auto flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                aria-label={`${label}: режим доступности`}
-              >
-                {day.mode === "allDay" ? "Круглосуточно" : day.mode === "custom" ? "Свое время" : "Недоступно"}
-                <CaretDown size={12} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              <DropdownActionItem onSelect={() => setMode("allDay")}>Круглосуточно</DropdownActionItem>
-              <DropdownActionItem onSelect={() => setMode("custom")}>Свое время</DropdownActionItem>
-              <DropdownActionItem onSelect={() => setMode("unavailable")}>Недоступно</DropdownActionItem>
-            </DropdownContent>
-          </DropdownMenu.Root>
-        </div>
-        {errors.length > 0 && day.mode === "custom" && (
-          <div className="px-3 pb-2 pl-[128px] text-[12px] leading-4 text-[#b42318]">{errors[0]}</div>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div>
@@ -2276,8 +2223,12 @@ function AvailabilityEditor({
                     scheduleNested.hiddenText,
                     scheduleNested.comingSoonText,
                   )}
-                  <div className="mt-4 overflow-hidden rounded-[10px] border border-[#e7e5e4] bg-white">
-                    {DAY_LABELS.map((day) => renderDayRow(day.key, day.label))}
+                  <div className="mt-4">
+                    <CatalogWeeklyScheduleEditor
+                      scheduleId={scheduleId}
+                      weeklySchedule={weeklySchedule}
+                      onWeeklyScheduleChange={onWeeklyScheduleChange}
+                    />
                   </div>
                 </div>
               )}
@@ -2286,71 +2237,6 @@ function AvailabilityEditor({
         })}
       </div>
     </div>
-  );
-}
-
-function AvailabilityTab({
-  item,
-  stopBusy,
-  onSetAvailabilityMode,
-  unavailableDisplayMode,
-  outsideScheduleMode,
-  weeklySchedule,
-  onUnavailableDisplayModeChange,
-  onOutsideScheduleModeChange,
-  onWeeklyScheduleChange,
-}: {
-  item: CatalogItem;
-  stopBusy: boolean;
-  onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
-  unavailableDisplayMode: UnavailableDisplayMode;
-  outsideScheduleMode: OutsideScheduleMode;
-  weeklySchedule: WeeklySchedule;
-  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
-  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
-  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
-}) {
-  return (
-    <AvailabilityEditor
-      mode={getAvailabilityMode(item)}
-      options={[
-        {
-          id: "always",
-          title: "Можно заказать",
-          description: "Доступно для заказа в любое время",
-        },
-        {
-          id: "unavailable",
-          title: "Нельзя заказать",
-          description: "Гости не смогут добавить позицию в заказ",
-          disabled: stopBusy,
-        },
-        {
-          id: "schedule",
-          title: "По расписанию",
-          description: "Доступно только в указанные дни и часы",
-        },
-      ]}
-      ariaLabel="Доступность позиции"
-      scheduleId={item.id}
-      unavailableDisplayMode={unavailableDisplayMode}
-      outsideScheduleMode={outsideScheduleMode}
-      weeklySchedule={weeklySchedule}
-      onModeChange={(mode) => onSetAvailabilityMode(item, mode)}
-      onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
-      onOutsideScheduleModeChange={onOutsideScheduleModeChange}
-      onWeeklyScheduleChange={onWeeklyScheduleChange}
-      unavailableNested={{
-        label: "В меню:",
-        hiddenText: "Позиция не будет отображаться в меню, пока недоступна",
-        comingSoonText: "Позиция останется в меню с отметкой «Скоро будет»",
-      }}
-      scheduleNested={{
-        label: "Вне расписания:",
-        hiddenText: "Позиция не будет отображаться в меню вне расписания",
-        comingSoonText: "Позиция останется в меню с отметкой «Скоро будет» вне расписания",
-      }}
-    />
   );
 }
 
@@ -3100,7 +2986,6 @@ export function PositionEditor({
   onUpsellChange,
   stopBusy,
   onArchiveItem,
-  onRestoreItem,
   onMoveItem,
   onToggleStop,
   onSetAvailabilityMode,
@@ -3111,8 +2996,10 @@ export function PositionEditor({
   onOutsideScheduleModeChange,
   onWeeklyScheduleChange,
   onRequestPermanentDelete,
-  breadcrumb,
+  onDuplicateItem,
   headerMeta,
+  autosaveStatus = "idle",
+  onRetrySave,
   onDescriptionChange,
   onMediaAdded,
   onDraftChange,
@@ -3122,11 +3009,12 @@ export function PositionEditor({
   onCancelCreate,
   createDisabled = false,
   createSubmitting = false,
+  creationDestination,
+  creationFooter,
   onItemChange,
   forcedEditorTab,
   focusAnchor,
   forceBasicTabOnItemChange = false,
-  showStopQuickAction = true,
 }: {
   item: CatalogItem;
   mode?: PositionEditorMode;
@@ -3146,8 +3034,10 @@ export function PositionEditor({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onRequestPermanentDelete: (item: CatalogItem) => void;
-  breadcrumb?: ReactNode;
+  onDuplicateItem?: (item: CatalogItem) => void;
   headerMeta?: ReactNode;
+  autosaveStatus?: CatalogSaveStatus;
+  onRetrySave?: () => void;
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
   onDraftChange?: (patch: Partial<CatalogItem>) => void;
@@ -3157,11 +3047,12 @@ export function PositionEditor({
   onCancelCreate?: () => void;
   createDisabled?: boolean;
   createSubmitting?: boolean;
+  creationDestination?: ReactNode;
+  creationFooter?: ReactNode;
   onItemChange?: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   forcedEditorTab?: EditorTab;
   focusAnchor?: EditorFocusAnchor;
   forceBasicTabOnItemChange?: boolean;
-  showStopQuickAction?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>(() => editorTabByItem.get(item.id) ?? "basic");
   const editorScrollRef = useRef<HTMLDivElement | null>(null);
@@ -3172,18 +3063,37 @@ export function PositionEditor({
   const [discountOpen, setDiscountOpen] = useState(item.hasDiscount);
   const [discountAutofocusKey, setDiscountAutofocusKey] = useState(0);
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(item.title);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const activeTabRef = useRef(activeTab);
+  const mountedItemRef = useRef(false);
 
-  const nextForcedTab = forcedEditorTab ?? (mode === "create" || forceBasicTabOnItemChange ? "basic" : undefined);
+  const creationCanvas = mode === "create-modal";
+  const nextForcedTab = forcedEditorTab ?? (mode !== "edit" || forceBasicTabOnItemChange ? "basic" : undefined);
 
   useEffect(() => {
-    setActiveTab(nextForcedTab ?? editorTabByItem.get(item.id) ?? "basic");
+    const nextTab = mountedItemRef.current
+      ? forceBasicTabOnItemChange
+        ? "basic"
+        : editorTabByItem.get(item.id) ?? activeTabRef.current
+      : nextForcedTab ?? editorTabByItem.get(item.id) ?? "basic";
+    mountedItemRef.current = true;
+    activeTabRef.current = nextTab;
+    setActiveTab(nextTab);
     setMedia(getInitialMedia(item));
     setBasePriceText(item.price ? formatMoneyInput(item.price) : "");
     setWeightUnit(item.weightLabel?.replace(/[\d.,\s]/g, "").trim() || "г");
     setDiscountOpen(item.hasDiscount);
     setDiscountAutofocusKey(0);
     setKbjuOpen(item.nutritionFilledCount > 0);
+    setTitleEditing(false);
+    setTitleDraft(item.title);
   }, [item.id, nextForcedTab]);
+
+  useEffect(() => {
+    if (!titleEditing) setTitleDraft(item.title);
+  }, [item.title, titleEditing]);
 
   useEffect(() => {
     if (!focusAnchor) return;
@@ -3197,6 +3107,7 @@ export function PositionEditor({
 
   const selectEditorTab = (tab: EditorTab) => {
     editorTabByItem.set(item.id, tab);
+    activeTabRef.current = tab;
     setActiveTab(tab);
   };
 
@@ -3259,89 +3170,206 @@ export function PositionEditor({
   };
   const basePrice = parseMoneyInput(basePriceText);
   const isArchived = item.status === "archive";
+  const manualStopped = isItemStopOverrideActive(item);
+  const positionAvailabilityMenuProps: CatalogPositionAvailabilityMenuProps = {
+    scheduleId: `item-${item.id}`,
+    manualStopped,
+    hasSchedule: item.scheduled,
+    scheduleMode: item.availabilityScheduleMode ?? "available",
+    weeklySchedule,
+    unavailableDisplayMode,
+    onManualStopChange: (stopped) => {
+      if (stopped !== manualStopped) onToggleStop(item);
+    },
+    onScheduleSave: (schedule, scheduleMode) => {
+      const patch = {
+        weeklySchedule: schedule,
+        scheduled: true,
+        availabilityScheduleMode: scheduleMode,
+      } satisfies Partial<CatalogItem>;
+      if (onItemChange) onItemChange(item, patch);
+      else if (onDraftChange) onDraftChange(patch);
+      else {
+        onWeeklyScheduleChange(schedule);
+        onSetAvailabilityMode(item, "schedule");
+      }
+    },
+    onScheduleDelete: () => {
+      const patch = {
+        scheduled: false,
+        weeklySchedule: undefined,
+        availabilityScheduleMode: undefined,
+      } satisfies Partial<CatalogItem>;
+      if (onItemChange) onItemChange(item, patch);
+      else if (onDraftChange) onDraftChange(patch);
+      else onSetAvailabilityMode(item, "always");
+    },
+    onUnavailableDisplayModeChange: (displayMode) => {
+      const patch = {
+        unavailableDisplayMode: displayMode,
+        outsideScheduleMode: displayMode,
+      } satisfies Partial<CatalogItem>;
+      if (onItemChange) onItemChange(item, patch);
+      else if (onDraftChange) onDraftChange(patch);
+      else {
+        onUnavailableDisplayModeChange(displayMode);
+        onOutsideScheduleModeChange(displayMode);
+      }
+    },
+  };
+
+  const startTitleEditing = () => {
+    setTitleDraft(item.title);
+    setTitleEditing(true);
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 0);
+  };
+
+  const commitTitle = () => {
+    const nextTitle = titleDraft.trim();
+    if (nextTitle && nextTitle !== item.title) onItemChange?.(item, { title: nextTitle });
+    setTitleEditing(false);
+  };
 
   const addRowClass =
     "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
 
-  const renderPositionActionsMenu = (trigger: ReactNode) => (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
-      <DropdownContent align="end">
-        {isArchived ? (
-          <>
-            <DropdownActionItem onSelect={() => onRestoreItem(item)}>Восстановить из архива</DropdownActionItem>
-            <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
-            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            <DropdownActionItem tone="danger" onSelect={() => onRequestPermanentDelete(item)}>
-              Удалить навсегда
-            </DropdownActionItem>
-          </>
-        ) : (
-          <>
-            {(item.status === "active" || item.status === "stopped") && (
-              <DropdownActionItem disabled={stopBusy} onSelect={() => onToggleStop(item)}>
-                {item.status === "stopped" ? "Вернуть в продажу" : "Поставить на стоп"}
-              </DropdownActionItem>
-            )}
-            <DropdownActionItem icon={ArrowsOutCardinal} onSelect={(event) => onMoveItem(item, getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
-            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            <DropdownActionItem onSelect={() => onArchiveItem(item)}>Архивировать</DropdownActionItem>
-          </>
-        )}
-      </DropdownContent>
-    </DropdownMenu.Root>
-  );
+  const renderPositionActionsMenu = (trigger: ReactNode) => {
+    const availability: CatalogMenuAvailability = item.status === "stopped" || item.status === "coming-soon"
+      ? "stopped"
+      : item.scheduled
+        ? "scheduled"
+        : "available";
+    const stopDisplayMode: CatalogStopDisplayMode = unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
+    return (
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+        <DropdownContent align="start">
+          <CatalogContextMenuContent
+            entity="item"
+            showAvailability
+            scheduleId={`item-${item.id}`}
+            availability={availability}
+            stopDisplayMode={stopDisplayMode}
+            outsideScheduleMode={outsideScheduleMode}
+            weeklySchedule={weeklySchedule}
+            archiveDisabled={isArchived}
+            onRename={startTitleEditing}
+            onMove={(event) => onMoveItem(item, getMovePopoverAnchor(event))}
+            onDuplicate={onDuplicateItem ? () => onDuplicateItem(item) : undefined}
+            onAvailabilityChange={(value) => {
+              if (value === "available") onSetAvailabilityMode(item, "always");
+              if (value === "scheduled") onSetAvailabilityMode(item, "schedule");
+            }}
+            onStopDisplayModeChange={(value) => {
+              onUnavailableDisplayModeChange(value);
+              onSetAvailabilityMode(item, "unavailable");
+            }}
+            onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+            onWeeklyScheduleChange={onWeeklyScheduleChange}
+            onResetSchedule={() => {
+              onSetAvailabilityMode(item, "always");
+              onUnavailableDisplayModeChange("hidden");
+              onOutsideScheduleModeChange("hidden");
+              onWeeklyScheduleChange(createDefaultWeeklySchedule());
+            }}
+            onArchive={() => onArchiveItem(item)}
+            onDelete={() => onRequestPermanentDelete(item)}
+            positionAvailability={positionAvailabilityMenuProps}
+          />
+        </DropdownContent>
+      </DropdownMenu.Root>
+    );
+  };
 
   const positionActions = (
-    <div className="ml-auto flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+      {autosaveStatus !== "idle" && (
+        <div
+          role={autosaveStatus === "error" ? "alert" : "status"}
+          className={cn(
+            "mr-1 flex h-8 items-center text-[12px] text-[#79716b]",
+            autosaveStatus === "error" && "text-[#c10007]",
+          )}
+        >
+          {autosaveStatus === "saving" && "Сохранение…"}
+          {autosaveStatus === "saved" && "Сохранено"}
+          {autosaveStatus === "error" && (
+            <>
+              <span>Не удалось сохранить</span>
+              <span aria-hidden="true" className="mx-1">·</span>
+              <button type="button" onClick={onRetrySave} className="font-medium underline-offset-2 hover:underline">
+                Повторить
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      <PositionAvailabilityControl item={item} menuProps={positionAvailabilityMenuProps} busy={stopBusy} />
       {headerMeta}
-      {showStopQuickAction && <StopQuickActionButton item={item} busy={stopBusy} onToggleStop={onToggleStop} />}
+      {renderPositionActionsMenu(
+        <button
+          type="button"
+          aria-label={`Действия с позицией «${item.title || "Новая позиция"}»`}
+          data-position-actions-trigger
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <DotsThree size={18} weight="bold" />
+        </button>,
+      )}
+      {onBackEdit && (
+        <Tooltip label="Закрыть" side="bottom" delayDuration={250}>
+          <button
+            type="button"
+            onClick={onBackEdit}
+            aria-label="Закрыть"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <X size={17} />
+          </button>
+        </Tooltip>
+      )}
     </div>
   );
 
-  const positionTitleTrigger = (className: string) => renderPositionActionsMenu(
-    <button
-      type="button"
-      aria-label={`Действия с позицией «${item.title || "Новая позиция"}»`}
-      data-position-actions-trigger
-      className={className}
-    >
-      <span className="min-w-0 truncate">{item.title || "Новая позиция"}</span>
-      <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" />
-    </button>,
-  );
-
-  const positionStatus = (
-    <>
-      {isArchived && (
-        <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-          В архиве
-        </span>
-      )}
-      {item.status === "stopped" && !isArchived && (
-        <span className="ml-1 shrink-0 rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#79716b]">
-          На стопе
-        </span>
-      )}
-    </>
-  );
-
-  /*
-   * The action menu is intentionally anchored to the position title. The old
-   * standalone dots button was a second entry point for the same commands.
-   */
-  const editPositionHeaderActions = (
-    <>
-      {positionActions}
-      {positionTitleTrigger("flex h-8 min-w-0 max-w-[280px] items-center gap-1 rounded-[8px] px-2 text-[14px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10")}
-    </>
-  );
-
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div ref={editorScrollRef} className="min-w-0 flex-1 overflow-y-auto p-6 pt-0">
-        <div className="mx-auto w-full max-w-[800px]">
-          {mode === "create" ? (
+    <div
+      data-position-create-canvas={creationCanvas || undefined}
+      className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", creationCanvas && "bg-white")}
+    >
+      {creationCanvas && (
+        <div
+          data-position-create-header
+          className="flex min-h-[52px] w-full shrink-0 items-center gap-3 border-b border-[#efede9] px-5 py-2.5 sm:px-6"
+        >
+          <h2 className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[#292524]">
+            Новая позиция
+          </h2>
+          <Tooltip label="Закрыть" side="bottom" delayDuration={250}>
+            <button
+              type="button"
+              onClick={onBackCreate}
+              aria-label="Закрыть"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <X size={17} />
+            </button>
+          </Tooltip>
+        </div>
+      )}
+      <div
+        ref={editorScrollRef}
+        className={cn(
+          "min-h-0 min-w-0 flex-1 overflow-y-auto",
+          creationCanvas ? "bg-white" : "p-4 pt-0",
+        )}
+      >
+        <div className={cn("mx-auto w-full", creationCanvas ? "max-w-[620px] px-5 pb-8 pt-4 sm:px-0" : "max-w-[880px]")}>
+          {creationCanvas ? (
+            creationDestination ? <div className="pb-3">{creationDestination}</div> : null
+          ) : mode === "create" ? (
             <div className="sticky top-0 z-20 flex min-w-0 items-center gap-2 bg-[#fbfbf9] pb-2 pt-6 max-[1100px]:gap-1">
               <Tooltip label="Назад" side="bottom" delayDuration={250}>
                 <button
@@ -3358,7 +3386,6 @@ export function PositionEditor({
                 <h2 className="shrink-0 whitespace-nowrap text-[14px] font-medium leading-5 text-[#292524] max-[1100px]:text-[11px]">
                   Новая позиция
                 </h2>
-                {breadcrumb}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <Button
@@ -3385,30 +3412,41 @@ export function PositionEditor({
                 </Button>
               </div>
             </div>
-          ) : breadcrumb ? (
-            // «Позиции»: одна строка — breadcrumb вместо отдельного крупного заголовка позиции.
-            <div className="flex items-center gap-2 pb-2 pt-5">
-              {onBackEdit && (
-                <Tooltip label="Назад" side="bottom" delayDuration={250}>
-                  <button
-                    type="button"
-                    onClick={onBackEdit}
-                    aria-label="Назад"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <ArrowLeft size={17} weight="bold" />
-                  </button>
-                </Tooltip>
-              )}
-              <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
-              {editPositionHeaderActions}
-            </div>
           ) : (
-            <div className="flex items-center gap-2 pb-2 pt-6">
-              <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[14px] font-medium leading-7 text-[#292524]">
-                {positionTitleTrigger("flex min-w-0 items-center gap-1 rounded-[8px] px-2 text-left text-[14px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10")}
-                {positionStatus}
-              </h2>
+            <div
+              data-position-editor-header
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-1 pt-3"
+            >
+              <div data-position-title-region className="flex min-w-0 flex-1 items-center text-[14px] font-medium leading-7 text-[#292524]">
+                  {titleEditing ? (
+                    <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-2 ring-1 ring-[#c7c2bd]">
+                      <input
+                        ref={titleInputRef}
+                        value={titleDraft}
+                        aria-label="Название позиции"
+                        onChange={(event) => setTitleDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") commitTitle();
+                          if (event.key === "Escape") {
+                            setTitleEditing(false);
+                            setTitleDraft(item.title);
+                          }
+                        }}
+                        onBlur={commitTitle}
+                        className="min-w-0 flex-1 bg-transparent text-[14px] font-medium leading-7 text-[#292524] outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="min-w-0 px-1">
+                      <h2 className="truncate text-[14px] font-semibold leading-[18px] text-[#292524]" title={item.title || "Новая позиция"}>
+                        {item.title || "Новая позиция"}
+                      </h2>
+                      <div className="mt-0.5 truncate text-[11px] font-normal leading-4 text-[#8a8179]" title={item.sectionName}>
+                        {item.sectionName}
+                      </div>
+                    </div>
+                  )}
+              </div>
               {positionActions}
             </div>
           )}
@@ -3420,11 +3458,19 @@ export function PositionEditor({
             }))}
             value={activeTab}
             onValueChange={selectEditorTab}
+            className={creationCanvas ? "border-[#efede9]" : undefined}
           />
 
-          <div className="pt-3">
+          <div className="pt-2">
             {activeTab === "basic" ? (
-              <div data-editor-form-card className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+              <div
+                data-editor-form-card
+                className={cn(
+                  creationCanvas
+                    ? "bg-white pb-4 pt-4"
+                    : "rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
+                )}
+              >
                   <BasicTab
                     item={item}
                     media={media}
@@ -3450,7 +3496,8 @@ export function PositionEditor({
                       onDescriptionChange?.(item, value);
                       onDraftChange?.({ description: value, hasDescription: descriptionHasContent(value) });
                     }}
-                    autoFocusName={mode === "create"}
+                    autoFocusName={mode !== "edit"}
+                    hideName={false}
                     namePlaceholder={mode === "create" ? "Например, Пицца" : "Введите перевод…"}
                     onNameChange={(value) => onDraftChange?.({ title: value })}
                     onWeightChange={(value, unit) => {
@@ -3482,29 +3529,16 @@ export function PositionEditor({
               <OptionsTab
                 item={item}
                 onSavedGroupsChange={(count) => {
-                  if (mode === "create") onDraftChange?.({ optionsCount: count });
+                  if (mode !== "edit") onDraftChange?.({ optionsCount: count });
                   else onItemChange?.(item, { optionsCount: count });
                 }}
                 onGroupsChange={(optionGroups) => {
-                  if (mode === "create") onDraftChange?.({ optionGroups });
+                  if (mode !== "edit") onDraftChange?.({ optionGroups });
                   else onItemChange?.(item, { optionGroups });
                 }}
               />
             ) : (
               <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-                {activeTab === "availability" && (
-                  <AvailabilityTab
-                    item={item}
-                    stopBusy={stopBusy}
-                    onSetAvailabilityMode={onSetAvailabilityMode}
-                    unavailableDisplayMode={unavailableDisplayMode}
-                    outsideScheduleMode={outsideScheduleMode}
-                    weeklySchedule={weeklySchedule}
-                    onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
-                    onOutsideScheduleModeChange={onOutsideScheduleModeChange}
-                    onWeeklyScheduleChange={onWeeklyScheduleChange}
-                  />
-                )}
                 {activeTab === "display" && (
                   <DisplayTab
                     item={item}
@@ -3547,6 +3581,25 @@ export function PositionEditor({
           )}
         </div>
       </div>
+      {creationCanvas && (
+        <div
+          data-position-create-footer
+          className="flex w-full shrink-0 justify-end border-t border-[#e7e5e4] bg-white px-5 py-3 sm:px-6"
+        >
+          {creationFooter ?? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onCreatePosition}
+              disabled={createDisabled || createSubmitting}
+              aria-busy={createSubmitting}
+              className="h-8 rounded-lg bg-[#292524] px-3 text-[12px] font-medium text-white hover:bg-[#44403b]"
+            >
+              {createSubmitting ? "Создание…" : "Создать позицию"}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

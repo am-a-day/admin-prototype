@@ -1162,10 +1162,8 @@ export function PhoneNotification({
 // ── Empty catalog preview ─────────────────────────────────────────────────────
 
 export function PhoneCatalogEmpty({
-  onAddItem,
   restaurantName = RESTAURANT_NAME,
 }: {
-  onAddItem?: () => void;
   restaurantName?: string;
 }) {
   return (
@@ -1191,19 +1189,9 @@ export function PhoneCatalogEmpty({
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100">
           <LayoutGrid size={22} className="text-zinc-300" />
         </div>
-        <div className="text-[13px] font-bold text-zinc-600">Добавьте первую позицию</div>
-        <p className="text-[11px] leading-4 text-zinc-400">
-          Здесь вы увидите, как меню будет выглядеть для гостей
+        <p className="text-[13px] font-medium leading-5 text-zinc-500">
+          Здесь появятся позиции вашего меню
         </p>
-        {onAddItem && (
-          <button
-            type="button"
-            onClick={onAddItem}
-            className="mt-1 h-8 rounded-[8px] bg-zinc-900 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700"
-          >
-            Добавить позицию
-          </button>
-        )}
       </div>
     </div>
   );

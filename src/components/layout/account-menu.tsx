@@ -161,7 +161,7 @@ export function OrgMenu({
       setAddressError("Введите адрес");
       return;
     }
-    updateWorkspace({ webAddress: `${slug}.tasko.menu` });
+    updateWorkspace({ webAddress: `${slug}.tsqr.me` });
     setAddressDraft(slug);
     setAddressError("");
     setEditingAddress(false);
@@ -287,7 +287,7 @@ export function OrgMenu({
               onClick={() => {
                 if (canCustomizeAddress) {
                   if (account?.workspace.webAddress) {
-                    setAddressDraft(account.workspace.webAddress.replace(/\.tasko\.menu$/i, ""));
+                    setAddressDraft(account.workspace.webAddress.replace(/\.tsqr\.me$/i, ""));
                   } else {
                     const suggestedSlug = workspaceName === "Новое меню"
                       ? `menu-${account?.workspace.technicalAddress.split("/").pop() || "menu"}`
@@ -352,7 +352,7 @@ export function OrgMenu({
                   </button>
                 </div>
                 <div className={cn("mt-1 text-[10px]", addressError ? "text-red-600" : "text-zinc-400")}>
-                  {addressError || ".tasko.menu"}
+                  {addressError || ".tsqr.me"}
                 </div>
               </div>
             )}

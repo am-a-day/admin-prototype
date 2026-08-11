@@ -11,24 +11,24 @@ export function PublishToast() {
 
   // Повторное обновление автоматически скрываем; ошибку оставляем до действия пользователя.
   useEffect(() => {
-    if (publishResult !== "update") return;
+    if (publishResult !== "update" && publishResult !== "first-publish") return;
     const t = window.setTimeout(() => dismissPublishResult(), 3500);
     return () => window.clearTimeout(t);
   }, [publishResult, dismissPublishResult]);
 
-  if (!publishResult || publishResult === "first-publish") return null;
+  if (!publishResult) return null;
 
   return (
     <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] -translate-x-1/2">
       <div className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-border bg-white px-4 py-3 shadow-xl shadow-zinc-300/40">
-        {publishResult === "update" ? (
+        {publishResult === "update" || publishResult === "first-publish" ? (
           <>
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
               <Check size={12} strokeWidth={3} />
             </span>
             <div className="min-w-0">
-              <div className="text-[13px] font-bold text-zinc-900">Меню обновлено</div>
-              <p className="mt-0.5 text-[12px] leading-4 text-zinc-500">Изменения уже видны гостям.</p>
+              <div className="text-[13px] font-bold text-zinc-900">{publishResult === "first-publish" ? "Витрина опубликована" : "Меню обновлено"}</div>
+              <p className="mt-0.5 text-[12px] leading-4 text-zinc-500">{publishResult === "first-publish" ? "Публичная ссылка уже доступна гостям." : "Изменения уже видны гостям."}</p>
             </div>
           </>
         ) : (

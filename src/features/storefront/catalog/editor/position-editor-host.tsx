@@ -1,23 +1,17 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { CaretDown, Check, List, MagnifyingGlass } from "@phosphor-icons/react";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { useEffect, useRef, useState } from "react";
 import { usePublish } from "@/contexts/publish-context";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { catalogSections, type CatalogItem } from "@/data/catalog";
-import { cn } from "@/lib/utils";
 import type { CatalogPriceSortDirection, CatalogReturnContext } from "../navigation/types";
 import type { OverviewFilterId } from "../model/types";
-import { getCatalogSectionPathFromSections, type CatalogSectionCrumb } from "../model/section-path";
-import { orderSectionItems } from "../model/reorder";
-import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
+import type { CatalogSectionCrumb } from "../model/section-path";
 import type { CatalogAvailabilityMode, CatalogTreeSection } from "../model/tree";
-import { deriveEditorQueue, descriptionHasContent, getQueueEditorContext, isRepairQueueFilter, type EditorTab } from "./editor-queue";
+import { deriveEditorQueue, descriptionHasContent, getQueueEditorContext, type EditorTab } from "./editor-queue";
 import { DescriptionQueueComplete } from "./description-queue-complete";
-import { PositionQueueControls, PositionQueueReturnLink } from "./editor-queue-controls";
+import { PositionQueueControls } from "./editor-queue-controls";
 import { PositionEditor, createDefaultWeeklySchedule } from "./position-editor";
 import type { MovePopoverAnchor } from "../ui/move-anchor";
 import { MoveToSectionPopover } from "../ui/move-to-section-popover";
-import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 
 type TreeSection = CatalogTreeSection;
 type AvailabilityMode = CatalogAvailabilityMode;
@@ -54,198 +48,6 @@ export type OpenPositionIntent = {
   revision: number;
 };
 
-function StructuralSectionCrumb({
-  section,
-  siblings,
-  compact,
-  onOpenSection,
-  onRevealSection,
-}: {
-  section: CatalogSectionCrumb;
-  siblings: TreeSection[];
-  compact: boolean;
-  onOpenSection: (id: string) => void;
-  onRevealSection: (id: string) => void;
-}) {
-  return (
-    <HoverCard openDelay={275} closeDelay={275}>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          title={section.name}
-          onClick={() => onOpenSection(section.id)}
-          className={cn(
-            "min-w-0 truncate rounded-[6px] px-1 py-0.5 text-left text-[13px] font-medium text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            compact ? "max-w-[100px]" : "max-w-[150px]",
-          )}
-        >
-          {section.name}
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent className="w-[260px]">
-        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
-          Соседние разделы
-        </div>
-        <div className="max-h-[260px] overflow-y-auto py-0.5">
-          {siblings.map((sibling) => (
-            <button
-              type="button"
-              key={sibling.id}
-              onClick={() => onOpenSection(sibling.id)}
-              className={cn(
-                "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                sibling.id === section.id ? "bg-[#f5f5f4] font-medium text-[#292524]" : "text-[#57534d]",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">{sibling.name}</span>
-              {sibling.id === section.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-            </button>
-          ))}
-        </div>
-        <div className="my-1 h-px bg-[#eceae7]" />
-        <button
-          type="button"
-          onClick={() => onRevealSection(section.id)}
-          className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] font-medium text-[#44403b] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <List size={15} />
-          Показать в дереве
-        </button>
-      </HoverCardContent>
-    </HoverCard>
-  );
-}
-
-function StructuralPositionBreadcrumb({
-  item,
-  sections,
-  allItems,
-  positionOrderBySection,
-  onOpenSection,
-  onRevealSection,
-  onOpenPosition,
-  showPosition = true,
-}: {
-  item: CatalogItem;
-  sections: TreeSection[];
-  allItems: CatalogItem[];
-  positionOrderBySection: Record<string, string[]>;
-  onOpenSection: (id: string) => void;
-  onRevealSection: (id: string) => void;
-  onOpenPosition: (id: string) => void;
-  showPosition?: boolean;
-}) {
-  const [positionQuery, setPositionQuery] = useState("");
-  const [positionMenuOpen, setPositionMenuOpen] = useState(false);
-  const sectionPath = getCatalogSectionPathFromSections(item.sectionId, sections);
-  const sectionsByParent = new Map<string, TreeSection[]>();
-  sections.forEach((section) => {
-    const parentKey = section.parentId ?? "__root__";
-    const siblings = sectionsByParent.get(parentKey) ?? [];
-    siblings.push(section);
-    sectionsByParent.set(parentKey, siblings);
-  });
-  sectionsByParent.forEach((siblings) => siblings.sort((left, right) =>
-    (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"),
-  ));
-  const structuralItems = orderSectionItems(
-    allItems.filter((candidate) => candidate.sectionId === item.sectionId),
-    positionOrderBySection[item.sectionId],
-  );
-  const normalizedPositionQuery = positionQuery.trim().toLocaleLowerCase();
-  const visibleStructuralItems = normalizedPositionQuery
-    ? structuralItems.filter((candidate) => candidate.title.toLocaleLowerCase().includes(normalizedPositionQuery))
-    : structuralItems;
-  return (
-    <nav aria-label="Положение позиции в каталоге" className="flex min-w-0 items-center gap-1">
-      {sectionPath.map((section, index) => {
-        const sectionNode = sections.find((candidate) => candidate.id === section.id);
-        const siblings = sectionsByParent.get(sectionNode?.parentId ?? "__root__") ?? [];
-        return (
-          <Fragment key={section.id}>
-            {index > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-            <StructuralSectionCrumb
-              section={section}
-              siblings={siblings}
-              compact={index < sectionPath.length - 1}
-              onOpenSection={onOpenSection}
-              onRevealSection={onRevealSection}
-            />
-          </Fragment>
-        );
-      })}
-      {showPosition && sectionPath.length > 0 && <span className="shrink-0 text-[13px] text-[#d6d3d1]" aria-hidden="true">/</span>}
-      {showPosition && <HoverCard
-        open={positionMenuOpen}
-        onOpenChange={(open) => {
-          setPositionMenuOpen(open);
-          if (!open) setPositionQuery("");
-        }}
-        openDelay={275}
-        closeDelay={275}
-      >
-        <HoverCardTrigger asChild>
-          <button
-            type="button"
-            title={item.title}
-            aria-label={`Открыть позиции раздела, текущая позиция: ${item.title}`}
-            aria-expanded={positionMenuOpen}
-            onClick={() => setPositionMenuOpen(true)}
-            className="flex h-7 min-w-0 flex-1 items-center rounded-[6px] px-1 text-[13px] font-medium text-[#292524] transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
-            <span className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-[#79716b]">
-              <CaretDown size={12} weight="bold" />
-            </span>
-          </button>
-        </HoverCardTrigger>
-        <HoverCardContent align="end" className="w-[320px]">
-          <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">
-            Позиции раздела · {structuralItems.length}
-          </div>
-          {structuralItems.length > 8 && (
-            <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-[#fafaf9] px-2.5">
-              <MagnifyingGlass size={14} className="shrink-0 text-[#a8a29e]" />
-              <input
-                value={positionQuery}
-                onChange={(event) => setPositionQuery(event.target.value)}
-                onKeyDown={(event) => event.stopPropagation()}
-                placeholder="Найти позицию"
-                aria-label="Поиск по позициям раздела"
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-              />
-            </label>
-          )}
-          <div className="max-h-[320px] overflow-y-auto py-0.5">
-            {visibleStructuralItems.map((candidate) => (
-              <button
-                type="button"
-                key={candidate.id}
-                onClick={() => {
-                  setPositionMenuOpen(false);
-                  onOpenPosition(candidate.id);
-                }}
-                className={cn(
-                  "flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13px] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                  candidate.id === item.id && "bg-[#f5f5f4] font-medium",
-                )}
-              >
-                <CatalogThumbnail src={candidate.thumbnailUrl} kind="item" className="h-7 w-7" />
-                <span className="min-w-0 flex-1 truncate text-[#44403b]">{candidate.title}</span>
-                {candidate.id === item.id && <Check size={14} weight="bold" className="shrink-0 text-[#79716b]" />}
-              </button>
-            ))}
-            {visibleStructuralItems.length === 0 && (
-              <div className="px-2.5 py-3 text-[12px] text-[#79716b]">Ничего не найдено</div>
-            )}
-          </div>
-        </HoverCardContent>
-      </HoverCard>}
-    </nav>
-  );
-}
-
-
 export function PositionEditorHost({
   intent,
   onCurrentIdChange,
@@ -254,10 +56,6 @@ export function PositionEditorHost({
   onRequestPermanentDelete,
   onRevealItem,
   structureSections = catalogSections,
-  positionOrderBySection = {},
-  onOpenStructuralItem,
-  onOpenStructuralSection,
-  onRevealStructuralSection,
 }: {
   intent: OpenPositionIntent;
   onCurrentIdChange: (id: string) => void;
@@ -266,18 +64,18 @@ export function PositionEditorHost({
   onRequestPermanentDelete?: (item: CatalogItem) => void;
   onRevealItem?: (item: CatalogItem) => void;
   structureSections?: TreeSection[];
-  positionOrderBySection?: Record<string, string[]>;
-  onOpenStructuralItem?: (id: string) => void;
-  onOpenStructuralSection?: (id: string) => void;
-  onRevealStructuralSection?: (id: string) => void;
 }) {
   const {
     items,
     itemsById,
+    itemOrderBySection,
+    autosaveByItem,
+    addItem,
     updateItem,
     deleteItem,
     moveItem,
     setItemStatus,
+    setItemOrder,
     setAutosaveStatus,
     setActiveEditorItemId,
     upsellByItem,
@@ -286,7 +84,7 @@ export function PositionEditorHost({
   const { registerChange } = usePublish();
   const [moveRequest, setMoveRequest] = useState<{ itemId: string; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ itemId: string; sectionId: string; sectionName: string; message: string } | null>(null);
-  const saveTimersRef = useRef<Record<string, number>>({});
+  const saveTimersRef = useRef<Record<string, { save?: number; hide?: number }>>({});
   const item = itemsById[intent.currentId] ?? null;
   const editorContext = intent.origin === "positions" && intent.snapshot
     ? getQueueEditorContext(intent.snapshot.entryFilterId)
@@ -297,12 +95,14 @@ export function PositionEditorHost({
     intent.currentId,
     existingItemIds,
   );
-  const currentSelectionIds = editorQueue.itemIds;
-  const outsideCurrentSelection = intent.origin === "positions" && !currentSelectionIds.includes(intent.currentId);
+  const outsideCurrentSelection = intent.origin === "positions" && !editorQueue.itemIds.includes(intent.currentId);
   const { previousId: previousQueueId, nextId: nextQueueId } = editorQueue;
 
   useEffect(() => () => {
-    Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+    Object.values(saveTimersRef.current).forEach(({ save, hide }) => {
+      if (save) window.clearTimeout(save);
+      if (hide) window.clearTimeout(hide);
+    });
   }, []);
 
   useEffect(() => {
@@ -320,20 +120,74 @@ export function PositionEditorHost({
     return <DescriptionQueueComplete filterId={intent.snapshot?.filterId ?? "quick:all"} onBack={onClose} />;
   }
 
+  const finishAutosave = (itemId: string) => {
+    const timers = saveTimersRef.current[itemId] ?? {};
+    if (timers.save) window.clearTimeout(timers.save);
+    if (timers.hide) window.clearTimeout(timers.hide);
+    setAutosaveStatus(itemId, "saved");
+    registerChange("catalog");
+    timers.hide = window.setTimeout(() => {
+      setAutosaveStatus(itemId, "idle");
+      delete saveTimersRef.current[itemId];
+    }, 1400);
+    saveTimersRef.current[itemId] = timers;
+  };
+
+  const scheduleAutosave = (itemId: string) => {
+    const timers = saveTimersRef.current[itemId] ?? {};
+    if (timers.save) window.clearTimeout(timers.save);
+    if (timers.hide) window.clearTimeout(timers.hide);
+    setAutosaveStatus(itemId, "saving");
+    timers.save = window.setTimeout(() => finishAutosave(itemId), 450);
+    saveTimersRef.current[itemId] = timers;
+  };
+
   const saveDescription = (target: CatalogItem, value: string) => {
-    window.clearTimeout(saveTimersRef.current[target.id]);
-    updateItem(target.id, { description: value });
-    saveTimersRef.current[target.id] = window.setTimeout(() => {
-      updateItem(target.id, { description: value, hasDescription: descriptionHasContent(value) }, { autosave: false });
-      setAutosaveStatus(target.id, "saved");
-      registerChange("catalog");
-    }, 450);
+    updateItem(target.id, { description: value, hasDescription: descriptionHasContent(value) });
+    scheduleAutosave(target.id);
+  };
+
+  const updateAndAutosave = (targetId: string, patch: Partial<CatalogItem>) => {
+    updateItem(targetId, patch);
+    scheduleAutosave(targetId);
+  };
+
+  const navigateToItem = (targetId: string) => {
+    if (saveTimersRef.current[item.id]?.save) finishAutosave(item.id);
+    onCurrentIdChange(targetId);
+  };
+
+  const closeEditor = () => {
+    if (saveTimersRef.current[item.id]?.save) finishAutosave(item.id);
+    onClose();
   };
 
   const setAvailability = (target: CatalogItem, mode: AvailabilityMode) => {
     if (target.status === "archive") return;
-    setItemStatus(target.id, mode === "unavailable" ? "stopped" : "active", mode === "schedule");
+    if (mode === "unavailable") setItemStatus(target.id, "stopped");
+    else updateItem(target.id, { status: "active", scheduled: mode === "schedule" });
+    scheduleAutosave(target.id);
+  };
+
+  const duplicateItem = (target: CatalogItem) => {
+    const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `position-copy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const copy: CatalogItem = {
+      ...target,
+      id,
+      title: `${target.title} — копия`,
+      status: "active",
+      scheduled: false,
+      unavailableDisplayMode: "hidden",
+    };
+    addItem(copy);
+    setItemOrder(target.sectionId, [
+      id,
+      ...(itemOrderBySection[target.sectionId] ?? items.filter((candidate) => candidate.sectionId === target.sectionId).map((candidate) => candidate.id)),
+    ]);
     registerChange("catalog");
+    onFeedback?.("Позиция скопирована");
   };
 
   return (
@@ -358,89 +212,64 @@ export function PositionEditorHost({
       upsell={item.upsell ?? upsellByItem[item.id] ?? {}}
       onUpsellChange={(next) => {
         setUpsellByItem((current) => ({ ...current, [item.id]: next }));
-        updateItem(item.id, { upsell: next });
-        registerChange("catalog");
+        updateAndAutosave(item.id, { upsell: next });
       }}
       stopBusy={false}
       onArchiveItem={(target) => {
         setItemStatus(target.id, "archive");
+        scheduleAutosave(target.id);
         onFeedback?.("Позиция перенесена в архив");
       }}
       onRestoreItem={(target) => {
         setItemStatus(target.id, "active");
+        scheduleAutosave(target.id);
         onFeedback?.("Позиция восстановлена");
       }}
       onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
-      onToggleStop={(target) => setItemStatus(target.id, target.status === "stopped" ? "active" : "stopped")}
+      onToggleStop={(target) => {
+        const stopped = target.status === "stopped" || target.status === "coming-soon";
+        setItemStatus(target.id, stopped ? "active" : "stopped");
+        scheduleAutosave(target.id);
+      }}
       onSetAvailabilityMode={setAvailability}
-      unavailableDisplayMode={item.unavailableDisplayMode ?? "hidden"}
+      unavailableDisplayMode={item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")}
       outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
       weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
       onUnavailableDisplayModeChange={(mode) => {
-        updateItem(item.id, { unavailableDisplayMode: mode });
-        registerChange("catalog");
+        updateAndAutosave(item.id, { unavailableDisplayMode: mode });
       }}
       onOutsideScheduleModeChange={(mode) => {
-        updateItem(item.id, { outsideScheduleMode: mode });
-        registerChange("catalog");
+        updateAndAutosave(item.id, { outsideScheduleMode: mode });
       }}
       onWeeklyScheduleChange={(schedule) => {
-        updateItem(item.id, { weeklySchedule: schedule });
-        registerChange("catalog");
+        updateAndAutosave(item.id, { weeklySchedule: schedule });
       }}
       onRequestPermanentDelete={(target) => {
         if (onRequestPermanentDelete) onRequestPermanentDelete(target);
         else {
           deleteItem(target.id);
-          onClose();
+          closeEditor();
         }
       }}
+      onDuplicateItem={duplicateItem}
       onDescriptionChange={saveDescription}
       onDraftChange={(patch) => {
-        updateItem(item.id, patch);
-        registerChange("catalog");
+        updateAndAutosave(item.id, patch);
       }}
       onMediaAdded={(target, previewUrl) => {
-        updateItem(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
-        registerChange("catalog");
+        updateAndAutosave(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
       }}
       onItemChange={(target, patch) => {
-        updateItem(target.id, patch);
-        registerChange("catalog");
+        updateAndAutosave(target.id, patch);
       }}
       forcedEditorTab={editorContext.tab}
       focusAnchor={editorContext.anchor}
-      showStopQuickAction={intent.origin !== "positions" && (!intent.snapshot || !isRepairQueueFilter(intent.snapshot.filterId))}
-      breadcrumb={(
-        <div className="flex min-w-0 items-center gap-1">
-          {intent.origin === "positions" && intent.snapshot && (
-            <>
-              <PositionQueueReturnLink
-                filterLabel={intent.snapshot.filterLabel ?? HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
-                onBack={onClose}
-              />
-              <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
-            </>
-          )}
-          <StructuralPositionBreadcrumb
-            item={item}
-            sections={structureSections}
-            allItems={items}
-            positionOrderBySection={positionOrderBySection}
-            onOpenSection={onOpenStructuralSection ?? (() => {})}
-            onRevealSection={onRevealStructuralSection ?? onOpenStructuralSection ?? (() => {})}
-            onOpenPosition={onOpenStructuralItem ?? onCurrentIdChange}
-            showPosition={false}
-          />
-        </div>
-      )}
-      headerMeta={intent.origin === "positions" && intent.snapshot ? (
+      onBackEdit={closeEditor}
+      autosaveStatus={autosaveByItem[item.id]?.status ?? "idle"}
+      onRetrySave={() => finishAutosave(item.id)}
+      headerMeta={editorQueue.itemIds.length > 0 ? (
         <PositionQueueControls
-          filterLabel={intent.snapshot.filterLabel ?? HYBRID_PRIMARY_FILTER_LABELS[intent.snapshot.filterId]}
-          itemIds={currentSelectionIds}
-          currentId={intent.currentId}
-          itemsById={itemsById}
-          onSelect={onCurrentIdChange}
+          onSelect={navigateToItem}
           previousId={previousQueueId}
           nextId={nextQueueId}
         />

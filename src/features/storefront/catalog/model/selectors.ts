@@ -21,7 +21,7 @@ export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogI
   "status:active": (item) => item.status === "active",
   "status:archived": (item) => item.status === "archive",
   "status:stop": (item) => item.status === "stopped",
-  "status:soon": (item) => item.status === "coming-soon",
+  "status:soon": (item) => item.status === "coming-soon" || (item.status === "stopped" && item.unavailableDisplayMode === "comingSoon"),
   "status:schedule": (item) => item.scheduled,
 };
 

@@ -27,6 +27,8 @@ import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
 import { CATALOG_VIEW_MODE_GROUPS, HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
+import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
+import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
@@ -46,9 +48,20 @@ function getPriceSortTooltip(direction: PriceSortDirection) {
 
 function getPrimaryRowStatusLabel(item: CatalogItem) {
   if (item.status === "archive") return "В архиве";
-  if (item.status === "stopped") return "На стопе";
-  if (item.status === "coming-soon") return "Скоро будет";
-  if (item.scheduled) return "С расписанием";
+  if (item.status === "stopped" || item.status === "coming-soon") {
+    return item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon" ? "Скоро будет" : "На стопе";
+  }
+  if (item.scheduled) {
+    const orderable = isWeeklyScheduleOrderable(
+      item.weeklySchedule ?? createDefaultWeeklySchedule(),
+      item.availabilityScheduleMode ?? "available",
+      new Date(),
+    );
+    if (orderable) return "По расписанию";
+    return item.unavailableDisplayMode === "comingSoon" || item.outsideScheduleMode === "comingSoon"
+      ? "Скоро будет"
+      : "Недоступно";
+  }
   return null;
 }
 
@@ -145,7 +158,7 @@ function DropdownContent({ children, align = "end" }: { children: ReactNode; ali
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
-        className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+        className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
       >
         {children}
       </DropdownMenu.Content>
@@ -171,7 +184,7 @@ function DropdownActionItem({
       disabled={disabled}
       onSelect={onSelect}
       className={cn(
-        "flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4]",
+        CATALOG_DROPDOWN_ITEM_CLASS,
         tone === "danger" ? "text-[#9f1239]" : "text-[#44403b]",
       )}
     >
@@ -402,7 +415,8 @@ export function TableHeaderRow({
 }
 function StatusBadge({ label }: { label: string }) {
   const isStop = label === "На стопе";
-  const isBlue = label === "С расписанием" || label === "Скоро будет";
+  const isBlue = label === "С расписанием" || label === "По расписанию" || label === "Скоро будет";
+  const isUnavailable = label === "Недоступно";
   const isSlate = label === "В архиве" || label === "Скрыта";
 
   return (
@@ -411,16 +425,18 @@ function StatusBadge({ label }: { label: string }) {
         "flex h-4 items-center justify-center gap-0.5 rounded-[4px]",
         isStop && "bg-[#ffedd4] pl-[3px] pr-1.5",
         isBlue && "bg-[#dbeafe] pl-[3px] pr-1.5",
+        isUnavailable && "bg-[#fef3c7] pl-[3px] pr-1.5",
         isSlate && "bg-[#f1f5f9] px-1.5",
-        !isStop && !isBlue && !isSlate && "bg-[#f5f5f4] px-1.5",
+        !isStop && !isBlue && !isUnavailable && !isSlate && "bg-[#f5f5f4] px-1.5",
       )}
     >
       {isStop && <Lock size={12} weight="fill" className="shrink-0 text-[#f54900]" />}
       {isBlue && <Clock size={12} weight="fill" className="shrink-0 text-[#2b7fff]" />}
+      {isUnavailable && <Clock size={12} weight="fill" className="shrink-0 text-[#a16207]" />}
       <span
         className={cn(
           "whitespace-nowrap text-[11px] font-semibold leading-5",
-          isStop ? "text-[#ca3500]" : isBlue ? "text-[#2b7fff]" : isSlate ? "text-[#62748e]" : "text-[#57534d]",
+          isStop ? "text-[#ca3500]" : isBlue ? "text-[#2b7fff]" : isUnavailable ? "text-[#a16207]" : isSlate ? "text-[#62748e]" : "text-[#57534d]",
         )}
       >
         {label}
@@ -440,11 +456,11 @@ function AuditDishRow({
   reorderEnabled = false,
 }: {
   row: TableRow<CatalogItem>;
-  onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor) => void;
+  onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
   selected: boolean;
   selectionMode: boolean;
   onSelectedChange: (id: string, selected: boolean) => void;
-  renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor) => void) => ReactNode;
+  renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void) => ReactNode;
   compositionMode?: boolean;
   highlighted?: boolean;
   reorderEnabled?: boolean;
@@ -653,7 +669,7 @@ function AuditDishRow({
           case "actions":
             return (
               <span key={cell.id} data-no-dnd className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                {renderActions?.(item, (action, anchor) => onAction(item, action, anchor))}
+                {renderActions?.(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
               </span>
             );
           default:
@@ -707,8 +723,8 @@ export function VirtualizedAuditRows({
   selectionMode: boolean;
   scrollParentRef: RefObject<HTMLDivElement | null>;
   onSelectedChange: (id: string, selected: boolean) => void;
-  onAction: (item: CatalogItem, action: string, anchor?: CatalogSectionActionAnchor) => void;
-  renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor) => void) => ReactNode;
+  onAction: (item: CatalogItem, action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void;
+  renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void) => ReactNode;
   compositionMode?: boolean;
   highlightItemId?: string | null;
   reorderEnabled?: boolean;
