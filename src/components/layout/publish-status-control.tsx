@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Copy, Eye, Loader2, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { usePublish } from "@/contexts/publish-context";
 import {
@@ -15,6 +16,7 @@ import {
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import type { SectionId } from "@/data/mock-data";
 import { copyText } from "@/lib/public-menu-url";
+import { validateFirstPublishAddress } from "@/lib/first-publish-address";
 import { cn } from "@/lib/utils";
 
 type FirstPublishStep = "about" | "address" | "contact";
@@ -91,9 +93,9 @@ const PublishTrigger = forwardRef<HTMLButtonElement, PublishTriggerProps>(functi
       type="button"
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border px-0 pl-1.5 pr-2 font-sans text-[13px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#615fff]/25 disabled:opacity-70",
+        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border px-0 pl-1.5 pr-2 font-sans text-[13px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/25 disabled:opacity-70",
         primary
-          ? "border-[#615fff] bg-[#615fff] text-white hover:border-[#5553ee] hover:bg-[#5553ee]"
+          ? "border-[#4f39f6] bg-[#4f39f6] text-white hover:border-[#4030d4] hover:bg-[#4030d4]"
           : "border-[#e7e5e4] bg-transparent text-[#44403b] hover:bg-white",
         className,
       )}
@@ -110,11 +112,17 @@ const ORGANIZATION_TYPE_OPTIONS: Array<{
   venueType: VenueType;
   label: string;
 }> = [
-  { value: "restaurant", venueType: "restaurant", label: "Общепит" },
+  { value: "restaurant", venueType: "restaurant", label: "Ресторан или кафе" },
   { value: "store", venueType: "online-store", label: "Магазин" },
   { value: "services", venueType: "services", label: "Услуги" },
   { value: "other", venueType: "other", label: "Другое" },
 ];
+
+const FIRST_PUBLISH_FIELD_CLASS =
+  "h-9 rounded-[8px] border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.1)] focus-visible:border-[#4f39f6] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/15";
+const FIRST_PUBLISH_LABEL_CLASS = "text-[13px] font-normal leading-5 text-[#303030]";
+const FIRST_PUBLISH_PRIMARY_ACTION_CLASS =
+  "h-8 w-full rounded-[10px] bg-[#4f39f6] px-3 text-[14px] font-medium text-white hover:bg-[#4030d4] focus-visible:ring-[#4f39f6]/25";
 
 function StepHeader({ title, onBack }: { title: string; onBack?: () => void }) {
   return (
@@ -129,7 +137,7 @@ function StepHeader({ title, onBack }: { title: string; onBack?: () => void }) {
           <ArrowLeft size={15} />
         </button>
       )}
-      <h2 className="text-[16px] font-semibold leading-6 text-[#292524]">{title}</h2>
+      <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{title}</h2>
     </div>
   );
 }
@@ -147,7 +155,6 @@ export function PublishStatusControl({
   const [open, setOpen] = useState(false);
   const [firstPublishStep, setFirstPublishStep] = useState<FirstPublishStep>("about");
   const [aliasTouched, setAliasTouched] = useState(false);
-  const [contactTouched, setContactTouched] = useState({ firstName: false, lastName: false });
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressDraft, setAddressDraft] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -201,7 +208,9 @@ export function PublishStatusControl({
   const guestFacingMenu = menus.find((menu) => menu.id === guestFacingMenuId) ?? menus[0];
   const editingGuestFacingMenu = activeMenuId === guestFacingMenuId;
   const alias = workspace.webAddress.replace(/\.tsqr\.me$/i, "");
-  const aliasValid = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(alias);
+  const aliasError = validateFirstPublishAddress(alias);
+  const aliasValid = aliasError === null;
+  const visibleAliasError = aliasTouched ? aliasError : null;
   const aboutValid = Boolean(workspace.name.trim() && workspace.organizationType);
   const contactValid = Boolean(account.firstName.trim() && account.lastName.trim());
 
@@ -219,6 +228,17 @@ export function PublishStatusControl({
     publishMenu(activeMenuId);
     setMenuPublishConfirmOpen(false);
     startPublish({ catalogHasVisibleItems });
+  };
+
+  const continueFromAddress = () => {
+    setAliasTouched(true);
+    if (!aliasValid) return;
+
+    const normalizedAddress = `${alias.trim()}.tsqr.me`;
+    if (normalizedAddress !== workspace.webAddress) {
+      updateWorkspace({ webAddress: normalizedAddress });
+    }
+    setFirstPublishStep("contact");
   };
 
   const beginAddressEditing = () => {
@@ -247,7 +267,6 @@ export function PublishStatusControl({
         setOpen(nextOpen);
         if (nextOpen) {
           setAliasTouched(false);
-          setContactTouched({ firstName: false, lastName: false });
           setEditingAddress(false);
           setAddressDraft(addressParts.slug);
         }
@@ -275,7 +294,10 @@ export function PublishStatusControl({
             event.preventDefault();
             cancelAddressEditing();
           }}
-          className="w-[420px] max-w-[calc(100vw-16px)] p-4"
+          className={cn(
+            "w-[420px] max-w-[calc(100vw-16px)] p-4",
+            isFirstPublication && "rounded-[16px] border-[#e7e5e4] px-4 py-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]",
+          )}
         >
             {!editingGuestFacingMenu && !isFirstPublication && (
               <div className="mb-3 rounded-[9px] bg-[#f8f8f5] px-2.5 py-2 text-[12px] leading-4 text-[#79716b]">
@@ -286,11 +308,11 @@ export function PublishStatusControl({
             {isFirstPublication && firstPublishStep === "about" && (
               <div>
                 <StepHeader title="О заведении" />
-                <p className="mt-1 text-[13px] leading-5 text-[#79716b]">Так заведение будет отображаться для гостей.</p>
+                <p className="mt-2 text-[13px] leading-5 text-[#79716b]">Так заведение будет отображаться для гостей.</p>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-4">
                   <label className="block">
-                    <span className="text-[12px] font-semibold text-[#57534d]">Название заведения</span>
+                    <span className={FIRST_PUBLISH_LABEL_CLASS}>Название заведения</span>
                     <Input
                       value={workspace.name}
                       onChange={(event) => {
@@ -300,16 +322,16 @@ export function PublishStatusControl({
                           localizedNames: { ...workspace.localizedNames, [workspace.primaryLanguage]: value },
                         });
                       }}
-                      className="mt-1.5 h-9 rounded-[9px] text-[13px]"
+                      className={cn("mt-1.5", FIRST_PUBLISH_FIELD_CLASS)}
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="text-[12px] font-semibold text-[#57534d]">Тип заведения</span>
-                    <select
+                  <div>
+                    <span className={FIRST_PUBLISH_LABEL_CLASS}>Тип заведения</span>
+                    <Select
                       value={workspace.organizationType}
-                      onChange={(event) => {
-                        const option = ORGANIZATION_TYPE_OPTIONS.find(({ value }) => value === event.target.value);
+                      onValueChange={(value) => {
+                        const option = ORGANIZATION_TYPE_OPTIONS.find((candidate) => candidate.value === value);
                         if (!option) return;
                         updateWorkspace({
                           organizationType: option.value,
@@ -317,20 +339,24 @@ export function PublishStatusControl({
                           organizationTypeConfirmed: true,
                         });
                       }}
-                      className="mt-1.5 h-9 w-full rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-zinc-100"
                     >
-                      {ORGANIZATION_TYPE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </label>
+                      <SelectTrigger className="mt-1.5" aria-label="Тип заведения">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {ORGANIZATION_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <Button
                   type="button"
                   onClick={() => setFirstPublishStep("address")}
                   disabled={!aboutValid}
-                  className="mt-5 h-9 w-full rounded-[9px] bg-[#292524] text-[13px] text-white hover:bg-[#44403b]"
+                  className={cn("mt-5", FIRST_PUBLISH_PRIMARY_ACTION_CLASS)}
                 >
                   Продолжить
                 </Button>
@@ -339,42 +365,45 @@ export function PublishStatusControl({
 
             {isFirstPublication && firstPublishStep === "address" && (
               <div>
-                <StepHeader title="Адрес витрины" onBack={() => setFirstPublishStep("about")} />
+                <StepHeader title="Веб-адрес меню" onBack={() => setFirstPublishStep("about")} />
 
-                <label className="mt-4 block">
-                  <span className="text-[12px] font-semibold text-[#57534d]">Адрес витрины</span>
+                <div className="mt-4">
                   <div className={cn(
-                    "mt-1.5 flex h-9 overflow-hidden rounded-[9px] border bg-white transition focus-within:ring-2",
-                    aliasTouched && !aliasValid
+                    "flex h-9 overflow-hidden rounded-[8px] border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:ring-2",
+                    visibleAliasError
                       ? "border-red-300 focus-within:border-red-400 focus-within:ring-red-100"
-                      : "border-[#e7e5e4] focus-within:border-[#c7c2bd] focus-within:ring-zinc-100",
+                      : "border-[#e5e5e5] focus-within:border-[#4f39f6] focus-within:ring-[#4f39f6]/15",
                   )}>
                     <Input
                       value={alias}
                       onChange={(event) => {
-                        const value = event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+                        const value = event.target.value;
                         updateWorkspace({ webAddress: value ? `${value}.tsqr.me` : "" });
                       }}
                       onBlur={() => setAliasTouched(true)}
-                      aria-invalid={aliasTouched && !aliasValid}
-                      className="h-full min-w-0 flex-1 rounded-none border-0 px-2.5 text-[13px] focus-visible:ring-0"
+                      aria-invalid={Boolean(visibleAliasError)}
+                      aria-label="Веб-адрес меню"
+                      aria-describedby="first-publish-address-status"
+                      className="h-full min-w-0 flex-1 rounded-none border-0 px-3 text-[13px] shadow-none focus-visible:ring-0"
                     />
-                    <span className="flex items-center border-l border-zinc-100 bg-zinc-50 px-2.5 text-[12px] text-zinc-500">.tsqr.me</span>
+                    <span className="flex items-center border-l border-[#e5e5e5] bg-[#fafaf9] px-3 text-[13px] text-[#79716b]">.tsqr.me</span>
                   </div>
-                  {aliasTouched && !aliasValid && (
-                    <span className="mt-1 block text-[11px] leading-4 text-red-600">
-                      Используйте латинские буквы, цифры и одиночные дефисы.
-                    </span>
-                  )}
-                </label>
-
-                <p className="mt-2 text-[12px] leading-4 text-[#a8a29e]">Ваша витрина будет доступна по этому адресу.</p>
+                  <div
+                    id="first-publish-address-status"
+                    role={visibleAliasError ? "alert" : undefined}
+                    className={cn(
+                      "mt-2 min-h-4 text-[13px] leading-4",
+                      visibleAliasError ? "text-red-600" : "text-[#79716b]",
+                    )}
+                  >
+                    {visibleAliasError ?? "Меню будет доступно по этому адресу"}
+                  </div>
+                </div>
 
                 <Button
                   type="button"
-                  onClick={() => setFirstPublishStep("contact")}
-                  disabled={!aliasValid}
-                  className="mt-5 h-9 w-full rounded-[9px] bg-[#292524] text-[13px] text-white hover:bg-[#44403b]"
+                  onClick={continueFromAddress}
+                  className={cn("mt-5", FIRST_PUBLISH_PRIMARY_ACTION_CLASS)}
                 >
                   Продолжить
                 </Button>
@@ -383,31 +412,26 @@ export function PublishStatusControl({
 
             {isFirstPublication && firstPublishStep === "contact" && (
               <div>
-                <StepHeader title="Как к вам обращаться" onBack={() => setFirstPublishStep("address")} />
-                <p className="mt-1 text-[13px] leading-5 text-[#79716b]">Эти данные нужны для связи с вами.</p>
+                <StepHeader title="Как к вам обращаться?" onBack={() => setFirstPublishStep("address")} />
 
-                <div className="mt-4 grid grid-cols-2 gap-2.5">
+                <div className="mt-4 grid grid-cols-2 gap-3">
                   <label>
-                    <span className="text-[12px] font-semibold text-[#57534d]">Имя</span>
+                    <span className="sr-only">Имя</span>
                     <Input
                       value={account.firstName}
+                      placeholder="Имя"
                       onChange={(event) => updateAccountProfile({ firstName: event.target.value })}
-                      onBlur={() => setContactTouched((current) => ({ ...current, firstName: true }))}
-                      aria-invalid={contactTouched.firstName && !account.firstName.trim()}
-                      className={cn("mt-1.5 h-9 rounded-[9px] text-[13px]", contactTouched.firstName && !account.firstName.trim() && "border-red-300 focus-visible:ring-red-100")}
+                      className={FIRST_PUBLISH_FIELD_CLASS}
                     />
-                    {contactTouched.firstName && !account.firstName.trim() && <span className="mt-1 block text-[11px] text-red-600">Введите имя</span>}
                   </label>
                   <label>
-                    <span className="text-[12px] font-semibold text-[#57534d]">Фамилия</span>
+                    <span className="sr-only">Фамилия</span>
                     <Input
                       value={account.lastName}
+                      placeholder="Фамилия"
                       onChange={(event) => updateAccountProfile({ lastName: event.target.value })}
-                      onBlur={() => setContactTouched((current) => ({ ...current, lastName: true }))}
-                      aria-invalid={contactTouched.lastName && !account.lastName.trim()}
-                      className={cn("mt-1.5 h-9 rounded-[9px] text-[13px]", contactTouched.lastName && !account.lastName.trim() && "border-red-300 focus-visible:ring-red-100")}
+                      className={FIRST_PUBLISH_FIELD_CLASS}
                     />
-                    {contactTouched.lastName && !account.lastName.trim() && <span className="mt-1 block text-[11px] text-red-600">Введите фамилию</span>}
                   </label>
                 </div>
 
@@ -415,10 +439,10 @@ export function PublishStatusControl({
                   type="button"
                   onClick={publishCurrentMenu}
                   disabled={!contactValid || isPublishing}
-                  className="mt-5 h-9 w-full rounded-[9px] bg-[#292524] text-[13px] text-white hover:bg-[#44403b]"
+                  className={cn("mt-5", FIRST_PUBLISH_PRIMARY_ACTION_CLASS)}
                 >
                   {isPublishing ? <Loader2 size={14} className="animate-spin" /> : null}
-                  Опубликовать
+                  Опубликовать меню
                 </Button>
               </div>
             )}
