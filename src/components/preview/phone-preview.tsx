@@ -45,6 +45,7 @@ import {
 import { useOrderRouting } from "@/contexts/order-routing-context";
 import { formatPrice, type CatalogItem } from "@/data/catalog";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
+import { getCatalogTitleForLanguage } from "@/lib/mock-catalog-translations";
 import {
   CATALOG_UPSELL_CHANGE_EVENT,
   readCatalogUpsellState,
@@ -138,7 +139,12 @@ export function PhonePreview({
   const recommended = getRecommendedDishes(dish);
   const toPreviewDish = (item: CatalogItem, index = 0): Dish => ({
     id: item.id,
-    name: item.title,
+    name: getCatalogTitleForLanguage(
+      item.title,
+      item.titleTranslations,
+      contentLanguage,
+      account?.workspace.primaryLanguage ?? "ru",
+    ),
     category: item.sectionName,
     price: formatPrice(item.priceWithSale ?? item.price),
     weight: item.weightLabel ?? "",

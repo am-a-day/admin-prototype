@@ -1,8 +1,16 @@
-import { useEffect, useId, useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { AlertTriangle, ChevronDown, CirclePlus, Eye, EyeOff, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreHorizontal, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Star, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Star, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu as LanguageDropdownMenu,
+  DropdownMenuContent as LanguageDropdownMenuContent,
+  DropdownMenuItem as LanguageDropdownMenuItem,
+  DropdownMenuLabel as LanguageDropdownMenuLabel,
+  DropdownMenuTrigger as LanguageDropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -15,14 +23,15 @@ import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/component
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { useCatalogStore } from "@/contexts/catalog-store-context";
 import {
   useMockAuth,
   type VenueType,
-  type WorkspaceLanguageStatus,
 } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { CURRENT_VITRINE_ID, MOCK_VITRINES, type PreviewScenario } from "@/data/mock-data";
+import { buildMockCatalogTitleTranslations } from "@/lib/mock-catalog-translations";
 import { cn } from "@/lib/utils";
 
 export type AboutTab =
@@ -1924,11 +1933,6 @@ function VenueTypeChipGroup({
   );
 }
 
-const LANGUAGE_STATUS_LABELS: Record<WorkspaceLanguageStatus, string> = {
-  empty: "Не заполнен",
-  partial: "Частично заполнен",
-  ready: "Готов к публикации",
-};
 
 const CURRENCY_OPTIONS = [
   { value: "KZT", label: "Казахстанский тенге — KZT" },
@@ -2150,17 +2154,28 @@ function BasicInfoWorkspace({
   );
 }
 
-function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
+export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
   const {
     account,
     updateWorkspace,
     addWorkspaceLanguage,
     removeWorkspaceLanguage,
-    setWorkspaceLanguageVisibility,
+    setWorkspaceLanguageHasContent,
   } = useMockAuth();
   const { contentLanguage, setContentLanguage } = useAppSettings();
-  const [openMenu, setOpenMenu] = useState<LanguageCode | null>(null);
-  const [languageToDelete, setLanguageToDelete] = useState<LanguageCode | null>(null);
+  const { items, updateItem } = useCatalogStore();
+  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
+  const [languageQuery, setLanguageQuery] = useState("");
+  const [pendingLanguage, setPendingLanguage] = useState<LanguageCode | null>(null);
+  const [translatingLanguages, setTranslatingLanguages] = useState<Set<LanguageCode>>(
+    () => new Set(),
+  );
+  const translationTimersRef = useRef<Map<LanguageCode, number>>(new Map());
+
+  useEffect(() => () => {
+    translationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    translationTimersRef.current.clear();
+  }, []);
 
   if (!account) return null;
 
@@ -2168,15 +2183,29 @@ function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
   const availableLanguages = LANGUAGES.filter(
     ({ code }) => !workspace.languages.some((language) => language.code === code),
   );
-  const deleteLanguage = LANGUAGES.find(({ code }) => code === languageToDelete);
+  const normalizedLanguageQuery = languageQuery.trim().toLocaleLowerCase();
+  const filteredAvailableLanguages = availableLanguages.filter((language) =>
+    [language.label, language.short, language.code]
+      .some((value) => value.toLocaleLowerCase().includes(normalizedLanguageQuery)),
+  );
+  const addedLanguages = [...workspace.languages].sort((left, right) => {
+    if (left.code === workspace.primaryLanguage) return -1;
+    if (right.code === workspace.primaryLanguage) return 1;
+    return 0;
+  });
+  const pendingLanguageDetails = LANGUAGES.find(({ code }) => code === pendingLanguage);
 
   const makePrimary = (primaryLanguage: LanguageCode) => {
     if (primaryLanguage === workspace.primaryLanguage) return;
     updateWorkspace({
       primaryLanguage,
-      languages: workspace.languages.map((language) =>
-        language.code === primaryLanguage ? { ...language, visible: true } : language,
-      ),
+      languages: [...workspace.languages]
+        .sort((left, right) => {
+          if (left.code === primaryLanguage) return -1;
+          if (right.code === primaryLanguage) return 1;
+          return 0;
+        })
+        .map((language) => ({ ...language, visible: true })),
       localizedNames: {
         ...workspace.localizedNames,
         [primaryLanguage]:
@@ -2184,31 +2213,63 @@ function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
       },
     });
     setContentLanguage(primaryLanguage);
-    setOpenMenu(null);
     onChange();
   };
 
-  const addLanguage = (language: LanguageCode) => {
+  const removeLanguage = (language: LanguageCode) => {
+    if (language === workspace.primaryLanguage) return;
+    const timer = translationTimersRef.current.get(language);
+    if (timer) window.clearTimeout(timer);
+    translationTimersRef.current.delete(language);
+    setTranslatingLanguages((current) => {
+      const next = new Set(current);
+      next.delete(language);
+      return next;
+    });
+    removeWorkspaceLanguage(language);
+    if (contentLanguage === language) setContentLanguage(workspace.primaryLanguage);
+    onChange();
+  };
+
+  const confirmAddLanguage = () => {
+    if (!pendingLanguage) return;
+    const language = pendingLanguage;
+    const nextLanguageCodes = [...workspace.languages.map(({ code }) => code), language];
     addWorkspaceLanguage(language);
-    setContentLanguage(language);
+    setTranslatingLanguages((current) => new Set(current).add(language));
+    setPendingLanguage(null);
+    setLanguagePickerOpen(false);
+    setLanguageQuery("");
     onChange();
-  };
 
-  const toggleLanguageVisibility = (language: LanguageCode, visible: boolean) => {
-    setWorkspaceLanguageVisibility(language, visible);
-    setOpenMenu(null);
-    onChange();
-  };
-
-  const confirmDeleteLanguage = () => {
-    if (!languageToDelete || languageToDelete === workspace.primaryLanguage) return;
-    removeWorkspaceLanguage(languageToDelete);
-    if (contentLanguage === languageToDelete) {
-      setContentLanguage(workspace.primaryLanguage);
-    }
-    setLanguageToDelete(null);
-    setOpenMenu(null);
-    onChange();
+    const timer = window.setTimeout(() => {
+      items.forEach((item) => {
+        updateItem(item.id, {
+          titleTranslations: buildMockCatalogTitleTranslations(
+            item.title,
+            workspace.primaryLanguage,
+            nextLanguageCodes,
+            item.titleTranslations,
+          ),
+        });
+      });
+      updateWorkspace({
+        localizedNames: {
+          ...workspace.localizedNames,
+          [language]: workspace.localizedNames[language]
+            ?? workspace.localizedNames[workspace.primaryLanguage]
+            ?? workspace.name,
+        },
+      });
+      setWorkspaceLanguageHasContent(language, true);
+      setTranslatingLanguages((current) => {
+        const next = new Set(current);
+        next.delete(language);
+        return next;
+      });
+      translationTimersRef.current.delete(language);
+    }, 900);
+    translationTimersRef.current.set(language, timer);
   };
 
   const applyRegionScenario = (region: "KZ" | "RS") => {
@@ -2247,167 +2308,176 @@ function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
     <TooltipProvider delayDuration={300}>
       <>
       <div className="w-full space-y-6">
-        <section aria-labelledby="storefront-languages-title">
-          <div>
-            <h2
-              id="storefront-languages-title"
-              className="text-[13px] font-semibold text-[#292524]"
-            >
-              Языки витрины
-            </h2>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">
-              Управляйте языковыми версиями контента и их доступностью для гостей.
-            </p>
-          </div>
+        <section aria-labelledby="menu-languages-title">
+          <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1">
+                <h2 id="menu-languages-title" className="text-[12px] font-medium text-[#292524]">
+                  Языки в меню
+                </h2>
+                <Tooltip
+                  label="Основной язык используется по умолчанию. Добавленные языки доступны гостям в меню, а существующий контент переводится автоматически."
+                  side="top"
+                  contentClassName="max-w-[320px] px-3 py-2 text-left leading-5"
+                >
+                  <button
+                    type="button"
+                    aria-label="О языках в меню"
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-[#a8a29e] outline-none transition hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
+                  >
+                    <Info size={13} />
+                  </button>
+                </Tooltip>
+              </div>
 
-          <div className="mt-3 rounded-[8px] border border-[#e7e5e4] bg-white">
-            <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase text-[#a8a29e]">
-              Добавлены
-            </div>
-            <div className="divide-y divide-[#f0eeec]">
-              {workspace.languages.map((workspaceLanguage) => {
-                const language = LANGUAGES.find(
-                  ({ code }) => code === workspaceLanguage.code,
-                );
+              {addedLanguages.map((workspaceLanguage) => {
+                const language = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
                 if (!language) return null;
                 const primary = workspace.primaryLanguage === language.code;
-                const active = contentLanguage === language.code;
-                const menuOpened = openMenu === language.code;
-                const statusText = primary
-                  ? "Всегда доступен"
-                  : `${LANGUAGE_STATUS_LABELS[workspaceLanguage.status]}${workspaceLanguage.visible ? "" : " · Скрыт с витрины"}`;
+                const translating = translatingLanguages.has(language.code);
 
                 return (
                   <div
                     key={language.code}
-                    data-language-row={language.code}
-                    className={cn(
-                      "relative flex min-h-14 items-center gap-3 px-3 py-2.5 transition",
-                      active && "bg-[#fafaf9]",
-                      menuOpened && "z-20",
-                    )}
+                    data-language-chip={language.code}
+                    className="flex h-6 items-center gap-1 rounded-[7px] bg-[#e7e5e4] pl-2 pr-0.5 text-[12px] text-[#292524]"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setContentLanguage(language.code)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[13px] font-medium text-[#292524]">
-                          {language.label}
-                        </span>
-                        {primary && (
-                          <span className="rounded bg-[#f0fdf4] px-1.5 py-0.5 text-[10px] font-semibold text-[#15803d]">
-                            Основной
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-[#79716b]">
-                        {statusText}
-                      </span>
-                    </button>
-
-                    <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-[#79716b]">
-                      {language.short}
-                    </span>
-
-                    {primary ? (
-                      <span className="h-8 w-8 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <div className="relative shrink-0">
+                    {primary && (
+                      <Star size={12} aria-label="Основной язык" className="shrink-0 fill-current" />
+                    )}
+                    <span className="whitespace-nowrap font-medium">{language.label}</span>
+                    {translating && (
+                      <span className="whitespace-nowrap text-[11px] text-[#79716b]">Переводим…</span>
+                    )}
+                    <LanguageDropdownMenu>
+                      <LanguageDropdownMenuTrigger asChild>
                         <button
                           type="button"
                           aria-label={`Действия для языка ${language.label}`}
-                          aria-expanded={menuOpened}
-                          onClick={() =>
-                            setOpenMenu((current) =>
-                              current === language.code ? null : language.code,
-                            )
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] outline-none transition hover:bg-white/60 hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
                         >
-                          <MoreHorizontal size={17} />
+                          <MoreVertical size={13} />
                         </button>
-                        {menuOpened && (
-                          <div className="absolute right-0 top-9 z-30 w-52 rounded-[8px] border border-[#e7e5e4] bg-white p-1 shadow-lg">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleLanguageVisibility(
-                                  language.code,
-                                  !workspaceLanguage.visible,
-                                )
-                              }
-                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#44403b] hover:bg-[#f5f5f4]"
-                            >
-                              {workspaceLanguage.visible ? (
-                                <EyeOff size={15} />
-                              ) : (
-                                <Eye size={15} />
-                              )}
-                              {workspaceLanguage.visible
-                                ? "Скрыть с витрины"
-                                : "Показать на витрине"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => makePrimary(language.code)}
-                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#44403b] hover:bg-[#f5f5f4]"
-                            >
-                              <Star size={15} />
+                      </LanguageDropdownMenuTrigger>
+                      <LanguageDropdownMenuContent align="end">
+                        {primary ? (
+                          <LanguageDropdownMenuLabel className="flex items-center gap-2">
+                            <Star size={13} className="fill-current" />
+                            Основной язык
+                          </LanguageDropdownMenuLabel>
+                        ) : (
+                          <>
+                            <LanguageDropdownMenuItem onSelect={() => makePrimary(language.code)}>
+                              <Star size={14} />
                               Сделать основным
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLanguageToDelete(language.code);
-                                setOpenMenu(null);
-                              }}
-                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] text-[#dc2626] hover:bg-[#fef2f2]"
+                            </LanguageDropdownMenuItem>
+                            <LanguageDropdownMenuItem
+                              onSelect={() => removeLanguage(language.code)}
+                              className="text-[#dc2626] data-[highlighted]:bg-[#fef2f2]"
                             >
-                              <Trash2 size={15} />
+                              <Trash2 size={14} />
                               Удалить язык
-                            </button>
-                          </div>
+                            </LanguageDropdownMenuItem>
+                          </>
                         )}
-                      </div>
-                    )}
+                      </LanguageDropdownMenuContent>
+                    </LanguageDropdownMenu>
                   </div>
                 );
               })}
-            </div>
 
-            <div className="border-t border-[#e7e5e4]">
-              <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase text-[#a8a29e]">
-                Доступные языки
-              </div>
-              {availableLanguages.length > 0 ? (
-                <div className="divide-y divide-[#f0eeec]">
-                  {availableLanguages.map((language) => (
-                    <button
-                      key={language.code}
-                      type="button"
-                      onClick={() => addLanguage(language.code)}
-                      className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-[#fafaf9]"
-                    >
-                      <span className="min-w-0 flex-1 text-[13px] font-medium text-[#292524]">
-                        {language.label}
-                      </span>
-                      <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-[#79716b]">
-                        {language.short}
-                      </span>
-                      <CirclePlus size={17} className="mx-1.5 shrink-0 text-[#79716b]" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="px-3 pb-3 pt-1 text-[12px] text-[#a8a29e]">
-                  Все доступные языки уже добавлены.
-                </p>
-              )}
-              <p className="border-t border-[#f0eeec] px-3 py-2.5 text-[11px] leading-4 text-[#79716b]">
-                Язык появится на витрине после заполнения и публикации.
-              </p>
+              <Popover
+                open={languagePickerOpen || pendingLanguage !== null}
+                onOpenChange={(open) => {
+                  setLanguagePickerOpen(open);
+                  if (!open) {
+                    setLanguageQuery("");
+                    setPendingLanguage(null);
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Добавить язык"
+                    disabled={availableLanguages.length === 0}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#d6d3d1] bg-white text-[#79716b] outline-none transition hover:border-[#a8a29e] hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  role={pendingLanguage ? "dialog" : undefined}
+                  aria-label={pendingLanguage ? `Добавить ${pendingLanguageDetails?.label}?` : undefined}
+                  className="w-[268px] p-2"
+                >
+                  {pendingLanguage ? (
+                    <div className="p-1">
+                      <h3 className="text-[14px] font-semibold text-[#292524]">
+                        Добавить {pendingLanguageDetails?.label}?
+                      </h3>
+                      <p className="mt-1.5 text-[12px] leading-5 text-[#79716b]">
+                        Существующий контент меню будет автоматически переведён на новый язык.
+                      </p>
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setPendingLanguage(null);
+                            setLanguagePickerOpen(false);
+                          }}
+                        >
+                          Отмена
+                        </Button>
+                        <Button type="button" size="sm" onClick={confirmAddLanguage}>
+                          Добавить и перевести
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search
+                          size={14}
+                          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#a8a29e]"
+                        />
+                        <Input
+                          autoFocus
+                          size="compact"
+                          value={languageQuery}
+                          onChange={(event) => setLanguageQuery(event.target.value)}
+                          placeholder="Найти язык"
+                          aria-label="Поиск языка"
+                          className="pl-8"
+                        />
+                      </div>
+                      <div role="listbox" aria-label="Доступные языки" className="mt-1 max-h-56 overflow-y-auto">
+                        {filteredAvailableLanguages.map((language) => (
+                          <button
+                            key={language.code}
+                            type="button"
+                            role="option"
+                            aria-selected="false"
+                            onClick={() => setPendingLanguage(language.code)}
+                            className="flex h-9 w-full items-center justify-between rounded-[8px] px-2 text-left text-[13px] text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4]"
+                          >
+                            <span>{language.label}</span>
+                            <span className="text-[11px] font-medium text-[#a8a29e]">{language.short}</span>
+                          </button>
+                        ))}
+                        {filteredAvailableLanguages.length === 0 && (
+                          <p className="px-2 py-3 text-center text-[12px] text-[#a8a29e]">
+                            Языки не найдены
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </section>
@@ -2485,52 +2555,6 @@ function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
         </section>
       </div>
 
-      {languageToDelete &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-language-title"
-            aria-describedby="delete-language-description"
-          >
-            <div className="w-full max-w-sm rounded-[8px] bg-white p-5 shadow-xl">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#fef2f2] text-[#dc2626]">
-                <AlertTriangle size={18} />
-              </div>
-              <h2
-                id="delete-language-title"
-                className="mt-4 text-[15px] font-semibold text-[#292524]"
-              >
-                Удалить язык?
-              </h2>
-              <p
-                id="delete-language-description"
-                className="mt-2 text-[13px] leading-5 text-[#79716b]"
-              >
-                Язык {deleteLanguage?.label} и сохранённые переводы будут удалены.
-                Это действие нельзя отменить.
-              </p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLanguageToDelete(null)}
-                  className="h-9 rounded-md border border-[#d6d3d1] px-3 text-[13px] font-medium text-[#44403b] hover:bg-[#f5f5f4]"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeleteLanguage}
-                  className="h-9 rounded-md bg-[#dc2626] px-3 text-[13px] font-medium text-white hover:bg-[#b91c1c]"
-                >
-                  Удалить язык
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
       </>
     </TooltipProvider>
   );

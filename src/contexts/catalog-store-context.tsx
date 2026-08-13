@@ -17,6 +17,7 @@ import {
   type CatalogSection,
   type CatalogWeeklySchedule,
 } from "@/data/catalog";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import {
   CATALOG_PERSISTENCE_KEYS,
   readCatalogJson,
@@ -27,6 +28,7 @@ import {
   writeCatalogJson,
 } from "@/features/storefront/catalog/persistence";
 import { catalogStorageKey } from "@/lib/catalog-preview";
+import { buildMockCatalogTitleTranslations } from "@/lib/mock-catalog-translations";
 import {
   readCatalogUpsellState,
   writeCatalogUpsellState,
@@ -365,6 +367,7 @@ export type CatalogMutationFacade = {
 const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 
 export function CatalogStoreProvider({ children }: { children: ReactNode }) {
+  const { account } = useMockAuth();
   const [menus, setMenus] = useState<CatalogMenu[]>([
     { id: "primary", name: "Основное меню" },
     { id: "summer", name: "Летнее меню" },
@@ -437,7 +440,22 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
   }, [dispatch]);
-  const addItem = useCallback((item: CatalogItem) => dispatch({ type: "add-item", item }), [dispatch]);
+  const prepareNewItem = useCallback((item: CatalogItem): CatalogItem => {
+    const workspace = account?.workspace;
+    if (!workspace) return item;
+    return {
+      ...item,
+      titleTranslations: buildMockCatalogTitleTranslations(
+        item.title,
+        workspace.primaryLanguage,
+        workspace.languages.map(({ code }) => code),
+        item.titleTranslations,
+      ),
+    };
+  }, [account?.workspace]);
+  const addItem = useCallback((item: CatalogItem) => {
+    dispatch({ type: "add-item", item: prepareNewItem(item) });
+  }, [dispatch, prepareNewItem]);
   const addSection = useCallback((section: CatalogSection) => dispatch({ type: "add-section", section }), [dispatch]);
   const deleteItem = useCallback((id: string) => dispatch({ type: "delete-item", id }), [dispatch]);
   const moveItem = useCallback((id: string, sectionId: string, options?: { index?: number; sectionName?: string }) => {
@@ -466,22 +484,23 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
     order?: Record<string, string[]>;
     preserveLegacyOrderPersistence?: boolean;
   }) => {
+    const translatedItem = prepareNewItem(item);
     if (options?.preserveLegacyOrderPersistence && activeMenuId === "primary") {
       const storedOrder = readCatalogJson<Record<string, string[]>>(POSITION_ORDER_STORAGE_KEY, {});
-      const sectionIds = storedOrder[item.sectionId]
+      const sectionIds = storedOrder[translatedItem.sectionId]
         ?? Object.values(state.itemsById)
-          .filter((candidate) => candidate.sectionId === item.sectionId)
+          .filter((candidate) => candidate.sectionId === translatedItem.sectionId)
           .map((candidate) => candidate.id);
       writeCatalogJson(POSITION_ORDER_STORAGE_KEY, {
         ...storedOrder,
-        [item.sectionId]: [item.id, ...sectionIds.filter((id) => id !== item.id)],
+        [translatedItem.sectionId]: [translatedItem.id, ...sectionIds.filter((id) => id !== translatedItem.id)],
       });
-      dispatch({ type: "add-item", item });
+      dispatch({ type: "add-item", item: translatedItem });
       return;
     }
-    dispatch({ type: "add-item", item });
+    dispatch({ type: "add-item", item: translatedItem });
     if (options?.order) dispatch({ type: "replace-item-order", order: options.order });
-  }, [activeMenuId, dispatch, state.itemsById]);
+  }, [activeMenuId, dispatch, prepareNewItem, state.itemsById]);
   const deleteItems = useCallback((ids: Iterable<string>) => {
     for (const id of ids) dispatch({ type: "delete-item", id });
   }, [dispatch]);
