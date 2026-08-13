@@ -4,6 +4,7 @@ import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type QuickCreateAction, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
 import { PreviewToggle } from "@/components/layout/preview-toggle";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider, useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
@@ -212,7 +213,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
   "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
-  "storefront:upsell":     { title: "Допродажи",          description: "Что предложить вместе с позициями.",              showLanguage: true },
+  "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
   "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
   "management:order-settings": { title: "Настройка заказов", description: "Настройте способы получения заказов и обслуживание гостей.", showLanguage: true },
@@ -1287,7 +1288,7 @@ function AuthenticatedShell() {
       ? "catalog-empty"
       : previewScenario;
 
-  // When on catalog's Допродажи tab, preview should show upsell screen
+  // When on catalog's Recommendations tab, preview should show the recommendation screen.
   const effectiveActiveTab: StoreTabId | ManageTabId | AnalyticsTabId | null =
     isCatalogPage && catalogTab === "upsell" ? "upsell" :
     isTrainingPage ? null :
@@ -1386,7 +1387,10 @@ function AuthenticatedShell() {
           />
 
           {/* Work area */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1">
+          <div
+            data-position-editor-overlay-root
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1"
+          >
             {/* Toolbar: tabs left + language right */}
             {(isHomePage || isCatalogPage || isAboutPage || isTrainingPage || pageMeta.showLanguage || previewVisible) && (
               <div className={cn(
@@ -1521,25 +1525,27 @@ export default function App() {
   }, []);
 
   return (
-    <MockAuthProvider>
-      <AppSettingsProvider>
-        <OrderRoutingProvider>
-          <PlanProvider>
-            <PublishProvider>
-              <VitrineLaunchProvider>
-                <PreviewDemoProvider>
-                  <CatalogStoreProvider>
-                    <HeaderActionsProvider>
-                      <AppShell />
-                    </HeaderActionsProvider>
-                  </CatalogStoreProvider>
-                </PreviewDemoProvider>
-              </VitrineLaunchProvider>
-            </PublishProvider>
-          </PlanProvider>
-        </OrderRoutingProvider>
-      </AppSettingsProvider>
-    </MockAuthProvider>
+    <TooltipProvider delayDuration={300}>
+      <MockAuthProvider>
+        <AppSettingsProvider>
+          <OrderRoutingProvider>
+            <PlanProvider>
+              <PublishProvider>
+                <VitrineLaunchProvider>
+                  <PreviewDemoProvider>
+                    <CatalogStoreProvider>
+                      <HeaderActionsProvider>
+                        <AppShell />
+                      </HeaderActionsProvider>
+                    </CatalogStoreProvider>
+                  </PreviewDemoProvider>
+                </VitrineLaunchProvider>
+              </PublishProvider>
+            </PlanProvider>
+          </OrderRoutingProvider>
+        </AppSettingsProvider>
+      </MockAuthProvider>
+    </TooltipProvider>
   );
 }
 

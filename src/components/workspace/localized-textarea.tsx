@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
-import { TranslationIndicator } from "@/components/workspace/translation-indicator";
 
 const LANGUAGE_GENITIVE: Record<LanguageCode, string> = {
   ru: "русского",
@@ -28,10 +27,9 @@ export function LocalizedTextArea({
   rows = 4,
   onEffectiveValueChange,
 }: LocalizedTextAreaProps) {
-  const { contentLanguage, setContentLanguage } = useAppSettings();
+  const { contentLanguage } = useAppSettings();
   const [translations, setTranslations] = useState<Translations>(initialTranslations);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pendingFocus = useRef(false);
 
   const currentValue = translations[contentLanguage] ?? "";
   const isEmpty = currentValue.trim() === "";
@@ -41,14 +39,6 @@ export function LocalizedTextArea({
     onEffectiveValueChange?.(isEmpty ? fallbackValue : currentValue);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentValue, fallbackValue, isEmpty]);
-
-  // Focus this field after a language pick from the indicator popover
-  useEffect(() => {
-    if (pendingFocus.current) {
-      textareaRef.current?.focus();
-      pendingFocus.current = false;
-    }
-  }, [contentLanguage]);
 
   const fallbackLabel = LANGUAGES.find((l) => l.code === fallbackLang)?.short ?? fallbackLang.toUpperCase();
 
@@ -60,16 +50,6 @@ export function LocalizedTextArea({
     setTranslations((prev) => ({ ...prev, [contentLanguage]: fallbackValue }));
   };
 
-  const handlePickLanguage = (lang: LanguageCode) => {
-    pendingFocus.current = true;
-    if (lang === contentLanguage) {
-      textareaRef.current?.focus();
-      pendingFocus.current = false;
-    } else {
-      setContentLanguage(lang);
-    }
-  };
-
   const showCopyAction =
     isEmpty && contentLanguage !== fallbackLang && fallbackValue.trim() !== "";
 
@@ -78,11 +58,6 @@ export function LocalizedTextArea({
       {/* Label row */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        <TranslationIndicator
-          translations={translations}
-          fieldLabel={label}
-          onPickLanguage={handlePickLanguage}
-        />
       </div>
 
       {isEmpty ? (

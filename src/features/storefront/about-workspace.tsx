@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Star, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/tooltip";
 import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/components/workspace/description-rich-text-editor";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
-import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import {
@@ -61,7 +60,7 @@ const TAB_LABELS: Record<AboutTab, string> = {
 
 // Один источник для заголовка/подзаголовка рабочей области по активной вкладке.
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
-  "info": { title: TAB_LABELS.info, subtitle: "Информация, которая поможет гостям лучше узнать о вас." },
+  "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас" },
   "language-region": {
     title: "Язык и регион",
     subtitle: "Управляйте языками витрины и региональными настройками заведения.",
@@ -1933,7 +1932,6 @@ function VenueTypeChipGroup({
   );
 }
 
-
 const CURRENCY_OPTIONS = [
   { value: "KZT", label: "Казахстанский тенге — KZT" },
   { value: "RSD", label: "Сербский динар — RSD" },
@@ -1964,6 +1962,8 @@ function BasicInfoWorkspace({
   const [name, setName] = useState(account?.workspace.name ?? "Sweet affair");
   const [address, setAddress] = useState("Астана, Абылай-хана 34, д 18");
   const [description, setDescription] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [wifiAdded, setWifiAdded] = useState(false);
   const [scheduleAdded, setScheduleAdded] = useState(false);
   const [basicTouched, setBasicTouched] = useState<Record<"name" | "address" | "description", boolean>>({
@@ -2015,6 +2015,19 @@ function BasicInfoWorkspace({
     touchBasicField("name");
   };
 
+  const handleLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      setLogoUrl(reader.result);
+      onChange();
+    };
+    reader.readAsDataURL(file);
+  };
+
   const addRowClass =
     "flex h-9 items-center gap-2 rounded-[8px] px-1.5 text-[14px] text-[#44403b] transition hover:bg-[#f5f5f4]";
 
@@ -2054,25 +2067,50 @@ function BasicInfoWorkspace({
   return (
     <TooltipProvider delayDuration={300}>
     <div className="w-full space-y-4">
-      {/* Логотип + название */}
-      <div className="flex items-end gap-3">
-        <button
-          type="button"
-          className="flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center rounded-[14px] bg-[#f5f5f4] text-[#79716b] transition hover:bg-[#eeeeec]"
-        >
-          <Plus size={16} />
-          <span className="mt-0.5 text-[11px] leading-3">Лого</span>
-        </button>
-        <BasicField
-          id="about-name"
-          label="Название заведения"
-          value={name}
-          onChange={edit(setName)}
-          onBlur={saveWorkspaceName}
-          error={basicErrors.name}
-          className="flex-1"
+      {/* Логотип */}
+      <div>
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          aria-label="Выбрать логотип"
+          onChange={handleLogoChange}
         />
+        <Tooltip label={logoUrl ? "Изменить логотип" : "Добавить логотип"} side="top">
+          <button
+            type="button"
+            aria-label={logoUrl ? "Изменить логотип" : "Добавить логотип"}
+            onClick={() => logoInputRef.current?.click()}
+            className="flex h-[68px] w-[68px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#f5f5f4] text-[#79716b] outline-none transition hover:bg-[#eeeeec] focus-visible:ring-2 focus-visible:ring-[#292524]/20 focus-visible:ring-offset-2"
+          >
+            {logoUrl ? (
+              <img src={logoUrl} alt="Логотип заведения" className="h-full w-full object-cover" />
+            ) : (
+              <Plus size={18} />
+            )}
+          </button>
+        </Tooltip>
       </div>
+
+      <BasicField
+        id="about-name"
+        label="Название заведения"
+        value={name}
+        onChange={edit(setName)}
+        onBlur={saveWorkspaceName}
+        error={basicErrors.name}
+      />
+
+      <BasicField
+        id="about-address"
+        label="Адрес"
+        value={address}
+        onChange={edit(setAddress)}
+        onBlur={() => touchBasicField("address")}
+        error={basicErrors.address}
+        placeholder="Например, ул. Кунаева, 12"
+      />
 
       <VenueTypeChipGroup
         value={account?.workspace.venueType ?? "restaurant"}
@@ -2088,16 +2126,6 @@ function BasicInfoWorkspace({
           updateWorkspace({ venueType, organizationType, organizationTypeConfirmed: true });
           onChange();
         }}
-      />
-
-      <BasicField
-        id="about-address"
-        label="Адрес"
-        value={address}
-        onChange={edit(setAddress)}
-        onBlur={() => touchBasicField("address")}
-        error={basicErrors.address}
-        placeholder="Например, ул. Кунаева, 12"
       />
 
       <DescriptionRichTextEditor
@@ -2581,14 +2609,6 @@ export function AboutWorkspace({
             <h1 className="text-[14px] font-medium leading-tight text-stone-950">{TAB_HEADERS[tab].title}</h1>
             <p className="mt-1 text-sm text-zinc-500">{TAB_HEADERS[tab].subtitle}</p>
           </div>
-
-          {tab !== "language-region" && (
-            <LaunchPageHint
-              checkId="about"
-              title="Заполните информацию о заведении"
-              description="Добавьте описание, контакты и график работы — всё, что поможет гостям узнать о вас больше."
-            />
-          )}
 
           {/* ── Основное ── */}
           {tab === "info" && (

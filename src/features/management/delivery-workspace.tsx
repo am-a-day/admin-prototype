@@ -668,7 +668,6 @@ export function DeliveryWorkspace({
                       multiline
                       rows={3}
                       plain
-                      showTranslationMeta={false}
                       persist={false}
                       placeholder="Например: минимальная сумма заказа — 5 000 ₸. Доставка занимает 45–60 минут."
                       onValueChange={(value) => { setDeliveryComment(value); queueSave(); }}
@@ -694,7 +693,7 @@ export function DeliveryWorkspace({
                       ) : <Button type="button" variant="outline" size="sm" onClick={() => setPickupAddressEditing(true)}>Добавить адрес</Button>}
                     </SettingsSection>
                     <SettingsSection title="Информация о самовывозе" description="Гость увидит этот текст при оформлении заказа на самовывоз.">
-                      <TranslatableField label="Текст при оформлении" initialTranslations={{ ru: pickupComment }} multiline rows={3} plain showTranslationMeta={false} persist={false} placeholder="Например: заказ можно забрать у стойки выдачи." onValueChange={(value) => { setPickupComment(value); queueSave(); }} />
+                      <TranslatableField label="Текст при оформлении" initialTranslations={{ ru: pickupComment }} multiline rows={3} plain persist={false} placeholder="Например: заказ можно забрать у стойки выдачи." onValueChange={(value) => { setPickupComment(value); queueSave(); }} />
                     </SettingsSection>
                   </>
                 )}

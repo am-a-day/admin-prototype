@@ -127,6 +127,7 @@ export function DescriptionRichTextEditor({
   placeholder,
   limit,
   error,
+  compact = false,
 }: {
   value?: string;
   initialValue?: string;
@@ -136,6 +137,7 @@ export function DescriptionRichTextEditor({
   placeholder: string;
   limit: number;
   error?: string;
+  compact?: boolean;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const sourceValue = value ?? initialValue ?? "";
@@ -284,7 +286,10 @@ export function DescriptionRichTextEditor({
           onMouseUp={refreshActiveMarks}
           onBeforeInput={handleBeforeInput}
           onPaste={handlePaste}
-          className="min-h-[96px] px-3 py-2 text-[13px] leading-5 text-[#292524] outline-none empty:before:pointer-events-none empty:before:text-[#a8a29e] empty:before:content-[attr(data-placeholder)] [&_em]:italic [&_li]:ml-4 [&_li]:list-disc [&_p]:my-0 [&_s]:line-through [&_strong]:font-semibold [&_u]:underline [&_ul]:my-0 [&_ul]:pl-2"
+          className={cn(
+            "px-3 py-2 text-[13px] leading-5 text-[#292524] outline-none empty:before:pointer-events-none empty:before:text-[#a8a29e] empty:before:content-[attr(data-placeholder)] [&_em]:italic [&_li]:ml-4 [&_li]:list-disc [&_p]:my-0 [&_s]:line-through [&_strong]:font-semibold [&_u]:underline [&_ul]:my-0 [&_ul]:pl-2",
+            compact ? "min-h-[80px]" : "min-h-[96px]",
+          )}
         />
       </div>
       {shownError && (
