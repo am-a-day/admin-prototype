@@ -10,8 +10,8 @@ import {
   Check,
   Copy,
   Eye,
-  ImageBroken,
   NotePencil,
+  PlusCircle,
   Prohibit,
   Trash,
 } from "@phosphor-icons/react";
@@ -528,11 +528,11 @@ export function CatalogContextMenuContent({
           onSelect={onChangeIcon}
           icon={(
             <span className="flex size-4 items-center justify-center overflow-hidden rounded-[3px] bg-[#f1f5f9] text-[#94a3b8]">
-              {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={11} />}
+              {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" /> : <PlusCircle size={12} />}
             </span>
           )}
         >
-          Поменять иконку
+          {imageUrl ? "Поменять иконку" : "Добавить иконку"}
         </MenuItem>
       )}
       <DropdownActionItem icon={NotePencil} onSelect={onRename}>Переименовать</DropdownActionItem>

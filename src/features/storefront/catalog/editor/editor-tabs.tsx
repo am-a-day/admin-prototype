@@ -34,7 +34,7 @@ export function WorkspaceLocalTabs<T extends string>({
               onClick={() => onValueChange(tab.id)}
               aria-current={value === tab.id ? "page" : undefined}
               className={cn(
-                "flex shrink-0 items-center gap-2 whitespace-nowrap border-b px-1 py-3.5 text-[13px] transition",
+                "flex shrink-0 items-center gap-2 whitespace-nowrap border-b px-1 py-2.5 text-[13px] transition",
                 value === tab.id
                   ? "border-[#1c1917] font-medium text-[#1c1917]"
                   : "border-transparent text-[#79716b] hover:text-[#44403b]",

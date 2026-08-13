@@ -25,6 +25,7 @@ export type CreateSessionAction =
   | { type: "update-draft"; patch: Partial<CatalogItem> }
   | { type: "set-dirty"; value: SetStateAction<boolean> }
   | { type: "set-submitting"; value: SetStateAction<boolean> }
+  | { type: "promote"; item: CatalogItem }
   | { type: "complete"; createdItemId: string }
   | { type: "cancel" };
 
@@ -62,6 +63,15 @@ export function createSessionReducer(
   }
   if (action.type === "set-dirty") return { ...state, dirty: resolveState(action.value, state.dirty) };
   if (action.type === "set-submitting") return { ...state, submitting: resolveState(action.value, state.submitting) };
+  if (action.type === "promote") {
+    return {
+      ...state,
+      draft: action.item,
+      dirty: false,
+      submitting: false,
+      completedItemId: action.item.id,
+    };
+  }
   if (action.type === "complete") return { ...EMPTY_CREATE_SESSION, completedItemId: action.createdItemId };
   return EMPTY_CREATE_SESSION;
 }
@@ -77,6 +87,7 @@ export function useCreateSession(initialState?: CreateSessionState) {
   const updateDraft = useCallback((patch: Partial<CatalogItem>) => dispatch({ type: "update-draft", patch }), []);
   const setDirty = useCallback<Dispatch<SetStateAction<boolean>>>((value) => dispatch({ type: "set-dirty", value }), []);
   const setSubmitting = useCallback<Dispatch<SetStateAction<boolean>>>((value) => dispatch({ type: "set-submitting", value }), []);
+  const promote = useCallback((item: CatalogItem) => dispatch({ type: "promote", item }), []);
   const complete = useCallback((createdItemId: string) => dispatch({ type: "complete", createdItemId }), []);
   const cancel = useCallback(() => dispatch({ type: "cancel" }), []);
 
@@ -88,6 +99,7 @@ export function useCreateSession(initialState?: CreateSessionState) {
     updateDraft,
     setDirty,
     setSubmitting,
+    promote,
     complete,
     cancel,
   };

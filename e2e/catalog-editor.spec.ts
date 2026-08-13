@@ -18,34 +18,38 @@ async function openItemFromLeaf(page: Page) {
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();
   await page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).click();
-  await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toBeVisible();
 }
 
 async function openItemFromAllPositions(page: Page) {
   await page.goto("/?editorNav=unified");
   await page.getByRole("textbox", { name: "Найти позицию" }).fill("Омлет");
   await page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).click();
-  await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toBeVisible();
 }
 
 async function openEntityItem(page: Page) {
   await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
   await page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle }).click();
-  await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toBeVisible();
+}
+
+async function revealEditorQueueNavigation(page: Page) {
+  await page.locator("[data-position-editor-controls]").hover();
 }
 
 async function openStructureCreateDraft(page: Page) {
   await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
-  await page.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();
+  await page.getByRole("button", { name: "Добавить позицию", exact: true }).last().click();
   const draft = page.locator("[data-structure-position-draft]");
   await expect(draft).toBeVisible();
-  await expect(draft.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
+  await expect(draft).toHaveAccessibleName("Новая позиция");
   return draft;
 }
 
 async function openDirectCreateDraft(page: Page) {
   await page.goto(`/?editorNav=unified&createPosition=1&sectionId=${breakfastSectionId}`);
-  await expect(page.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Новая позиция" })).toBeVisible();
 }
 
 async function preserveLocalStorageOnReload(page: Page) {
@@ -81,19 +85,10 @@ test("keeps catalog add and table controls compact and aligned", async ({ page }
   await expect(addSection).toBeVisible();
   await expect(addSection).toHaveCSS("width", "28px");
   await expect(addSection).toHaveCSS("height", "28px");
-  await expect(addSection.locator("svg")).toHaveAttribute("width", "20");
-  await expect(addSection.locator("svg")).toHaveAttribute("height", "20");
+  await expect(addSection.locator("svg")).toHaveAttribute("width", "16");
+  await expect(addSection.locator("svg")).toHaveAttribute("height", "16");
   await expect(addSection).toHaveCSS("color", "rgb(87, 83, 77)");
-  await expect(addSection).toHaveAttribute("title", "Добавить новый раздел");
-
-  const localHeader = page.locator("[data-catalog-local-header]");
-  await localHeader.getByRole("button", { name: "Выбран раздел: Все разделы" }).click();
-  await page.getByRole("menuitem", { name: /^Кухня/ }).click();
-  const scopeButton = localHeader.getByRole("button", { name: "Выбран раздел: Кухня" });
-  const scopeContainer = scopeButton.locator("xpath=..");
-  await expect(scopeContainer).toHaveCSS("max-width", "160px");
-  await expect(scopeButton.locator("span").first()).toHaveClass(/rounded-full/);
-  await expect(localHeader.getByRole("button", { name: "Открыть список разделов" })).toHaveClass(/rounded-full/);
+  await expect(page.locator("[data-catalog-table-header]")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Сортировать по возрастанию" })).toHaveClass(/justify-end/);
 
@@ -113,14 +108,47 @@ test("keeps catalog add and table controls compact and aligned", async ({ page }
   await expect(languageSettings.locator("svg")).toHaveAttribute("width", "15");
 });
 
+test("keeps sibling sections grouped under their parent in the left tree", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+
+  const breakfastRow = page.getByRole("button", { name: "Раздел Завтраки", exact: true });
+  const bakeryRow = page.getByRole("button", { name: "Раздел Выпечка", exact: true });
+  const breakfastId = await breakfastRow.getAttribute("data-tree-section-id");
+  const bakeryId = await bakeryRow.getAttribute("data-tree-section-id");
+  expect(breakfastId && bakeryId).toBeTruthy();
+  const beforeBreakfast = await breakfastRow.boundingBox();
+  const beforeBakery = await bakeryRow.boundingBox();
+  expect(beforeBreakfast && beforeBakery).toBeTruthy();
+  expect(beforeBreakfast!.y).toBeLessThan(beforeBakery!.y);
+
+  const breakfastParent = breakfastRow.locator("xpath=..");
+  expect(await breakfastParent.getAttribute("data-section-parent-id")).toBeTruthy();
+  expect(beforeBreakfast!.x).toBeGreaterThan(beforeBakery!.x - 1);
+});
+
 test("opens editor from a leaf and keeps the preview bridge mounted", async ({ page }) => {
   await openItemFromLeaf(page);
 
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane).toBeVisible();
+  await expect(pane).toHaveCSS("width", "400px");
+  await expect(pane.getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` })).toHaveCSS("font-size", "14px");
+  await expect(page.locator("[data-position-editor-overlay]")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: firstItemTitle })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Основное" })).toBeVisible();
+  await revealEditorQueueNavigation(page);
   await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
+  await expect(page.locator(`[data-catalog-table-row="${firstItemId}"]`)).toHaveAttribute("data-active-position", "true");
   await expect(page.getByText("Предпросмотр", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/\?editorNav=unified$/);
+
+  const listWidthWhileEditing = (await page.locator("[data-catalog-items-card]").boundingBox())?.width ?? 0;
+  await page.getByRole("button", { name: "Свернуть редактор" }).click();
+  await expect(pane).toHaveCount(0);
+  await expect(page.locator("[data-position-editor-surface]")).toHaveCSS("padding-right", "0px");
+  const restoredListWidth = (await page.locator("[data-catalog-items-card]").boundingBox())?.width ?? 0;
+  expect(Math.abs(restoredListWidth - listWidthWhileEditing)).toBeLessThanOrEqual(1);
 });
 
 test("keeps previous and next navigation inside the current editor selection", async ({ page }) => {
@@ -128,21 +156,323 @@ test("keeps previous and next navigation inside the current editor selection", a
 
   const previous = page.getByRole("button", { name: "Предыдущая позиция в выборке" });
   const next = page.getByRole("button", { name: "Следующая позиция в выборке" });
+  await revealEditorQueueNavigation(page);
   await expect(previous).toBeDisabled();
   await expect(next).toBeEnabled();
 
   await next.click();
-  await expect(page.getByRole("heading", { name: firstItemTitle })).not.toBeVisible();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toHaveCount(0);
+  await revealEditorQueueNavigation(page);
   await expect(previous).toBeEnabled();
 
   await previous.click();
-  await expect(page.getByRole("heading", { name: firstItemTitle })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toBeVisible();
+});
+
+test("switches the open detail pane from the visible list without closing it", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  const targetRow = page.locator("[data-catalog-table-row]").nth(2);
+  const targetId = await targetRow.getAttribute("data-catalog-table-row");
+  const targetTitle = (await targetRow.locator("[data-catalog-position-title]").textContent())?.trim();
+  expect(targetId).toBeTruthy();
+  expect(targetTitle).toBeTruthy();
+
+  await targetRow.locator("[data-catalog-position-title]").click({ position: { x: 2, y: 8 } });
+
+  await expect(pane).toBeVisible();
+  await expect(page.getByRole("complementary", { name: targetTitle! })).toBeVisible();
+  await expect(page.locator(`[data-catalog-table-row="${targetId}"]`)).toHaveAttribute("data-active-position", "true");
+});
+
+test("uses the availability tab and original price-volume field order in the side peek", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane.getByText("Добавить в", { exact: true })).toHaveCount(0);
+  await expect(pane.locator("[data-position-availability-trigger]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Свернуть редактор" })).toBeVisible();
+
+  const price = await pane.getByRole("textbox", { name: "Цена позиции" }).boundingBox();
+  const volume = await pane.getByRole("textbox", { name: "Объем позиции" }).boundingBox();
+  const discount = await pane.getByRole("button", { name: "Добавить скидку" }).boundingBox();
+  expect(price && volume && discount).toBeTruthy();
+  expect(price!.x).toBeLessThan(volume!.x);
+  expect(discount!.y).toBeGreaterThan(price!.y + price!.height);
+  expect(discount!.x).toBeLessThan(volume!.x);
+
+  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  const availabilityEditor = pane.getByRole("radiogroup", { name: "Доступность позиции" });
+  await expect(availabilityEditor).toBeVisible();
+  await availabilityEditor.getByRole("radio", { name: /На стопе/ }).click();
+  await expect(availabilityEditor.getByRole("radio", { name: /На стопе/ })).toBeChecked();
+  await expect(availabilityEditor.getByRole("radio", { name: /На стопе/ })).toBeChecked();
+
+  await availabilityEditor.getByRole("radio", { name: "По расписанию", exact: true }).click();
+  await expect(availabilityEditor.getByRole("radio", { name: "По расписанию", exact: true })).toBeChecked();
+
+  await pane.getByRole("button", { name: /Действия с позицией/ }).click();
+  await page.getByRole("menuitem", { name: "Архивировать", exact: true }).click();
+  await expect(pane).toBeVisible();
+});
+
+test("adapts position availability blocks and applies one day schedule to all days", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
+
+  await modes.getByRole("radio", { name: "Доступно", exact: true }).click();
+  await expect(pane.getByRole("region", { name: "Расписание" })).toHaveCount(0);
+  await expect(pane.getByRole("region", { name: "Когда недоступно" })).toHaveCount(0);
+
+  await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
+  await expect(pane.getByRole("region", { name: "Расписание" })).toHaveCount(0);
+  await expect(pane.getByRole("region", { name: "Когда недоступно" })).toBeVisible();
+
+  await modes.getByRole("radio", { name: "По расписанию", exact: true }).click();
+  const schedule = pane.getByRole("region", { name: "Расписание" });
+  await expect(schedule).toBeVisible();
+  const unavailableBehavior = pane.getByRole("region", { name: "Когда недоступно" });
+  await expect(unavailableBehavior).toBeVisible();
+  await expect(unavailableBehavior.getByRole("button", { name: "Скрыть", exact: true })).toBeVisible();
+  await expect(unavailableBehavior.getByRole("button", { name: "Показать «Скоро будет»", exact: true })).toBeVisible();
+  await expect(schedule.getByText("Понедельник", { exact: true })).toBeVisible();
+  await expect(schedule.getByText("Воскресенье", { exact: true })).toBeVisible();
+  await expect(schedule.getByText("Среда", { exact: true })).toHaveCSS("color", "rgb(41, 37, 36)");
+
+  const tuesdayMode = schedule.getByRole("button", { name: "Вторник: режим расписания" });
+  await expect(tuesdayMode.locator("svg")).toHaveCount(1);
+  await tuesdayMode.click();
+  await expect(page.getByRole("menuitemradio", { name: "Весь день", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Своё время", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Недоступно", exact: true })).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "Весь день", exact: true }).click();
+
+  await schedule.getByRole("button", { name: "Среда: режим расписания" }).click();
+  await page.getByRole("menuitemradio", { name: "Своё время", exact: true }).click();
+  await schedule.getByLabel("Среда: начало").fill("10:00");
+  await schedule.getByLabel("Среда: конец").fill("19:00");
+  await schedule.getByRole("button", { name: "Применить ко всем", exact: true }).click();
+
+  await expect(schedule.getByLabel("Понедельник: начало")).toHaveValue("10:00");
+  await expect(schedule.getByLabel("Воскресенье: конец")).toHaveValue("19:00");
+
+  await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
+  await expect(schedule).toHaveCount(0);
+  await modes.getByRole("radio", { name: "По расписанию", exact: true }).click();
+  await expect(pane.getByRole("region", { name: "Расписание" }).getByLabel("Среда: начало")).toHaveValue("10:00");
+});
+
+test("configures card display with an instant mini and live preview", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Отображение", exact: true }).click();
+
+  const configurator = pane.locator("[data-position-display-configurator]");
+  const miniCard = configurator.locator("[data-position-card-preview]");
+  const livePreview = page.locator('[data-tour="preview-panel"]');
+  const priceSwitch = configurator.getByRole("switch", { name: "Показывать цену", exact: true });
+  const buttonSwitch = configurator.getByRole("switch", { name: "Показывать кнопку «Добавить»", exact: true });
+
+  await expect(configurator).toBeVisible();
+  await expect(miniCard).toContainText(firstItemTitle);
+  await expect(priceSwitch).toBeChecked();
+  await expect(buttonSwitch).toBeChecked();
+  const priceText = (await miniCard.locator("[data-position-card-preview-price]").textContent())?.trim();
+  expect(priceText).toBeTruthy();
+  await expect(livePreview.getByText(priceText!, { exact: true })).toBeVisible();
+  await expect(miniCard.locator("[data-position-card-preview-add]")).toBeVisible();
+  await expect(livePreview.getByRole("button", { name: "В корзину", exact: true })).toBeVisible();
+
+  await priceSwitch.click();
+  await expect(priceSwitch).not.toBeChecked();
+  await expect(buttonSwitch).not.toBeChecked();
+  await expect(buttonSwitch).toBeDisabled();
+  await expect(miniCard.locator("[data-position-card-preview-price]")).toHaveCount(0);
+  await expect(miniCard.locator("[data-position-card-preview-add]")).toHaveCount(0);
+  await expect(livePreview.getByText(priceText!, { exact: true })).toHaveCount(0);
+  await expect(livePreview.getByRole("button", { name: "В корзину", exact: true })).toHaveCount(0);
+
+  await priceSwitch.click();
+  await expect(miniCard.locator("[data-position-card-preview-price]")).toHaveText(priceText!);
+  await expect(miniCard.locator("[data-position-card-preview-add]")).toHaveCount(0);
+  await expect(livePreview.getByText(priceText!, { exact: true })).toBeVisible();
+
+  await buttonSwitch.click();
+  await expect(miniCard.locator("[data-position-card-preview-add]")).toBeVisible();
+  await expect(livePreview.getByRole("button", { name: "В корзину", exact: true })).toBeVisible();
+});
+
+test("toggles manual recommendations instantly in an anchored popover", async ({ page }) => {
+  test.setTimeout(30_000);
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
+  const recommendations = pane.locator('[data-upsell-card="recommendations"]');
+  const trigger = recommendations.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true });
+  await trigger.click();
+
+  const picker = page.locator("[data-recommendation-picker]");
+  await expect(picker).toBeVisible();
+  await expect(picker).not.toHaveAttribute("aria-modal", "true");
+  await expect(page.getByRole("dialog", { name: "Добавить рекомендуемые позиции" })).toHaveCount(0);
+  await expect(page.locator(".fixed.inset-0.bg-black\\/20")).toHaveCount(0);
+  await expect(picker.getByText("Добавить рекомендуемые позиции", { exact: true })).toHaveCount(0);
+  await expect(picker.getByText("Рекомендовать позиции друг друга", { exact: true })).toHaveCount(0);
+  await expect(picker.getByText(/^Выбрано:/)).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: "Отмена", exact: true })).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: "Добавить", exact: true })).toHaveCount(0);
+  await expect(picker.getByRole("checkbox", { name: `Рекомендовать «${firstItemTitle}»` })).toHaveCount(0);
+
+  const firstCheckbox = picker.getByRole("checkbox").first();
+  const firstRow = firstCheckbox.locator("xpath=..");
+  const checkboxName = await firstCheckbox.getAttribute("aria-label");
+  expect(checkboxName).toBeTruthy();
+  const candidateTitle = checkboxName!.replace(/^Рекомендовать «|»$/g, "");
+
+  await firstRow.click();
+  await expect(firstCheckbox).toBeChecked();
+  await expect(picker).toBeVisible();
+  await expect(recommendations.getByText(candidateTitle, { exact: true })).toBeVisible();
+
+  await firstRow.click();
+  await expect(firstCheckbox).not.toBeChecked();
+  await expect(recommendations.getByText(candidateTitle, { exact: true })).toHaveCount(0);
+
+  await firstRow.click();
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  await trigger.click();
+  const reopenedPicker = page.locator("[data-recommendation-picker]").filter({ visible: true });
+  await expect(reopenedPicker.getByRole("checkbox", { name: checkboxName! }).first()).toBeChecked();
+
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(700);
+  await preserveLocalStorageOnReload(page);
+  await openItemFromLeaf(page);
+  await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
+  await recommendations.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true }).click();
+  await expect(page.locator("[data-recommendation-picker]").filter({ visible: true }).getByRole("checkbox", { name: checkboxName! }).first()).toBeChecked();
+});
+
+test("combines recommendation title search and section filtering in a compact scrolling list", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
+  const trigger = pane.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true });
+  await trigger.click();
+
+  const picker = page.locator("[data-recommendation-picker]").filter({ visible: true });
+  const rows = picker.locator("[data-recommendation-picker-row]");
+  const list = picker.locator("[data-recommendation-picker-list]");
+  await expect(picker).toHaveCSS("width", "356px");
+  await expect(rows.first()).toHaveCSS("height", "38px");
+  await expect(rows.first().getByRole("checkbox")).toHaveCSS("width", "16px");
+  await expect(rows.first().locator("img")).toHaveCSS("width", "20px");
+  await expect(rows.first().locator("img")).toHaveCSS("height", "20px");
+  await expect(rows.first().locator("span[title]")).toHaveCSS("font-size", "13px");
+  await expect(rows.first().locator("span[title]")).toHaveCSS("font-weight", "500");
+  await expect(list.evaluate((element) => element.scrollHeight > element.clientHeight)).resolves.toBe(true);
+  await expect(picker).toHaveAttribute("data-side", /^(top|bottom)$/);
+
+  const longTitle = "Хрустящая булка с жаренным цыпленком";
+  const longTitleElement = rows.getByTitle(longTitle).first();
+  await expect(longTitleElement).toHaveCSS("text-overflow", "ellipsis");
+
+  await picker.getByRole("button", { name: "Фильтр по разделу" }).click();
+  await page.getByRole("menuitem", { name: "Выпечка", exact: true }).click();
+  await expect(picker).toBeVisible();
+  await expect(rows).toHaveCount(7);
+
+  const duplicatedTitle = "Хрустящая булка с говяжьей колбаской";
+  await picker.getByRole("textbox", { name: "Найти позицию" }).fill(duplicatedTitle);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText(duplicatedTitle);
+
+  await picker.getByRole("textbox", { name: "Найти позицию" }).fill("Мини-самса");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("Мини-самса");
+});
+
+test("closes the side peek on outside click and Escape", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await page.getByText("Предпросмотр", { exact: true }).click();
+  await expect(pane).toHaveCount(0);
+
+  await page.locator(`[data-catalog-table-row="${firstItemId}"]`).click();
+  await expect(pane).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(pane).toHaveCount(0);
+});
+
+test("resizes the side peek without reflowing the table or moving preview", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const card = page.locator("[data-catalog-items-card]");
+  const preview = page.locator('[data-tour="preview-panel"]');
+  const row = page.locator(`[data-catalog-table-row="${firstItemId}"]`);
+  const before = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
+
+  await row.click();
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane).toHaveCSS("width", "400px");
+  await expect(page.getByText("Вес", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Описание", { exact: true }).first()).toBeAttached();
+  await expect(page.getByText("Цена", { exact: true }).first()).toBeAttached();
+
+  const opened = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
+  expect(Math.abs(opened[0]!.width - before[0]!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(opened[2]!.width - before[2]!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(opened[1]!.x - before[1]!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(opened[1]!.width - before[1]!.width)).toBeLessThanOrEqual(1);
+
+  const resizeHandle = page.getByRole("separator", { name: "Изменить ширину редактора" });
+  const handleBox = await resizeHandle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(handleBox!.x - 40, handleBox!.y + 80, { steps: 4 });
+  await page.mouse.up();
+  const resizedPane = await pane.boundingBox();
+  expect(resizedPane).toBeTruthy();
+  expect(resizedPane!.width).toBeGreaterThanOrEqual(438);
+  expect(resizedPane!.width).toBeLessThanOrEqual(444);
+
+  const resized = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
+  expect(Math.abs(resized[0]!.width - before[0]!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(resized[2]!.width - before[2]!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(resized[1]!.x - before[1]!.x)).toBeLessThanOrEqual(1);
+  const persistedWidth = await page.evaluate(() =>
+    window.localStorage.getItem("tasko.catalog.positionSidePeek.width.v1"),
+  );
+  expect(Number(persistedWidth)).toBe(Math.round(resizedPane!.width));
+
+  await page.getByRole("button", { name: "Свернуть редактор" }).click();
+  await row.click();
+  const restoredPane = await page.locator("[data-position-editor-pane]").boundingBox();
+  expect(restoredPane).toBeTruthy();
+  expect(Math.abs(restoredPane!.width - Number(persistedWidth))).toBeLessThanOrEqual(1);
+});
+
+test("uses the wider responsive side-peek default from 1400px", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openItemFromLeaf(page);
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCSS("width", "470px");
 });
 
 test("returns from an all-positions editor with the same search context", async ({ page }) => {
   await openItemFromAllPositions(page);
 
-  await page.getByRole("button", { name: /^Все позиции$/ }).click();
+  await page.getByRole("button", { name: /^Все позиции/ }).click();
 
   await expect(page.getByPlaceholder("Поиск по названию")).toHaveValue("Омлет");
   await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle })).toBeVisible();
@@ -191,6 +521,23 @@ test("keeps the current autosave UI stable and restores the saved description", 
   await expect(reloadedDescription).toHaveText("Baseline browser smoke");
 });
 
+test("live-updates preview and swaps autosave status for hover navigation", async ({ page }) => {
+  await openEntityItem(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  const price = pane.getByLabel("Цена позиции");
+  await price.fill("2450");
+
+  await expect(pane.getByText("Сохраняем", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-tour="preview-panel"]')).toContainText("2 450 ₸");
+  await expect(pane.getByText("Сохранено", { exact: true })).toBeVisible();
+
+  await revealEditorQueueNavigation(page);
+  await expect(pane.getByText("Сохранено", { exact: true })).toBeHidden();
+  await expect(pane.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
+  await expect(pane.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
+});
+
 test("persists the complete basic position editor record across reload", async ({ page }) => {
   await openEntityItem(page);
 
@@ -205,7 +552,7 @@ test("persists the complete basic position editor record across reload", async (
   await page.getByRole("button", { name: "Добавить КБЖУ" }).click();
   await page.getByLabel("Калорийность").fill("560");
   await page.getByRole("button", { name: "Отображение" }).click();
-  await page.getByRole("button", { name: /Без кнопки/ }).click();
+  await page.getByRole("switch", { name: "Показывать кнопку «Добавить»" }).click();
   await page.waitForTimeout(700);
   await page.getByRole("button", { name: "Основное" }).click();
   const expectedDiscountValue = await page.evaluate((itemId) => {
@@ -223,7 +570,7 @@ test("persists the complete basic position editor record across reload", async (
   await expect(page.getByRole("button", { name: "Добавить скидку" })).toHaveCount(0);
   await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(expectedDiscountValue);
   await page.getByRole("button", { name: "Отображение" }).click();
-  await expect(page.getByRole("button", { name: /Без кнопки/ })).toHaveClass(/border-\[#292524\]/);
+  await expect(page.getByRole("switch", { name: "Показывать кнопку «Добавить»" })).not.toBeChecked();
 });
 
 test("uses the position title chevron for actions and preserves queue plus destructive semantics", async ({ page }) => {
@@ -256,6 +603,7 @@ test("uses the position title chevron for actions and preserves queue plus destr
   await expect(page.getByRole("dialog", { name: "Удалить позицию навсегда?" })).toHaveCount(0);
 
   await openItemFromLeaf(page);
+  await revealEditorQueueNavigation(page);
   await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
   await page.getByRole("button", { name: "Следующая позиция в выборке" }).click();
   await expect(page.getByRole("button", { name: /Действия с позицией «/ })).toHaveCount(1);
@@ -264,37 +612,84 @@ test("uses the position title chevron for actions and preserves queue plus destr
 test("restores structured promo, options, and availability editor state", async ({ page }) => {
   await openEntityItem(page);
 
-  await page.getByRole("button", { name: "Допродажа" }).click();
+  await page.getByRole("button", { name: "Рекомендации" }).click();
   await page.getByRole("button", { name: "Добавить стикер", exact: true }).click();
-  const stickerDialog = page.getByRole("dialog", { name: "Стикер" });
-  await stickerDialog.getByLabel("Русский").fill("Хит");
-  await stickerDialog.getByRole("button", { name: "Сохранить", exact: true }).click();
-  await expect(page.getByText("Хит", { exact: true })).toBeVisible();
+  const inlineStickerInput = page.getByRole("textbox", { name: "Название нового стикера" });
+  if (await inlineStickerInput.count()) {
+    await inlineStickerInput.fill("Хит");
+    await inlineStickerInput.press("Enter");
+  } else {
+    const sharedStickerSearch = page.getByPlaceholder("Найти или создать стикер");
+    await sharedStickerSearch.fill("Хит");
+    await sharedStickerSearch.press("Enter");
+  }
+  await expect(page.locator("[data-position-editor-pane]").getByText("Хит", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Опции" }).click();
   await page.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
-  await page.getByLabel("Название группы").fill("Размер порции");
-  await page.getByRole("button", { name: "Создать группу", exact: true }).click();
+  await page.getByLabel("Название опции").fill("Размер порции");
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Доступность" }).click();
   const schedule = page.getByRole("radio", { name: /По расписанию/ });
   await schedule.click();
-  await page.getByLabel("Понедельник: начало интервала 1").fill("10:00");
-  await page.getByLabel("Понедельник: конец интервала 1").fill("19:00");
+  const availability = page.getByRole("region", { name: "Расписание" });
+  await availability.getByRole("button", { name: "Понедельник: режим расписания" }).click();
+  await page.getByRole("menuitemradio", { name: "Своё время", exact: true }).click();
+  await availability.getByLabel("Понедельник: начало").fill("10:00");
+  await availability.getByLabel("Понедельник: конец").fill("19:00");
   await page.waitForTimeout(350);
 
   await preserveLocalStorageOnReload(page);
   await page.reload();
 
-  await page.getByRole("button", { name: "Допродажа" }).click();
-  await expect(page.getByText("Хит", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Опции" }).click();
+  await page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle }).click();
+  const reloadedPane = page.locator("[data-position-editor-pane]");
+  await expect(reloadedPane).toBeVisible();
+  await reloadedPane.getByRole("button", { name: "Рекомендации", exact: true }).click();
+  await expect(reloadedPane.getByText("Хит", { exact: true }).first()).toBeVisible();
+  await reloadedPane.getByRole("button", { name: /Опции/ }).click();
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Доступность" }).click();
-  await expect(page.getByRole("radio", { name: /По расписанию/ })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByLabel("Понедельник: начало интервала 1")).toHaveValue("10:00");
-  await expect(page.getByLabel("Понедельник: конец интервала 1")).toHaveValue("19:00");
+  await reloadedPane.getByRole("button", { name: "Доступность", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /По расписанию/ })).toBeChecked();
+  await expect(page.getByRole("region", { name: "Расписание" }).getByLabel("Понедельник: начало")).toHaveValue("10:00");
+  await expect(page.getByRole("region", { name: "Расписание" }).getByLabel("Понедельник: конец")).toHaveValue("19:00");
+});
+
+test("edits option groups in one compact focused state without drag and drop", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: /Опции/ }).click();
+  await pane.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
+
+  const focusedGroup = pane.locator("[data-option-group-focused]");
+  await expect(focusedGroup).toBeVisible();
+  await expect(focusedGroup.getByLabel("Название опции")).toBeVisible();
+  await expect(focusedGroup.getByText("Варианты", { exact: true })).toBeVisible();
+  await expect(focusedGroup.getByText("Настройки", { exact: true })).toBeVisible();
+  await expect(focusedGroup.getByRole("button", { name: "Готово", exact: true })).toBeVisible();
+  await expect(focusedGroup.locator('[aria-label^="Перетащить"]')).toHaveCount(0);
+
+  await focusedGroup.getByLabel("Название опции").fill("Добавки");
+  await focusedGroup.getByLabel("Добавить еще вариант").fill("Сыр");
+  await expect(focusedGroup.getByLabel("Название варианта")).toHaveValue("Сыр");
+  await focusedGroup.getByRole("switch", { name: "Обязательный выбор" }).click();
+  await expect(focusedGroup.getByRole("switch", { name: "Обязательный выбор" })).toBeChecked();
+
+  await focusedGroup.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect(pane.locator("[data-option-group-focused]")).toHaveCount(0);
+  await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
+
+  await pane.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
+  await expect(pane.locator("[data-option-group-focused]")).toHaveCount(1);
+  await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
+  await pane.getByLabel("Название опции").fill("Соусы");
+  await pane.getByRole("button", { name: "Готово", exact: true }).click();
+
+  await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
+  await expect(pane.getByRole("button", { name: "Редактировать группу «Соусы»" })).toBeVisible();
 });
 
 test("does not leak editor values between queued positions", async ({ page }) => {
@@ -305,6 +700,7 @@ test("does not leak editor values between queued positions", async ({ page }) =>
   await page.getByLabel("Цена позиции").blur();
   await page.waitForTimeout(500);
 
+  await revealEditorQueueNavigation(page);
   await page.getByRole("button", { name: "Следующая позиция в выборке" }).click();
   await expect(page.getByRole("textbox", { name: "Описание" })).not.toHaveText("Описание позиции A");
   await page.getByRole("textbox", { name: "Описание" }).fill("Описание позиции B");
@@ -312,6 +708,7 @@ test("does not leak editor values between queued positions", async ({ page }) =>
   await page.getByLabel("Цена позиции").blur();
   await page.waitForTimeout(500);
 
+  await revealEditorQueueNavigation(page);
   await page.getByRole("button", { name: "Предыдущая позиция в выборке" }).click();
   await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание позиции A");
   await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("3100");
@@ -661,13 +1058,15 @@ test("characterizes structure create draft context and cancel/back behavior", as
   const draft = await openStructureCreateDraft(page);
 
   await expect(draft.getByText("Завтраки", { exact: true })).toBeVisible();
-  await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(structureCreateTitle);
+  await expect(draft).toHaveAttribute("data-position-create-pane", "true");
+  await expect(page.locator("[data-position-editor-overlay]")).toHaveCount(0);
+  await draft.getByRole("textbox", { name: "Название позиции" }).fill(structureCreateTitle);
   await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).not.toBeVisible();
 
   // Current baseline: structure create has no create history entry; Back only
   // cancels the local draft and keeps the entity section URL.
-  await draft.getByRole("button", { name: "Назад" }).click();
+  await draft.getByRole("button", { name: "Отмена", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Завтраки" })).toBeVisible();
   const afterBack = new URL(page.url());
   expect(afterBack.searchParams.get("sectionId")).toBe(breakfastSectionId);
@@ -677,57 +1076,79 @@ test("characterizes structure create draft context and cancel/back behavior", as
 
 test("characterizes structure create completion, active item, section, queue, and reload", async ({ page }) => {
   const draft = await openStructureCreateDraft(page);
-  await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(structureCreateTitle);
+  await draft.getByRole("textbox", { name: "Название позиции" }).fill(structureCreateTitle);
   await draft.getByLabel("Цена позиции").fill("1750");
   await draft.getByLabel("Цена позиции").blur();
   await draft.getByRole("textbox", { name: "Описание" }).fill("Описание структурно созданной позиции");
-  await draft.getByRole("button", { name: "Создать", exact: true }).click();
+  await draft.getByRole("button", { name: "Добавить позицию", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
-  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("1750");
-  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание структурно созданной позиции");
+  const editorPane = page.locator("[data-position-editor-pane]");
+  await expect(editorPane).toBeVisible();
+  await expect(editorPane).not.toHaveAttribute("data-position-create-pane", "true");
+  await expect(editorPane.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
+  await expect.poll(async () => (await editorPane.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("1750");
+  await expect(editorPane.getByRole("textbox", { name: "Описание" })).toHaveText("Описание структурно созданной позиции");
   const createdUrl = new URL(page.url());
-  expect(createdUrl.searchParams.get("sectionId")).toBeNull();
-  expect(createdUrl.searchParams.get("positionId")).toBeTruthy();
-  await expect(
-    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
-      .getByRole("button", { name: "Завтраки", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).not.toBeVisible();
+  expect(createdUrl.searchParams.get("sectionId")).toBe(breakfastSectionId);
+  expect(createdUrl.searchParams.get("positionId")).toBeNull();
+  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
 
+  await editorPane.getByRole("button", { name: "Закрыть редактор" }).click();
+  await expect(editorPane).toHaveCount(0);
+  await expect.poll(async () => page.evaluate((title) => {
+    const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
+    return stored.some((item) => item.title === title);
+  }, structureCreateTitle)).toBe(true);
   await preserveLocalStorageOnReload(page);
   await page.reload();
   await expect(page).toHaveURL(createdUrl.toString());
-  await expect(page.getByRole("heading", { name: structureCreateTitle })).toBeVisible();
-  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("1750");
-  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание структурно созданной позиции");
-  await expect(
-    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
-      .getByRole("button", { name: "Завтраки", exact: true }),
-  ).toBeVisible();
+  await expect.poll(async () => page.evaluate((title) => {
+    const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
+    return stored.some((item) => item.title === title);
+  }, structureCreateTitle)).toBe(true);
 });
 
-test("characterizes direct create cancel and current persistence behavior", async ({ page }) => {
+test("opens direct creation in a side peek and discards it on cancel", async ({ page }) => {
   await openDirectCreateDraft(page);
 
   const createUrl = new URL(page.url());
   expect(createUrl.searchParams.get("createPosition")).toBe("1");
   expect(createUrl.searchParams.get("sectionId")).toBe(breakfastSectionId);
-  await page.getByPlaceholder("Например, Пицца").fill(directCreateTitle);
-  await page.getByRole("button", { name: "Отменить", exact: true }).click();
-  await page.getByRole("button", { name: "Выйти без сохранения", exact: true }).click();
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane).toBeVisible();
+  await expect(pane).toHaveAttribute("data-position-create-pane", "true");
+  await expect(page.getByRole("dialog", { name: "Новая позиция" })).toHaveCount(0);
+  await expect(page.locator("[data-position-editor-overlay]")).toHaveCount(0);
+  await expect(pane.getByRole("button", { name: "Добавить позицию", exact: true })).toBeVisible();
+  await expect(pane.getByRole("button", { name: "Отмена", exact: true })).toBeVisible();
+  await pane.getByRole("textbox", { name: "Название позиции" }).fill(directCreateTitle);
+  await pane.getByRole("button", { name: "Отмена", exact: true }).click();
 
-  // Current baseline: discarding the direct draft removes the create route,
-  // but leaves its empty draft item in the legacy editor queue.
-  await expect(page.getByRole("navigation", { name: "Положение позиции в каталоге" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Введите перевод…" })).toHaveValue("");
-  await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Новая позиция" })).not.toBeVisible();
   const afterCancel = new URL(page.url());
   expect(afterCancel.searchParams.get("createPosition")).toBeNull();
   expect(afterCancel.searchParams.get("sectionId")).toBe(breakfastSectionId);
   await expect(page.getByText(directCreateTitle, { exact: true })).not.toBeVisible();
+});
+
+test("keeps the created editor queue in the destination selected in the side peek", async ({ page }) => {
+  await openDirectCreateDraft(page);
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Добавить в: Завтраки", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Выпечка/ }).click();
+  await expect(pane.getByRole("button", { name: "Добавить в: Выпечка", exact: true })).toBeVisible();
+
+  await pane.getByRole("textbox", { name: "Название позиции" }).fill("Created in bakery");
+  await pane.getByRole("button", { name: "Добавить позицию", exact: true }).click();
+
+  await expect(pane).not.toHaveAttribute("data-position-create-pane", "true");
+  await expect(pane.getByRole("heading", { name: "Created in bakery" })).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => {
+    const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string; sectionId?: string }>;
+    return stored.find((item) => item.title === "Created in bakery")?.sectionId ?? null;
+  })).toBe(bakerySectionId);
+  await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
 });
 
 test("characterizes direct create Back/Forward, active queue, and reload behavior", async ({ page }) => {
@@ -746,20 +1167,17 @@ test("characterizes direct create Back/Forward, active queue, and reload behavio
   await expect(page).toHaveURL(createUrl.toString());
   await expect(page.getByRole("heading", { name: "Новая позиция" })).toBeVisible();
 
-  await page.getByPlaceholder("Например, Пицца").fill(directCreateTitle);
-  await page.getByRole("button", { name: "Создать", exact: true }).click();
+  await page.getByRole("textbox", { name: "Название позиции" }).fill(directCreateTitle);
+  await page.locator("[data-position-editor-pane]").getByRole("button", { name: "Добавить позицию", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: directCreateTitle })).toBeVisible();
+  await expect(page.locator("[data-position-editor-pane]").getByRole("heading", { name: directCreateTitle })).toBeVisible();
   await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Следующая позиция в выборке" })).toBeVisible();
   const completedUrl = new URL(page.url());
-  expect(completedUrl.searchParams.get("createPosition")).toBeNull();
+  expect(completedUrl.searchParams.get("createPosition")).toBe("1");
   expect(completedUrl.searchParams.get("positionId")).toBeNull();
   expect(completedUrl.searchParams.get("sectionId")).toBe(breakfastSectionId);
-  await expect(
-    page.getByRole("navigation", { name: "Положение позиции в каталоге" })
-      .getByRole("button", { name: "Завтраки", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("[data-position-editor-pane]")).toContainText("Доступно");
 
   await preserveLocalStorageOnReload(page);
   await page.reload();
@@ -767,20 +1185,19 @@ test("characterizes direct create Back/Forward, active queue, and reload behavio
     const stored = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ title?: string }>;
     return stored.some((item) => item.title === title);
   }, directCreateTitle)).toBe(true);
-  // Current baseline: direct create persists the item record, but the current
-  // legacy reload does not expose that created title in the visible catalog UI.
-  await expect(page.getByText(directCreateTitle, { exact: true })).not.toBeVisible();
+  await expect(page.locator("[data-catalog-position-title]").getByText(directCreateTitle, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: directCreateTitle })).not.toBeVisible();
 });
 
 test("restores complete fields for a position created through the direct flow", async ({ page }) => {
   await openDirectCreateDraft(page);
-  await page.getByPlaceholder("Например, Пицца").fill("Direct persisted position");
+  const createPane = page.locator("[data-position-editor-pane]");
+  await createPane.getByRole("textbox", { name: "Название позиции" }).fill("Direct persisted position");
   await page.getByLabel("Цена позиции").fill("2850");
   await page.getByLabel("Цена позиции").blur();
   await page.getByRole("textbox", { name: "Описание" }).fill("Описание direct-created позиции");
-  await page.getByRole("button", { name: "Создать", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
+  await createPane.getByRole("button", { name: "Добавить позицию", exact: true }).click();
+  await expect(createPane.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
 
   const created = await page.evaluate(() => {
     const items = JSON.parse(window.localStorage.getItem("tasko.catalog.createdItems") ?? "[]") as Array<{ id?: string; title?: string }>;
@@ -788,8 +1205,10 @@ test("restores complete fields for a position created through the direct flow", 
   });
   expect(created?.id).toBeTruthy();
   await preserveLocalStorageOnReload(page);
-  await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}&positionId=${created?.id}`);
-  await expect(page.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
-  await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("2850");
-  await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Описание direct-created позиции");
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+  await page.locator(`[data-catalog-table-row="${created?.id}"]`).click();
+  const restoredPane = page.locator("[data-position-editor-pane]");
+  await expect(restoredPane.getByRole("heading", { name: "Direct persisted position" })).toBeVisible();
+  await expect.poll(async () => (await restoredPane.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("2850");
+  await expect(restoredPane.getByRole("textbox", { name: "Описание" })).toHaveText("Описание direct-created позиции");
 });

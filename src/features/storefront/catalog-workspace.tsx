@@ -43,7 +43,9 @@ import {
   DotsThree,
   DotsThreeVertical,
   DotsSixVertical,
+  FilePlus,
   ForkKnife,
+  FolderPlus,
   FunnelSimple,
   ImageBroken,
   List,
@@ -67,7 +69,7 @@ import { usePublish } from "@/contexts/publish-context";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode, CatalogTranslations } from "@/data/catalog";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
-import { useCatalogStore } from "@/contexts/catalog-store-context";
+import { useCatalogStore, type CatalogSaveStatus } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import {
@@ -160,6 +162,7 @@ import {
   VirtualizedAuditRows,
 } from "./catalog/table/catalog-table";
 import { descriptionHasContent, getQueueEditorContext } from "./catalog/editor/editor-queue";
+import { PositionQueueControls } from "./catalog/editor/editor-queue-controls";
 import { useEditorSession } from "./catalog/editor/editor-session";
 import { useCreateSession } from "./catalog/editor/create-session";
 import { WorkspaceLocalTabs } from "./catalog/editor/editor-tabs";
@@ -205,6 +208,19 @@ import type {
   WeeklySchedule,
 } from "./catalog/editor/position-editor";
 import { PositionEditorHost } from "./catalog/editor/position-editor-host";
+import { PositionSidePeekProvider } from "./catalog/editor/side-peek-context";
+import {
+  ensureCatalogLabelsFromItems,
+  getCatalogLabelText,
+  matchesCatalogItemLabelFilters,
+  resolveCatalogItemStickerId,
+  resolveCatalogItemTagIds,
+  useCatalogLabels,
+  type CatalogLabel,
+  type CatalogLabelFilterValue,
+} from "./catalog/labels/catalog-labels";
+import { CatalogBulkLabelPicker } from "./catalog/labels/catalog-label-controls";
+import { USE_SHARED_TAGS_AND_STICKERS } from "./catalog/feature-flags";
 import type {
   DescriptionAuditQueueSnapshot,
   DescriptionAuditQueueState,
@@ -310,7 +326,7 @@ type CatalogTreeMoveUndoState = {
 
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
   { id: "sections", label: "Каталог" },
-  { id: "upsell", label: "Допродажи" },
+  { id: "upsell", label: "Рекомендации" },
   { id: "stop-list", label: "Стоп-лист" },
 ];
 
@@ -670,10 +686,13 @@ type PendingOpen = {
   returnContext?: CatalogReturnContext;
 };
 
-function readDirectCreatePendingOpen(route: CatalogNavigationBoundary["route"]): PendingOpen | null {
+function readDirectCreatePendingOpen(
+  route: CatalogNavigationBoundary["route"],
+  sourceSections: CatalogSection[] = catalogSections,
+): PendingOpen | null {
   if (!route.createPosition) return null;
   const sectionId = route.sectionId;
-  const section = sectionId ? catalogSections.find((candidate) => candidate.id === sectionId) ?? null : null;
+  const section = sectionId ? sourceSections.find((candidate) => candidate.id === sectionId) ?? null : null;
   const draft = makeDraftItem(section);
   const returnContext = route.returnContext ?? {
     tab: "overview" as const,
@@ -1008,6 +1027,7 @@ type SectionDeleteSummary = {
 };
 
 type SectionCreationResult = boolean | string | void;
+type SectionCreationSource = "tree" | "table";
 
 function getPositionCreateRestriction(sectionId: string, sections: TreeSection[]): string | null {
   const section = sections.find((candidate) => candidate.id === sectionId);
@@ -2270,6 +2290,10 @@ function SectionEditor({
   compositionCountOverride,
   allowPositionCreation = true,
   hideNavigationTabs = false,
+  subsectionDraftActive = false,
+  onStartSubsectionCreation,
+  onCreateSubsection,
+  onCancelSubsectionCreation,
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -2307,13 +2331,19 @@ function SectionEditor({
   compositionCountOverride?: number;
   allowPositionCreation?: boolean;
   hideNavigationTabs?: boolean;
+  subsectionDraftActive?: boolean;
+  onStartSubsectionCreation?: () => void;
+  onCreateSubsection?: (name: string) => boolean | string | void;
+  onCancelSubsectionCreation?: () => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const archived = section.status === "archive";
   const status = getSectionStatusMeta(section);
   const hasChildSections = childSections.length > 0;
+  const showSubsectionList = hasChildSections || subsectionDraftActive;
   const sectionIsCompletelyEmpty = !hasChildSections && compositionItems.length === 0 && !compositionQuery.trim();
+  const canCreateSubsection = !archived && !subsectionCreateDisabledReason && Boolean(onStartSubsectionCreation);
   const [selectedSubsectionIds, setSelectedSubsectionIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -2361,9 +2391,9 @@ function SectionEditor({
       <div
         ref={scrollContainerRef}
         onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
-        className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-6 pt-0"
+        className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
       >
-        <div className="mx-auto w-full min-w-0 max-w-[800px]">
+        <div className="w-full min-w-0">
           <div className="flex items-center gap-2 pb-2 pt-3">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
@@ -2398,15 +2428,30 @@ function SectionEditor({
                   <SectionActionMenuContent
                     section={section}
                     allowPositionCreation={allowPositionCreation}
-                    onAction={onAction}
+                    allowSubsectionCreation={canCreateSubsection}
+                    onAction={(action, anchor, schedule) => {
+                      if (action === "Добавить подраздел") {
+                        onStartSubsectionCreation?.();
+                        return;
+                      }
+                      onAction(action, anchor, schedule);
+                    }}
                   />
                 </DropdownContent>
               </DropdownMenu.Root>
-              {getSectionTreeStatusLabel(section) && (
+              {!showSubsectionList && getSectionTreeStatusLabel(section) && (
                 <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
               )}
             </div>
-            {!sectionIsCompletelyEmpty && !hasChildSections && (
+            {showSubsectionList && canCreateSubsection ? (
+              <CatalogActionButton
+                onClick={() => onStartSubsectionCreation?.()}
+                ariaLabel="Добавить подраздел"
+                dataSubsectionCreateButton
+              >
+                Добавить подраздел
+              </CatalogActionButton>
+            ) : !sectionIsCompletelyEmpty && !hasChildSections && (
               <div className="flex shrink-0 items-center gap-1.5">
                 {allowPositionCreation && <CatalogActionButton
                   onClick={onAddPosition}
@@ -2417,26 +2462,13 @@ function SectionEditor({
                 >
                   Добавить позицию
                 </CatalogActionButton>}
-                <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
-                  <span>
-                    <button
-                      type="button"
-                      disabled={Boolean(subsectionCreateDisabledReason)}
-                      onClick={() => onAction("Добавить подраздел")}
-                      data-subsection-create-button
-                      className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[12px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] disabled:cursor-not-allowed disabled:text-[#a8a29e]"
-                    >
-                      <PlusCircle size={14} />
-                      Добавить подраздел
-                    </button>
-                  </span>
-                </Tooltip>
+                {canCreateSubsection && <CatalogActionButton onClick={() => onStartSubsectionCreation?.()} ariaLabel="Добавить подраздел" dataSubsectionCreateButton>Добавить подраздел</CatalogActionButton>}
               </div>
             )}
           </div>
           <div>
             <div data-editor-tabs>
-              {hideNavigationTabs ? activeTab === "composition" ? null : (
+              {!sectionIsCompletelyEmpty && !showSubsectionList && (hideNavigationTabs ? activeTab === "composition" ? null : (
                 <div className="flex h-9 items-center border-b border-[#e7e5e4]">
                   <button type="button" onClick={() => onTabChange("composition")} className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><ArrowLeft size={14} /> К позициям</button>
                 </div>
@@ -2463,11 +2495,11 @@ function SectionEditor({
                     </button>
                   ) : undefined}
                 />
-              )}
-              <div className="pt-3">
-            {activeTab === "composition" ? (
-            hasChildSections ? (
-              <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 py-1 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+              ))}
+              <div className={cn(!sectionIsCompletelyEmpty && !showSubsectionList && "pt-3")}>
+            {showSubsectionList || activeTab === "composition" || sectionIsCompletelyEmpty ? (
+            showSubsectionList ? (
+              <section className="min-w-0">
                 <SubsectionList
                   parentSectionId={section.id}
                   childSections={childSections}
@@ -2480,9 +2512,6 @@ function SectionEditor({
                     else next.delete(id);
                     return next;
                   })}
-                  onSelectAll={(selected) => setSelectedSubsectionIds(
-                    selected ? new Set(childSections.map(({ section: child }) => child.id)) : new Set(),
-                  )}
                   bulkToolbar={selectedSubsectionIds.size > 0 ? (
                     <SubsectionBulkToolbar
                       count={selectedSubsectionIds.size}
@@ -2496,63 +2525,67 @@ function SectionEditor({
                       }}
                     />
                   ) : undefined}
-                  headerAction={(
-                    <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
-                      <span data-no-dnd>
-                        <button
-                          type="button"
-                          disabled={Boolean(subsectionCreateDisabledReason)}
-                          onClick={() => onAction("Добавить подраздел")}
-                          className="inline-flex h-7 items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] disabled:cursor-not-allowed disabled:text-[#a8a29e]"
-                        >
-                          <PlusCircle size={13} />
-                          Добавить подраздел
-                        </button>
-                      </span>
-                    </Tooltip>
-                  )}
+                  draftActive={subsectionDraftActive}
+                  onCreateDraft={onCreateSubsection}
+                  onCancelDraft={onCancelSubsectionCreation}
                   onSelect={onSelectChildSection}
                   onAction={onChildSectionAction}
-                  renderActions={(subsection, onAction) => (
-                    <SectionActionMenuContent section={subsection} onAction={onAction} />
-                  )}
+                  renderActions={(subsection, onAction) => {
+                    const subsectionEntry = childSections.find(({ section: child }) => child.id === subsection.id);
+                    const hasNestedSubsections = Boolean(subsection.children?.length);
+                    const hasDirectPositions = Boolean(subsectionEntry?.itemCount);
+                    const canCreateInSubsection = subsection.status !== "archive";
+                    return (
+                      <SectionActionMenuContent
+                        section={subsection}
+                        allowPositionCreation={canCreateInSubsection && !hasNestedSubsections}
+                        allowSubsectionCreation={canCreateInSubsection && (hasNestedSubsections || !hasDirectPositions)}
+                        onAction={onAction}
+                      />
+                    );
+                  }}
                 />
               </section>
             ) : (
-              <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 pb-3 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
+              <section className={cn(
+                sectionIsCompletelyEmpty
+                  ? "min-w-0"
+                  : "overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 pb-3 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
+              )}>
                 {compositionItems.length === 0 && !compositionQuery.trim() ? (
-                  <div className="py-1">
-                    <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
-                      <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
-                      <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Добавьте первую позицию или создайте подраздел.</p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        <CatalogActionButton
+                  sectionIsCompletelyEmpty ? (
+                    <div data-empty-section-scaffold className="w-full pt-1">
+                      {allowPositionCreation && (
+                        <button
+                          type="button"
                           onClick={onAddPosition}
-                          disabledReason={positionCreateDisabledReason}
-                          ariaLabel="Добавить позицию"
-                          dataPositionCreateButton
+                          disabled={archived || Boolean(positionCreateDisabledReason)}
+                          data-empty-position-create
+                          className="flex h-[38px] w-full items-center gap-2 border-b border-[#f0efed] px-2 text-left text-[13px] font-medium text-[#78716c] transition hover:bg-[#fafaf9] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
                         >
+                          <PlusCircle size={15} className="shrink-0" />
                           Добавить позицию
-                        </CatalogActionButton>
-                        {childSections.length === 0 && (
-                          <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
-                            <span>
-                              <button
-                                type="button"
-                                disabled={Boolean(subsectionCreateDisabledReason)}
-                                onClick={() => onAction("Добавить подраздел")}
-                                data-empty-subsection-create
-                                className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white px-3 text-[12px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] disabled:cursor-not-allowed disabled:text-[#a8a29e]"
-                              >
-                                <PlusCircle size={14} />
-                                Добавить подраздел
-                              </button>
-                            </span>
-                          </Tooltip>
-                        )}
+                        </button>
+                      )}
+                      {canCreateSubsection && (
+                        <button
+                          type="button"
+                          onClick={onStartSubsectionCreation}
+                          data-empty-subsection-create
+                          className="flex h-[38px] w-full items-center gap-2 border-b border-[#f0efed] px-2 text-left text-[13px] font-medium text-[#78716c] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+                        >
+                          <PlusCircle size={15} className="shrink-0" />
+                          Добавить подраздел
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="py-1">
+                      <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
+                        <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <>
                     <div className="sticky top-0 z-10 flex min-h-9 items-center gap-2 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
@@ -2674,11 +2707,13 @@ function UnifiedSectionTableHeader({
   itemCount,
   onAction,
   allowPositionCreation = true,
+  allowSubsectionCreation = true,
 }: {
   section: TreeSection;
   itemCount: number;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
   allowPositionCreation?: boolean;
+  allowSubsectionCreation?: boolean;
 }) {
   const status = getSectionStatusMeta(section);
   const statusLabel = getSectionTreeStatusLabel(section);
@@ -2705,6 +2740,7 @@ function UnifiedSectionTableHeader({
         <SectionActionMenuContent
           section={section}
           allowPositionCreation={allowPositionCreation}
+          allowSubsectionCreation={allowSubsectionCreation}
           onAction={onAction}
         />
       </DropdownContent>
@@ -3117,42 +3153,314 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
   };
 }
 
+const POSITION_SIDE_PEEK_WIDTH_KEY = catalogStorageKey("positionSidePeek.width.v1");
+const POSITION_SIDE_PEEK_MIN_WIDTH = 380;
+const POSITION_SIDE_PEEK_MAX_WIDTH = 600;
+const POSITION_SIDE_PEEK_VISIBLE_TABLE_WIDTH = 120;
+
+function getDefaultPositionSidePeekWidth() {
+  return typeof window !== "undefined" && window.innerWidth >= 1400 ? 470 : 400;
+}
+
+function PositionDestinationDialog({
+  sections,
+  onSelect,
+  onClose,
+}: {
+  sections: TreeSection[];
+  onSelect: (section: TreeSection) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const destinations = sections.filter((section) =>
+    section.status !== "archive"
+    && !sections.some((candidate) => candidate.parentId === section.id)
+    && (!normalizedQuery || section.name.toLocaleLowerCase("ru").includes(normalizedQuery)),
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100010] flex items-start justify-center bg-black/15 pt-[18vh]" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Выберите раздел" className="w-[356px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white p-3 shadow-[0_18px_48px_rgba(41,37,36,0.18)]" onMouseDown={(event) => event.stopPropagation()}>
+        <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти раздел..." className="h-8 border-0 bg-[#f5f5f4] text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-[#a8a29e]" />
+        <div className="mt-2 max-h-[280px] overflow-y-auto">
+          {destinations.map((section) => (
+            <button key={section.id} type="button" onClick={() => onSelect(section)} className="flex h-[38px] w-full items-center gap-2 rounded-[8px] px-2 text-left hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+              <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 shrink-0 rounded-[5px]" />
+              <span className="min-w-0 truncate text-[13px] font-medium text-[#44403b]">{section.name}</span>
+            </button>
+          ))}
+          {destinations.length === 0 && <p className="px-2 py-5 text-center text-[13px] text-[#a8a29e]">Разделы не найдены</p>}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function readPositionSidePeekWidth() {
+  if (typeof window === "undefined") return { width: 400, userSized: false };
+  const stored = Number(window.localStorage.getItem(POSITION_SIDE_PEEK_WIDTH_KEY));
+  if (Number.isFinite(stored) && stored >= POSITION_SIDE_PEEK_MIN_WIDTH) {
+    return {
+      width: Math.min(POSITION_SIDE_PEEK_MAX_WIDTH, stored),
+      userSized: true,
+    };
+  }
+  return { width: getDefaultPositionSidePeekWidth(), userSized: false };
+}
+
 function PositionEditorDialogShell({
   label,
   onClose,
   children,
+  presentation = "dialog",
+  creation = false,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
+  presentation?: "dialog" | "pane";
+  creation?: boolean;
 }) {
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const [overlayLeft, setOverlayLeft] = useState(0);
+  const [paneSize, setPaneSize] = useState(readPositionSidePeekWidth);
+  const [paneVisible, setPaneVisible] = useState(presentation !== "pane");
+  const paneWidthRef = useRef(paneSize.width);
+  const resizeSessionRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const closingRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const requestClose = useCallback(() => {
+    if (presentation !== "pane") {
+      onCloseRef.current();
+      return;
+    }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setPaneVisible(false);
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      onCloseRef.current();
+    }, prefersReducedMotion ? 0 : 200);
+  }, [presentation]);
+
+  const clampPaneWidth = useCallback((width: number) => {
+    const availableMax = portalTarget
+      ? Math.max(POSITION_SIDE_PEEK_MIN_WIDTH, portalTarget.clientWidth - POSITION_SIDE_PEEK_VISIBLE_TABLE_WIDTH)
+      : POSITION_SIDE_PEEK_MAX_WIDTH;
+    return Math.max(
+      POSITION_SIDE_PEEK_MIN_WIDTH,
+      Math.min(POSITION_SIDE_PEEK_MAX_WIDTH, availableMax, width),
+    );
+  }, [portalTarget]);
+
+  const setUserPaneWidth = useCallback((width: number) => {
+    const nextWidth = clampPaneWidth(width);
+    paneWidthRef.current = nextWidth;
+    setPaneSize({ width: nextWidth, userSized: true });
+  }, [clampPaneWidth]);
+
+  const finishPaneResize = useCallback((element?: HTMLElement, pointerId?: number) => {
+    if (element && pointerId != null && element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+    resizeSessionRef.current = null;
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(POSITION_SIDE_PEEK_WIDTH_KEY, String(Math.round(paneWidthRef.current)));
+    }
+  }, []);
 
   useLayoutEffect(() => {
-    setPortalTarget(
-      document.querySelector<HTMLElement>("[data-position-editor-surface]")
-      ?? document.querySelector<HTMLElement>("[data-workspace-editor-card]"),
-    );
+    const editorSurface = document.querySelector<HTMLElement>("[data-position-editor-surface]");
+    const overlayRoot = document.querySelector<HTMLElement>("[data-position-editor-overlay-root]");
+    if (presentation === "pane") {
+      const target = editorSurface;
+      if (!target) return;
+
+      target.dataset.positionEditorPaneOpen = "true";
+      setPortalTarget(target);
+      return () => {
+        delete target.dataset.positionEditorPaneOpen;
+      };
+    }
+
+    const target = overlayRoot
+      ?? editorSurface
+      ?? document.querySelector<HTMLElement>("[data-workspace-editor-card]");
+    if (!target) return;
+
+    const updateOverlayLeft = () => {
+      if (!overlayRoot || !editorSurface) {
+        setOverlayLeft(0);
+        return;
+      }
+      setOverlayLeft(Math.max(0, editorSurface.getBoundingClientRect().left - overlayRoot.getBoundingClientRect().left));
+    };
+
+    setPortalTarget(target);
+    updateOverlayLeft();
+    const observer = new ResizeObserver(updateOverlayLeft);
+    observer.observe(target);
+    if (editorSurface && editorSurface !== target) observer.observe(editorSurface);
+    window.addEventListener("resize", updateOverlayLeft);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateOverlayLeft);
+    };
+  }, [presentation]);
+
+  useEffect(() => {
+    paneWidthRef.current = paneSize.width;
+  }, [paneSize.width]);
+
+  useLayoutEffect(() => {
+    if (presentation !== "pane" || !portalTarget) return;
+    closingRef.current = false;
+    setPaneVisible(false);
+    let enterFrame = 0;
+    let visibleFrame = 0;
+    enterFrame = window.requestAnimationFrame(() => {
+      visibleFrame = window.requestAnimationFrame(() => setPaneVisible(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(enterFrame);
+      window.cancelAnimationFrame(visibleFrame);
+    };
+  }, [portalTarget, presentation]);
+
+  useEffect(() => {
+    if (presentation !== "pane" || paneSize.userSized) return;
+    const updateResponsiveWidth = () => {
+      const width = clampPaneWidth(getDefaultPositionSidePeekWidth());
+      paneWidthRef.current = width;
+      setPaneSize({ width, userSized: false });
+    };
+    updateResponsiveWidth();
+    window.addEventListener("resize", updateResponsiveWidth);
+    return () => window.removeEventListener("resize", updateResponsiveWidth);
+  }, [clampPaneWidth, paneSize.userSized, presentation]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
   }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
-      onClose();
+      requestClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, [requestClose]);
+
+  useEffect(() => {
+    if (presentation !== "pane") return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (target.closest("[data-position-editor-pane]")) return;
+      if (target.closest("[data-catalog-table-row]")) return;
+      if (target.closest('[data-radix-popper-content-wrapper], [role="dialog"], [role="menu"]')) return;
+      requestClose();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [presentation, requestClose]);
 
   if (!portalTarget) return null;
+
+  if (presentation === "pane") {
+    return createPortal(
+      <aside
+        role="complementary"
+        aria-label={label}
+        data-position-editor-pane
+        data-position-editor-state={paneVisible ? "open" : "closed"}
+        data-position-create-pane={creation || undefined}
+        data-structure-position-draft={creation || undefined}
+        data-position-editor-resizing={resizeSessionRef.current ? "true" : undefined}
+        style={{ width: clampPaneWidth(paneSize.width) }}
+        className={cn(
+          "absolute inset-y-0 right-0 z-40 flex min-w-0 border-l border-[#e7e5e4] bg-white transition-transform duration-200 motion-reduce:transition-none",
+          paneVisible ? "translate-x-0 ease-out" : "translate-x-full ease-in",
+        )}
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Изменить ширину редактора"
+          aria-valuemin={POSITION_SIDE_PEEK_MIN_WIDTH}
+          aria-valuemax={POSITION_SIDE_PEEK_MAX_WIDTH}
+          aria-valuenow={Math.round(clampPaneWidth(paneSize.width))}
+          tabIndex={0}
+          data-position-editor-resize-handle
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            resizeSessionRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startWidth: paneWidthRef.current,
+            };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          }}
+          onPointerMove={(event) => {
+            const session = resizeSessionRef.current;
+            if (!session || session.pointerId !== event.pointerId) return;
+            setUserPaneWidth(session.startWidth + session.startX - event.clientX);
+          }}
+          onPointerUp={(event) => finishPaneResize(event.currentTarget, event.pointerId)}
+          onPointerCancel={(event) => finishPaneResize(event.currentTarget, event.pointerId)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const direction = event.key === "ArrowLeft" ? 1 : -1;
+            const step = event.shiftKey ? 40 : 10;
+            setUserPaneWidth(paneWidthRef.current + direction * step);
+            window.localStorage.setItem(POSITION_SIDE_PEEK_WIDTH_KEY, String(Math.round(paneWidthRef.current)));
+          }}
+          className="group/resize absolute inset-y-0 left-[-5px] z-50 w-[10px] cursor-col-resize touch-none outline-none"
+        >
+          <span className="absolute inset-y-0 left-[4px] w-px bg-[#a8a29e] opacity-0 transition-opacity duration-150 group-hover/resize:opacity-35 group-focus/resize:opacity-50" />
+        </div>
+        <PositionSidePeekProvider requestClose={requestClose}>
+          {children}
+        </PositionSidePeekProvider>
+      </aside>,
+      portalTarget,
+    );
+  }
 
   return createPortal(
     <div
       data-position-editor-overlay
-      className="absolute inset-0 z-[100004] flex items-center justify-center bg-black/20"
+      style={{ left: overlayLeft }}
+      className="absolute inset-y-0 right-0 z-[100004] flex items-center justify-center bg-black/20"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -3162,150 +3470,13 @@ function PositionEditorDialogShell({
         aria-modal="false"
         aria-label={label}
         data-position-editor-dialog
-        style={{
-          width: "min(860px, calc(100% - 32px))",
-          height: "min(760px, calc(100% - 32px))",
-        }}
-        className="flex min-h-0 min-w-0 overflow-hidden rounded-[14px] border border-[#dedbd7] bg-[#fbfbf9] shadow-[0_14px_40px_rgba(28,25,23,0.2)]"
+        data-position-editor-size="compact"
+        className="flex h-[min(644px,calc(100vh-32px))] w-[min(512px,calc(100vw-32px))] min-h-0 min-w-0 shrink-0 overflow-hidden rounded-[14px] border border-[#dedbd7] bg-white shadow-[0_14px_40px_rgba(28,25,23,0.2)]"
       >
         {children}
       </div>
     </div>,
     portalTarget,
-  );
-}
-
-function CreatePositionDialog({
-  sections,
-  allItems,
-  initialSectionId,
-  onCreate,
-  onClose,
-}: {
-  sections: TreeSection[];
-  allItems: CatalogItem[];
-  initialSectionId: string | null;
-  onCreate: (item: CatalogItem) => void;
-  onClose: (item: CatalogItem | null) => void;
-}) {
-  const leafSections = sections.filter((section) => section.status !== "archive" && !sections.some((candidate) => candidate.parentId === section.id));
-  const initialLeafSectionId = initialSectionId && leafSections.some((section) => section.id === initialSectionId)
-    ? initialSectionId
-    : leafSections.length === 1
-      ? leafSections[0].id
-      : "";
-  const initialSection = leafSections.find((section) => section.id === initialLeafSectionId) ?? null;
-  const [draftItem, setDraftItem] = useState<CatalogItem>(() => ({
-    ...makeDraftItem(initialSection),
-    id: createRealPositionId(),
-  }));
-  const [sectionId, setSectionId] = useState(initialLeafSectionId);
-  const [createdItemId, setCreatedItemId] = useState<string | null>(null);
-  const [currentEditorId, setCurrentEditorId] = useState<string | null>(null);
-  const draftRef = useRef(draftItem);
-
-  const updateDraft = (patch: Partial<CatalogItem>) => {
-    const next = { ...draftRef.current, ...patch };
-    draftRef.current = next;
-    setDraftItem(next);
-  };
-
-  const changeDestination = (nextSectionId: string | null) => {
-    const nextSection = nextSectionId ? leafSections.find((section) => section.id === nextSectionId) ?? null : null;
-    if (!nextSection) return;
-    const previous = draftRef.current;
-    const next = { ...previous, sectionId: nextSection.id, sectionName: nextSection.name };
-    setSectionId(nextSection.id);
-    draftRef.current = next;
-    setDraftItem(next);
-  };
-
-  const destinationSelected = sectionId !== "" && leafSections.some((section) => section.id === sectionId);
-  const createDisabled = !draftItem.title.trim() || !destinationSelected;
-
-  const createPosition = () => {
-    const current = draftRef.current;
-    if (!current.title.trim() || !destinationSelected) return;
-    const createdItem = {
-      ...current,
-      title: current.title.trim(),
-      translationFilledCount: 1,
-    };
-    draftRef.current = createdItem;
-    setDraftItem(createdItem);
-    onCreate(createdItem);
-    setCreatedItemId(createdItem.id);
-    setCurrentEditorId(createdItem.id);
-  };
-
-  const closeDialog = () => onClose(createdItemId ? draftRef.current : null);
-  const currentItem = currentEditorId
-    ? allItems.find((candidate) => candidate.id === currentEditorId) ?? (currentEditorId === createdItemId ? draftRef.current : null)
-    : null;
-  const currentSectionId = currentItem?.sectionId ?? sectionId;
-  const orderedIds = currentSectionId
-    ? allItems.filter((candidate) => candidate.sectionId === currentSectionId).map((candidate) => candidate.id)
-    : [];
-  const editorOrderedIds = createdItemId
-    ? [createdItemId, ...orderedIds.filter((id) => id !== createdItemId)]
-    : orderedIds;
-
-  return (
-    <PositionEditorDialogShell label={currentItem?.title ?? (createdItemId ? draftRef.current.title : "Новая позиция")} onClose={closeDialog}>
-      {createdItemId && currentEditorId && currentItem ? (
-        <PositionEditorHost
-          intent={{
-            origin: "structure",
-            currentId: currentEditorId,
-            orderedIds: editorOrderedIds,
-            sectionId: currentSectionId || undefined,
-            returnContext: { label: "Закрыть редактор" },
-            revision: 0,
-          }}
-          onCurrentIdChange={setCurrentEditorId}
-          onClose={closeDialog}
-          structureSections={sections}
-        />
-      ) : (
-        <PositionEditor
-          item={draftItem}
-          mode="create-modal"
-          allItems={allItems}
-          upsell={draftItem.upsell ?? {}}
-          onUpsellChange={(upsell) => updateDraft({ upsell })}
-          stopBusy={false}
-          onArchiveItem={() => {}}
-          onRestoreItem={() => {}}
-          onMoveItem={() => {}}
-          onToggleStop={() => updateDraft({ status: draftItem.status === "stopped" ? "active" : "stopped" })}
-          onSetAvailabilityMode={(_item, mode) => updateDraft(mode === "unavailable"
-            ? { status: "stopped" }
-            : { status: "active", scheduled: mode === "schedule" })}
-          unavailableDisplayMode={draftItem.unavailableDisplayMode ?? "hidden"}
-          outsideScheduleMode={draftItem.outsideScheduleMode ?? "hidden"}
-          weeklySchedule={draftItem.weeklySchedule ?? createDefaultWeeklySchedule()}
-          onUnavailableDisplayModeChange={(unavailableDisplayMode) => updateDraft({ unavailableDisplayMode })}
-          onOutsideScheduleModeChange={(outsideScheduleMode) => updateDraft({ outsideScheduleMode })}
-          onWeeklyScheduleChange={(weeklySchedule) => updateDraft({ weeklySchedule })}
-          onRequestPermanentDelete={() => {}}
-          onDescriptionChange={(_item, description) => updateDraft({ description, hasDescription: descriptionHasContent(description) })}
-          onDraftChange={updateDraft}
-          onItemChange={(_item, patch) => updateDraft(patch)}
-          onCreatePosition={createPosition}
-          onBackCreate={closeDialog}
-          createDisabled={createDisabled}
-          creationDestination={(
-            <CatalogDestinationPicker
-              kind="position"
-              sections={sections}
-              allItems={allItems}
-              value={sectionId || null}
-              onChange={changeDestination}
-            />
-          )}
-        />
-      )}
-    </PositionEditorDialogShell>
   );
 }
 
@@ -3831,13 +4002,9 @@ function PopulatedWorkspace({
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
   const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
-  const [sectionCreationDialog, setSectionCreationDialog] = useState<{ parentId: string | null } | null>(null);
-  const [positionCreationDialog, setPositionCreationDialog] = useState<{
-    initialSectionId: string | null;
-    direct: boolean;
-  } | null>(() => pendingOpen?.mode === "create"
-    ? { initialSectionId: pendingOpen.section?.sectionId ?? null, direct: true }
-    : null);
+  const [sectionCreationDraftParentId, setSectionCreationDraftParentId] = useState<string | null | undefined>(undefined);
+  const [sectionCreationSource, setSectionCreationSource] = useState<SectionCreationSource>("tree");
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [sectionRenameRequest, setSectionRenameRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [sectionIconRequest, setSectionIconRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
@@ -3865,13 +4032,6 @@ function PopulatedWorkspace({
     const timer = window.setTimeout(() => setHighlightItemId(null), 6000);
     return () => window.clearTimeout(timer);
   }, [highlightItemId]);
-  useEffect(() => {
-    if (pendingOpen?.mode !== "create") return;
-    setPositionCreationDialog((current) => current ?? {
-      initialSectionId: pendingOpen.section?.sectionId ?? null,
-      direct: true,
-    });
-  }, [pendingOpen]);
   const [sectionStatusOverrides, setSectionStatusOverrides] = useState<Record<string, SectionStatus>>(() =>
     readJsonRecord<Record<string, SectionStatus>>(CATALOG_SECTION_STATUS_STORAGE_KEY, {}),
   );
@@ -4017,34 +4177,27 @@ function PopulatedWorkspace({
         }))
     : [];
 
-  const openSectionCreation = (parentId: string | null = null) => {
+  const openSectionCreation = (parentId: string | null = null, source: SectionCreationSource = "tree") => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
     if (parentId && !parent) {
       setFeedback("Родительский раздел не найден");
       return;
     }
-    if (parent) {
-      const availability = getParentAvailability(parent, allItems, allSections);
-      if (!availability.available) {
-        setFeedback(availability.label);
-        return;
-      }
-    }
-    setSectionCreationDialog({ parentId });
+    setSectionCreationSource(source);
+    setSectionCreationDraftParentId(parentId);
   };
 
   const closeSectionCreation = () => {
-    setSectionCreationDialog(null);
-    window.setTimeout(() => createSectionButtonRef.current?.focus(), 0);
+    setSectionCreationDraftParentId(undefined);
+    if (sectionCreationSource !== "table") {
+      window.setTimeout(() => createSectionButtonRef.current?.focus(), 0);
+    }
+    setSectionCreationSource("tree");
   };
 
   const createSectionFromDialog = (name: string, parentId: string | null): SectionCreationResult => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
     if (parentId && !parent) return "Родительский раздел не найден. Обновите список и повторите попытку.";
-    if (parent) {
-      const availability = getParentAvailability(parent, allItems, allSections);
-      if (!availability.available) return availability.label;
-    }
     const normalizedName = name.trim();
     const duplicate = allSections.some((candidate) =>
       (candidate.parentId ?? null) === (parent?.id ?? null)
@@ -4059,7 +4212,7 @@ function PopulatedWorkspace({
       name: normalizedName,
       imageUrl: null,
       emoji: "🍽️",
-      sortOrder: 100_000 + extraSections.length,
+      sortOrder: -100_000 - extraSections.length,
       status: "active",
     };
     setExtraSections((current) => [...current, created]);
@@ -4080,16 +4233,19 @@ function PopulatedWorkspace({
     setSectionOrderByParent((current) => ({
       ...current,
       [parent?.id ?? "__root__"]: [
-        ...(current[parent?.id ?? "__root__"] ?? []),
         id,
+        ...(current[parent?.id ?? "__root__"] ?? []),
       ],
     }));
-    setSelectedSectionId(id);
-    setSelectedItemId(null);
-    setEditing(false);
-    setSectionEditorTab("composition");
+    if (sectionCreationSource !== "table") {
+      setSelectedSectionId(id);
+      setSelectedItemId(null);
+      setEditing(false);
+      setSectionEditorTab("composition");
+    }
     setRevealSectionId(id);
-    closeSectionCreation();
+    setSectionCreationDraftParentId(undefined);
+    setSectionCreationSource("tree");
     registerChange("catalog");
     setFeedback("Раздел создан");
     return true;
@@ -4238,6 +4394,25 @@ function PopulatedWorkspace({
     if (nextIds.every((id, index) => id === ids[index])) return;
     reorderCatalogItems(sectionId, nextIds);
     setFeedback("Порядок позиций изменён");
+  };
+
+  const reorderTreeSectionsWithinParent = (parentId: string | null, draggedId: string, targetId: string) => {
+    const dragged = allSections.find((section) => section.id === draggedId);
+    const target = allSections.find((section) => section.id === targetId);
+    if (!dragged || !target) return;
+    if ((dragged.parentId ?? null) !== parentId || (target.parentId ?? null) !== parentId) return;
+    const ids = allSections
+      .filter((section) => (section.parentId ?? null) === parentId)
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+      .map((section) => section.id);
+    const nextIds = moveCatalogIdToIndex(ids, draggedId, targetId);
+    if (nextIds.every((id, index) => id === ids[index])) return;
+    setSectionOrderByParent((current) => ({
+      ...current,
+      [parentId ?? "__root__"]: nextIds,
+    }));
+    registerChange("catalog");
+    setFeedback("Порядок разделов изменён");
   };
 
   const reorderCompositionItems = (
@@ -4798,68 +4973,30 @@ function PopulatedWorkspace({
       setFeedback(restriction);
       return;
     }
-    setPositionCreationDialog({ initialSectionId: targetSection.id, direct: false });
-  };
-  const openCreatePositionDialog = (initialSectionId: string | null) => {
-    const isLeaf = initialSectionId && !allSections.some((candidate) => candidate.parentId === initialSectionId);
-    setPositionCreationDialog({ initialSectionId: isLeaf ? initialSectionId : null, direct: false });
-  };
-  const finishDirectPositionCreation = (targetSectionId: string | null) => {
-    const returnContext = pendingOpen?.returnContext ?? {
-      tab: "overview" as const,
-      filterId: "quick:all" as const,
-      sectionScopeId: targetSectionId,
+    navigation.prepareDirectCreate(targetSection.id, {
+      tab: "overview",
+      filterId: "quick:all",
+      sectionScopeId: targetSection.id,
       tableQuery: "",
       panelQuery: "",
-      sort: "none" as const,
+      sort: "none",
       scrollTop: 0,
-    };
-    const returnSectionId = returnContext.tab === "sections"
-      ? returnContext.sectionId
-      : returnContext.sectionScopeId;
-    if (navigation.route.createHistoryEntry) navigation.back();
-    else navigation.replaceDirectCreateDestination(returnContext, returnSectionId);
-    onCreateClosed?.();
-  };
-  const closePositionCreationDialog = (createdItem: CatalogItem | null = null) => {
-    const dialog = positionCreationDialog;
-    setPositionCreationDialog(null);
-    if (createdItem) {
-      writeRecentPositionId(createdItem.id, [...allItems.filter((item) => item.id !== createdItem.id), createdItem]);
-      setFeedback("Позиция создана");
-    }
-    if (dialog?.direct) finishDirectPositionCreation(createdItem?.sectionId ?? dialog.initialSectionId);
-  };
-  const createPositionFromDialog = (createdItem: CatalogItem) => {
-    const targetSection = allSections.find((candidate) => candidate.id === createdItem.sectionId) ?? null;
-    if (!targetSection) return;
-    const restriction = getPositionCreateRestriction(targetSection.id, allSections);
-    if (restriction) {
-      setFeedback(restriction);
-      return;
-    }
-    writeCreatedCatalogItems([
-      createdItem,
-      ...readCreatedCatalogItems().filter((item) => item.id !== createdItem.id),
-    ]);
-    const nextPositionOrder = {
-      ...positionOrderBySection,
-      [createdItem.sectionId]: [
-        createdItem.id,
-        ...(positionOrderBySection[createdItem.sectionId] ?? allItems
-          .filter((item) => item.sectionId === createdItem.sectionId)
-          .map((item) => item.id))
-          .filter((id) => id !== createdItem.id),
-      ],
-    };
-    createCatalogItem(createdItem, { order: nextPositionOrder });
-    setLastItemBySection((current) => ({ ...current, [createdItem.sectionId]: createdItem.id }));
-    registerChange("catalog");
-    onFirstItemCreated?.();
+    });
   };
   const addPosition = () => {
-    if (selectedSectionId) openCreatePositionDialog(selectedSectionId);
-    else openCreatePositionDialog(null);
+    if (selectedSectionId) {
+      addPositionToSection(selectedSectionId);
+      return;
+    }
+    navigation.prepareDirectCreate(null, {
+      tab: "overview",
+      filterId: "quick:all",
+      sectionScopeId: null,
+      tableQuery: "",
+      panelQuery: "",
+      sort: "none",
+      scrollTop: 0,
+    });
   };
   const setItemSelected = (id: string, selected: boolean) => {
     setSelectedIds((current) => {
@@ -5239,11 +5376,11 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Настроить раздел" || action === "Изменить раздел") {
-      setSectionRenameRequest({ sectionId: target.id, anchor });
+      setRenamingSectionId(target.id);
       return;
     }
     if (action === "Переименовать") {
-      setSectionRenameRequest({ sectionId: target.id, anchor });
+      setRenamingSectionId(target.id);
       return;
     }
     if (action === "Сменить иконку") {
@@ -5663,7 +5800,7 @@ function PopulatedWorkspace({
       if (editorNavMode === "entity") navigation.replacePosition(id);
     };
     return (
-      <PositionEditorDialogShell label={item.title || "Позиция"} onClose={closeEditor}>
+      <PositionEditorDialogShell label={item.title || "Позиция"} onClose={closeEditor} presentation="pane">
         <PositionEditorHost
           intent={structureIntent}
           onCurrentIdChange={navigateToSibling}
@@ -5722,6 +5859,7 @@ function PopulatedWorkspace({
       itemCount={allItems.filter((item) => item.sectionId === section.id && item.status !== "archive").length}
       onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
+      allowSubsectionCreation={!subsectionDisabledReason && sectionTableBaseItems.length === 0}
     />
   ) : null;
   const unifiedOverviewScopeCandidate = selectedSectionId ?? globalTableScopeId;
@@ -5747,19 +5885,16 @@ function PopulatedWorkspace({
         setHighlightItemId(highlightedItemId);
       }}
       onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
-      pendingOpen={pendingOpen?.mode === "create" ? null : pendingOpen}
+      pendingOpen={pendingOpen}
       onPendingOpenHandled={onPendingOpenHandled}
       onCreateClosed={onCreateClosed}
       tableOpenSignal={tableOpenSignal + unifiedTableOpenSignal}
       positionsWorkspaceMode="legacy"
       embedded
       tableHeader={tableHeader}
-      onAddPosition={() => {
-        if (section) addPositionToSection(section.id);
-        else openCreatePositionDialog(unifiedOverviewScopeId);
-      }}
+      onAddPosition={section ? () => addPositionToSection(section.id) : undefined}
       onAddSubsection={section && directChildSections.length === 0
-        ? () => openSectionCreation(section.id)
+        ? () => openSectionCreation(section.id, "table")
         : undefined}
       subsectionCreateDisabledReason={subsectionDisabledReason}
       positionCreateDisabledReason={section?.status === "archive" || directChildSections.length > 0 ? "Выберите конечный раздел" : null}
@@ -5767,6 +5902,10 @@ function PopulatedWorkspace({
       onActiveItemChange={(editorSource === "tree" || editorSource === "breadcrumb") && selectedItem
         ? undefined
         : handleOverviewActiveItemChange}
+      externalActiveItemId={(editorSource === "tree" || editorSource === "breadcrumb") ? selectedItem?.id ?? null : null}
+      onOpenExistingItem={(editorSource === "tree" || editorSource === "breadcrumb")
+        ? (item) => openItem(item.id)
+        : undefined}
       structureSections={allSections}
       mandatoryFilterId={mandatoryFilterId}
       titleOverride={titleOverride}
@@ -5822,11 +5961,15 @@ function PopulatedWorkspace({
       compositionCountOverride={scopedItemCount}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
       hideNavigationTabs
+      subsectionDraftActive={sectionCreationSource === "table" && sectionCreationDraftParentId === section.id}
+      onStartSubsectionCreation={() => openSectionCreation(section.id, "table")}
+      onCreateSubsection={(name) => createSectionFromDialog(name, section.id)}
+      onCancelSubsectionCreation={closeSectionCreation}
     />
   ) : unifiedOverviewWorkspace;
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <UnifiedCatalogTreePanel
@@ -5838,19 +5981,34 @@ function PopulatedWorkspace({
             includeArchived={editorNavMode === "entity" || editorNavMode === "unified"}
             onSelectSection={handleTreeSelectSection}
             onSelectAllPositions={selectAllPositions}
-            onCreateSection={() => openSectionCreation()}
+            onStartCreateSection={openSectionCreation}
+            onCreateSection={createSectionFromDialog}
+            onCancelCreateSection={closeSectionCreation}
+            draftParentId={sectionCreationSource === "tree" ? sectionCreationDraftParentId : undefined}
+            renamingSectionId={renamingSectionId}
+            onStartRenameSection={setRenamingSectionId}
+            onRenameSection={(sectionId, name) => {
+              const normalizedName = name.trim();
+              if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") return "Введите название";
+              updateSectionDraft(sectionId, { name: normalizedName });
+              setRenamingSectionId(null);
+              return true;
+            }}
+            onCancelRenameSection={() => setRenamingSectionId(null)}
             createSectionButtonRef={createSectionButtonRef}
             onSectionAction={handleUnifiedSectionAction}
             renderSectionActions={(section, options, onAction) => (
               <SectionActionMenuContent
                 section={section}
                 allowPositionCreation={options.allowPositionCreation}
+                allowSubsectionCreation={options.allowSubsectionCreation}
                 onAction={onAction}
               />
             )}
             getSectionPath={(sectionId) => getCatalogSectionPathFromSections(sectionId, allSections).map((crumb) => crumb.name).join(" / ")}
             positionCreationEnabled={allowPositionCreation}
             menuSwitcher={menuSwitcher}
+            onReorderSections={reorderTreeSectionsWithinParent}
           />
         ) : editing ? (
           <SectionPositionNav
@@ -5907,7 +6065,10 @@ function PopulatedWorkspace({
         >
         {editorNavMode === "entity" ? (
           selectedItem ? (
-            renderPositionEditor(selectedItem)
+            <>
+              {unifiedOverviewWorkspace}
+              {renderPositionEditor(selectedItem)}
+            </>
           ) : section ? (
             <SectionEditor
               section={section}
@@ -5954,7 +6115,11 @@ function PopulatedWorkspace({
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
               onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
-                onItemAction={handlePositionContextAction}
+              onItemAction={handlePositionContextAction}
+              subsectionDraftActive={sectionCreationSource === "table" && sectionCreationDraftParentId === section.id}
+              onStartSubsectionCreation={() => openSectionCreation(section.id, "table")}
+              onCreateSubsection={(name) => createSectionFromDialog(name, section.id)}
+              onCancelSubsectionCreation={closeSectionCreation}
             />
           ) : (
             <UnifiedCatalogSelectionState />
@@ -5967,7 +6132,7 @@ function PopulatedWorkspace({
                   {renderPositionEditor(selectedItem)}
                 </>
               )
-          : section && (directChildSections.length > 0 || sectionEditorTab !== "composition")
+          : section && (directChildSections.length > 0 || (sectionTableBaseItems.length === 0 && pendingOpen?.mode !== "create") || sectionCreationDraftParentId === section.id || sectionEditorTab !== "composition")
               ? renderUnifiedSectionSettings()
               : unifiedOverviewWorkspace
         ) : editing ? (
@@ -6068,25 +6233,6 @@ function PopulatedWorkspace({
             onConfirm={() => confirmDeleteSections(pendingSectionBulkDelete)}
           />
         )}
-        {sectionCreationDialog && (
-          <CreateSectionDialog
-            sections={activeSectionTree}
-            allItems={allItems}
-            initialParentId={sectionCreationDialog.parentId}
-            returnFocusRef={createSectionButtonRef}
-            onCreate={createSectionFromDialog}
-            onCancel={closeSectionCreation}
-          />
-        )}
-        {positionCreationDialog && (
-          <CreatePositionDialog
-            sections={allSections}
-            allItems={allItems}
-            initialSectionId={positionCreationDialog.initialSectionId}
-            onCreate={createPositionFromDialog}
-            onClose={closePositionCreationDialog}
-          />
-        )}
         {sectionRenameRequest && allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId) && (
           <SectionRenamePopover
             section={allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId)!}
@@ -6162,16 +6308,20 @@ function ToolbarDropdown({ label, children }: { label: string; children: ReactNo
 function SectionActionMenuContent({
   section,
   allowPositionCreation = true,
+  allowSubsectionCreation = true,
   onAction,
 }: {
   section: TreeSection;
   allowPositionCreation?: boolean;
+  allowSubsectionCreation?: boolean;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
-  void allowPositionCreation;
   if (section.status === "archive") {
     return (
       <>
+        {allowPositionCreation && <DropdownActionItem icon={FilePlus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
+        {allowSubsectionCreation && <DropdownActionItem icon={FolderPlus} onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>}
+        {(allowPositionCreation || allowSubsectionCreation) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
         <DropdownActionItem icon={ArrowCounterClockwise} onSelect={() => onAction("Восстановить раздел")}>Восстановить раздел</DropdownActionItem>
         <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
         <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
@@ -6190,6 +6340,9 @@ function SectionActionMenuContent({
   };
   return (
     <>
+      {allowPositionCreation && <DropdownActionItem icon={FilePlus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
+      {allowSubsectionCreation && <DropdownActionItem icon={FolderPlus} onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>}
+      {(allowPositionCreation || allowSubsectionCreation) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
       <CatalogContextMenuContent
         entity="section"
         imageUrl={section.imageUrl}
@@ -6345,10 +6498,9 @@ function CompositionRow({
 
   return (
     <CatalogDndRow kind="item" id={item.id} containerId={sectionId} surface="composition" disabled={!canDrag}>
-      {({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style }) => (
+      {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
-          {...rowDragProps}
           data-composition-row={item.id}
           style={style}
           role="button"
@@ -6364,7 +6516,7 @@ function CompositionRow({
             onItemAction(item, "Открыть позицию");
           }}
           className={cn(
-            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-hidden border-b border-[#f0efe9] pl-0.5 pr-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            "group relative flex h-11 min-h-11 max-h-11 cursor-pointer items-center gap-1 overflow-visible border-b border-[#f0efe9] pl-0 pr-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
             "hover:bg-[#faf9f7]",
             highlightItemId != null && item.id === highlightItemId && "bg-[#fff7d6]",
             isDragging && "opacity-0",
@@ -7184,7 +7336,7 @@ function buildSectionQueueFromPending(pendingOpen: PendingOpen, items: CatalogIt
   const baseIds = section
     ? getQueueItemIds("quick:all", items, "", section.sectionId, "none")
     : getQueueItemIds("quick:all", items, "", null, "none");
-  const itemIds = section && !baseIds.includes(target.id) ? [...baseIds, target.id] : baseIds;
+  const itemIds = section && !baseIds.includes(target.id) ? [target.id, ...baseIds] : baseIds;
   const overviewReturn = pendingOpen.returnContext?.tab === "overview" ? pendingOpen.returnContext : null;
   return {
     snapshot: {
@@ -7256,6 +7408,64 @@ function EditorFirstPositionEmptyState() {
   );
 }
 
+function CatalogLabelFilterRow({
+  tagFilter,
+  stickerFilter,
+  onTagFilterChange,
+  onStickerFilterChange,
+  tagCountContext,
+  stickerCountContext,
+}: {
+  tagFilter: CatalogLabelFilterValue | null;
+  stickerFilter: CatalogLabelFilterValue | null;
+  onTagFilterChange: (value: CatalogLabelFilterValue) => void;
+  onStickerFilterChange: (value: CatalogLabelFilterValue) => void;
+  tagCountContext: CatalogItem[];
+  stickerCountContext: CatalogItem[];
+}) {
+  const { contentLanguage } = useAppSettings();
+  const { account } = useMockAuth();
+  const { labels } = useCatalogLabels();
+  const tags = labels.filter((label) => label.type === "tag");
+  const stickers = labels.filter((label) => label.type === "sticker");
+  const countFor = (type: "tag" | "sticker", value: CatalogLabelFilterValue) => (type === "tag" ? tagCountContext : stickerCountContext).filter((item) => {
+    if (value === "all") return true;
+    if (type === "tag") {
+      const ids = resolveCatalogItemTagIds(item, labels);
+      return value === "none" ? ids.length === 0 : ids.includes(value);
+    }
+    const id = resolveCatalogItemStickerId(item, labels);
+    return value === "none" ? !id : id === value;
+  }).length;
+  const renderGroup = (
+    type: "tag" | "sticker",
+    value: CatalogLabelFilterValue | null,
+    options: CatalogLabel[],
+    onChange: (value: CatalogLabelFilterValue) => void,
+  ) => value == null ? null : (
+    <div className="flex shrink-0 items-center gap-1">
+      <span className="mr-1 shrink-0 text-[12px] font-medium text-[#79716b]">{type === "tag" ? "Теги:" : "Стикеры:"}</span>
+      {(["all", ...options.map((label) => label.id), "none"] as CatalogLabelFilterValue[]).map((option) => {
+        const label = option === "all" ? "Все" : option === "none" ? (type === "tag" ? "Без тегов" : "Без стикера") : getCatalogLabelText(options.find((candidate) => candidate.id === option), contentLanguage, account?.workspace.primaryLanguage);
+        return (
+          <button key={option} type="button" onClick={() => onChange(option)} className={cn(
+            "inline-flex h-7 shrink-0 items-center gap-1 rounded-[7px] px-2 text-[12px] transition",
+            value === option ? "bg-[#f1f1ea] font-medium text-[#44403b]" : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#44403b]",
+          )}>
+            <span>{label}</span><span className="tabular-nums text-[#a6a09b]">{countFor(type, option)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  return (
+    <div className="flex h-8 min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none]" data-catalog-label-filter-row>
+      {renderGroup("tag", tagFilter, tags, onTagFilterChange)}
+      {renderGroup("sticker", stickerFilter, stickers, onStickerFilterChange)}
+    </div>
+  );
+}
+
 function OverviewWorkspace({
   navigation,
   filterId,
@@ -7282,6 +7492,8 @@ function OverviewWorkspace({
   positionCreateDisabledReason,
   allowPositionCreation = true,
   onActiveItemChange,
+  externalActiveItemId,
+  onOpenExistingItem,
   structureSections,
   mandatoryFilterId,
   titleOverride,
@@ -7313,6 +7525,8 @@ function OverviewWorkspace({
   positionCreateDisabledReason?: string | null;
   allowPositionCreation?: boolean;
   onActiveItemChange?: (id: string | null) => void;
+  externalActiveItemId?: string | null;
+  onOpenExistingItem?: (item: CatalogItem) => void;
   structureSections?: TreeSection[];
   mandatoryFilterId?: OverviewFilterId;
   titleOverride?: string;
@@ -7331,7 +7545,6 @@ function OverviewWorkspace({
   const {
     createItem: addItem,
     updateItem,
-    deleteItem,
     deleteItems,
     moveItem,
     setItemStatus,
@@ -7402,13 +7615,19 @@ function OverviewWorkspace({
     draftItem,
     dirty: draftDirty,
     submitting: createSubmitting,
+    completedItemId: completedCreationItemId,
     updateDraft,
     setDirty: setDraftDirty,
     setSubmitting: setCreateSubmitting,
     begin: beginDirectCreate,
-    complete: completeDirectCreate,
+    promote: promoteDirectCreate,
     cancel: cancelDirectCreate,
   } = directCreateSession;
+  const isCreateDraftOpen = Boolean(creationItemId && draftItem);
+  const isPendingCreateDraft = isCreateDraftOpen && !completedCreationItemId;
+  const createCommitRef = useRef(false);
+  const [creationAutosaveStatus, setCreationAutosaveStatus] = useState<CatalogSaveStatus>("idle");
+  const creationAutosaveTimersRef = useRef<{ save?: number; hide?: number }>({});
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const pendingCreateNavigationRef = useRef<(() => void) | null>(null);
   const [panelQuery, setPanelQuery] = useState(initialOverviewContext.panelQuery);
@@ -7424,6 +7643,26 @@ function OverviewWorkspace({
   const [moveRequest, setMoveRequest] = useState<{ operation: "position" | "bulk"; itemIds: string[]; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
+  const labelDirectory = useCatalogLabels(USE_SHARED_TAGS_AND_STICKERS);
+  useEffect(() => {
+    if (USE_SHARED_TAGS_AND_STICKERS) ensureCatalogLabelsFromItems(items);
+  }, [items]);
+  const [tagFilter, setTagFilter] = useState<CatalogLabelFilterValue | null>(null);
+  const [stickerFilter, setStickerFilter] = useState<CatalogLabelFilterValue | null>(null);
+
+  useEffect(() => () => {
+    if (creationAutosaveTimersRef.current.save) window.clearTimeout(creationAutosaveTimersRef.current.save);
+    if (creationAutosaveTimersRef.current.hide) window.clearTimeout(creationAutosaveTimersRef.current.hide);
+  }, []);
+
+  useEffect(() => {
+    if (!isPendingCreateDraft) return;
+    createCommitRef.current = false;
+    if (creationAutosaveTimersRef.current.save) window.clearTimeout(creationAutosaveTimersRef.current.save);
+    if (creationAutosaveTimersRef.current.hide) window.clearTimeout(creationAutosaveTimersRef.current.hide);
+    creationAutosaveTimersRef.current = {};
+    setCreationAutosaveStatus("idle");
+  }, [creationItemId, isPendingCreateDraft]);
   const tableReorderSensors = useSensors(
     useSensor(CatalogPointerSensor, { activationConstraint: { distance: 7 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -7453,8 +7692,8 @@ function OverviewWorkspace({
     writeJsonRecord(CATALOG_TABLE_COLUMNS_STORAGE_KEY, columnVisibility);
   }, [columnVisibility]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrolledHorizontally, setTableScrolledHorizontally] = useState(false);
   const restoreScrollTopRef = useRef<number | null>(null);
-
   useEffect(() => {
     if (!moveUndo) return;
     const timeout = window.setTimeout(() => setMoveUndo(null), 5000);
@@ -7503,12 +7742,10 @@ function OverviewWorkspace({
     const next = id === "quick:all"
       ? []
       : active
-        ? [id]
-        : activeFilterIds[0] === id
-          ? []
-          : activeFilterIds;
+        ? [...new Set([...activeFilterIds, id])]
+        : activeFilterIds.filter((current) => current !== id);
     setActiveFilterIds(next);
-    setWorkspaceFilterId(next[0] ?? "quick:all");
+    setWorkspaceFilterId(next.at(-1) ?? "quick:all");
     setSelectedIds(new Set());
   };
   const availableScopeSections = structureSections ?? catalogSections;
@@ -7525,7 +7762,7 @@ function OverviewWorkspace({
   );
   const filtered = useMemo(() => {
     const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-    const nextItems = activeFilterIds[0] ? getOverviewItems(activeFilterIds[0], baseItems) : baseItems;
+    const nextItems = activeFilterIds.reduce((current, activeFilterId) => getOverviewItems(activeFilterId, current), baseItems);
     return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
   }, [activeFilterIds, items, mandatoryFilterId, scopeIds]);
   const scopeTotalCount = useMemo(
@@ -7533,7 +7770,7 @@ function OverviewWorkspace({
     [items, scopeIds],
   );
   const normalizedQuery = useMemo(() => workspaceQuery.trim().toLowerCase(), [workspaceQuery]);
-  const searched = useMemo(
+  const searchedBeforeLabels = useMemo(
     () => normalizedQuery
       ? filtered.filter((item) =>
           [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
@@ -7541,34 +7778,73 @@ function OverviewWorkspace({
       : filtered,
     [filtered, normalizedQuery],
   );
+  const matchesTagFilter = useCallback((item: CatalogItem, value: CatalogLabelFilterValue | null) => {
+    if (!USE_SHARED_TAGS_AND_STICKERS) return true;
+    return matchesCatalogItemLabelFilters(item, labelDirectory.labels, { tag: value });
+  }, [labelDirectory.labels]);
+  const matchesStickerFilter = useCallback((item: CatalogItem, value: CatalogLabelFilterValue | null) => {
+    if (!USE_SHARED_TAGS_AND_STICKERS) return true;
+    return matchesCatalogItemLabelFilters(item, labelDirectory.labels, { sticker: value });
+  }, [labelDirectory.labels]);
+  const searched = useMemo(
+    () => USE_SHARED_TAGS_AND_STICKERS
+      ? searchedBeforeLabels.filter((item) => matchesTagFilter(item, tagFilter) && matchesStickerFilter(item, stickerFilter))
+      : searchedBeforeLabels,
+    [matchesStickerFilter, matchesTagFilter, searchedBeforeLabels, stickerFilter, tagFilter],
+  );
+  const tagCountContext = useMemo(
+    () => USE_SHARED_TAGS_AND_STICKERS ? searchedBeforeLabels.filter((item) => matchesStickerFilter(item, stickerFilter)) : [],
+    [matchesStickerFilter, searchedBeforeLabels, stickerFilter],
+  );
+  const stickerCountContext = useMemo(
+    () => USE_SHARED_TAGS_AND_STICKERS ? searchedBeforeLabels.filter((item) => matchesTagFilter(item, tagFilter)) : [],
+    [matchesTagFilter, searchedBeforeLabels, tagFilter],
+  );
   const manuallyOrdered = useMemo(
     () => orderItemsByPositionOrder(searched, itemOrderBySection),
     [itemOrderBySection, searched],
   );
-  const visible = useMemo(
-    () => sortItemsByPrice(manuallyOrdered, workspacePriceSort),
-    [manuallyOrdered, workspacePriceSort],
-  );
+  const visible = useMemo(() => {
+    const ordered = sortItemsByPrice(manuallyOrdered, workspacePriceSort);
+    const draftIsVisible = Boolean(
+      isPendingCreateDraft
+      && draftItem
+      && draftItem.sectionId !== "no-section"
+      && (!scopeIds || scopeIds.has(draftItem.sectionId))
+      && !normalizedQuery
+      && activeFilterIds.length === 0
+      && !mandatoryFilterId
+      && tagFilter == null
+      && stickerFilter == null,
+    );
+    return draftIsVisible ? [draftItem!, ...ordered] : ordered;
+  }, [activeFilterIds.length, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspacePriceSort]);
   const scopeIsLeafSection = Boolean(
     scopeSection
     && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
   );
-  const canReorderTable = Boolean(
+  const tableSupportsReorder = Boolean(
     tableHeader
     && embedded
     && !mandatoryFilterId
     && scopeSection
     && scopeIsLeafSection
     && activeFilterIds.length === 0
+    && tagFilter == null
+    && stickerFilter == null
     && workspaceQuery.trim() === ""
     && workspacePriceSort === "none"
+  );
+  const canReorderTable = Boolean(
+    tableSupportsReorder
+    && !isCreateDraftOpen
     && visible.length > 1
-    && visible.every((item) => item.sectionId === scopeSection.id),
+    && visible.every((item) => item.sectionId === scopeSection?.id),
   );
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
-    state: { columnVisibility: { ...columnVisibility, reorder: canReorderTable } },
+    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder } },
     onColumnVisibilityChange: handleColumnVisibilityChange,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item) => item.id,
@@ -7650,7 +7926,6 @@ function OverviewWorkspace({
   const showFeedback = (message: string) => {
     setFeedback(message);
   };
-  const isCreateDraftOpen = creationItemId !== null && draftItem !== null;
   const completeCreateNavigation = (action: () => void) => {
     setDiscardDialogOpen(false);
     cancelDirectCreate();
@@ -7659,7 +7934,7 @@ function OverviewWorkspace({
     action();
   };
   const requestCreateNavigation = (action: () => void) => {
-    if (!isCreateDraftOpen) {
+    if (!isPendingCreateDraft) {
       action();
       return;
     }
@@ -7821,7 +8096,7 @@ function OverviewWorkspace({
     pendingHandledRef.current = true;
     const nextItems = initialItemsWithPending(pendingOpen, items);
     const nextQueue = buildSectionQueueFromPending(pendingOpen, nextItems);
-    if (pendingOpen.item && !items.some((item) => item.id === pendingOpen.item?.id)) {
+    if (pendingOpen.mode !== "create" && pendingOpen.item && !items.some((item) => item.id === pendingOpen.item?.id)) {
       addItem(pendingOpen.item);
     }
     setQueue(nextQueue);
@@ -7858,7 +8133,8 @@ function OverviewWorkspace({
       return;
     }
     if (action === "Открыть позицию") {
-      startTableQueue(item, workspaceFilterId);
+      if (onOpenExistingItem) onOpenExistingItem(item);
+      else startTableQueue(item, workspaceFilterId);
       return;
     }
     if (action === "Переименовать") {
@@ -7974,82 +8250,46 @@ function OverviewWorkspace({
     setBulkDialog(null);
     clearSelection();
   };
-  const restoreCreateReturnContextNow = () => {
-    const returnContext = queue?.snapshot.returnContext;
-    if (returnContext?.tab === "sections") {
-      setQueue(null);
-      onRestoreStructureContext(returnContext, queue?.currentId ?? null);
-      return;
-    }
-    if (returnContext?.tab === "overview") {
-      setWorkspaceFilterId(returnContext.filterId);
-      setWorkspaceQuery(editorFirstEnabled ? returnContext.panelQuery : returnContext.tableQuery);
-      if (!editorFirstEnabled) setPanelQuery(returnContext.panelQuery);
-      setWorkspaceSectionScopeId(returnContext.sectionScopeId);
-      setWorkspacePriceSort(returnContext.sort);
-      restoreScrollTopRef.current = returnContext.scrollTop;
-      setQueue(null);
-      if (editorFirstEnabled) setEditorFirstView("editor");
-      setBulkDialog(null);
-      clearSelection();
-      return;
-    }
-    returnToOverviewNow();
-  };
-  const requestCreateBackNavigation = (continueNavigation: () => void) => {
-    requestCreateNavigation(() => {
-      restoreCreateReturnContextNow();
-      continueNavigation();
-    });
-  };
-  const backFromCreateDraft = () => {
-    requestCreateBackNavigation(() => {
-      if (navigation.route.createHistoryEntry) {
-        navigation.back();
-        return;
-      }
-      const fallbackSectionId = draftItem?.sectionId && draftItem.sectionId !== "no-section" ? draftItem.sectionId : null;
-      navigation.replaceDirectCreateDestination({
-        tab: "overview",
-        filterId: "quick:all",
-        sectionScopeId: fallbackSectionId,
-        tableQuery: "",
-        panelQuery: "",
-        sort: "none",
-        scrollTop: 0,
-      }, fallbackSectionId);
-    });
-  };
-  const openCreateSectionNow = (sectionId: string | null) => {
-    const destination: CatalogReturnContext = { tab: "sections", sectionId };
-    navigation.replaceDirectCreateDestination(destination, sectionId);
-    onOpenSectionInSections(sectionId);
-  };
   const cancelCreateDraft = () => {
     const sectionId = draftItem?.sectionId && draftItem.sectionId !== "no-section" ? draftItem.sectionId : null;
-    requestCreateNavigation(() => openCreateSectionNow(sectionId));
+    const returnContext = queue?.snapshot.returnContext ?? {
+      tab: "overview" as const,
+      filterId: "quick:all" as const,
+      sectionScopeId: sectionId,
+      tableQuery: "",
+      panelQuery: "",
+      sort: "none" as const,
+      scrollTop: 0,
+    };
+    cancelDirectCreate();
+    setQueue(null);
+    setActivePositionId(null);
+    setBulkDialog(null);
+    clearSelection();
+    navigation.replaceDirectCreateDestination(returnContext, sectionId);
+    onCreateClosed?.();
   };
   useEffect(() => {
-    if (!isCreateDraftOpen) {
+    if (!isPendingCreateDraft) {
       onRegisterCreateNavigationGuard(null);
       return;
     }
     onRegisterCreateNavigationGuard({
       request: requestCreateNavigation,
-      requestBack: requestCreateBackNavigation,
+      requestBack: requestCreateNavigation,
       location: navigation.route.location,
     });
     return () => onRegisterCreateNavigationGuard(null);
-  }, [draftDirty, isCreateDraftOpen, onRegisterCreateNavigationGuard, queue]);
+  }, [draftDirty, isPendingCreateDraft, onRegisterCreateNavigationGuard, queue]);
   useEffect(() => {
-    if (!isCreateDraftOpen || !draftDirty) return;
+    if (!isPendingCreateDraft || !draftDirty) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [draftDirty, isCreateDraftOpen]);
+  }, [draftDirty, isPendingCreateDraft]);
   const returnToOverview = () => requestCreateNavigation(returnToOverviewNow);
   const returnToOrigin = () => {
     const returnContext = queue?.snapshot.returnContext;
@@ -8157,37 +8397,75 @@ function OverviewWorkspace({
     setQueue((current) => current ? { ...current, currentId: id } : current);
     if (editorFirstEnabled) setEditorFirstView("editor");
   };
-  const createPosition = async () => {
-    if (!draftItem || createSubmitting || !draftItem.title.trim()) return;
+  const showCreationSaved = () => {
+    if (creationAutosaveTimersRef.current.save) window.clearTimeout(creationAutosaveTimersRef.current.save);
+    if (creationAutosaveTimersRef.current.hide) window.clearTimeout(creationAutosaveTimersRef.current.hide);
+    setCreationAutosaveStatus("saved");
+    creationAutosaveTimersRef.current.hide = window.setTimeout(() => {
+      setCreationAutosaveStatus("idle");
+      creationAutosaveTimersRef.current = {};
+    }, 1400);
+  };
+  const finishCreationAutosave = () => {
+    if (!completedCreationItemId) return;
+    registerChange("catalog");
+    showCreationSaved();
+  };
+  const scheduleCreationAutosave = () => {
+    if (!completedCreationItemId) return;
+    if (creationAutosaveTimersRef.current.save) window.clearTimeout(creationAutosaveTimersRef.current.save);
+    if (creationAutosaveTimersRef.current.hide) window.clearTimeout(creationAutosaveTimersRef.current.hide);
+    setCreationAutosaveStatus("saving");
+    creationAutosaveTimersRef.current.save = window.setTimeout(finishCreationAutosave, 450);
+  };
+  const createPosition = (draftTitle?: string) => {
+    const title = (draftTitle ?? draftItem?.title ?? "").trim();
+    if (!draftItem || createSubmitting || createCommitRef.current || !title) return;
+    createCommitRef.current = true;
     setCreateSubmitting(true);
+    if (creationAutosaveTimersRef.current.save) window.clearTimeout(creationAutosaveTimersRef.current.save);
+    if (creationAutosaveTimersRef.current.hide) window.clearTimeout(creationAutosaveTimersRef.current.hide);
+    setCreationAutosaveStatus("saving");
     try {
       // Прототип имитирует сетевой запрос, чтобы состояние loading и защита от
       // повторной отправки были такими же, как у реального create API.
-      await new Promise((resolve) => window.setTimeout(resolve, 350));
       const createdItem: CatalogItem = {
         ...draftItem,
         id: createRealPositionId(),
-        title: draftItem.title.trim(),
+        title,
         price: draftItem.price || 0,
         sectionName: draftItem.sectionName,
         hasDescription: descriptionHasContent(draftItem.description),
-        translationFilledCount: draftItem.title.trim() ? 1 : 0,
+        translationFilledCount: 1,
       };
       const persistedItems = readCreatedCatalogItems();
       writeCreatedCatalogItems([...persistedItems, createdItem]);
-      if (draftItem.id !== createdItem.id) deleteItem(draftItem.id);
-      addItem(createdItem, { preserveLegacyOrderPersistence: true });
+      const destinationItemIds = [
+        createdItem.id,
+        ...items
+          .filter((item) => item.sectionId === createdItem.sectionId && item.id !== createdItem.id)
+          .map((item) => item.id),
+      ];
+      addItem(createdItem, {
+        order: {
+          ...itemOrderBySection,
+          [createdItem.sectionId]: destinationItemIds,
+        },
+      });
       setQueue((current) => current ? {
         ...current,
         currentId: createdItem.id,
         snapshot: {
           ...current.snapshot,
-          itemIds: [createdItem.id, ...current.snapshot.itemIds.filter((id) => id !== createdItem.id)],
+          itemIds: destinationItemIds,
           entryItemId: createdItem.id,
+          sectionScopeId: createdItem.sectionId,
+          sectionPath: getCatalogSectionPath(createdItem.sectionId),
         },
       } : current);
       setActivePositionId(createdItem.id);
-      completeDirectCreate(createdItem.id);
+      promoteDirectCreate(createdItem);
+      creationAutosaveTimersRef.current.save = window.setTimeout(showCreationSaved, 450);
       onCreateClosed?.();
       navigation.replaceDirectCreateDestination(
         queue?.snapshot.returnContext ?? {
@@ -8206,26 +8484,27 @@ function OverviewWorkspace({
       onFirstItemCreated?.();
       showFeedback("Позиция создана");
     } catch {
+      createCommitRef.current = false;
+      setCreationAutosaveStatus("error");
       showFeedback("Не удалось создать позицию. Введённые данные сохранены в форме.");
     } finally {
       setCreateSubmitting(false);
     }
   };
-  const setQueueAvailabilityMode = (item: CatalogItem, mode: AvailabilityMode) => {
-    if (item.status === "archive") return;
-    if (mode === "unavailable") setItemStatus(item.id, "stopped");
-    else updateItem(item.id, { scheduled: mode === "schedule" });
-    registerChange("catalog");
+  const updateCreationItem = (patch: Partial<CatalogItem>) => {
+    updateDraft(patch);
+    if (!completedCreationItemId) {
+      setDraftDirty(true);
+      return;
+    }
+    updateItem(completedCreationItemId, patch);
+    scheduleCreationAutosave();
   };
   const setCreateAvailabilityMode = (_item: CatalogItem, mode: AvailabilityMode) => {
-    updateDraft(mode === "unavailable" ? { status: "stopped" } : { scheduled: mode === "schedule" });
+    updateCreationItem(mode === "unavailable" ? { status: "stopped" } : { status: "active", scheduled: mode === "schedule" });
   };
   const toggleCreateStop = () => {
-    updateDraft({ status: draftItem?.status === "stopped" ? "active" : "stopped" });
-  };
-  const toggleQueueStop = (item: CatalogItem) => {
-    setItemStatus(item.id, item.status === "stopped" || item.status === "coming-soon" ? "active" : "stopped");
-    registerChange("catalog");
+    updateCreationItem({ status: draftItem?.status === "stopped" ? "active" : "stopped" });
   };
   const archiveQueueItem = (item: CatalogItem) => {
     setItemStatus(item.id, "archive");
@@ -8338,6 +8617,11 @@ function OverviewWorkspace({
       : items.find((item) => item.id === queue.currentId) ?? null
     : null;
   const queueIsCreating = Boolean(queueCurrentItem && creationItemId === queueCurrentItem.id && draftItem);
+  const queueCreationCommitted = Boolean(
+    queueIsCreating
+    && completedCreationItemId
+    && queueCurrentItem?.id === completedCreationItemId,
+  );
   const itemsById = new Map(items.map((item) => [item.id, item]));
   // Очередь — снимок таблицы в момент открытия. Изменение позиции не должно
   // перестраивать порядок или выбрасывать её из навигации активного аудита.
@@ -8347,9 +8631,16 @@ function OverviewWorkspace({
   const queuePanelItems = queueOrderedItemIds
     .map((id) => itemsById.get(id))
     .filter((item): item is CatalogItem => Boolean(item));
-  const queuePanelItemsWithDraft = queueIsCreating && draftItem
+  const queuePanelItemsWithDraft = queueIsCreating && !queueCreationCommitted && draftItem
     ? [{ ...draftItem, title: draftItem.title.trim() || "Новая позиция" }, ...queuePanelItems]
     : queuePanelItems;
+  const creationQueueIndex = queueCreationCommitted && queueCurrentItem
+    ? queueOrderedItemIds.indexOf(queueCurrentItem.id)
+    : -1;
+  const creationPreviousId = creationQueueIndex > 0 ? queueOrderedItemIds[creationQueueIndex - 1] : null;
+  const creationNextId = creationQueueIndex >= 0 && creationQueueIndex < queueOrderedItemIds.length - 1
+    ? queueOrderedItemIds[creationQueueIndex + 1]
+    : null;
   const queueEditorContext = queue ? getQueueEditorContext(queue.snapshot.entryFilterId) : null;
   const queueEditorIntent: OpenPositionIntent | null = queue && queueCurrentItem && !queueIsCreating ? {
     origin: "positions",
@@ -8363,7 +8654,7 @@ function OverviewWorkspace({
     revision: catalogRevision,
   } : null;
 
-  if (queue && (!editorFirstEnabled || editorFirstView === "editor") && (!embedded || queueIsCreating)) {
+  if (queue && (!editorFirstEnabled || editorFirstView === "editor") && !embedded) {
     const currentItem = queueCurrentItem;
     const isCreating = queueIsCreating;
     const editorContext = queueEditorContext!;
@@ -8401,40 +8692,82 @@ function OverviewWorkspace({
             />
           )}
           {isCreating && currentItem ? (
-            <PositionEditor
-              item={currentItem}
-              mode={isCreating ? "create" : "edit"}
-              allItems={items}
-              upsell={queueUpsellByItem[currentItem.id] ?? {}}
-              onUpsellChange={(next) => {
-                setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }));
-                if (isCreating) setDraftDirty(true);
-              }}
-              stopBusy={false}
-              onArchiveItem={archiveQueueItem}
-              onRestoreItem={restoreQueueItem}
-              onMoveItem={(targetItem) => showFeedback(`Переместить «${targetItem.title}»: placeholder`)}
-              onToggleStop={isCreating ? toggleCreateStop : toggleQueueStop}
-              onSetAvailabilityMode={isCreating ? setCreateAvailabilityMode : setQueueAvailabilityMode}
-              unavailableDisplayMode={currentItem.unavailableDisplayMode ?? (currentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
-              outsideScheduleMode={currentItem.outsideScheduleMode ?? "hidden"}
-              weeklySchedule={currentItem.weeklySchedule ?? createDefaultWeeklySchedule()}
-              onUnavailableDisplayModeChange={(unavailableDisplayMode) => updateDraft({ unavailableDisplayMode })}
-              onOutsideScheduleModeChange={(outsideScheduleMode) => updateDraft({ outsideScheduleMode })}
-              onWeeklyScheduleChange={(weeklySchedule) => updateDraft({ weeklySchedule })}
-              onRequestPermanentDelete={() => {}}
-              forcedEditorTab={editorContext.tab}
-              focusAnchor={editorContext.anchor}
-              onDraftChange={isCreating ? updateDraft : undefined}
-              onCreatePosition={isCreating ? createPosition : undefined}
-              onBackCreate={isCreating ? backFromCreateDraft : undefined}
-              onBackEdit={!isCreating && queue.snapshot.returnContext?.tab === "sections" ? returnToOrigin : undefined}
-              onCancelCreate={isCreating ? cancelCreateDraft : undefined}
-              createDisabled={isCreating ? !draftItem?.title.trim() : false}
-              createSubmitting={isCreating ? createSubmitting : false}
-            />
+            <PositionEditorDialogShell
+              label="Новая позиция"
+              onClose={cancelCreateDraft}
+              presentation="pane"
+              creation
+            >
+              <PositionEditor
+                item={currentItem}
+                mode="create"
+                allItems={items}
+                upsell={queueUpsellByItem[currentItem.id] ?? {}}
+                onUpsellChange={(next) => {
+                  setQueueUpsellByItem((current) => ({ ...current, [currentItem.id]: next }));
+                  updateCreationItem({ upsell: next });
+                }}
+                stopBusy={false}
+                onArchiveItem={archiveQueueItem}
+                onRestoreItem={restoreQueueItem}
+                onMoveItem={(target, anchor) => {
+                  if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
+                }}
+                onToggleStop={toggleCreateStop}
+                onSetAvailabilityMode={setCreateAvailabilityMode}
+                unavailableDisplayMode={currentItem.unavailableDisplayMode ?? (currentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
+                outsideScheduleMode={currentItem.outsideScheduleMode ?? "hidden"}
+                weeklySchedule={currentItem.weeklySchedule ?? createDefaultWeeklySchedule()}
+                onUnavailableDisplayModeChange={(unavailableDisplayMode) => updateCreationItem({ unavailableDisplayMode })}
+                onOutsideScheduleModeChange={(outsideScheduleMode) => updateCreationItem({ outsideScheduleMode })}
+                onWeeklyScheduleChange={(weeklySchedule) => updateCreationItem({ weeklySchedule })}
+                onRequestPermanentDelete={(target) => {
+                  if (!queueCreationCommitted) return;
+                  deleteItems([target.id]);
+                  registerChange("catalog");
+                  cancelCreateDraft();
+                }}
+                forcedEditorTab={editorContext.tab}
+                focusAnchor={editorContext.anchor}
+                onDraftChange={updateCreationItem}
+                onCommitDraftName={!queueCreationCommitted ? createPosition : undefined}
+                onCreatePosition={!queueCreationCommitted ? createPosition : undefined}
+                onBackCreate={cancelCreateDraft}
+                onCancelCreate={cancelCreateDraft}
+                createDisabled={!queueCreationCommitted && !draftItem?.title.trim()}
+                createSubmitting={!queueCreationCommitted && createSubmitting}
+                detailPane
+                createCommitted={queueCreationCommitted}
+                autosaveStatus={creationAutosaveStatus}
+                onRetrySave={queueCreationCommitted ? finishCreationAutosave : () => createPosition()}
+                onItemChange={(_target, patch) => updateCreationItem(patch)}
+                headerMeta={queueCreationCommitted ? (
+                  <PositionQueueControls
+                    previousId={creationPreviousId}
+                    nextId={creationNextId}
+                    onSelect={(id) => {
+                      cancelDirectCreate();
+                      selectQueueItem(id);
+                    }}
+                  />
+                ) : undefined}
+                creationDestination={currentItem.sectionId === "no-section" ? (
+                  <CatalogDestinationPicker
+                    kind="position"
+                    sections={structureSections ?? catalogSections}
+                    allItems={items}
+                    value={currentItem.sectionId || null}
+                    onChange={(sectionId) => {
+                      const section = flattenSections(structureSections ?? catalogSections)
+                        .find((candidate) => candidate.id === sectionId);
+                      if (section) updateDraft({ sectionId: section.id, sectionName: section.name });
+                    }}
+                  />
+                ) : undefined}
+              />
+            </PositionEditorDialogShell>
           ) : editorIntent ? (
-            <PositionEditorDialogShell label={currentItem?.title || "Позиция"} onClose={returnToOrigin}>
+            <PositionEditorDialogShell label={currentItem?.title || "Позиция"} onClose={returnToOrigin} presentation="pane">
               <PositionEditorHost
                 intent={editorIntent}
                 onCurrentIdChange={selectQueueItem}
@@ -8535,108 +8868,92 @@ function OverviewWorkspace({
           }}
           className={cn(
             "min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-10",
-            embedded ? "px-1.5" : "px-6",
+            "px-6",
           )}
         >
-          <div className={cn(
-            "mx-auto w-full min-w-0",
-            catalogTable.getColumn("section")?.getIsVisible() ? "max-w-[920px]" : "max-w-[800px]",
-          )}>
-            {tableHeader ? (
-              <div className="flex w-full items-center justify-between gap-3 px-1.5 pt-[18px]">
-                {tableHeader}
-                <CatalogTableFilterBar
-                  activeFilterIds={activeFilterIds}
-                  mandatoryFilterId={mandatoryFilterId}
-                  sectionScopeId={workspaceSectionScopeId}
-                  items={items}
-                  table={catalogTable}
-                  onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                  onActiveFilterChange={setWorkspaceActiveFilter}
-                  headerActionsOnly
-                />
+          <div className="w-full min-w-0">
+            <div className="flex w-full items-center gap-3 pt-[18px]">
+              <div className="min-w-0 flex-1">
+                {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
               </div>
-            ) : (
-              <div className="flex w-full items-center justify-between gap-3 px-1.5 pt-[18px]">
-                <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />
-                <CatalogTableFilterBar
-                  activeFilterIds={activeFilterIds}
-                  mandatoryFilterId={mandatoryFilterId}
-                  sectionScopeId={workspaceSectionScopeId}
-                  items={items}
-                  table={catalogTable}
-                  onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                  onActiveFilterChange={setWorkspaceActiveFilter}
-                  headerActionsOnly
+              <CatalogTableFilterBar
+                activeFilterIds={activeFilterIds}
+                mandatoryFilterId={mandatoryFilterId}
+                sectionScopeId={workspaceSectionScopeId}
+                items={items}
+                table={catalogTable}
+                onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                onActiveFilterChange={setWorkspaceActiveFilter}
+                headerActionsOnly
+                tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
+                stickerCategoryActive={USE_SHARED_TAGS_AND_STICKERS && stickerFilter != null}
+                onTagCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setTagFilter(active ? "all" : null) : undefined}
+                onStickerCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setStickerFilter(active ? "all" : null) : undefined}
+              />
+              {!tableHeader && (
+                <CatalogScopeSelect
+                  value={workspaceSectionScopeId}
+                  onChange={setWorkspaceSectionScopeId}
+                  onReset={() => setWorkspaceSectionScopeId(null)}
+                  allOptionLabel="Все разделы"
+                  compact
                 />
-              </div>
-            )}
-            <div className={cn(
-              "mt-3 min-w-0 overflow-clip rounded-[13px] border border-[#e7e5e4] bg-white pb-1 pt-0.5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
-            )} data-catalog-items-card>
-              {embedded && (
+              )}
+              {tableHeader && onAddPosition && allowPositionCreation && !selectedSectionIsCompletelyEmpty && (
+                <CatalogActionButton
+                  onClick={onAddPosition}
+                  disabledReason={positionCreateDisabledReason}
+                  ariaLabel="Добавить позицию"
+                  dataPositionCreateButton
+                >
+                  Новая позиция
+                </CatalogActionButton>
+              )}
+            </div>
+            <div className="h-8 min-w-0">
+              {USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null) && (
+                <CatalogLabelFilterRow
+                  tagFilter={tagFilter}
+                  stickerFilter={stickerFilter}
+                  onTagFilterChange={setTagFilter}
+                  onStickerFilterChange={setStickerFilter}
+                  tagCountContext={tagCountContext}
+                  stickerCountContext={stickerCountContext}
+                />
+              )}
+            </div>
+            <div className="min-w-0" data-catalog-items-card>
+              {embedded && selectedIds.size > 0 && (
                 <div
                   data-catalog-local-header
-                  className="sticky top-0 z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#f0efe9] bg-white px-3"
+                  className="sticky top-0 z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-[#fbfbf9]"
                 >
-                  {selectedIds.size > 0 ? (
-                    <SelectionToolbar
-                      count={selectedIds.size}
-                      onClear={clearSelection}
-                      onSetStatus={setSelectedStatus}
-                      onSetAvailability={setSelectedAvailability}
-                      onClearDiscount={clearSelectedDiscount}
-                      onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
-                      onOpenDiscount={() => setBulkDialog({ type: "discount" })}
-                      onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
-                      onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
-                      onOpenDelete={() => setBulkDialog({ type: "delete" })}
-                    />
-                  ) : (
-                    <>
-                      {!tableHeader ? (
-                        <CatalogScopeSelect
-                          value={workspaceSectionScopeId}
-                          onChange={setWorkspaceSectionScopeId}
-                          onReset={() => setWorkspaceSectionScopeId(null)}
-                          allOptionLabel="Все разделы"
-                          compact
+                  <SelectionToolbar
+                    count={selectedIds.size}
+                    onClear={clearSelection}
+                    onSetStatus={setSelectedStatus}
+                    onSetAvailability={setSelectedAvailability}
+                    onClearDiscount={clearSelectedDiscount}
+                    onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
+                    onOpenDiscount={() => setBulkDialog({ type: "discount" })}
+                    onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
+                    onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
+                    onOpenDelete={() => setBulkDialog({ type: "delete" })}
+                    labelActions={USE_SHARED_TAGS_AND_STICKERS ? (
+                      <div className="flex h-full items-center">
+                        <CatalogBulkLabelPicker
+                          type="tag"
+                          items={items.filter((item) => selectedIds.has(item.id))}
+                          onPatchItem={(target, patch) => updateItem(target.id, patch)}
                         />
-                      ) : <span className="min-w-0 flex-1 text-[13px] font-medium text-[#44403b]">Позиции</span>}
-                      {!selectedSectionIsCompletelyEmpty && onAddPosition && allowPositionCreation && (
-                        <Tooltip label={positionCreateDisabledReason ?? ""} side="top" disabled={!positionCreateDisabledReason}>
-                          <span className="shrink-0">
-                            <button
-                              type="button"
-                              onClick={onAddPosition}
-                              disabled={Boolean(positionCreateDisabledReason)}
-                              data-position-create-button
-                              className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white pl-1 pr-2 text-[12px] font-normal leading-[17px] text-[#292524] transition hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                            >
-                              <PlusCircle size={16} weight="regular" />
-                              <span>Добавить позицию</span>
-                            </button>
-                          </span>
-                        </Tooltip>
-                      )}
-                      {!selectedSectionIsCompletelyEmpty && onAddSubsection && (
-                        <Tooltip label={subsectionCreateDisabledReason ?? ""} side="top" disabled={!subsectionCreateDisabledReason}>
-                          <span className="shrink-0">
-                            <button
-                              type="button"
-                              onClick={onAddSubsection}
-                              disabled={Boolean(subsectionCreateDisabledReason)}
-                              data-subsection-create-button
-                              className="inline-flex h-7 items-center justify-center gap-1 rounded-[9px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-normal leading-[17px] text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                            >
-                              <PlusCircle size={13} />
-                              Добавить подраздел
-                            </button>
-                          </span>
-                        </Tooltip>
-                      )}
-                    </>
-                  )}
+                        <CatalogBulkLabelPicker
+                          type="sticker"
+                          items={items.filter((item) => selectedIds.has(item.id))}
+                          onPatchItem={(target, patch) => updateItem(target.id, patch)}
+                        />
+                      </div>
+                    ) : undefined}
+                  />
                 </div>
               )}
               {visible.length === 0 ? (
@@ -8714,8 +9031,12 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <div className="[scrollbar-width:thin]">
-                  <div className="w-full min-w-0">
+                <div
+                  onScroll={(event) => setTableScrolledHorizontally(event.currentTarget.scrollLeft > 0)}
+                  className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:thin]"
+                  data-catalog-table-horizontal-scroll
+                >
+                  <div className="min-w-full">
                   <div>
                     <TableHeaderRow
                       query={workspaceQuery}
@@ -8728,7 +9049,9 @@ function OverviewWorkspace({
                       onPriceSortChange={handlePriceSortChange}
                       table={catalogTable}
                       onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                      offsetForLocalHeader={embedded}
+                      offsetForLocalHeader={embedded && selectedIds.size > 0}
+                      stickyFirstColumn
+                      firstColumnScrolled={tableScrolledHorizontally}
                     />
                     <div>
                       <DndContext
@@ -8747,7 +9070,10 @@ function OverviewWorkspace({
                             onAction={prepareRowAction}
                             renderActions={(item, onAction) => <AuditRowActionsMenu item={item} onAction={onAction} />}
                             highlightItemId={tableHighlightId}
+                            activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
+                            stickyFirstColumn
+                            firstColumnScrolled={tableScrolledHorizontally}
                           />
                         </SortableContext>
                       </DndContext>
@@ -8832,23 +9158,104 @@ function OverviewWorkspace({
         </div>
         </div>
       </div>
-      {embedded && queueEditorIntent && queueCurrentItem && !queueIsCreating && (
-        <PositionEditorDialogShell label={queueCurrentItem.title || "Позиция"} onClose={returnToOrigin}>
-          <PositionEditorHost
-            intent={queueEditorIntent}
-            onCurrentIdChange={selectQueueItem}
-            onClose={returnToOrigin}
-            onFeedback={showFeedback}
-            structureSections={structureSections}
-            onRevealItem={(item) => {
-              setActiveFilterIds([]);
-              setWorkspaceFilterId("quick:all");
-              setWorkspaceSectionScopeId(item.sectionId);
-              setWorkspaceQuery("");
-              if (!editorFirstEnabled) setPanelQuery("");
-              rebrowse("quick:all", item.sectionId);
+      {embedded && queueIsCreating && queueCurrentItem?.sectionId === "no-section" && (
+        <PositionDestinationDialog
+          sections={structureSections ?? catalogSections}
+          onClose={cancelCreateDraft}
+          onSelect={(section) => {
+            updateDraft({ sectionId: section.id, sectionName: section.name });
+            setWorkspaceSectionScopeId(section.id);
+            setQueue((current) => current ? {
+              ...current,
+              snapshot: {
+                ...current.snapshot,
+                itemIds: [current.currentId, ...items.filter((item) => item.sectionId === section.id).map((item) => item.id)].filter((id): id is string => Boolean(id)),
+                sectionScopeId: section.id,
+                sectionPath: getCatalogSectionPath(section.id),
+              },
+            } : current);
+          }}
+        />
+      )}
+      {embedded && queueCurrentItem && queueCurrentItem.sectionId !== "no-section" && (queueIsCreating || queueEditorIntent) && (
+        <PositionEditorDialogShell
+          label={queueIsCreating ? "Новая позиция" : queueCurrentItem.title || "Позиция"}
+          onClose={queueIsCreating ? cancelCreateDraft : returnToOrigin}
+          presentation="pane"
+          creation={queueIsCreating}
+        >
+          {queueIsCreating ? (
+            <PositionEditor
+            item={queueCurrentItem}
+            mode="create"
+            allItems={items}
+            upsell={queueUpsellByItem[queueCurrentItem.id] ?? {}}
+            onUpsellChange={(next) => {
+              setQueueUpsellByItem((current) => ({ ...current, [queueCurrentItem.id]: next }));
+              updateCreationItem({ upsell: next });
             }}
-          />
+            stopBusy={false}
+            onArchiveItem={archiveQueueItem}
+            onRestoreItem={restoreQueueItem}
+            onMoveItem={(target, anchor) => {
+              if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
+            }}
+            onToggleStop={toggleCreateStop}
+            onSetAvailabilityMode={setCreateAvailabilityMode}
+            unavailableDisplayMode={queueCurrentItem.unavailableDisplayMode ?? (queueCurrentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
+            outsideScheduleMode={queueCurrentItem.outsideScheduleMode ?? "hidden"}
+            weeklySchedule={queueCurrentItem.weeklySchedule ?? createDefaultWeeklySchedule()}
+            onUnavailableDisplayModeChange={(unavailableDisplayMode) => updateCreationItem({ unavailableDisplayMode })}
+            onOutsideScheduleModeChange={(outsideScheduleMode) => updateCreationItem({ outsideScheduleMode })}
+            onWeeklyScheduleChange={(weeklySchedule) => updateCreationItem({ weeklySchedule })}
+            onRequestPermanentDelete={(target) => {
+              if (!queueCreationCommitted) return;
+              deleteItems([target.id]);
+              registerChange("catalog");
+              cancelCreateDraft();
+            }}
+            forcedEditorTab={queueEditorContext?.tab}
+            focusAnchor={queueEditorContext?.anchor}
+            onDraftChange={updateCreationItem}
+            onCommitDraftName={!queueCreationCommitted ? createPosition : undefined}
+            onCreatePosition={!queueCreationCommitted ? createPosition : undefined}
+            onBackCreate={cancelCreateDraft}
+            onCancelCreate={cancelCreateDraft}
+            createDisabled={!queueCreationCommitted && !draftItem?.title.trim()}
+            createSubmitting={!queueCreationCommitted && createSubmitting}
+            detailPane
+            createCommitted={queueCreationCommitted}
+            autosaveStatus={creationAutosaveStatus}
+            onRetrySave={queueCreationCommitted ? finishCreationAutosave : () => createPosition()}
+            onItemChange={(_target, patch) => updateCreationItem(patch)}
+            headerMeta={queueCreationCommitted ? (
+              <PositionQueueControls
+                previousId={creationPreviousId}
+                nextId={creationNextId}
+                onSelect={(id) => {
+                  cancelDirectCreate();
+                  selectQueueItem(id);
+                }}
+              />
+            ) : undefined}
+            />
+          ) : queueEditorIntent ? (
+            <PositionEditorHost
+              intent={queueEditorIntent}
+              onCurrentIdChange={selectQueueItem}
+              onClose={returnToOrigin}
+              onFeedback={showFeedback}
+              structureSections={structureSections}
+              onRevealItem={(item) => {
+                setActiveFilterIds([]);
+                setWorkspaceFilterId("quick:all");
+                setWorkspaceSectionScopeId(item.sectionId);
+                setWorkspaceQuery("");
+                if (!editorFirstEnabled) setPanelQuery("");
+                rebrowse("quick:all", item.sectionId);
+              }}
+            />
+          ) : null}
         </PositionEditorDialogShell>
       )}
     </main>
@@ -8982,6 +9389,7 @@ export function RecommendationsContextWorkspace({
   setUpsellSurface?: (surface: "home" | "dish" | "cart") => void;
   setUpsellFocused?: (focused: boolean) => void;
 } = {}) {
+  // This workspace owns item-to-item recommendation links only; tags and stickers stay contextual in the position editor.
   const { items, setActiveEditorItemId, upsellByItem, setUpsellByItem } = useCatalogStore();
   const { registerChange } = usePublish();
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
@@ -9149,7 +9557,7 @@ export function RecommendationsContextWorkspace({
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
           <div className="border-b border-[#e7e5e4] px-3 pb-3 pt-4">
-            <h2 className="px-1 text-[14px] font-medium leading-5 text-[#292524]">Допродажи</h2>
+            <h2 className="px-1 text-[14px] font-medium leading-5 text-[#292524]">Рекомендации</h2>
             <div className="mt-3">
               <CatalogScopeSelect
                 value={sectionScopeId}
@@ -9342,7 +9750,7 @@ export function CatalogWorkspace({
     onQuickCreateHandled?.();
   }, [onQuickCreateHandled, quickCreateRequest]);
   // Переход «Редактировать в Позициях» из вкладки «Разделы» с контекстом раздела.
-  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen(navigation.route));
+  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(() => readDirectCreatePendingOpen(navigation.route, sharedCatalogSections));
   const directPositionHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (catalogTab !== "overview" || pendingOpen) return;
@@ -9392,8 +9800,8 @@ export function CatalogWorkspace({
   }, [navigation, pendingOpen]);
   useEffect(() => {
     if (!navigation.route.createPosition) return;
-    setPendingOpen((current) => current ?? readDirectCreatePendingOpen(navigation.route));
-  }, [navigation.route.createPosition, navigation.route.revision]);
+    setPendingOpen((current) => current ?? readDirectCreatePendingOpen(navigation.route, sharedCatalogSections));
+  }, [navigation.route.createPosition, navigation.route.revision, sharedCatalogSections]);
   const sectionRecordsById = new Map<string, CatalogSection>();
   sharedCatalogSections.forEach((section) => sectionRecordsById.set(section.id, section));
   if (firstRunSection) {

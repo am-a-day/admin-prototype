@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { CircleNotch, MagnifyingGlass } from "@phosphor-icons/react";
-import { Tooltip } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { CatalogThumbnail } from "./catalog-thumbnail";
 import {
   buildCatalogTree as buildLocalSectionTree,
   flattenCatalogTree as flattenSections,
@@ -29,8 +28,6 @@ export type MoveToSectionPopoverProps = {
   onSuccess?: (targetSectionId: string | null) => void;
   onError?: () => void;
 };
-
-const MOVE_SEARCH_THRESHOLD = 10;
 
 export function MoveToSectionPopover({
   operation,
@@ -60,7 +57,6 @@ export function MoveToSectionPopover({
   }, [flatSections]);
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const uniqueCurrentSectionIds = useMemo(() => [...new Set(currentSectionIds)], [currentSectionIds]);
-  const showCurrentLabel = operation !== "bulk" || uniqueCurrentSectionIds.length === 1;
   const movingSubtreeIds = useMemo(
     () => {
       const ids = new Set<string>();
@@ -114,24 +110,26 @@ export function MoveToSectionPopover({
     }
     if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
     if (section.status === "archive") return "Архивный раздел нельзя выбрать";
-    if (showCurrentLabel && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
+    if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
     if ((childIdsByParent.get(section.id)?.length ?? 0) > 0) return "В разделе уже есть подразделы";
     return null;
-  }, [childIdsByParent, entityIds, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, showCurrentLabel, uniqueCurrentSectionIds]);
+  }, [childIdsByParent, entityIds, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, uniqueCurrentSectionIds]);
 
   const rootDisabledReason = (operation === "section" || operation === "sections") && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
     ? "Текущее расположение"
     : forbiddenTargets.__root__ ?? null;
+  const availableSections = useMemo(
+    () => flatSections.filter((section) => !disabledReasonFor(section)),
+    [disabledReasonFor, flatSections],
+  );
   const visibleSections = normalizedQuery
-    ? flatSections.filter((section) => pathFor(section).toLocaleLowerCase("ru").includes(normalizedQuery))
-    : flatSections;
-  const showSearch = flatSections.length > MOVE_SEARCH_THRESHOLD;
+    ? availableSections.filter((section) => pathFor(section).toLocaleLowerCase("ru").includes(normalizedQuery))
+    : availableSections;
 
   useEffect(() => {
-    if (!showSearch) return;
     const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [showSearch]);
+  }, []);
 
   const chooseTarget = async (targetSectionId: string | null, disabledReason: string | null) => {
     if (disabledReason || loadingTarget !== undefined) return;
@@ -147,31 +145,20 @@ export function MoveToSectionPopover({
   };
 
   const renderTarget = (section: TreeSection) => {
-    const disabledReason = disabledReasonFor(section);
-    const current = showCurrentLabel && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id;
     const loading = loadingTarget === section.id;
     return (
-      <Tooltip key={section.id} label={disabledReason ?? ""} side="left" disabled={!disabledReason} delayDuration={180}>
-        <span className="block">
-          <button
-            type="button"
-            aria-label={section.name}
-            disabled={Boolean(disabledReason) || loadingTarget !== undefined}
-            onClick={() => void chooseTarget(section.id, disabledReason)}
-            className={cn(
-              "flex min-h-8 w-full items-center gap-2 rounded-[7px] px-2 py-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-              disabledReason ? "cursor-not-allowed text-[#a8a29e]" : "text-[#44403b] hover:bg-[#f5f5f4]",
-            )}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] leading-4">{section.name}</span>
-              {section.parentId && <span className="mt-0.5 block truncate text-[10px] leading-3 text-[#a8a29e]">{pathFor(section)}</span>}
-            </span>
-            {current && <span className="shrink-0 rounded-[4px] bg-[#f1f1ea] px-1.5 text-[10px] font-medium leading-4 text-[#79716b]">Текущий</span>}
-            {loading && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
-          </button>
-        </span>
-      </Tooltip>
+      <button
+        key={section.id}
+        type="button"
+        aria-label={pathFor(section)}
+        disabled={loadingTarget !== undefined}
+        onClick={() => void chooseTarget(section.id, null)}
+        className="flex h-[34px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[#44403b] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-wait"
+      >
+        <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 rounded-[5px]" />
+        <span className="min-w-0 flex-1 truncate text-[13px] leading-4">{pathFor(section)}</span>
+        {loading && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+      </button>
     );
   };
 
@@ -215,40 +202,32 @@ export function MoveToSectionPopover({
           <div
             role="dialog"
             aria-label={operation === "section" || operation === "sections" ? "Переместить раздел" : "Переместить в раздел"}
-            className="flex w-[300px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
+            className="flex w-[320px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
           >
-          {showSearch && (
-            <label className="mb-1.5 flex h-8 items-center gap-2 rounded-[7px] bg-[#f5f5f4] px-2.5 ring-1 ring-inset ring-[#eceae7] focus-within:bg-white focus-within:ring-[#a8a29e]">
-              <MagnifyingGlass size={14} className="shrink-0 text-[#79716b]" />
-              <input
-                ref={searchRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => event.stopPropagation()}
-                placeholder="Найти раздел"
-                className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-[#292524] outline-none placeholder:text-[#a8a29e]"
-              />
-            </label>
-          )}
+          <label className="mb-1.5 flex h-8 items-center gap-2 rounded-[7px] bg-[#f5f5f4] px-2.5 ring-1 ring-inset ring-[#eceae7] focus-within:bg-white focus-within:ring-[#a8a29e]">
+            <MagnifyingGlass size={14} className="shrink-0 text-[#79716b]" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.stopPropagation()}
+              placeholder="Найти раздел..."
+              className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-[#292524] outline-none placeholder:text-[#a8a29e]"
+            />
+          </label>
           <div className="max-h-[340px] overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-            {(operation === "section" || operation === "sections") && !normalizedQuery && (
-              <Tooltip label={rootDisabledReason ?? ""} side="left" disabled={!rootDisabledReason} delayDuration={180}>
-                <span className="block">
-                  <button
-                    type="button"
-                    disabled={Boolean(rootDisabledReason) || loadingTarget !== undefined}
-                    onClick={() => void chooseTarget(null, rootDisabledReason)}
-                    className={cn(
-                      "flex h-8 w-full items-center gap-2 rounded-[7px] px-2 text-left text-[13px] outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                      rootDisabledReason ? "cursor-not-allowed text-[#a8a29e]" : "text-[#44403b] hover:bg-[#f5f5f4]",
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate">В корень каталога</span>
-                    {rootDisabledReason === "Текущее расположение" && <span className="shrink-0 rounded-[4px] bg-[#f1f1ea] px-1.5 text-[10px] font-medium leading-4 text-[#79716b]">Текущий</span>}
-                    {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
-                  </button>
-                </span>
-              </Tooltip>
+            {(operation === "section" || operation === "sections") && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
+              <button
+                type="button"
+                aria-label="Основное меню"
+                disabled={loadingTarget !== undefined}
+                onClick={() => void chooseTarget(null, null)}
+                className="flex h-[34px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[#44403b] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-wait"
+              >
+                <CatalogThumbnail kind="section" className="h-5 w-5 rounded-[5px]" />
+                <span className="min-w-0 flex-1 truncate text-[13px] leading-4">Основное меню</span>
+                {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+              </button>
             )}
             {visibleSections.map(renderTarget)}
             {visibleSections.length === 0 && (

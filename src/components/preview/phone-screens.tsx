@@ -125,6 +125,19 @@ function CurrencyPrice({ value }: { value: string }) {
   return <>{value.replace(/\s*(?:₸|KZT|RSD|RUB|USD|EUR|₽|\$|€)\s*$/, ` ${mark}`)}</>;
 }
 
+function DishLabelBadges({ dish, compact = false }: { dish: Pick<Dish, "tags" | "sticker">; compact?: boolean }) {
+  const tags = dish.tags ?? [];
+  const visibleTagCount = compact ? 1 : 3;
+  if (!dish.sticker && tags.length === 0) return null;
+  return (
+    <div className={cn("flex min-w-0 flex-wrap items-center gap-1", compact ? "mt-1" : "mt-2")}>
+      {dish.sticker && <span className="max-w-full truncate rounded-[5px] bg-[#292524] px-1.5 py-0.5 text-[9px] font-bold leading-3 text-white">{dish.sticker}</span>}
+      {tags.slice(0, visibleTagCount).map((tag) => <span key={tag} className="max-w-full truncate rounded-[5px] bg-[#f1f1ea] px-1.5 py-0.5 text-[9px] font-semibold leading-3 text-[#57534d]">{tag}</span>)}
+      {tags.length > visibleTagCount && <span className="text-[9px] font-semibold text-[#a8a29e]">+{tags.length - visibleTagCount}</span>}
+    </div>
+  );
+}
+
 function MiniDishCard({ dish }: { dish: Dish }) {
   return (
     <div className="w-28 shrink-0 rounded-2xl bg-zinc-50 p-2">
@@ -137,6 +150,7 @@ function MiniDishCard({ dish }: { dish: Dish }) {
         {dish.emoji}
       </div>
       <div className="line-clamp-2 text-xs font-black leading-tight">{dish.name}</div>
+      <DishLabelBadges dish={dish} compact />
       <div className="mt-1 text-xs text-zinc-500">
         <CurrencyPrice value={dish.price} />
       </div>
@@ -322,12 +336,16 @@ export function PhoneCatalog({
   themed,
   catalogItem,
   catalogItems,
+  catalogDish,
+  catalogDishes,
 }: {
   selectedDishId: string;
   restaurantName?: string;
   themed?: boolean;
   catalogItem?: CatalogItem | null;
   catalogItems?: CatalogItem[];
+  catalogDish?: Dish | null;
+  catalogDishes?: Dish[];
 }) {
   if (catalogItem) {
     return (
@@ -341,20 +359,23 @@ export function PhoneCatalog({
         </div>
         <div className="rounded-t-[28px] bg-white px-5 pt-5">
           <h2 className="text-xl font-black leading-tight">{catalogItem.title}</h2>
+          <DishLabelBadges dish={catalogDish ?? {}} />
           <RichDescriptionPreview value={catalogItem.description} />
-          <div className="mt-5 flex items-center justify-between gap-3">
-            <div className="text-xl font-black">{formatPrice(catalogItem.price)}</div>
-            {catalogItem.displayMode !== "no-button" && catalogItem.displayMode !== "no-price" && (
-              <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">
-                В корзину
-              </button>
-            )}
-          </div>
+          {catalogItem.displayMode !== "no-price" && (
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <div className="text-xl font-black">{formatPrice(catalogItem.priceWithSale ?? catalogItem.price)}</div>
+              {catalogItem.displayMode !== "no-button" && (
+                <button type="button" className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-black text-white">
+                  В корзину
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
   }
-  const previewDishes: Dish[] = catalogItems
+  const previewDishes: Dish[] = catalogDishes ?? (catalogItems
     ? catalogItems
         .filter((item) => item.status === "active" && item.displayMode === "full")
         .slice(0, 6)
@@ -370,7 +391,7 @@ export function PhoneCatalog({
           recommendations: [],
           stop: false,
         }))
-    : dishes.slice(0, 6);
+    : dishes.slice(0, 6));
   const selected = previewDishes.find((dish) => dish.id === selectedDishId);
   return (
     <div className={cn("p-4 pt-10", themed && "bg-amber-50")}>
@@ -416,6 +437,7 @@ export function PhoneDish({
       </div>
       <div className="rounded-t-[28px] bg-white px-5 pt-5">
         <h2 className="text-xl font-black leading-tight">{dish.name}</h2>
+        <DishLabelBadges dish={dish} />
         <RichDescriptionPreview value={dish.description} />
         <div className="mt-5 flex items-center justify-between">
           <div className="text-xl font-black">

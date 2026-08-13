@@ -45,6 +45,18 @@ import {
 import { useOrderRouting } from "@/contexts/order-routing-context";
 import { formatPrice, type CatalogItem } from "@/data/catalog";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
+import {
+  getCatalogLabelText,
+  resolveCatalogItemStickerId,
+  resolveCatalogItemTagIds,
+  useCatalogLabels,
+  type CatalogLabel,
+} from "@/features/storefront/catalog/labels/catalog-labels";
+import {
+  getLocalCatalogItemLabels,
+  getLocalCatalogLabelText,
+} from "@/features/storefront/catalog/labels/local-catalog-labels";
+import { USE_SHARED_TAGS_AND_STICKERS } from "@/features/storefront/catalog/feature-flags";
 import { getCatalogTitleForLanguage } from "@/lib/mock-catalog-translations";
 import {
   CATALOG_UPSELL_CHANGE_EVENT,
@@ -73,7 +85,20 @@ type PhonePreviewProps = {
   catalogItem?: CatalogItem | null;
 };
 
-export function PhonePreview({
+const EMPTY_CATALOG_LABELS: CatalogLabel[] = [];
+
+function SharedPhonePreview(props: PhonePreviewProps) {
+  const { labels } = useCatalogLabels();
+  return <PhonePreviewContent {...props} sharedLabels={labels} />;
+}
+
+export function PhonePreview(props: PhonePreviewProps) {
+  return USE_SHARED_TAGS_AND_STICKERS
+    ? <SharedPhonePreview {...props} />
+    : <PhonePreviewContent {...props} sharedLabels={EMPTY_CATALOG_LABELS} />;
+}
+
+function PhonePreviewContent({
   section,
   activeTab,
   selectedDishId,
@@ -90,7 +115,8 @@ export function PhonePreview({
   seoTitle = "",
   seoDescription = "",
   catalogItem = null,
-}: PhonePreviewProps) {
+  sharedLabels,
+}: PhonePreviewProps & { sharedLabels: CatalogLabel[] }) {
   const {
     serviceFeeRequireConsent,
     deliveryComment,
@@ -137,28 +163,50 @@ export function PhonePreview({
 
   const dish = getDish(selectedDishId);
   const recommended = getRecommendedDishes(dish);
-  const toPreviewDish = (item: CatalogItem, index = 0): Dish => ({
-    id: item.id,
-    name: getCatalogTitleForLanguage(
-      item.title,
-      item.titleTranslations,
-      contentLanguage,
-      account?.workspace.primaryLanguage ?? "ru",
-    ),
-    category: item.sectionName,
-    price: formatPrice(item.priceWithSale ?? item.price),
-    weight: item.weightLabel ?? "",
-    description: item.description,
-    accent: ["from-amber-50 to-orange-100", "from-emerald-50 to-lime-100", "from-violet-50 to-fuchsia-100", "from-sky-50 to-cyan-100"][index % 4],
-    emoji: "🍽️",
-    recommendations: [],
-    stop: item.status === "stopped",
-  });
+  const toPreviewDish = (item: CatalogItem, index = 0): Dish => {
+    const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
+    const localLabels = getLocalCatalogItemLabels(item, primaryLanguage);
+    const tags = USE_SHARED_TAGS_AND_STICKERS
+      ? resolveCatalogItemTagIds(item, sharedLabels)
+          .map((id) => getCatalogLabelText(sharedLabels.find((label) => label.id === id), contentLanguage, primaryLanguage))
+          .filter(Boolean)
+      : localLabels.tags.map((tag) => getLocalCatalogLabelText(tag, contentLanguage, primaryLanguage));
+    const sticker = USE_SHARED_TAGS_AND_STICKERS
+      ? getCatalogLabelText(
+          sharedLabels.find((label) => label.id === resolveCatalogItemStickerId(item, sharedLabels)),
+          contentLanguage,
+          primaryLanguage,
+        ) || null
+      : getLocalCatalogLabelText(localLabels.sticker, contentLanguage, primaryLanguage) || null;
+    return {
+      id: item.id,
+      name: getCatalogTitleForLanguage(
+        item.title,
+        item.titleTranslations,
+        contentLanguage,
+        primaryLanguage,
+      ),
+      category: item.sectionName,
+      price: formatPrice(item.priceWithSale ?? item.price),
+      weight: item.weightLabel ?? "",
+      description: item.description,
+      accent: ["from-amber-50 to-orange-100", "from-emerald-50 to-lime-100", "from-violet-50 to-fuchsia-100", "from-sky-50 to-cyan-100"][index % 4],
+      emoji: "🍽️",
+      recommendations: [],
+      stop: item.status === "stopped",
+      tags,
+      sticker,
+    };
+  };
   // The revision is intentionally read here: a same-tab custom event refreshes
   // the phone immediately while the shared upsell editor writes local storage.
   void upsellRevision;
   const storedUpsell = readCatalogUpsellState();
   const catalogPreviewDish = catalogItem ? toPreviewDish(catalogItem) : null;
+  const catalogMenuDishes = catalogItems
+    .filter((item) => item.status === "active" && item.displayMode === "full")
+    .slice(0, 6)
+    .map(toPreviewDish);
   const catalogRecommended = catalogItem
     ? resolveRecommendationIds(catalogItem, catalogItems, storedUpsell[catalogItem.id])
         .map((id) => catalogItems.find((item) => item.id === id))
@@ -296,6 +344,8 @@ export function PhonePreview({
         restaurantName={restaurantName}
         catalogItem={catalogItem}
         catalogItems={catalogItems}
+        catalogDish={catalogPreviewDish}
+        catalogDishes={catalogMenuDishes}
       />
     );
   } else if (activeTab === "upsell") {
@@ -328,7 +378,7 @@ export function PhonePreview({
       );
     }
   } else if (activeTab === "appearance") {
-    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} catalogItems={catalogItems} themed />;
+    screen = <PhoneCatalog selectedDishId={selectedDishId} restaurantName={restaurantName} catalogItem={catalogItem} catalogItems={catalogItems} catalogDish={catalogPreviewDish} catalogDishes={catalogMenuDishes} themed />;
   }
 
   // Overlay публикации (Publish model): аккуратный полупрозрачный слой на 3 сек.

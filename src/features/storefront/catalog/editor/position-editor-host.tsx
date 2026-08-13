@@ -56,6 +56,7 @@ export function PositionEditorHost({
   onRequestPermanentDelete,
   onRevealItem,
   structureSections = catalogSections,
+  presentation = "pane",
 }: {
   intent: OpenPositionIntent;
   onCurrentIdChange: (id: string) => void;
@@ -64,6 +65,7 @@ export function PositionEditorHost({
   onRequestPermanentDelete?: (item: CatalogItem) => void;
   onRevealItem?: (item: CatalogItem) => void;
   structureSections?: TreeSection[];
+  presentation?: "pane" | "dialog";
 }) {
   const {
     items,
@@ -260,11 +262,15 @@ export function PositionEditorHost({
         updateAndAutosave(target.id, { thumbnailUrl: target.thumbnailUrl ?? previewUrl });
       }}
       onItemChange={(target, patch) => {
+        if (patch.upsell) {
+          setUpsellByItem((current) => ({ ...current, [target.id]: patch.upsell! }));
+        }
         updateAndAutosave(target.id, patch);
       }}
       forcedEditorTab={editorContext.tab}
       focusAnchor={editorContext.anchor}
       onBackEdit={closeEditor}
+      detailPane={presentation === "pane"}
       autosaveStatus={autosaveByItem[item.id]?.status ?? "idle"}
       onRetrySave={() => finishAutosave(item.id)}
       headerMeta={editorQueue.itemIds.length > 0 ? (

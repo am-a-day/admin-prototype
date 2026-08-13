@@ -17,7 +17,7 @@ export function PositionQueueControls({
           type="button"
           onClick={() => previousId && onSelect(previousId)}
           disabled={!previousId}
-          aria-label="Предыдущая позиция"
+          aria-label="Предыдущая позиция в выборке"
           className="flex size-8 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <ArrowUp size={15} weight="bold" />
@@ -28,7 +28,7 @@ export function PositionQueueControls({
           type="button"
           onClick={() => nextId && onSelect(nextId)}
           disabled={!nextId}
-          aria-label="Следующая позиция"
+          aria-label="Следующая позиция в выборке"
           className="flex size-8 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] disabled:cursor-default disabled:text-[#d6d3d1] disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <ArrowDown size={15} weight="bold" />

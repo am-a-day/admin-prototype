@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { cn } from "@/lib/utils";
 import type { CatalogTreeSection } from "../model/tree";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
+import { CatalogTableSearch } from "../ui/catalog-table-controls";
 import {
   CatalogDndRow,
   catalogDndId,
@@ -14,6 +15,7 @@ import {
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import { TableCheckbox } from "../table/catalog-table";
+import { SectionDraftConfirmButton } from "../ui/section-draft-confirm";
 
 function TruncatedText({
   children,
@@ -51,14 +53,88 @@ type SubsectionActionRenderer = (
   onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void,
 ) => ReactNode;
 
+function SubsectionDraftRow({
+  active,
+  onCreate,
+  onCancel,
+}: {
+  active: boolean;
+  onCreate: (name: string) => boolean | string | void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const closingRef = useRef(false);
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    if (!active) return;
+    closingRef.current = false;
+    setName("");
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [active]);
+
+  if (!active) return null;
+
+  const cancel = () => {
+    closingRef.current = true;
+    onCancel();
+  };
+  const submit = () => {
+    const nextName = name.trim();
+    if (!nextName || nextName.toLocaleLowerCase("ru") === "без названия") {
+      cancel();
+      return;
+    }
+    const result = onCreate(nextName);
+    if (result === true) closingRef.current = true;
+    else if (typeof result === "string") inputRef.current?.focus();
+  };
+
+  return (
+    <div data-subsection-create-draft className="relative flex h-[38px] min-h-[38px] max-h-[38px] items-center gap-1 overflow-visible border-b border-[#e5e7eb] pl-0.5 pr-1">
+      <span className="flex h-full w-[34px] shrink-0" aria-hidden="true" />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <CatalogThumbnail kind="section" className="h-6 w-6 rounded-[6px]" />
+        <div className="min-w-0 flex-1">
+          <input
+            ref={inputRef}
+            value={name}
+            aria-label="Название раздела"
+            placeholder="Название раздела"
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submit();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancel();
+              }
+            }}
+            onBlur={() => {
+              if (!closingRef.current) submit();
+            }}
+            className="min-w-0 w-full bg-transparent py-1 text-[13px] font-medium leading-5 text-[#44403b] outline-none placeholder:text-[#a8a29e]"
+          />
+        </div>
+      </div>
+      <span className="flex w-8 shrink-0 items-center justify-center">
+        <SectionDraftConfirmButton onCommit={submit} placement="cell" />
+      </span>
+    </div>
+  );
+}
+
 export function SubsectionRow({
   parentSectionId,
   section,
-  itemCount,
   dropTarget,
   dragActiveRef,
   selected,
   selectionMode,
+  reorderEnabled,
   onSelect,
   onSelectedChange,
   onAction,
@@ -66,11 +142,11 @@ export function SubsectionRow({
 }: {
   parentSectionId: string;
   section: CatalogTreeSection;
-  itemCount: number;
   dropTarget: CatalogDropTarget;
   dragActiveRef: RefObject<boolean>;
   selected: boolean;
   selectionMode: boolean;
+  reorderEnabled: boolean;
   onSelect: (id: string) => void;
   onSelectedChange: (id: string, selected: boolean) => void;
   onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void;
@@ -79,11 +155,10 @@ export function SubsectionRow({
   const isDropHere = dropTarget?.kind === "section" && dropTarget.id === section.id;
 
   return (
-    <CatalogDndRow kind="section" id={section.id} containerId={parentSectionId} surface="composition">
-      {({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style }) => (
+    <CatalogDndRow kind="section" id={section.id} containerId={parentSectionId} surface="composition" disabled={!reorderEnabled}>
+      {({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style }) => (
         <div
           ref={setNodeRef}
-          {...rowDragProps}
           style={style}
           role="button"
           tabIndex={0}
@@ -100,7 +175,7 @@ export function SubsectionRow({
             else onSelect(section.id);
           }}
           className={cn(
-            "group relative flex h-[38px] min-h-[38px] max-h-[38px] cursor-pointer items-center gap-1 overflow-hidden border-b border-[#e5e7eb] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+            "group relative flex h-[38px] min-h-[38px] max-h-[38px] cursor-pointer items-center gap-1 overflow-visible border-b border-[#e5e7eb] pl-0.5 pr-1 transition-colors last:border-b-0 hover:bg-[#faf9f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
             selected && "bg-[#f7f6f2]",
             isDragging && "opacity-0",
             isDropHere && !dropTarget?.valid && "cursor-not-allowed",
@@ -108,9 +183,10 @@ export function SubsectionRow({
         >
           <StructureDragHandle
             ref={setActivatorNodeRef}
-            canDrag
+            canDrag={reorderEnabled}
             ariaLabel={`Изменить порядок подраздела ${section.name}`}
             dragProps={dragProps}
+            disabledTooltip="Очистите поиск, чтобы изменить порядок"
           />
           <span
             data-no-dnd
@@ -131,7 +207,6 @@ export function SubsectionRow({
               {section.name}
             </TruncatedText>
           </div>
-          <span className="shrink-0 whitespace-nowrap text-[12px] tabular-nums text-[#a8a29e]">{itemCount}</span>
           <span
             data-no-dnd
             className="flex w-8 shrink-0 items-center justify-center"
@@ -168,9 +243,10 @@ export function SubsectionList({
   dragActiveRef,
   selectedIds,
   onSelectedChange,
-  onSelectAll,
-  headerAction,
   bulkToolbar,
+  draftActive = false,
+  onCreateDraft,
+  onCancelDraft,
   onSelect,
   onAction,
   renderActions,
@@ -181,55 +257,59 @@ export function SubsectionList({
   dragActiveRef: RefObject<boolean>;
   selectedIds: Set<string>;
   onSelectedChange: (id: string, selected: boolean) => void;
-  onSelectAll: (selected: boolean) => void;
-  headerAction?: ReactNode;
   bulkToolbar?: ReactNode;
+  draftActive?: boolean;
+  onCreateDraft?: (name: string) => boolean | string | void;
+  onCancelDraft?: () => void;
   onSelect: (id: string) => void;
   onAction: (section: CatalogTreeSection, action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void;
   renderActions: SubsectionActionRenderer;
 }) {
+  const [query, setQuery] = useState("");
   const selectedCount = selectedIds.size;
-  const allSelected = childSections.length > 0 && childSections.every(({ section }) => selectedIds.has(section.id));
-  const someSelected = childSections.some(({ section }) => selectedIds.has(section.id));
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const visibleChildSections = normalizedQuery
+    ? childSections.filter(({ section }) => section.name.toLocaleLowerCase("ru").includes(normalizedQuery))
+    : childSections;
+
+  useEffect(() => {
+    setQuery("");
+  }, [parentSectionId]);
 
   return (
     <SortableContext
-      items={childSections.map(({ section }) => catalogDndId("section", section.id))}
+      items={visibleChildSections.map(({ section }) => catalogDndId("section", section.id))}
       strategy={verticalListSortingStrategy}
     >
-      <div>
-        <div className="flex h-[38px] items-center border-b border-[#e5e7eb] px-2">
-          {selectedCount > 0 ? bulkToolbar : (
-            <>
-              <span data-no-dnd className="flex h-full w-[50px] shrink-0 items-center justify-center">
-                <TableCheckbox
-                  ariaLabel="Выбрать все подразделы"
-                  checked={allSelected}
-                  indeterminate={!allSelected && someSelected}
-                  onChange={onSelectAll}
-                />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#79716b]">Подразделы</span>
-              <div className="flex shrink-0 items-center gap-1">{headerAction}</div>
-            </>
-          )}
+      <div className="min-w-0">
+        <div className="border-b border-[#e5e7eb] py-[5px]">
+          <CatalogTableSearch value={query} onValueChange={setQuery} ariaLabel="Найти подраздел" />
         </div>
-        {childSections.map(({ section, itemCount }) => (
+        {selectedCount > 0 && bulkToolbar && (
+          <div className="border-b border-[#e5e7eb]">{bulkToolbar}</div>
+        )}
+        {draftActive && onCreateDraft && onCancelDraft && (
+          <SubsectionDraftRow active={draftActive} onCreate={onCreateDraft} onCancel={onCancelDraft} />
+        )}
+        {visibleChildSections.map(({ section }) => (
           <SubsectionRow
             key={section.id}
             parentSectionId={parentSectionId}
             section={section}
-            itemCount={itemCount}
             dropTarget={dropTarget}
             dragActiveRef={dragActiveRef}
             selected={selectedIds.has(section.id)}
             selectionMode={selectedCount > 0}
+            reorderEnabled={!normalizedQuery}
             onSelect={onSelect}
             onSelectedChange={onSelectedChange}
             onAction={onAction}
             renderActions={renderActions}
           />
         ))}
+        {visibleChildSections.length === 0 && !draftActive && (
+          <div className="py-8 text-center text-[13px] leading-5 text-[#78716c]">Поиск не дал результатов</div>
+        )}
       </div>
     </SortableContext>
   );

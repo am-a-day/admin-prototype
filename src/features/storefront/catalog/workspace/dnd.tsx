@@ -64,7 +64,6 @@ export function CatalogDndRow({
     setNodeRef: (element: HTMLElement | null) => void;
     setActivatorNodeRef: (element: HTMLElement | null) => void;
     dragProps: Record<string, unknown>;
-    rowDragProps: Record<string, unknown>;
     isDragging: boolean;
     style: CSSProperties;
   }) => ReactNode;
@@ -80,8 +79,7 @@ export function CatalogDndRow({
     transition,
   };
   const dragProps = disabled ? {} : { ...attributes, ...listeners };
-  const rowDragProps = disabled || !listeners?.onPointerDown ? {} : { onPointerDown: listeners.onPointerDown };
-  return <>{children({ setNodeRef, setActivatorNodeRef, dragProps, rowDragProps, isDragging, style })}</>;
+  return <>{children({ setNodeRef, setActivatorNodeRef, dragProps, isDragging, style })}</>;
 }
 
 export const StructureDragHandle = forwardRef<
@@ -95,17 +93,19 @@ export const StructureDragHandle = forwardRef<
 >(({ canDrag, ariaLabel, dragProps, disabledTooltip = "Изменение порядка недоступно" }, ref) => (
   <Tooltip label={canDrag ? ariaLabel : disabledTooltip} side="top" delayDuration={250}>
     <span
-      className="flex h-8 w-6 shrink-0 items-center justify-center"
+      className="pointer-events-none absolute inset-y-0 -left-6 z-10 flex w-7 items-center justify-center"
       onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
     >
       <button
         ref={ref}
         type="button"
         data-composition-dnd-handle
+        data-catalog-dnd-handle
         {...dragProps}
         disabled={!canDrag}
         aria-label={ariaLabel}
-        className="flex h-7 w-6 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f0f0ea] hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-45"
+        className="pointer-events-auto flex h-7 w-6 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] opacity-0 transition hover:bg-[#f0f0ea] hover:text-[#57534d] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing disabled:pointer-events-none disabled:cursor-not-allowed group-hover:disabled:opacity-45"
       >
         <DotsSixVertical size={15} weight="bold" />
       </button>

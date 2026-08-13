@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -409,23 +410,35 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
       return { ...current, [activeMenuId]: next };
     });
   }, [activeMenuId]);
+  const catalogPersistenceTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (activeMenuId !== "primary") return;
-    const statuses: Record<string, CatalogItem["status"]> = {};
-    const scheduled: Record<string, boolean> = {};
-    const sections: Record<string, string> = {};
-    Object.values(state.itemsById).forEach((item) => {
-      statuses[item.id] = item.status;
-      scheduled[item.id] = item.scheduled;
-      sections[item.id] = item.sectionId;
-    });
-    writeCatalogJson(STATUS_STORAGE_KEY, statuses);
-    writeCatalogJson(SCHEDULE_STORAGE_KEY, scheduled);
-    writeCatalogJson(ITEM_SECTION_STORAGE_KEY, sections);
-    writeCatalogJson(POSITION_ORDER_STORAGE_KEY, state.itemOrderBySection);
-    writeCatalogItemRecords(Object.values(state.itemsById));
-    window.dispatchEvent(new Event("tasko-catalog-status-change"));
+    if (catalogPersistenceTimerRef.current) window.clearTimeout(catalogPersistenceTimerRef.current);
+    const itemsById = state.itemsById;
+    const itemOrderBySection = state.itemOrderBySection;
+    catalogPersistenceTimerRef.current = window.setTimeout(() => {
+      const statuses: Record<string, CatalogItem["status"]> = {};
+      const scheduled: Record<string, boolean> = {};
+      const sections: Record<string, string> = {};
+      const items = Object.values(itemsById);
+      items.forEach((item) => {
+        statuses[item.id] = item.status;
+        scheduled[item.id] = item.scheduled;
+        sections[item.id] = item.sectionId;
+      });
+      writeCatalogJson(STATUS_STORAGE_KEY, statuses);
+      writeCatalogJson(SCHEDULE_STORAGE_KEY, scheduled);
+      writeCatalogJson(ITEM_SECTION_STORAGE_KEY, sections);
+      writeCatalogJson(POSITION_ORDER_STORAGE_KEY, itemOrderBySection);
+      writeCatalogItemRecords(items);
+      window.dispatchEvent(new Event("tasko-catalog-status-change"));
+      catalogPersistenceTimerRef.current = null;
+    }, 120);
+    return () => {
+      if (catalogPersistenceTimerRef.current) window.clearTimeout(catalogPersistenceTimerRef.current);
+      catalogPersistenceTimerRef.current = null;
+    };
   }, [activeMenuId, state.itemsById, state.itemOrderBySection]);
 
   useEffect(() => {

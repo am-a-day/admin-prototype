@@ -1,6 +1,6 @@
 import type { OverviewFilterId } from "../model/types";
 
-export type EditorTab = "basic" | "promo" | "options" | "display";
+export type EditorTab = "basic" | "promo" | "options" | "display" | "availability";
 export type EditorFocusAnchor = "description" | "media" | "weight" | "kbju";
 
 export type EditorQueueNavigation = {

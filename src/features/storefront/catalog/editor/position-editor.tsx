@@ -1,21 +1,19 @@
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
-  type KeyboardCoordinateGetter,
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Button } from "@/components/ui/button";
@@ -29,6 +27,7 @@ import { useMockAuth } from "@/contexts/mock-auth-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import {
   catalogSections,
+  formatPrice,
   type CatalogItem,
   type CatalogNutrition,
   type CatalogOptionGroup,
@@ -42,7 +41,6 @@ import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { CATALOG_RECOMMENDATION_LIMIT, buildAutomaticRecommendations, resolveRecommendationIds, resolveRecommendationSource, type CatalogItemUpsellState, type CatalogLocalizedValue, type CatalogRecommendationSource } from "@/lib/catalog-upsell";
 import type { CatalogAvailabilityMode } from "../model/tree";
-import { getItemSearchText } from "../model/selectors";
 import {
   CatalogContextMenuContent,
   type CatalogMenuAvailability,
@@ -52,6 +50,7 @@ import {
 import {
   CatalogWeeklyScheduleEditor,
   CatalogSchedulePopover,
+  PositionWeeklyScheduleEditor,
   createDefaultWeeklySchedule,
   isWeeklyScheduleOrderable,
   type AvailabilityScheduleMode,
@@ -63,6 +62,8 @@ import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from ".
 import { WorkspaceLocalTabs } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
+import { usePositionSidePeek } from "./side-peek-context";
+import { CatalogLabelControls } from "../labels/catalog-label-controls";
 
 export { createDefaultWeeklySchedule, createEmptyWeeklySchedule, isWeeklyScheduleValid } from "../ui/catalog-schedule-editor";
 
@@ -70,41 +71,6 @@ type AvailabilityMode = CatalogAvailabilityMode;
 const VIDEO_LIMIT_TOTAL = 10;
 const VIDEO_LIMIT_USED = 6;
 const VIDEO_PACKAGE_CONNECTED = true;
-/** Группы и варианты живут в одном DndContext, но никогда не конкурируют за
- * одну drop-цель: сортировка вариантов также ограничена своей группой. */
-const optionCollisionDetection: CollisionDetection = (args) => {
-  const kind = args.active.data.current?.kind;
-  const groupId = args.active.data.current?.groupId;
-  const droppableContainers = args.droppableContainers.filter((container) => {
-    const data = container.data.current;
-    if (kind === "option-group") return data?.kind === "option-group";
-    return data?.kind === "option-variant" && data?.groupId === groupId;
-  });
-  return closestCenter({ ...args, droppableContainers });
-};
-
-const optionKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
-  const activeData = args.context.active?.data.current;
-  const kind = activeData?.kind;
-  const groupId = activeData?.groupId;
-  const originalContainers = args.context.droppableContainers;
-  const enabledContainers = originalContainers.getEnabled().filter((container) => {
-    const data = container.data.current;
-    if (kind === "option-group") return data?.kind === "option-group";
-    return data?.kind === "option-variant" && data?.groupId === groupId;
-  });
-  const filteredContainers = {
-    get: originalContainers.get.bind(originalContainers),
-    getEnabled: () => enabledContainers,
-  } as unknown as typeof originalContainers;
-
-  return sortableKeyboardCoordinates(event, {
-    ...args,
-    context: { ...args.context, droppableContainers: filteredContainers },
-  });
-};
-
-
 export type PositionEditorMode = "create" | "create-modal" | "edit";
 export type UnavailableDisplayMode = "hidden" | "comingSoon";
 export type OutsideScheduleMode = "hidden" | "comingSoon";
@@ -113,10 +79,58 @@ export type DaySchedule = CatalogScheduleDay;
 export type WeeklySchedule = CatalogWeeklySchedule;
 type LocalizedValue = CatalogLocalizedValue;
 
+function PositionSaveStatus({
+  status,
+  onRetry,
+}: {
+  status: CatalogSaveStatus;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      data-position-save-status
+      data-save-status={status}
+      role={status === "error" ? "alert" : status === "idle" ? undefined : "status"}
+      aria-live={status === "idle" ? undefined : "polite"}
+      className={cn(
+        "flex h-8 w-[96px] shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[12px] text-[#79716b]",
+        status === "error" && "text-[#c10007]",
+      )}
+    >
+      {status === "saving" && (
+        <>
+          <SpinnerGap size={14} className="shrink-0 animate-spin" aria-hidden="true" />
+          <span>Сохранение…</span>
+        </>
+      )}
+      {status === "saved" && (
+        <>
+          <CheckCircle size={14} weight="fill" className="shrink-0 text-[#56826a]" aria-hidden="true" />
+          <span>Сохранено</span>
+        </>
+      )}
+      {status === "error" && (
+        <Tooltip label="Не удалось сохранить — повторить" side="bottom" delayDuration={250}>
+          <button
+            type="button"
+            onClick={onRetry}
+            aria-label="Не удалось сохранить. Повторить"
+            className="flex h-8 items-center gap-1 rounded-lg px-1.5 font-medium transition hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
+          >
+            <XCircle size={14} weight="fill" aria-hidden="true" />
+            <span>Повторить</span>
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
 const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "basic", label: "Основное" },
-  { id: "promo", label: "Допродажа" },
+  { id: "promo", label: "Рекомендации" },
   { id: "options", label: "Опции" },
+  { id: "availability", label: "Доступность" },
   { id: "display", label: "Отображение" },
 ];
 const editorTabByItem = new Map<string, EditorTab>();
@@ -295,7 +309,7 @@ function MediaTile({
       className={cn(
         "group relative shrink-0 cursor-grab overflow-hidden rounded-xl border bg-[#f5f5f4] active:cursor-grabbing",
         "border-zinc-200",
-        "h-16 w-16",
+        "h-[60px] w-[60px]",
       )}
     >
       {isVideo ? (
@@ -426,7 +440,7 @@ function BasicMediaStrip({
           <DropdownMenu.Trigger asChild>
             <button
               type="button"
-              className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-dashed border-[#d6d3d1] text-[#79716b] transition hover:border-[#a8a29e] hover:bg-[#fafaf9] hover:text-[#292524]"
+              className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-[10px] border border-dashed border-[#d6d3d1] text-[#79716b] transition hover:border-[#a8a29e] hover:bg-[#fafaf9] hover:text-[#292524]"
             >
               <Plus size={18} />
             </button>
@@ -534,7 +548,10 @@ function BasicTab({
   onDescriptionChange,
   autoFocusName = false,
   hideName = false,
+  prioritizeName = false,
+  nameError,
   namePlaceholder = "Введите перевод…",
+  nameResetKey,
   onNameChange,
   onWeightChange,
   onTitleChange,
@@ -560,7 +577,10 @@ function BasicTab({
   onDescriptionChange?: (value: string) => void;
   autoFocusName?: boolean;
   hideName?: boolean;
+  prioritizeName?: boolean;
+  nameError?: string;
   namePlaceholder?: string;
+  nameResetKey?: string;
   onNameChange?: (value: string) => void;
   onWeightChange?: (value: string, unit: string) => void;
   onTitleChange?: (value: string) => void;
@@ -581,9 +601,31 @@ function BasicTab({
   const initialTranslations = item.titleTranslations
     ?? readLegacyCatalogTitleTranslations(account?.id, item.id)
     ?? { ru: item.title };
+  const nameField = !hideName ? (
+    <div>
+      <TranslatableField
+        label="Название"
+        initialTranslations={initialTranslations}
+        plain
+        autoFocus={autoFocusName}
+        inputAriaLabel="Название позиции"
+        resetKey={nameResetKey}
+        persist={false}
+        placeholder={namePlaceholder}
+        onValueChange={onNameChange}
+        onChange={(translations) => {
+          onTitleChange?.(translations.ru ?? item.title);
+          onTitleTranslationsChange?.(translations);
+        }}
+      />
+      {nameError && <p role="alert" className="mt-1.5 text-[12px] leading-4 text-[#c10007]">{nameError}</p>}
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-3">
+      {prioritizeName && nameField}
+
       <div data-media-editor-anchor>
         <BasicMediaStrip
           item={item}
@@ -595,24 +637,7 @@ function BasicTab({
         />
       </div>
 
-      {!hideName && (
-        <TranslatableField
-          key={`name-${item.id}`}
-          label="Название"
-          initialTranslations={initialTranslations}
-          showTranslationMeta={false}
-          plain
-          autoFocus={autoFocusName}
-          inputAriaLabel="Название позиции"
-          persist={false}
-          placeholder={namePlaceholder}
-          onValueChange={onNameChange}
-          onChange={(translations) => {
-            onTitleChange?.(translations.ru ?? item.title);
-            onTitleTranslationsChange?.(translations);
-          }}
-        />
-      )}
+      {!prioritizeName && nameField}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
@@ -624,7 +649,7 @@ function BasicTab({
             <button
               type="button"
               onClick={onAddDiscount}
-              className="mt-1.5 inline-flex h-5 items-center gap-1 rounded-[6px] px-0.5 text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              className="mt-2 inline-flex h-5 items-center gap-1 rounded-[6px] px-0.5 text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
               <PlusCircle size={14} className="text-[#a8a29e]" />
               Добавить скидку
@@ -680,11 +705,12 @@ function BasicTab({
 
       <div data-description-editor-anchor>
         <DescriptionRichTextEditor
-        key={`desc-${item.id}`}
-        initialValue={item.description}
-        placeholder="Кратко опишите состав, вкус или способ подачи"
+          key={`desc-${item.id}`}
+          initialValue={item.description}
+          placeholder="Кратко опишите состав, вкус или способ подачи"
           onChange={onDescriptionChange}
           limit={DESCRIPTION_LIMIT}
+          compact
         />
       </div>
     </div>
@@ -1132,29 +1158,30 @@ function PromoLabel({ label, tooltip }: { label: string; tooltip: string }) {
   );
 }
 
-function ItemSelectorDialog({
+function ItemSelectorPopover({
+  open,
   currentItem,
   items,
   selectedIds,
-  onAdd,
-  onClose,
+  onOpenChange,
+  onToggle,
+  children,
 }: {
+  open: boolean;
   currentItem: CatalogItem;
   items: CatalogItem[];
   selectedIds: string[];
-  onAdd: (ids: string[], reciprocal: boolean) => void;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
+  onToggle: (id: string, checked: boolean) => void;
+  children: ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [sectionFilterId, setSectionFilterId] = useState<string | null>(null);
-  const [checkedIds, setCheckedIds] = useState<string[]>([]);
-  const [reciprocal, setReciprocal] = useState(false);
   const selectedSet = new Set(selectedIds);
   const normalizedQuery = query.trim().toLowerCase();
   const baseItems = items.filter((candidate) =>
     candidate.id !== currentItem.id &&
-    candidate.status !== "archive" &&
-    !selectedSet.has(candidate.id)
+    (candidate.status !== "archive" || selectedSet.has(candidate.id))
   );
   const sectionOrder = new Map(catalogSections.map((section, index) => [section.id, index]));
   const sectionOptions = Array.from(
@@ -1163,78 +1190,60 @@ function ItemSelectorDialog({
   const selectedSection = sectionOptions.find((section) => section.id === sectionFilterId) ?? null;
   const visibleItems = baseItems
     .filter((candidate) => !sectionFilterId || candidate.sectionId === sectionFilterId)
-    .filter((candidate) => !normalizedQuery || getItemSearchText(candidate).includes(normalizedQuery))
+    .filter((candidate) => !normalizedQuery || candidate.title.toLocaleLowerCase("ru").includes(normalizedQuery))
     .slice(0, 120);
-  const groupedItems = Array.from(
-    visibleItems.reduce((groups, candidate) => {
-      const existing = groups.get(candidate.sectionId);
-      if (existing) {
-        existing.items.push(candidate);
-      } else {
-        groups.set(candidate.sectionId, {
-          id: candidate.sectionId,
-          name: candidate.sectionName,
-          items: [candidate],
-        });
-      }
-      return groups;
-    }, new Map<string, { id: string; name: string; items: CatalogItem[] }>()),
-  ).map(([, group]) => group);
-  const checkedCount = checkedIds.length;
+  const atLimit = selectedIds.length >= CATALOG_RECOMMENDATION_LIMIT;
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  const toggle = (id: string) => {
-    setCheckedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
-  };
-  const submit = () => {
-    const next = checkedIds.filter((id) => id !== currentItem.id && !selectedSet.has(id));
-    if (next.length === 0) return;
-    onAdd(next, reciprocal);
-    onClose();
-  };
+    if (open) return;
+    setQuery("");
+    setSectionFilterId(null);
+  }, [open]);
 
   return (
-    createPortal(
-      <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Добавить рекомендуемые позиции">
-        <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-          <div className="shrink-0 border-b border-[#eceae7] px-4 py-3">
-            <div className="text-[14px] font-medium text-[#292524]">Добавить рекомендуемые позиции</div>
-            <div className="mt-3 flex items-center gap-2">
-              <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[#a8a29e]">
-                <MagnifyingGlass size={15} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  autoFocus
-                  placeholder="Найти позицию"
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                />
-              </label>
-              <DropdownMenu.Root>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent
+        data-recommendation-picker
+        align="end"
+        sideOffset={6}
+        collisionPadding={12}
+        className="w-[356px] overflow-hidden rounded-[13px] p-3 shadow-[0_18px_42px_rgba(41,37,36,0.14)]"
+      >
+        <div className="flex h-8 items-center justify-between gap-3">
+          <label className="relative block h-8 w-[171px] shrink-0">
+            <MagnifyingGlass size={14} className="pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 text-[#79716b]" />
+            <Input
+              size="compact"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Найти позицию..."
+              aria-label="Найти позицию"
+              className="h-8 w-full border-transparent bg-[#f5f5f4] pl-7 pr-2 text-[13px] focus:border-[#d6d3d1]"
+            />
+          </label>
+          <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
                   <button
                     type="button"
                     aria-label="Фильтр по разделу"
-                    className="flex h-9 max-w-[150px] shrink-0 items-center gap-1.5 rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    className="flex h-8 w-[146px] shrink-0 items-center gap-1.5 rounded-full bg-[#f5f5f4] px-2 text-[12px] text-[#292524] transition hover:bg-[#eceae7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    <span className="min-w-0 truncate">{selectedSection?.name ?? "Всё меню"}</span>
-                    <CaretDown size={13} className="shrink-0 text-[#a8a29e]" />
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-white text-[#79716b]">
+                      <Asterisk size={13} weight="bold" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left">{selectedSection?.name ?? "Все разделы"}</span>
+                    <CaretDown size={14} className="shrink-0 text-[#79716b]" />
                   </button>
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Portal>
                   <DropdownMenu.Content
+                    data-recommendation-section-menu
                     align="end"
                     sideOffset={6}
                     className="z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
                   >
-                    <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Всё меню</DropdownActionItem>
+                    <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Все разделы</DropdownActionItem>
                     {sectionOptions.map((section) => (
                       <DropdownActionItem key={section.id} onSelect={() => setSectionFilterId(section.id)}>
                         <span className="min-w-0 truncate">{section.name}</span>
@@ -1242,89 +1251,48 @@ function ItemSelectorDialog({
                     ))}
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
-              </DropdownMenu.Root>
-            </div>
-          </div>
-          <div className="min-h-[220px] flex-1 overflow-y-auto px-2 py-2">
-            {groupedItems.map((group) => (
-              <div key={group.id} className="py-1">
-                <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#a8a29e]">{group.name}</div>
-                {group.items.map((candidate) => {
-                  const checked = checkedIds.includes(candidate.id);
-                  const statusText = candidate.status === "stopped"
-                    ? "На стопе"
-                    : candidate.status === "coming-soon"
-                      ? "Скоро будет"
-                      : candidate.scheduled
-                        ? "По расписанию"
-                        : "";
-                  return (
-                    <button
-                      key={candidate.id}
-                      type="button"
-                      onClick={() => toggle(candidate.id)}
-                      className={cn(
-                        "flex h-[52px] w-full items-center gap-2 rounded-[10px] px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                        checked ? "bg-[#f5f5f4]" : "hover:bg-[#fafaf9]",
-                      )}
-                    >
-                      <CatalogThumb item={candidate} size={32} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium leading-4 text-[#292524]">{candidate.title}</span>
-                        <span className="block truncate text-[12px] leading-4 text-[#79716b]">
-                          {statusText ? `${candidate.sectionName} · ${statusText}` : candidate.sectionName}
-                        </span>
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition",
-                          checked ? "border-[#292524] bg-[#292524] text-white" : "border-[#d6d3d1] bg-white text-transparent",
-                        )}
-                      >
-                        <CheckCircle size={14} weight="fill" />
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-            {visibleItems.length === 0 && (
-              <div className="px-3 py-6 text-center text-[13px] text-[#79716b]">Подходящие позиции не найдены</div>
-            )}
-          </div>
-          <div className="shrink-0 border-t border-[#eceae7] px-4 py-3">
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-[8px] py-1 text-[13px] text-[#44403b]">
-              <input
-                type="checkbox"
-                checked={reciprocal}
-                onChange={(event) => setReciprocal(event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded-[4px] border border-[#d6d3d1] accent-[#292524]"
-              />
-              <span>
-                <span className="block font-medium">Рекомендовать позиции друг друга</span>
-                <span className="mt-0.5 block text-[12px] leading-4 text-[#79716b]">Создаст две независимые связи, порядок каждой настраивается отдельно.</span>
-              </span>
-            </label>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="min-w-0 flex-1 text-[13px] text-[#79716b]">Выбрано: {checkedCount}</div>
-              <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
-                Отмена
-              </button>
-              <button
-                type="button"
-                disabled={checkedCount === 0}
-                onClick={submit}
-                className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]"
-              >
-                {checkedCount === 0 ? "Добавить" : `Добавить ${checkedCount}`}
-              </button>
-            </div>
-          </div>
+          </DropdownMenu.Root>
         </div>
-      </div>,
-      document.body,
-    )
+
+        <div
+          data-recommendation-picker-list
+          role="group"
+          aria-label="Позиции для рекомендации"
+          className="mt-2 max-h-[304px] overflow-y-auto overscroll-contain"
+        >
+          {visibleItems.map((candidate) => {
+            const checked = selectedSet.has(candidate.id);
+            const disabled = !checked && atLimit;
+            return (
+              <label
+                key={candidate.id}
+                data-recommendation-picker-row
+                className={cn(
+                  "flex h-[38px] w-full items-center gap-[7px] rounded-[8px] px-2 text-left transition",
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#f5f5f4]",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  aria-label={`Рекомендовать «${candidate.title}»`}
+                  onChange={(event) => onToggle(candidate.id, event.target.checked)}
+                  className="size-4 shrink-0 rounded-[5px] border-[#d6d3d1] accent-[#292524]"
+                />
+                <CatalogThumb item={candidate} size={20} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#79716b]" title={candidate.title}>
+                  {candidate.title}
+                </span>
+              </label>
+            );
+          })}
+          {visibleItems.length === 0 && (
+            <div className="px-3 py-6 text-center text-[13px] text-[#79716b]">Подходящие позиции не найдены</div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1563,11 +1531,20 @@ export function PromoRecommendationsCard({
       onManualAdd(ids, reciprocal);
       return;
     }
-    const additions = ids.filter((id) => id !== item.id && !recommendationIds.includes(id));
+    const additions = ids
+      .filter((id) => id !== item.id && !recommendationIds.includes(id))
+      .slice(0, Math.max(0, CATALOG_RECOMMENDATION_LIMIT - recommendationIds.length));
     setRecommendationIds(
       [...recommendationIds, ...additions],
       { ...recommendationSources, ...Object.fromEntries(additions.map((id) => [id, "manual" as const])) },
     );
+  };
+  const toggleManualRecommendation = (id: string, checked: boolean) => {
+    if (checked) {
+      addManually([id], false);
+      return;
+    }
+    setRecommendationIds(recommendationIds.filter((recommendationId) => recommendationId !== id));
   };
   const generate = (mode: "supplement" | "regenerate") => {
     if (onGenerate) {
@@ -1701,27 +1678,24 @@ export function PromoRecommendationsCard({
               </DropdownMenu.Root>
             )}
           </div>
-          <button
-            type="button"
-            disabled={recommendations.length >= CATALOG_RECOMMENDATION_LIMIT}
-            onClick={() => setSelectorOpen(true)}
-            className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f8f7f4] hover:text-[#44403b] disabled:cursor-not-allowed disabled:text-[#a8a29e] disabled:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          <ItemSelectorPopover
+            open={selectorOpen}
+            currentItem={item}
+            items={allItems}
+            selectedIds={recommendationIds}
+            onOpenChange={setSelectorOpen}
+            onToggle={toggleManualRecommendation}
           >
-            <PlusCircle size={16} />
-            Добавить рекомендацию вручную
-          </button>
+            <button
+              type="button"
+              className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f8f7f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+            >
+              <PlusCircle size={16} />
+              Добавить рекомендацию вручную
+            </button>
+          </ItemSelectorPopover>
         </div>
       </div>
-
-      {selectorOpen && (
-        <ItemSelectorDialog
-          currentItem={item}
-          items={allItems}
-          selectedIds={recommendationIds}
-          onAdd={addManually}
-          onClose={() => setSelectorOpen(false)}
-        />
-      )}
       {regenerateConfirmOpen && createPortal(
         <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Подобрать рекомендуемые позиции заново">
           <div className="w-full max-w-[400px] rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
@@ -1752,41 +1726,32 @@ export function PromoRecommendationsCard({
   );
 }
 
-type PromoLocalizedDialogState =
-  | { kind: "sticker"; index: 0 | null }
-  | { kind: "tags" | "keywords"; index: number | null };
+type PromoLocalizedDialogState = { kind: "keywords"; index: number | null };
 
 export function PromoTab({
   item,
+  allItems,
   upsell,
   onChange,
+  onItemChange,
 }: {
   item: CatalogItem;
+  allItems: CatalogItem[];
   upsell: CatalogItemUpsellState;
   onChange: (next: CatalogItemUpsellState) => void;
+  onItemChange: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
 }) {
   const { contentLanguage } = useAppSettings();
   const [localizedDialog, setLocalizedDialog] = useState<PromoLocalizedDialogState | null>(null);
-  const stickerValue = getLocalizedValueFromUnknown(upsell.sticker, item.guestLabels[0] ?? null);
-  const tagValues = getLocalizedValuesFromUnknown(upsell.tags, item.tags);
   const keywordValues = getLocalizedValuesFromUnknown(upsell.keywords, []);
-  const sticker = getLocalizedValueLabel(stickerValue, contentLanguage);
 
   const patch = (next: CatalogItemUpsellState) => onChange(next);
-  const updateLocalizedList = (key: "tags" | "keywords", values: LocalizedValue[]) => {
+  const updateLocalizedList = (key: "keywords", values: LocalizedValue[]) => {
     patch({ ...upsell, [key]: normalizeLocalizedValues(values) });
-  };
-  const updateSticker = (value: LocalizedValue | null) => {
-    patch({ ...upsell, sticker: value });
   };
   const saveLocalizedDialogValue = (value: LocalizedValue | null) => {
     if (!localizedDialog) return;
-    if (localizedDialog.kind === "sticker") {
-      updateSticker(value);
-      return;
-    }
-
-    const currentValues = localizedDialog.kind === "tags" ? tagValues : keywordValues;
+    const currentValues = keywordValues;
     const nextValues = localizedDialog.index == null
       ? value ? [...currentValues, value] : currentValues
       : value
@@ -1796,70 +1761,15 @@ export function PromoTab({
   };
   const deleteLocalizedDialogValue = () => {
     if (!localizedDialog) return;
-    if (localizedDialog.kind === "sticker") {
-      updateSticker(null);
-      return;
-    }
     if (localizedDialog.index == null) return;
-    const currentValues = localizedDialog.kind === "tags" ? tagValues : keywordValues;
-    updateLocalizedList(localizedDialog.kind, currentValues.filter((_, index) => index !== localizedDialog.index));
+    updateLocalizedList("keywords", keywordValues.filter((_, index) => index !== localizedDialog.index));
   };
-  const dialogValue = localizedDialog?.kind === "sticker"
-    ? localizedDialog.index === 0 ? stickerValue : null
-    : localizedDialog?.kind === "tags"
-      ? localizedDialog.index == null ? null : tagValues[localizedDialog.index] ?? null
-      : localizedDialog?.kind === "keywords"
-        ? localizedDialog.index == null ? null : keywordValues[localizedDialog.index] ?? null
-        : null;
-  const dialogTitle = localizedDialog?.kind === "sticker"
-    ? "Стикер"
-    : localizedDialog?.kind === "tags"
-      ? "Тег"
-      : "Ключевое слово";
-  const dialogDescription = localizedDialog?.kind === "sticker"
-    ? "Заполните значение для нужных языков"
-    : localizedDialog?.kind === "tags"
-      ? "Помогает гостю понять особенности и состав позиции"
-      : "Используется для поиска позиции в онлайн-меню";
-  const dialogDeleteLabel = localizedDialog?.kind === "sticker"
-    ? "Убрать"
-    : localizedDialog?.kind === "tags"
-      ? "Удалить тег"
-      : "Удалить ключевое слово";
+  const dialogValue = localizedDialog?.index == null ? null : keywordValues[localizedDialog.index] ?? null;
 
   return (
     <>
       <div data-upsell-stack className="flex flex-col gap-2">
-        <PromoCompactCard cardName="sticker" label="Стикер" tooltip="Короткая метка, которая выделяет позицию в меню">
-          {sticker && (
-            <PromoChip
-              onClick={() => setLocalizedDialog({ kind: "sticker", index: 0 })}
-              onRemove={() => updateSticker(null)}
-              removeLabel="Убрать стикер"
-            >
-              {sticker}
-            </PromoChip>
-          )}
-          <PromoAddButton label="Добавить стикер" onClick={() => setLocalizedDialog({ kind: "sticker", index: null })} />
-        </PromoCompactCard>
-
-        <PromoCompactCard cardName="tags" label="Теги" tooltip="Помогают гостю понять особенности и состав позиции">
-          {tagValues.map((tag, index) => {
-            const label = getLocalizedValueLabel(tag, contentLanguage);
-            if (!label) return null;
-            return (
-              <PromoChip
-                key={`${tag.ru}-${index}`}
-                onClick={() => setLocalizedDialog({ kind: "tags", index })}
-                onRemove={() => updateLocalizedList("tags", tagValues.filter((_, valueIndex) => valueIndex !== index))}
-                removeLabel="Удалить тег"
-              >
-                {label}
-              </PromoChip>
-            );
-          })}
-          <PromoAddButton label="Добавить тег" onClick={() => setLocalizedDialog({ kind: "tags", index: null })} />
-        </PromoCompactCard>
+        <CatalogLabelControls item={item} allItems={allItems} onPatchItem={onItemChange} />
 
         <PromoCompactCard cardName="keywords" label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню">
           {keywordValues.map((keyword, index) => {
@@ -1882,10 +1792,10 @@ export function PromoTab({
 
       {localizedDialog && (
         <LocalizedValueDialog
-          title={dialogTitle}
-          description={dialogDescription}
+          title="Ключевое слово"
+          description="Используется для поиска позиции в онлайн-меню"
           value={dialogValue}
-          deleteLabel={dialogDeleteLabel}
+          deleteLabel="Удалить ключевое слово"
           onSave={saveLocalizedDialogValue}
           onDelete={localizedDialog.index == null ? undefined : deleteLocalizedDialogValue}
           onClose={() => setLocalizedDialog(null)}
@@ -1895,30 +1805,131 @@ export function PromoTab({
   );
 }
 
-function PositionAvailabilityControl({
+function PositionAvailabilityStatus({
   item,
   menuProps,
-  busy,
+  compact = false,
 }: {
   item: CatalogItem;
   menuProps: CatalogPositionAvailabilityMenuProps;
-  busy: boolean;
+  compact?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"main" | "schedule" | "behavior">("main");
-  useEffect(() => {
-    if (!open) setView("main");
-  }, [open]);
-  if (item.status === "archive") return null;
   const effective = getEffectiveAvailability(item, new Date(), {
     unavailableDisplayMode: menuProps.unavailableDisplayMode,
     outsideScheduleMode: menuProps.unavailableDisplayMode,
     weeklySchedule: menuProps.weeklySchedule,
     scheduleMode: menuProps.scheduleMode,
   });
-  const state = menuProps.manualStopped ? "stopped" : effective.orderable ? "available" : "unavailable";
-  const label = state === "stopped" ? "На стопе" : state === "unavailable" ? "Недоступно" : "Доступно";
-  const Icon = state === "stopped" ? Prohibit : state === "unavailable" ? Clock : CheckCircle;
+  const state = item.status === "archive"
+    ? "archive"
+    : menuProps.manualStopped
+      ? "stopped"
+      : menuProps.hasSchedule
+        ? "schedule"
+        : effective.orderable
+          ? "available"
+          : "unavailable";
+  const label = state === "archive"
+    ? "В архиве"
+    : state === "stopped"
+      ? "На стопе"
+      : state === "schedule"
+        ? "По расписанию"
+        : state === "unavailable"
+          ? "Недоступно"
+          : "Доступно";
+  const Icon = state === "archive" ? XCircle : state === "stopped" ? Prohibit : state === "available" ? CheckCircle : Clock;
+
+  if (compact) {
+    return (
+      <span
+        role="status"
+        data-position-availability-status={state}
+        className={cn(
+          "inline-flex h-5 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] font-semibold leading-5",
+          state === "archive" && "bg-[#f1f5f9] text-[#475569]",
+          state === "stopped" && "bg-[#ffedd4] text-[#9a3412]",
+          state === "schedule" && "bg-[#dbeafe] text-[#1d4ed8]",
+          state === "unavailable" && "bg-[#fef3c7] text-[#854d0e]",
+          state === "available" && "bg-[#eef7f1] text-[#3f6b52]",
+        )}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <div
+      role="status"
+      data-position-availability-status={state}
+      className={cn(
+        "flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[#e7e5e4] bg-white px-2.5 text-[13px] font-medium text-[#292524]",
+        state === "stopped" && "border-[#fde68a] bg-[#fffbeb]",
+        state === "archive" && "bg-[#f5f5f4] text-[#57534d]",
+      )}
+    >
+      <Icon size={16} className={cn("shrink-0", state === "stopped" ? "text-[#a16207]" : "text-[#57534d]")} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+export function PositionAvailabilityControl({
+  item,
+  menuProps,
+  busy,
+  statusOnly = false,
+}: {
+  item: CatalogItem;
+  menuProps: CatalogPositionAvailabilityMenuProps;
+  busy: boolean;
+  statusOnly?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"main" | "schedule" | "behavior">("main");
+  useEffect(() => {
+    if (!open) setView("main");
+  }, [open]);
+  if (statusOnly) return <PositionAvailabilityStatus item={item} menuProps={menuProps} />;
+  const effective = getEffectiveAvailability(item, new Date(), {
+    unavailableDisplayMode: menuProps.unavailableDisplayMode,
+    outsideScheduleMode: menuProps.unavailableDisplayMode,
+    weeklySchedule: menuProps.weeklySchedule,
+    scheduleMode: menuProps.scheduleMode,
+  });
+  const state = item.status === "archive"
+    ? "archive"
+    : menuProps.manualStopped
+      ? "stopped"
+      : menuProps.hasSchedule
+        ? "schedule"
+        : effective.orderable
+          ? "available"
+          : "unavailable";
+  const label = state === "archive"
+    ? "В архиве"
+    : state === "stopped"
+      ? "На стопе"
+      : state === "schedule"
+        ? "По расписанию"
+        : state === "unavailable"
+          ? "Недоступно"
+          : "Доступно";
+  const Icon = state === "archive" ? XCircle : state === "stopped" ? Prohibit : state === "available" ? CheckCircle : Clock;
+
+  if (state === "archive") {
+    return (
+      <div
+        role="status"
+        data-position-availability-status="archive"
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[#e7e5e4] bg-[#f5f5f4] px-2.5 text-[13px] font-medium text-[#57534d]"
+      >
+        <Icon size={16} className="shrink-0" />
+        <span>{label}</span>
+      </div>
+    );
+  }
 
   return (
     <Popover
@@ -2363,12 +2374,98 @@ function DisplayModeCard({
   );
 }
 
-function DisplayTab({ item, onChange }: { item: CatalogItem; onChange: (mode: DisplayModeOption) => void }) {
+function PositionCardDisplayConfigurator({
+  item,
+  displayMode,
+  onChange,
+}: {
+  item: CatalogItem;
+  displayMode: DisplayModeOption;
+  onChange: (mode: DisplayModeOption) => void;
+}) {
+  const showPrice = displayMode !== "no-price";
+  const showAddButton = displayMode === "full";
+
+  return (
+    <section
+      data-position-display-configurator
+      aria-label="Настройки отображения карточки"
+      className="grid grid-cols-[128px_minmax(0,1fr)] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white"
+    >
+      <div className="flex min-h-[148px] items-center justify-center border-r border-[#e7e5e4] bg-[#f5f5f4] p-2.5">
+        <div
+          data-position-card-preview
+          className="w-full overflow-hidden rounded-[10px] bg-white p-1.5 shadow-[0_1px_4px_rgba(41,37,36,0.1)]"
+        >
+          <div className="relative aspect-[4/3] overflow-hidden rounded-[8px] bg-zinc-100">
+            {item.thumbnailUrl ? (
+              <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <UtensilsCrossed size={28} className="text-zinc-300" aria-hidden="true" />
+              </div>
+            )}
+            {showAddButton && (
+              <span
+                data-position-card-preview-add
+                className="absolute bottom-1.5 right-1.5 flex size-6 items-center justify-center rounded-full bg-[#292524] text-white shadow-sm"
+                aria-hidden="true"
+              >
+                <Plus size={13} weight="bold" />
+              </span>
+            )}
+          </div>
+          <div className="px-0.5 pb-0.5 pt-1.5">
+            <div className="line-clamp-2 min-h-7 text-[11px] font-semibold leading-[14px] text-[#292524]">
+              {item.title}
+            </div>
+            {showPrice && (
+              <div data-position-card-preview-price className="mt-1 text-[11px] font-semibold leading-4 text-[#292524]">
+                {formatPrice(item.priceWithSale ?? item.price)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-col justify-center px-3">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[#e7e5e4]">
+          <span className="min-w-0 text-[13px] leading-5 text-[#292524]">Показывать цену</span>
+          <Switch
+            checked={showPrice}
+            aria-label="Показывать цену"
+            onCheckedChange={(checked) => onChange(checked ? "no-button" : "no-price")}
+          />
+        </div>
+        <div className="flex min-h-12 items-center justify-between gap-3">
+          <span className={cn("min-w-0 text-[13px] leading-5", showPrice ? "text-[#292524]" : "text-[#a8a29e]")}>Кнопка «Добавить»</span>
+          <Switch
+            checked={showAddButton}
+            disabled={!showPrice}
+            aria-label="Показывать кнопку «Добавить»"
+            onCheckedChange={(checked) => onChange(checked ? "full" : "no-button")}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DisplayTab({ item, editMode, onChange }: { item: CatalogItem; editMode: boolean; onChange: (mode: DisplayModeOption) => void }) {
   const [displayMode, setDisplayMode] = useState<DisplayModeOption>(item.displayMode);
 
   useEffect(() => {
     setDisplayMode(item.displayMode);
   }, [item.id, item.displayMode]);
+
+  const handleChange = (nextDisplayMode: DisplayModeOption) => {
+    setDisplayMode(nextDisplayMode);
+    onChange(nextDisplayMode);
+  };
+
+  if (editMode) {
+    return <PositionCardDisplayConfigurator item={item} displayMode={displayMode} onChange={handleChange} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -2384,10 +2481,7 @@ function DisplayTab({ item, onChange }: { item: CatalogItem; onChange: (mode: Di
               item={item}
               option={option}
               selected={displayMode === option.id}
-              onSelect={() => {
-                setDisplayMode(option.id);
-                onChange(option.id);
-              }}
+              onSelect={() => handleChange(option.id)}
             />
           ))}
         </div>
@@ -2405,14 +2499,15 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
 type OptionGroupCardProps = {
   group: PositionOptionGroup;
   currency: string;
-  draft?: boolean;
-  dragHandle?: ReactNode;
+  focused: boolean;
   transientVariantIds: Set<string>;
   focusedVariantId: string | null;
   nameInputRef?: RefObject<HTMLInputElement | null>;
+  onFocus: () => void;
+  onDone: () => void;
   onPatch: (patch: Partial<PositionOptionGroup>) => void;
   onDuplicate?: () => void;
-  onDelete?: () => void;
+  onDelete: () => void;
   onBeginVariant: (value: string) => void;
   onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
   onVariantNameBlur: (id: string) => void;
@@ -2449,8 +2544,7 @@ function OptionSegment<T extends string>({
   );
 }
 
-function SortableOptionVariantRow({
-  groupId,
+function OptionVariantRow({
   variant,
   currency,
   transient,
@@ -2459,7 +2553,6 @@ function SortableOptionVariantRow({
   onNameBlur,
   onDelete,
 }: {
-  groupId: string;
   variant: PositionOptionVariant;
   currency: string;
   transient: boolean;
@@ -2468,28 +2561,8 @@ function SortableOptionVariantRow({
   onNameBlur: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `option-variant:${variant.id}`,
-    data: { kind: "option-variant", groupId, variant },
-  });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.35 : 1,
-  };
-
   return (
-    <div ref={setNodeRef} style={style} className="flex min-h-9 w-full items-center gap-1.5">
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        aria-label={`Перетащить вариант «${variant.name || "без названия"}»`}
-        className="flex h-9 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        {...attributes}
-        {...listeners}
-      >
-        <DotsSixVertical size={15} />
-      </button>
+    <div className="flex h-9 w-full items-center gap-1.5">
       <input
         autoFocus={autoFocus}
         value={variant.name}
@@ -2502,7 +2575,7 @@ function SortableOptionVariantRow({
           !transient && !variant.name.trim() ? "border-[#fda4af]" : "border-[#e5e5e5]",
         )}
       />
-      <div className="relative h-9 w-[142px] shrink-0">
+      <div className="relative h-9 w-[128px] shrink-0">
         <input
           value={variant.price}
           inputMode="decimal"
@@ -2525,7 +2598,7 @@ function SortableOptionVariantRow({
           type="button"
           aria-label="Удалить вариант"
           onClick={onDelete}
-          className="flex h-9 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#fff1f2] hover:text-[#e11d48] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-8 w-4 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:text-[#c10007] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
           <XCircle size={17} />
         </button>
@@ -2537,11 +2610,12 @@ function SortableOptionVariantRow({
 function OptionGroupCard({
   group,
   currency,
-  draft = false,
-  dragHandle,
+  focused,
   transientVariantIds,
   focusedVariantId,
   nameInputRef,
+  onFocus,
+  onDone,
   onPatch,
   onDuplicate,
   onDelete,
@@ -2550,76 +2624,54 @@ function OptionGroupCard({
   onVariantNameBlur,
   onDeleteVariant,
 }: OptionGroupCardProps) {
-  return (
-    <div className={cn("overflow-hidden bg-white", draft && "border-y border-[#e7e5e4]")}>
-      <div className={cn("flex min-h-12 items-center gap-2 border-b border-[#f5f5f4] px-3", group.expanded && "bg-[#fbfbfa]")}>
-        {dragHandle ?? <span className="w-6 shrink-0" />}
-        <button
-          type="button"
-          onClick={() => onPatch({ expanded: !group.expanded })}
-          aria-label={group.expanded ? "Свернуть группу" : "Раскрыть группу"}
-          className="flex h-8 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f1f1ee] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          {group.expanded ? <CaretDown size={15} /> : <CaretRight size={15} />}
+  if (!focused) {
+    return (
+      <div className="flex h-12 items-center gap-3 border-b border-[#f5f5f4] px-4 last:border-b-0">
+        <button type="button" onClick={onFocus} aria-label={`Редактировать группу «${group.name || "Новая группа"}»`} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none">
+          <CaretRight size={16} className="shrink-0 text-[#a8a29e]" />
+          <span className="truncate text-[14px] font-medium text-[#57534d]">{group.name || "Новая группа"}</span>
+          <span className="flex h-[18px] min-w-[21px] shrink-0 items-center justify-center rounded-[3px] bg-[#f5f5f4] px-1 text-[11px] tabular-nums text-[#79716b]">{group.variants.length}</span>
         </button>
-        <button
-          type="button"
-          onClick={() => onPatch({ expanded: !group.expanded })}
-          className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-left focus-visible:outline-none"
-        >
-          <span className="truncate text-[14px] font-medium text-[#44403b]">{group.name || "Новая группа"}</span>
-          <span className="flex h-[17px] min-w-[21px] shrink-0 items-center justify-center rounded-[3px] bg-[#f1f1ee] px-1 text-[11px] tabular-nums text-[#79716b]">
-            {group.variants.length}
-          </span>
-          {draft && <span className="ml-1 text-[11px] font-normal text-[#a8a29e]">Черновик</span>}
-        </button>
-        {!draft && (
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label={`Действия с группой «${group.name}»`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ee] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <DotsThreeVertical size={18} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="end">
-              <DropdownActionItem onSelect={() => onDuplicate?.()}>Дублировать группу</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <DropdownActionItem tone="danger" onSelect={() => onDelete?.()}>Удалить группу</DropdownActionItem>
-            </DropdownContent>
-          </DropdownMenu.Root>
-        )}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" aria-label={`Действия с группой «${group.name}»`} className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+              <DotsThreeVertical size={18} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownContent align="end">
+            <DropdownActionItem onSelect={() => onDuplicate?.()}>Дублировать группу</DropdownActionItem>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownActionItem tone="danger" onSelect={onDelete}>Удалить группу</DropdownActionItem>
+          </DropdownContent>
+        </DropdownMenu.Root>
       </div>
+    );
+  }
 
-      {group.expanded && (
-        <div className="px-4 pb-3 pt-3">
-          <div className="space-y-1.5">
-            <label className="block text-[13px] leading-5 text-[#292524]" htmlFor={`option-group-name-${group.id}`}>
-              Название группы
-            </label>
+  return (
+    <div className="overflow-hidden bg-white" data-option-group-focused>
+      <div className="space-y-3 px-3 pb-3 pt-3">
+        <div className="space-y-1.5">
+          <label className="block text-[13px] font-medium leading-5 text-[#44403b]" htmlFor={`option-group-name-${group.id}`}>
+            Название опции
+          </label>
             <input
               ref={nameInputRef}
               id={`option-group-name-${group.id}`}
               value={group.name}
               onChange={(event) => onPatch({ name: event.target.value })}
               placeholder="Например, Размер"
+              aria-label="Название опции"
               className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#a8a29e]"
             />
-          </div>
+        </div>
 
-          <div className="mt-4 space-y-1.5">
-            <div className="text-[13px] leading-5 text-[#292524]">Варианты</div>
+        <div className="space-y-1.5 border-t border-[#f5f5f4] pt-3">
+          <div className="text-[13px] font-medium leading-5 text-[#44403b]">Варианты</div>
             <div className="space-y-1.5">
-              <SortableContext
-                items={group.variants.map((variant) => `option-variant:${variant.id}`)}
-                strategy={verticalListSortingStrategy}
-              >
                 {group.variants.map((variant) => (
-                  <SortableOptionVariantRow
+                  <OptionVariantRow
                     key={variant.id}
-                    groupId={group.id}
                     variant={variant}
                     currency={currency}
                     transient={transientVariantIds.has(variant.id)}
@@ -2629,51 +2681,49 @@ function OptionGroupCard({
                     onDelete={() => onDeleteVariant(variant.id)}
                   />
                 ))}
-              </SortableContext>
-              <div className="pl-[26px] pr-[35px]">
-                <input
-                  value=""
-                  onChange={(event) => {
-                    if (event.target.value) onBeginVariant(event.target.value);
-                  }}
-                  placeholder="Добавить ещё вариант"
-                  aria-label="Добавить ещё вариант"
-                  className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition placeholder:text-[#79716b] focus:border-[#a8a29e]"
-                />
-              </div>
+              <input
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) onBeginVariant(event.target.value);
+                }}
+                placeholder="Добавить еще вариант"
+                aria-label="Добавить еще вариант"
+                className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition placeholder:text-[#79716b] focus:border-[#a8a29e]"
+              />
             </div>
-          </div>
+        </div>
 
-          <div className="mt-4 border-t border-[#f1f1ee]">
-            <div className="py-2.5 text-[12px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">Правила выбора</div>
-            <div className="flex min-h-[46px] items-center justify-between gap-6 border-t border-[#f5f5f4]">
-              <span className="text-[13px] text-[#292524]">Гость должен выбрать вариант</span>
+        <details className="group border-t border-[#f5f5f4] pt-3" open>
+          <summary className="flex h-5 cursor-pointer list-none items-center justify-between text-[13px] font-medium text-[#44403b] [&::-webkit-details-marker]:hidden">
+            Настройки
+            <CaretDown size={16} className="transition group-open:rotate-180" />
+          </summary>
+          <div className="mt-2">
+            <div className="flex min-h-9 items-center justify-between gap-6 border-b border-[#e7e5e4] py-2">
+              <Tooltip label="Гость должен выбрать хотя бы один вариант из этой группы" side="top">
+                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Обязательный выбор</span>
+              </Tooltip>
               <Switch
                 checked={group.required}
                 onCheckedChange={(checked) => onPatch({ required: checked })}
-                aria-label="Гость должен выбрать вариант"
+                aria-label="Обязательный выбор"
                 className="data-[state=checked]:bg-[#44403b]"
               />
             </div>
-            <div className="flex min-h-[52px] items-center justify-between gap-6 border-t border-[#f5f5f4]">
-              <span className="text-[13px] text-[#292524]">Можно выбрать</span>
+            <div className="flex min-h-9 items-center justify-between gap-4 border-b border-[#e7e5e4] py-2">
+              <Tooltip label="Один вариант ограничивает выбор одним значением; несколько позволяет выбрать несколько" side="top">
+                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Можно выбрать</span>
+              </Tooltip>
               <OptionSegment<PositionOptionSelection>
                 value={group.selection}
-                options={[{ value: "single", label: "Один" }, { value: "multiple", label: "Несколько" }]}
+                options={[{ value: "single", label: "Один вариант" }, { value: "multiple", label: "Несколько" }]}
                 onChange={(selection) => onPatch({ selection })}
               />
             </div>
-          </div>
-
-          <div className="border-t border-[#f1f1ee]">
-            <div className="py-2.5 text-[12px] font-medium uppercase tracking-[0.04em] text-[#a8a29e]">Расчёт цены</div>
-            <div className="flex min-h-[58px] items-center justify-between gap-6 border-t border-[#f5f5f4]">
-              <div className="min-w-0">
-                <div className="text-[13px] text-[#292524]">Как учитывать цену</div>
-                <div className="mt-0.5 text-[11px] leading-4 text-[#79716b]">
-                  {group.pricing === "total" ? "Итоговая заменяет цену позиции" : "Доплата прибавляется к цене позиции"}
-                </div>
-              </div>
+            <div className="flex min-h-9 items-center justify-between gap-4 py-2">
+              <Tooltip label="Итоговая заменяет цену позиции, доплата прибавляется к ней" side="top">
+                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Цена вариантов</span>
+              </Tooltip>
               <OptionSegment<PositionOptionPricing>
                 value={group.pricing}
                 options={[{ value: "total", label: "Итоговая" }, { value: "surcharge", label: "Доплата" }]}
@@ -2681,45 +2731,12 @@ function OptionGroupCard({
               />
             </div>
           </div>
-
-          {!draft && group.variants.length === 0 && (
-            <p className="mt-2 rounded-[8px] bg-[#fafaf9] px-3 py-2 text-[12px] leading-5 text-[#79716b]">
-              Добавьте хотя бы один вариант, чтобы группа появилась на витрине.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SortableOptionGroupCard(props: Omit<OptionGroupCardProps, "dragHandle">) {
-  const { group } = props;
-  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `option-group:${group.id}`,
-    data: { kind: "option-group", group },
-  });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-    zIndex: isDragging ? 2 : undefined,
-  };
-  const handle = (
-    <button
-      ref={setActivatorNodeRef}
-      type="button"
-      aria-label={`Перетащить группу «${group.name}»`}
-      className="flex h-8 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f1f1ee] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      {...attributes}
-      {...listeners}
-    >
-      <DotsSixVertical size={16} />
-    </button>
-  );
-  return (
-    <div ref={setNodeRef} style={style} className="relative border-b border-[#e7e5e4] last:border-b-0">
-      <OptionGroupCard {...props} dragHandle={handle} />
+        </details>
+      </div>
+      <div className="flex h-12 items-center justify-end gap-2 border-t border-[#e7e5e4] px-3">
+        <Button type="button" variant="outline" size="sm" onClick={onDelete} className="h-8 rounded-[10px] border-[#e7e5e4] px-3 text-[13px] text-[#c10007] hover:bg-[#fff7f7] hover:text-[#c10007]">Удалить</Button>
+        <Button type="button" size="sm" onClick={onDone} className="h-8 rounded-[10px] bg-[#4f39f6] px-3 text-[13px] text-white hover:bg-[#4030d4]">Готово</Button>
+      </div>
     </div>
   );
 }
@@ -2739,21 +2756,15 @@ function OptionsTab({
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
     return item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount));
   });
-  const [draft, setDraft] = useState<PositionOptionGroup | null>(null);
-  const [activeDrag, setActiveDrag] = useState<{ kind: "option-group"; group: PositionOptionGroup } | { kind: "option-variant"; variant: PositionOptionVariant } | null>(null);
+  const [focusedGroupId, setFocusedGroupId] = useState<string | null>(null);
   const [transientVariantIds, setTransientVariantIds] = useState<Set<string>>(() => new Set());
   const [focusedVariantId, setFocusedVariantId] = useState<string | null>(null);
-  const draftRef = useRef<HTMLDivElement | null>(null);
   const draftNameRef = useRef<HTMLInputElement | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: optionKeyboardCoordinates }),
-  );
 
   useEffect(() => {
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
     setGroups(item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount)));
-    setDraft(null);
+    setFocusedGroupId(null);
     setTransientVariantIds(new Set());
     setFocusedVariantId(null);
   }, [item.id]);
@@ -2767,13 +2778,8 @@ function OptionsTab({
   const patchGroup = (groupId: string, patch: Partial<PositionOptionGroup>) => {
     commitGroups(groups.map((group) => group.id === groupId ? { ...group, ...patch } : group));
   };
-  const patchDraft = (patch: Partial<PositionOptionGroup>) => setDraft((current) => current ? { ...current, ...patch } : current);
 
   const updateGroup = (groupId: string, updater: (group: PositionOptionGroup) => PositionOptionGroup) => {
-    if (draft?.id === groupId) {
-      setDraft((current) => current ? updater(current) : current);
-      return;
-    }
     commitGroups(groups.map((group) => group.id === groupId ? updater(group) : group));
   };
 
@@ -2803,7 +2809,7 @@ function OptionsTab({
   const handleVariantNameBlur = (groupId: string, variantId: string) => {
     setFocusedVariantId((current) => current === variantId ? null : current);
     if (!transientVariantIds.has(variantId)) return;
-    const group = draft?.id === groupId ? draft : groups.find((candidate) => candidate.id === groupId);
+    const group = groups.find((candidate) => candidate.id === groupId);
     const variant = group?.variants.find((candidate) => candidate.id === variantId);
     if (!variant?.name.trim()) deleteVariant(groupId, variantId);
     else {
@@ -2815,11 +2821,14 @@ function OptionsTab({
     }
   };
 
-  const groupProps = (group: PositionOptionGroup): Omit<OptionGroupCardProps, "dragHandle"> => ({
+  const groupProps = (group: PositionOptionGroup): OptionGroupCardProps => ({
     group,
     currency,
+    focused: focusedGroupId === group.id,
     transientVariantIds,
     focusedVariantId,
+    onFocus: () => setFocusedGroupId(group.id),
+    onDone: () => setFocusedGroupId(null),
     onPatch: (patch) => patchGroup(group.id, patch),
     onDuplicate: () => {
       const index = groups.findIndex((candidate) => candidate.id === group.id);
@@ -2836,6 +2845,7 @@ function OptionsTab({
     onDelete: () => {
       if (group.variants.length > 0 && !window.confirm(`Удалить группу «${group.name}» и все её варианты?`)) return;
       commitGroups(groups.filter((candidate) => candidate.id !== group.id));
+      setFocusedGroupId((current) => current === group.id ? null : current);
     },
     onBeginVariant: (value) => beginVariant(group.id, value),
     onPatchVariant: (variantId, patch) => patchVariant(group.id, variantId, patch),
@@ -2845,136 +2855,242 @@ function OptionsTab({
 
   const startDraft = () => {
     const next = createOptionGroup();
-    setDraft(next);
+    commitGroups([...groups, next]);
+    setFocusedGroupId(next.id);
     window.setTimeout(() => {
-      draftRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       draftNameRef.current?.focus();
     }, 0);
   };
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={optionCollisionDetection}
-      onDragStart={({ active }) => {
-        const data = active.data.current;
-        if (data?.kind === "option-group") setActiveDrag({ kind: "option-group", group: data.group as PositionOptionGroup });
-        if (data?.kind === "option-variant") setActiveDrag({ kind: "option-variant", variant: data.variant as PositionOptionVariant });
-      }}
-      onDragCancel={() => setActiveDrag(null)}
-      onDragEnd={({ active, over }) => {
-        setActiveDrag(null);
-        if (!over || active.id === over.id) return;
-        const activeData = active.data.current;
-        const overData = over.data.current;
-        if (activeData?.kind === "option-group" && overData?.kind === "option-group") {
-          const oldIndex = groups.findIndex((group) => `option-group:${group.id}` === active.id);
-          const newIndex = groups.findIndex((group) => `option-group:${group.id}` === over.id);
-          if (oldIndex >= 0 && newIndex >= 0) commitGroups(arrayMove(groups, oldIndex, newIndex));
-          return;
-        }
-        if (activeData?.kind === "option-variant" && overData?.kind === "option-variant" && activeData.groupId === overData.groupId) {
-          const groupId = String(activeData.groupId);
-          updateGroup(groupId, (group) => {
-            const oldIndex = group.variants.findIndex((variant) => `option-variant:${variant.id}` === active.id);
-            const newIndex = group.variants.findIndex((variant) => `option-variant:${variant.id}` === over.id);
-            return oldIndex >= 0 && newIndex >= 0 ? { ...group, variants: arrayMove(group.variants, oldIndex, newIndex) } : group;
-          });
-        }
-      }}
-    >
-      <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-        {groups.length === 0 && !draft && (
-          <div className="px-4 py-8 text-center">
-            <div className="text-[14px] font-medium text-[#44403b]">Групп опций пока нет</div>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">Создайте группу, чтобы добавить размеры, соусы или другие варианты.</p>
-          </div>
-        )}
-        <SortableContext items={groups.map((group) => `option-group:${group.id}`)} strategy={verticalListSortingStrategy}>
-          {groups.map((group) => <SortableOptionGroupCard key={group.id} {...groupProps(group)} />)}
-        </SortableContext>
-
-        {draft && (
-          <div ref={draftRef}>
-            <OptionGroupCard
-              group={draft}
-              currency={currency}
-              draft
-              transientVariantIds={transientVariantIds}
-              focusedVariantId={focusedVariantId}
-              nameInputRef={draftNameRef}
-              onPatch={patchDraft}
-              onBeginVariant={(value) => beginVariant(draft.id, value)}
-              onPatchVariant={(variantId, patch) => patchVariant(draft.id, variantId, patch)}
-              onVariantNameBlur={(variantId) => handleVariantNameBlur(draft.id, variantId)}
-              onDeleteVariant={(variantId) => deleteVariant(draft.id, variantId)}
-            />
-            <div className="flex items-center gap-2 border-b border-[#e7e5e4] px-4 py-3">
-              <Button
-                type="button"
-                size="sm"
-                disabled={!draft.name.trim()}
-                onClick={() => {
-                  commitGroups([...groups, { ...draft, name: draft.name.trim() }]);
-                  setDraft(null);
-                  setTransientVariantIds((current) => {
-                    const next = new Set(current);
-                    draft.variants.forEach((variant) => next.delete(variant.id));
-                    return next;
-                  });
-                }}
-                className="bg-[#292524] text-white hover:bg-[#44403b]"
-              >
-                Создать группу
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setTransientVariantIds((current) => {
-                    const next = new Set(current);
-                    draft.variants.forEach((variant) => next.delete(variant.id));
-                    return next;
-                  });
-                  setDraft(null);
-                }}
-                className="text-[#57534d] hover:bg-[#f5f5f4]"
-              >
-                Отмена
-              </Button>
-            </div>
-          </div>
-        )}
-
+    <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]" data-options-editor>
+        {groups.map((group) => (
+          <OptionGroupCard key={group.id} {...groupProps(group)} nameInputRef={focusedGroupId === group.id ? draftNameRef : undefined} />
+        ))}
         <button
           type="button"
-          disabled={Boolean(draft)}
           onClick={startDraft}
-          className="flex h-11 w-full items-center gap-1.5 px-4 text-[12px] font-medium text-[#79716b] transition hover:bg-[#fafaf9] hover:text-[#44403b] disabled:cursor-not-allowed disabled:opacity-45"
+          className="flex h-11 w-full items-center gap-1.5 border-t border-[#f5f5f4] px-4 text-[12px] font-medium text-[#292524] transition hover:bg-[#fafaf9]"
         >
           <PlusCircle size={16} />
           Добавить группу опций
         </button>
-      </div>
+    </div>
+  );
+}
 
-      <DragOverlay dropAnimation={DND_TRANSITION}>
-        {activeDrag?.kind === "option-group" ? (
-          <div className="w-[520px] max-w-[70vw] overflow-hidden rounded-[12px] border border-[#d6d3d1] bg-white shadow-[0_16px_44px_rgba(41,37,36,0.18)]">
-            <div className="flex h-12 items-center gap-2 px-3 text-[14px] font-medium text-[#44403b]">
-              <DotsSixVertical size={16} className="text-[#a8a29e]" />
-              <span className="truncate">{activeDrag.group.name}</span>
-              <span className="rounded-[3px] bg-[#f1f1ee] px-1 text-[11px] text-[#79716b]">{activeDrag.group.variants.length}</span>
+function PositionAvailabilityTab({
+  item,
+  editMode,
+  unavailableDisplayMode,
+  outsideScheduleMode,
+  weeklySchedule,
+  onModeChange,
+  onUnavailableDisplayModeChange,
+  onOutsideScheduleModeChange,
+  onWeeklyScheduleChange,
+}: {
+  item: CatalogItem;
+  editMode: boolean;
+  unavailableDisplayMode: UnavailableDisplayMode;
+  outsideScheduleMode: OutsideScheduleMode;
+  weeklySchedule: WeeklySchedule;
+  onModeChange: (mode: AvailabilityMode) => void;
+  onUnavailableDisplayModeChange: (mode: UnavailableDisplayMode) => void;
+  onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
+  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+}) {
+  const mode: AvailabilityMode = isItemStopOverrideActive(item)
+    ? "unavailable"
+    : item.scheduled
+      ? "schedule"
+      : "always";
+
+  if (editMode) {
+    const unavailableBehavior = mode === "schedule" ? outsideScheduleMode : unavailableDisplayMode;
+    const setUnavailableBehavior = (next: "hidden" | "comingSoon") => {
+      if (mode === "schedule") onOutsideScheduleModeChange(next);
+      else onUnavailableDisplayModeChange(next);
+    };
+
+    return (
+      <div className="space-y-2">
+        <div
+          role="radiogroup"
+          aria-label="Доступность позиции"
+          className="grid grid-cols-[0.92fr_0.92fr_1.25fr] gap-0.5 rounded-[11px] border border-[#e7e5e4] bg-white p-1"
+        >
+          {([
+            { id: "always", label: "Доступно" },
+            { id: "unavailable", label: "На стопе" },
+            { id: "schedule", label: "По расписанию" },
+          ] as const).map((option) => {
+            const selected = mode === option.id;
+            return (
+              <label
+                key={option.id}
+                className={cn(
+                  "relative flex h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-[8px] px-1.5 text-[12px] font-medium transition focus-within:outline-none focus-within:ring-2 focus-within:ring-[#292524]/10",
+                  selected ? "bg-[#f3f3ed] text-[#292524]" : "text-[#79716b] hover:bg-[#fafaf9] hover:text-[#292524]",
+                  item.status === "archive" && "pointer-events-none opacity-50",
+                )}
+              >
+                <input
+                  type="radio"
+                  name={`position-availability-${item.id}`}
+                  value={option.id}
+                  checked={selected}
+                  disabled={item.status === "archive"}
+                  onChange={() => onModeChange(option.id)}
+                  className="absolute inset-0 z-10 cursor-pointer opacity-0"
+                />
+                <span className={cn(
+                  "flex size-3.5 shrink-0 items-center justify-center rounded-full border bg-white",
+                  selected ? "border-[#292524]" : "border-[#d6d3d1]",
+                )}>
+                  {selected && <span className="size-1.5 rounded-full bg-[#292524]" />}
+                </span>
+                <span className="truncate">{option.label}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        {mode === "schedule" && (
+          <PositionWeeklyScheduleEditor
+            scheduleId={`item-${item.id}`}
+            weeklySchedule={weeklySchedule}
+            onWeeklyScheduleChange={onWeeklyScheduleChange}
+          />
+        )}
+
+        {mode !== "always" && (
+          <section
+            aria-label="Когда недоступно"
+            className="rounded-[11px] border border-[#e7e5e4] bg-white p-3"
+          >
+            <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Когда недоступно</h3>
+            <div
+              role="group"
+              aria-label="Поведение при недоступности"
+              className="mt-2 grid grid-cols-[0.72fr_1.65fr] rounded-[8px] bg-[#f5f5f4] p-0.5"
+            >
+              {([
+                { id: "hidden", label: "Скрыть" },
+                { id: "comingSoon", label: "Показать «Скоро будет»" },
+              ] as const).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={unavailableBehavior === option.id}
+                  onClick={() => setUnavailableBehavior(option.id)}
+                  className={cn(
+                    "h-7 truncate rounded-[7px] px-2 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    unavailableBehavior === option.id
+                      ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-sm"
+                      : "text-[#79716b] hover:text-[#292524]",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-          </div>
-        ) : activeDrag?.kind === "option-variant" ? (
-          <div className="flex h-9 w-[420px] max-w-[65vw] items-center gap-2 rounded-[9px] border border-[#d6d3d1] bg-white px-3 text-[13px] text-[#44403b] shadow-[0_12px_32px_rgba(41,37,36,0.16)]">
-            <DotsSixVertical size={15} className="text-[#a8a29e]" />
-            <span className="truncate">{activeDrag.variant.name || "Вариант"}</span>
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <AvailabilityEditor
+      mode={mode}
+      options={[
+        {
+          id: "always",
+          title: "Доступно",
+          description: "Позиция видна гостям и доступна для заказа в любое время",
+          disabled: item.status === "archive",
+        },
+        {
+          id: "unavailable",
+          title: "На стопе",
+          description: "Позицию нельзя заказать, а её отображение настраивается ниже",
+          disabled: item.status === "archive",
+        },
+        {
+          id: "schedule",
+          title: "По расписанию",
+          description: "Позиция доступна для заказа только в указанные дни и часы",
+          disabled: item.status === "archive",
+        },
+      ]}
+      ariaLabel="Доступность позиции"
+      scheduleId={`item-${item.id}`}
+      unavailableDisplayMode={unavailableDisplayMode}
+      outsideScheduleMode={outsideScheduleMode}
+      weeklySchedule={weeklySchedule}
+      onModeChange={onModeChange}
+      onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
+      onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+      onWeeklyScheduleChange={onWeeklyScheduleChange}
+      unavailableNested={{
+        label: "В меню:",
+        hiddenText: "Позиция будет скрыта из меню, пока находится на стопе",
+        comingSoonText: "Гости увидят позицию с пометкой «Скоро будет», но не смогут заказать",
+      }}
+      scheduleNested={{
+        label: "Вне расписания:",
+        hiddenText: "Позиция не будет отображаться в меню вне расписания",
+        comingSoonText: "Гости увидят позицию, но не смогут заказать её до начала расписания",
+      }}
+    />
+  );
+}
+
+function PositionEditorBody({
+  item,
+  activeTab,
+  onTabChange,
+  basicContent,
+  promoContent,
+  optionsContent,
+  displayContent,
+  availabilityContent,
+  basicFooter,
+}: {
+  item: CatalogItem;
+  activeTab: EditorTab;
+  onTabChange: (tab: EditorTab) => void;
+  basicContent: ReactNode;
+  promoContent: ReactNode;
+  optionsContent: ReactNode;
+  displayContent: ReactNode;
+  availabilityContent: ReactNode;
+  basicFooter: ReactNode;
+}) {
+  const activeContent = activeTab === "basic"
+    ? <div data-editor-form-card className="bg-white pb-4 pt-4">{basicContent}</div>
+    : activeTab === "promo"
+      ? promoContent
+      : activeTab === "options"
+        ? optionsContent
+        : activeTab === "display"
+          ? displayContent
+          : availabilityContent;
+
+  return (
+    <div data-position-editor-body>
+      <WorkspaceLocalTabs
+        tabs={EDITOR_TABS.map((tab) => ({
+          ...tab,
+          ...(tab.id === "options" ? { count: item.optionsCount } : {}),
+        }))}
+        value={activeTab}
+        onValueChange={onTabChange}
+      />
+      <div className="pt-2">{activeContent}</div>
+      {activeTab === "basic" && basicFooter}
+    </div>
   );
 }
 
@@ -2984,7 +3100,6 @@ export function PositionEditor({
   allItems,
   upsell,
   onUpsellChange,
-  stopBusy,
   onArchiveItem,
   onMoveItem,
   onToggleStop,
@@ -3003,9 +3118,12 @@ export function PositionEditor({
   onDescriptionChange,
   onMediaAdded,
   onDraftChange,
+  onCommitDraftName,
   onCreatePosition,
   onBackCreate,
   onBackEdit,
+  detailPane = false,
+  createCommitted = false,
   onCancelCreate,
   createDisabled = false,
   createSubmitting = false,
@@ -3041,9 +3159,12 @@ export function PositionEditor({
   onDescriptionChange?: (item: CatalogItem, value: string) => void;
   onMediaAdded?: (item: CatalogItem, previewUrl: string) => void;
   onDraftChange?: (patch: Partial<CatalogItem>) => void;
+  onCommitDraftName?: (name: string) => void;
   onCreatePosition?: () => void;
   onBackCreate?: () => void;
   onBackEdit?: () => void;
+  detailPane?: boolean;
+  createCommitted?: boolean;
   onCancelCreate?: () => void;
   createDisabled?: boolean;
   createSubmitting?: boolean;
@@ -3068,8 +3189,12 @@ export function PositionEditor({
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
+  const [createNameError, setCreateNameError] = useState("");
+  const sidePeek = usePositionSidePeek();
 
   const creationCanvas = mode === "create-modal";
+  const creationPane = detailPane && mode === "create";
+  const sidePeekActionsEnabled = mode === "edit" || createCommitted;
   const nextForcedTab = forcedEditorTab ?? (mode !== "edit" || forceBasicTabOnItemChange ? "basic" : undefined);
 
   useEffect(() => {
@@ -3089,6 +3214,7 @@ export function PositionEditor({
     setKbjuOpen(item.nutritionFilledCount > 0);
     setTitleEditing(false);
     setTitleDraft(item.title);
+    setCreateNameError("");
   }, [item.id, nextForcedTab]);
 
   useEffect(() => {
@@ -3109,6 +3235,25 @@ export function PositionEditor({
     editorTabByItem.set(item.id, tab);
     activeTabRef.current = tab;
     setActiveTab(tab);
+  };
+
+  const focusCreateName = () => {
+    selectEditorTab("basic");
+    window.setTimeout(() => {
+      editorScrollRef.current
+        ?.querySelector<HTMLInputElement>('input[aria-label="Название позиции"]')
+        ?.focus();
+    }, 0);
+  };
+
+  const requestCreatePosition = () => {
+    if (mode !== "edit" && !item.title.trim()) {
+      setCreateNameError("Введите название");
+      focusCreateName();
+      return;
+    }
+    setCreateNameError("");
+    onCreatePosition?.();
   };
 
   const addPhotoFile = (file: File) => {
@@ -3286,28 +3431,7 @@ export function PositionEditor({
 
   const positionActions = (
     <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-      {autosaveStatus !== "idle" && (
-        <div
-          role={autosaveStatus === "error" ? "alert" : "status"}
-          className={cn(
-            "mr-1 flex h-8 items-center text-[12px] text-[#79716b]",
-            autosaveStatus === "error" && "text-[#c10007]",
-          )}
-        >
-          {autosaveStatus === "saving" && "Сохранение…"}
-          {autosaveStatus === "saved" && "Сохранено"}
-          {autosaveStatus === "error" && (
-            <>
-              <span>Не удалось сохранить</span>
-              <span aria-hidden="true" className="mx-1">·</span>
-              <button type="button" onClick={onRetrySave} className="font-medium underline-offset-2 hover:underline">
-                Повторить
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      <PositionAvailabilityControl item={item} menuProps={positionAvailabilityMenuProps} busy={stopBusy} />
+      <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
       {headerMeta}
       {renderPositionActionsMenu(
         <button
@@ -3334,9 +3458,41 @@ export function PositionEditor({
     </div>
   );
 
+  const closeSidePeek = sidePeek?.requestClose ?? (creationPane ? onBackCreate : onBackEdit);
+  const detailPaneControls = (
+    <div
+      data-position-editor-controls
+      className="group/side-peek-controls relative h-8 w-[104px] shrink-0"
+    >
+      {headerMeta && autosaveStatus !== "error" && (
+        <div
+          data-position-editor-navigation
+          className="pointer-events-none invisible absolute right-9 top-0 flex h-8 items-center opacity-0 transition-opacity duration-150 group-hover/side-peek-controls:pointer-events-auto group-hover/side-peek-controls:visible group-hover/side-peek-controls:opacity-100 group-focus-within/side-peek-controls:pointer-events-auto group-focus-within/side-peek-controls:visible group-focus-within/side-peek-controls:opacity-100"
+        >
+          {headerMeta}
+        </div>
+      )}
+      {closeSidePeek && (
+        <Tooltip label="Свернуть редактор" side="bottom" delayDuration={250}>
+          <button
+            type="button"
+            onClick={closeSidePeek}
+            aria-label="Свернуть редактор"
+            data-position-editor-collapse
+            className="absolute right-0 top-0 flex size-8 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <CaretDoubleRight size={16} weight="bold" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+
   return (
     <div
       data-position-create-canvas={creationCanvas || undefined}
+      data-position-detail-pane={detailPane || undefined}
+      data-position-create-pane-content={creationPane || undefined}
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", creationCanvas && "bg-white")}
     >
       {creationCanvas && (
@@ -3362,12 +3518,65 @@ export function PositionEditor({
       <div
         ref={editorScrollRef}
         className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-y-auto",
-          creationCanvas ? "bg-white" : "p-4 pt-0",
+          "min-h-0 min-w-0 flex-1 overflow-y-auto scrollbar-none",
+          creationCanvas ? "bg-white" : detailPane ? "bg-white" : "p-4 pt-0",
         )}
       >
-        <div className={cn("mx-auto w-full", creationCanvas ? "max-w-[620px] px-5 pb-8 pt-4 sm:px-0" : "max-w-[880px]")}>
-          {creationCanvas ? (
+        <div className={cn(
+          creationCanvas
+            ? "mx-auto w-full max-w-[620px] px-5 pb-8 pt-4 sm:px-0"
+            : detailPane
+              ? "w-full px-4 pb-6"
+              : "ml-9 w-[454px] pb-6 max-[511px]:ml-4 max-[511px]:w-[calc(100%-32px)]",
+        )}>
+          {detailPane ? (
+            <div
+              data-position-editor-header
+              data-position-create-pane-header={creationPane || undefined}
+              className="sticky top-0 z-30 -mx-4 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-4"
+            >
+              <div data-position-title-region className="flex min-w-0 flex-1 items-center">
+                {titleEditing ? (
+                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] bg-white px-2 ring-1 ring-[#c7c2bd]">
+                    <input
+                      ref={titleInputRef}
+                      value={titleDraft}
+                      aria-label="Название позиции"
+                      onChange={(event) => setTitleDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitTitle();
+                        if (event.key === "Escape") {
+                          setTitleEditing(false);
+                          setTitleDraft(item.title);
+                        }
+                      }}
+                      onBlur={commitTitle}
+                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold leading-7 text-[#292524] outline-none"
+                    />
+                  </div>
+                ) : renderPositionActionsMenu(
+                  <button
+                    type="button"
+                    disabled={!sidePeekActionsEnabled}
+                    aria-label={sidePeekActionsEnabled
+                      ? `Действия с позицией «${item.title || "Новая позиция"}»`
+                      : "Действия станут доступны после создания позиции"}
+                    data-position-title-actions-trigger
+                    className="flex min-w-0 max-w-full items-center gap-1 rounded-[7px] px-1.5 py-1 text-left text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    <span className="min-w-0 truncate text-[14px] font-semibold leading-5" title={item.title || "Новая позиция"}>
+                      {item.title || "Новая позиция"}
+                    </span>
+                    <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />
+                  </button>,
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
+                {detailPaneControls}
+              </div>
+            </div>
+          ) : creationCanvas ? (
             creationDestination ? <div className="pb-3">{creationDestination}</div> : null
           ) : mode === "create" ? (
             <div className="sticky top-0 z-20 flex min-w-0 items-center gap-2 bg-[#fbfbf9] pb-2 pt-6 max-[1100px]:gap-1">
@@ -3402,7 +3611,7 @@ export function PositionEditor({
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={onCreatePosition}
+                  onClick={requestCreatePosition}
                   disabled={createDisabled || createSubmitting}
                   aria-busy={createSubmitting}
                   className="gap-1.5 bg-indigo-600 px-2.5 font-medium text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:ring-indigo-600/25"
@@ -3415,117 +3624,107 @@ export function PositionEditor({
           ) : (
             <div
               data-position-editor-header
-              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-1 pt-3"
+              className="group/editor-header grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-1 pt-3"
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center text-[14px] font-medium leading-7 text-[#292524]">
-                  {titleEditing ? (
-                    <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-2 ring-1 ring-[#c7c2bd]">
-                      <input
-                        ref={titleInputRef}
-                        value={titleDraft}
-                        aria-label="Название позиции"
-                        onChange={(event) => setTitleDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") commitTitle();
-                          if (event.key === "Escape") {
-                            setTitleEditing(false);
-                            setTitleDraft(item.title);
-                          }
-                        }}
-                        onBlur={commitTitle}
-                        className="min-w-0 flex-1 bg-transparent text-[14px] font-medium leading-7 text-[#292524] outline-none"
-                      />
+                {titleEditing ? (
+                  <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-2 ring-1 ring-[#c7c2bd]">
+                    <input
+                      ref={titleInputRef}
+                      value={titleDraft}
+                      aria-label="Название позиции"
+                      onChange={(event) => setTitleDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitTitle();
+                        if (event.key === "Escape") {
+                          setTitleEditing(false);
+                          setTitleDraft(item.title);
+                        }
+                      }}
+                      onBlur={commitTitle}
+                      className="min-w-0 flex-1 bg-transparent text-[14px] font-medium leading-7 text-[#292524] outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="min-w-0 px-1">
+                    <h2 className="truncate text-[14px] font-semibold leading-[18px] text-[#292524]" title={item.title || "Новая позиция"}>
+                      {item.title || "Новая позиция"}
+                    </h2>
+                    <div className="mt-0.5 truncate text-[11px] font-normal leading-4 text-[#8a8179]" title={item.sectionName}>
+                      {item.sectionName}
                     </div>
-                  ) : (
-                    <div className="min-w-0 px-1">
-                      <h2 className="truncate text-[14px] font-semibold leading-[18px] text-[#292524]" title={item.title || "Новая позиция"}>
-                        {item.title || "Новая позиция"}
-                      </h2>
-                      <div className="mt-0.5 truncate text-[11px] font-normal leading-4 text-[#8a8179]" title={item.sectionName}>
-                        {item.sectionName}
-                      </div>
-                    </div>
-                  )}
+                  </div>
+                )}
               </div>
               {positionActions}
             </div>
           )}
 
-          <WorkspaceLocalTabs
-            tabs={EDITOR_TABS.map((tab) => ({
-              ...tab,
-              ...(tab.id === "options" ? { count: item.optionsCount } : {}),
-            }))}
-            value={activeTab}
-            onValueChange={selectEditorTab}
-            className={creationCanvas ? "border-[#efede9]" : undefined}
-          />
-
-          <div className="pt-2">
-            {activeTab === "basic" ? (
-              <div
-                data-editor-form-card
-                className={cn(
-                  creationCanvas
-                    ? "bg-white pb-4 pt-4"
-                    : "rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
-                )}
-              >
-                  <BasicTab
-                    item={item}
-                    media={media}
-                    basePriceText={basePriceText}
-                    basePrice={basePrice}
-                    weightUnit={weightUnit}
-                    discountOpen={discountOpen}
-                    discountAutofocusKey={discountAutofocusKey}
-                    onDiscountChange={(priceWithSale) => onDraftChange?.({ hasDiscount: true, priceWithSale })}
-                    onWeightUnitChange={(unit) => {
-                      setWeightUnit(unit);
-                      onDraftChange?.({ weightLabel: item.weightLabel ? item.weightLabel.replace(/[A-Za-zА-Яа-я]+$/, unit) : null });
-                    }}
-                    onBasePriceChange={updateBasePrice}
-                    onBasePriceBlur={formatBasePrice}
-                    onAddDiscount={addDiscount}
-                    onRemoveDiscount={removeDiscount}
-                    onAddPhotoFile={addPhotoFile}
-                    onAddVideoFile={addVideoFile}
-                    onReorderMedia={reorderMedia}
-                    onRemoveMedia={removeMedia}
-                    onDescriptionChange={(value) => {
-                      onDescriptionChange?.(item, value);
-                      onDraftChange?.({ description: value, hasDescription: descriptionHasContent(value) });
-                    }}
-                    autoFocusName={mode !== "edit"}
-                    hideName={false}
-                    namePlaceholder={mode === "create" ? "Например, Пицца" : "Введите перевод…"}
-                    onNameChange={(value) => onDraftChange?.({ title: value })}
-                    onWeightChange={(value, unit) => {
-                      const parsed = parseMoneyInput(value);
-                      onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
-                    }}
-                    onTitleChange={(value) => onItemChange?.(item, { title: value })}
-                    onTitleTranslationsChange={(titleTranslations) => onItemChange?.(item, {
-                      title: titleTranslations.ru ?? item.title,
-                      titleTranslations,
-                    })}
-                  />
-              </div>
-            ) : activeTab === "promo" ? (
+          <PositionEditorBody
+            item={item}
+            activeTab={activeTab}
+            onTabChange={selectEditorTab}
+            basicContent={(
+              <BasicTab
+                item={item}
+                media={media}
+                basePriceText={basePriceText}
+                basePrice={basePrice}
+                weightUnit={weightUnit}
+                discountOpen={discountOpen}
+                discountAutofocusKey={discountAutofocusKey}
+                onDiscountChange={(priceWithSale) => onDraftChange?.({ hasDiscount: true, priceWithSale })}
+                onWeightUnitChange={(unit) => {
+                  setWeightUnit(unit);
+                  onDraftChange?.({ weightLabel: item.weightLabel ? item.weightLabel.replace(/[A-Za-zА-Яа-я]+$/, unit) : null });
+                }}
+                onBasePriceChange={updateBasePrice}
+                onBasePriceBlur={formatBasePrice}
+                onAddDiscount={addDiscount}
+                onRemoveDiscount={removeDiscount}
+                onAddPhotoFile={addPhotoFile}
+                onAddVideoFile={addVideoFile}
+                onReorderMedia={reorderMedia}
+                onRemoveMedia={removeMedia}
+                onDescriptionChange={(value) => {
+                  onDescriptionChange?.(item, value);
+                  onDraftChange?.({ description: value, hasDescription: descriptionHasContent(value) });
+                }}
+                autoFocusName={mode !== "edit"}
+                hideName={false}
+                prioritizeName={mode !== "edit"}
+                nameError={mode !== "edit" ? createNameError : undefined}
+                namePlaceholder={mode !== "edit" ? "Название позиции" : "Введите перевод…"}
+                nameResetKey={mode === "edit" ? item.id : "active-create-session"}
+                onNameChange={(value) => {
+                  if (value.trim()) setCreateNameError("");
+                  onDraftChange?.({ title: value });
+                  if (mode === "create" && value.trim()) onCommitDraftName?.(value);
+                }}
+                onWeightChange={(value, unit) => {
+                  const parsed = parseMoneyInput(value);
+                  onDraftChange?.({ weightLabel: parsed == null ? null : `${formatPlainNumber(parsed)} ${unit}` });
+                }}
+                onTitleChange={(value) => onItemChange?.(item, { title: value })}
+                onTitleTranslationsChange={(titleTranslations) => onItemChange?.(item, {
+                  title: titleTranslations.ru ?? item.title,
+                  titleTranslations,
+                })}
+              />
+            )}
+            promoContent={(
               <div className="space-y-2">
-                <PromoRecommendationsCard
+                <PromoRecommendationsCard item={item} allItems={allItems} upsell={upsell} onChange={onUpsellChange} />
+                <PromoTab
                   item={item}
                   allItems={allItems}
                   upsell={upsell}
                   onChange={onUpsellChange}
-                />
-                <PromoTab
-                  item={item}
-                  upsell={upsell}
-                  onChange={onUpsellChange}
+                  onItemChange={(target, nextPatch) => onItemChange?.(target, nextPatch)}
                 />
               </div>
-            ) : activeTab === "options" ? (
+            )}
+            optionsContent={(
               <OptionsTab
                 item={item}
                 onSavedGroupsChange={(count) => {
@@ -3537,66 +3736,78 @@ export function PositionEditor({
                   else onItemChange?.(item, { optionGroups });
                 }}
               />
-            ) : (
-              <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 pb-4 pt-5 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-                {activeTab === "display" && (
-                  <DisplayTab
-                    item={item}
-                    onChange={(displayMode) => onItemChange?.(item, { displayMode })}
-                  />
-                )}
-              </div>
             )}
-          </div>
-
-          {/* Опциональные блоки и «Ещё» — вне карточки, только для «Основного» */}
-          {activeTab === "basic" && (
-            <div className="mt-4 space-y-4">
-              <div data-kbju-editor-anchor>
-                {kbjuOpen && (
-                  <KbjuBlock
-                    weightUnit={weightUnit}
-                    initialValues={item.nutrition}
-                    onChange={(nutrition) => {
-                      onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
-                    }}
-                    onRemove={() => {
-                      setKbjuOpen(false);
-                      onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
-                    }}
-                  />
-                )}
-                {!kbjuOpen && (
-                  <div className="px-1.5 pt-1">
-                    <div className="flex flex-col items-start">
+            displayContent={<DisplayTab item={item} editMode={mode === "edit"} onChange={(displayMode) => onItemChange?.(item, { displayMode })} />}
+            availabilityContent={(
+              <PositionAvailabilityTab
+                item={item}
+                editMode={mode === "edit"}
+                unavailableDisplayMode={unavailableDisplayMode}
+                outsideScheduleMode={outsideScheduleMode}
+                weeklySchedule={weeklySchedule}
+                onModeChange={(availabilityMode) => onSetAvailabilityMode(item, availabilityMode)}
+                onUnavailableDisplayModeChange={onUnavailableDisplayModeChange}
+                onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+                onWeeklyScheduleChange={onWeeklyScheduleChange}
+              />
+            )}
+            basicFooter={(
+              <div className="mt-4 space-y-4">
+                <div data-kbju-editor-anchor>
+                  {kbjuOpen ? (
+                    <KbjuBlock
+                      weightUnit={weightUnit}
+                      initialValues={item.nutrition}
+                      onChange={(nutrition) => {
+                        onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
+                      }}
+                      onRemove={() => {
+                        setKbjuOpen(false);
+                        onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
+                      }}
+                    />
+                  ) : (
+                    <div className="px-1.5 pt-1">
                       <button type="button" className={addRowClass} onClick={() => { setKbjuOpen(true); onDraftChange?.({}); }}>
                         <PlusCircle size={16} className="text-[#a8a29e]" />
                         Добавить КБЖУ
                       </button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          />
         </div>
       </div>
       {creationCanvas && (
         <div
           data-position-create-footer
-          className="flex w-full shrink-0 justify-end border-t border-[#e7e5e4] bg-white px-5 py-3 sm:px-6"
+          className="flex w-full shrink-0 justify-end gap-2 border-t border-[#e7e5e4] bg-white px-5 py-3 sm:px-6"
         >
           {creationFooter ?? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={onCreatePosition}
-              disabled={createDisabled || createSubmitting}
-              aria-busy={createSubmitting}
-              className="h-8 rounded-lg bg-[#292524] px-3 text-[12px] font-medium text-white hover:bg-[#44403b]"
-            >
-              {createSubmitting ? "Создание…" : "Создать позицию"}
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onCancelCreate ?? onBackCreate}
+                disabled={createSubmitting}
+                className="h-8 rounded-lg border-[#e7e5e4] bg-white px-3 text-[12px] font-medium text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]"
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={requestCreatePosition}
+                disabled={createDisabled || createSubmitting}
+                aria-busy={createSubmitting}
+                className="h-8 rounded-lg bg-[#4f39f6] px-3 text-[12px] font-medium text-white hover:bg-[#4030d4]"
+              >
+                {createSubmitting ? "Добавление…" : "Добавить позицию"}
+              </Button>
+            </>
           )}
         </div>
       )}

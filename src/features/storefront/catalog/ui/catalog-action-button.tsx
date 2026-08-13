@@ -14,6 +14,7 @@ export function CatalogActionButton({
   tooltipDelayDuration = 200,
   ariaLabel,
   dataPositionCreateButton = false,
+  dataSubsectionCreateButton = false,
   buttonRef,
   className,
 }: {
@@ -27,6 +28,7 @@ export function CatalogActionButton({
   tooltipDelayDuration?: number;
   ariaLabel?: string;
   dataPositionCreateButton?: boolean;
+  dataSubsectionCreateButton?: boolean;
   buttonRef?: RefObject<HTMLButtonElement | null>;
   className?: string;
 }) {
@@ -40,6 +42,7 @@ export function CatalogActionButton({
           type="button"
           ref={buttonRef}
           {...(dataPositionCreateButton ? { "data-position-create-button": true } : {})}
+          {...(dataSubsectionCreateButton ? { "data-subsection-create-button": true } : {})}
           aria-label={ariaLabel}
           onClick={onClick}
           disabled={isDisabled}

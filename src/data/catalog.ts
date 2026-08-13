@@ -92,6 +92,9 @@ export type CatalogItem = {
   scheduled: boolean;
   guestLabels: string[];
   tags: string[];
+  /** Canonical references to the shared catalog label directory. */
+  tagIds?: string[];
+  stickerId?: string | null;
   optionsCount: number;
   modifiersCount: number;
   recommendationsCount: number;

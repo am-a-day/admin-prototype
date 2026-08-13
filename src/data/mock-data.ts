@@ -148,6 +148,8 @@ export type Dish = {
   emoji: string;
   recommendations: string[];
   stop: boolean;
+  tags?: string[];
+  sticker?: string | null;
 };
 
 export type BannerTagType = "accent" | "contrast" | "outline";

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEventHandler, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ColumnDef, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -12,14 +12,14 @@ import {
   Clock,
   Columns,
   Dot,
-  DotsSixVertical,
   FunnelSimple,
   Lock,
-  MagnifyingGlass,
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useAppSettings } from "@/contexts/app-settings-context";
+import { useMockAuth } from "@/contexts/mock-auth-context";
 import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import type { CatalogPriceSortDirection } from "../navigation/types";
@@ -27,9 +27,19 @@ import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
 import { CATALOG_VIEW_MODE_GROUPS, HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
+import { CatalogTableSearch } from "../ui/catalog-table-controls";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
+import { StructureDragHandle } from "../workspace/dnd";
+import {
+  getCatalogLabelText,
+  resolveCatalogItemStickerId,
+  resolveCatalogItemTagIds,
+  useCatalogLabels,
+} from "../labels/catalog-labels";
+import { getLocalCatalogItemLabels, getLocalCatalogLabelText } from "../labels/local-catalog-labels";
+import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 type PriceSortDirection = CatalogPriceSortDirection;
@@ -65,6 +75,14 @@ function getPrimaryRowStatusLabel(item: CatalogItem) {
   return null;
 }
 
+function getDescriptionPreview(description: string) {
+  return description
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
@@ -80,16 +98,17 @@ function usePrefersReducedMotion(): boolean {
 }
 
 const TABLE_COL = {
-  description: "w-[76px]",
-  weight: "w-[60px]",
-  kbju: "w-[62px]",
-  translation: "w-[80px]",
-  section: "w-[120px]",
-  price: "w-[96px]",
-  tags: "w-[120px]",
-  stickers: "w-[112px]",
-  upsells: "w-[88px]",
-  kebab: "w-[51px]",
+  position: "w-[clamp(300px,30vw,360px)]",
+  description: "min-w-[180px] flex-1",
+  weight: "w-[90px]",
+  kbju: "w-[88px]",
+  translation: "w-[92px]",
+  section: "w-[160px]",
+  price: "w-[120px]",
+  tags: "w-[150px]",
+  stickers: "w-[140px]",
+  upsells: "w-[100px]",
+  kebab: "w-[48px]",
 };
 export type CatalogInformationColumnId =
   | "section"
@@ -121,7 +140,7 @@ const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, stri
   price: "Цена",
   tags: "Теги",
   stickers: "Стикеры",
-  upsells: "Допродажи",
+  upsells: "Рекомендации",
 };
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   position: true,
@@ -284,6 +303,8 @@ export function TableHeaderRow({
   table,
   onResetColumns,
   offsetForLocalHeader = false,
+  stickyFirstColumn = false,
+  firstColumnScrolled = false,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -296,6 +317,8 @@ export function TableHeaderRow({
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
   offsetForLocalHeader?: boolean;
+  stickyFirstColumn?: boolean;
+  firstColumnScrolled?: boolean;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
@@ -307,10 +330,10 @@ export function TableHeaderRow({
       <div className="flex h-[38px] items-center">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
-          if (column.id === "reorder") return <span key={column.id} className="h-[38px] w-[22px] shrink-0" />;
+          if (column.id === "reorder") return null;
           if (column.id === "selection") {
             return (
-              <span key={column.id} className="flex h-full w-[42px] shrink-0 items-center justify-center">
+              <span key={column.id} className={cn("flex h-full w-[42px] shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-20 bg-white")}>
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -322,18 +345,26 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return hideSearch ? (
-              <span key={column.id} className="min-w-[160px] flex-1 truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]">Позиция</span>
+              <span key={column.id} className={cn("shrink-0 truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.position, stickyFirstColumn && "sticky left-[42px] z-20 bg-white", stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>Позиция</span>
             ) : (
-              <div key={column.id} className="mr-3 flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-[7px]" data-catalog-table-search>
-                <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
-                <input
-                  value={query}
-                  onChange={(event) => onQueryChange(event.target.value)}
-                  placeholder="Поиск по названию"
-                  aria-label="Найти позицию"
-                  className="min-w-0 flex-1 bg-transparent text-[13px] font-normal leading-4 text-[#57534d] outline-none placeholder:text-[#a6a09b]"
-                />
-              </div>
+              <CatalogTableSearch
+                key={column.id}
+                value={query}
+                onValueChange={onQueryChange}
+                ariaLabel="Найти позицию"
+                className={cn(
+                  TABLE_COL.position,
+                  stickyFirstColumn && "sticky left-[42px] z-20",
+                  stickyFirstColumn && firstColumnScrolled && "rounded-r-none border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]",
+                )}
+              />
+            );
+          }
+          if (column.id === "description") {
+            return (
+              <span key={column.id} className={cn("flex h-full min-w-[180px] flex-1 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.description)}>
+                {CATALOG_INFORMATION_COLUMN_LABELS.description}
+              </span>
             );
           }
           if (column.id === "price") {
@@ -394,7 +425,6 @@ export function TableHeaderRow({
             );
           }
           const widths: Record<string, string> = {
-            description: TABLE_COL.description,
             weight: TABLE_COL.weight,
             kbju: TABLE_COL.kbju,
             translation: TABLE_COL.translation,
@@ -444,17 +474,7 @@ function StatusBadge({ label }: { label: string }) {
     </span>
   );
 }
-function AuditDishRow({
-  row,
-  onAction,
-  selected,
-  selectionMode,
-  onSelectedChange,
-  renderActions,
-  compositionMode,
-  highlighted,
-  reorderEnabled = false,
-}: {
+type AuditDishRowProps = {
   row: TableRow<CatalogItem>;
   onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
   selected: boolean;
@@ -463,9 +483,68 @@ function AuditDishRow({
   renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void) => ReactNode;
   compositionMode?: boolean;
   highlighted?: boolean;
+  active?: boolean;
   reorderEnabled?: boolean;
-}) {
+  stickyFirstColumn?: boolean;
+  firstColumnScrolled?: boolean;
+};
+
+function SharedAuditDishRow(props: AuditDishRowProps) {
+  const item = props.row.original;
+  const { contentLanguage } = useAppSettings();
+  const { account } = useMockAuth();
+  const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
+  const { labels } = useCatalogLabels();
+  const resolvedTags = resolveCatalogItemTagIds(item, labels)
+    .map((id) => getCatalogLabelText(labels.find((label) => label.id === id), contentLanguage, primaryLanguage))
+    .filter(Boolean);
+  const resolvedSticker = getCatalogLabelText(
+    labels.find((label) => label.id === resolveCatalogItemStickerId(item, labels)),
+    contentLanguage,
+    primaryLanguage,
+  );
+  return <AuditDishRowContent {...props} resolvedTags={resolvedTags} resolvedSticker={resolvedSticker} />;
+}
+
+function LocalAuditDishRow(props: AuditDishRowProps) {
+  const item = props.row.original;
+  const { contentLanguage } = useAppSettings();
+  const { account } = useMockAuth();
+  const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
+  const labels = getLocalCatalogItemLabels(item, primaryLanguage);
+  return (
+    <AuditDishRowContent
+      {...props}
+      resolvedTags={labels.tags.map((tag) => getLocalCatalogLabelText(tag, contentLanguage, primaryLanguage))}
+      resolvedSticker={getLocalCatalogLabelText(labels.sticker, contentLanguage, primaryLanguage)}
+    />
+  );
+}
+
+function AuditDishRow(props: AuditDishRowProps) {
+  return USE_SHARED_TAGS_AND_STICKERS
+    ? <SharedAuditDishRow {...props} />
+    : <LocalAuditDishRow {...props} />;
+}
+
+function AuditDishRowContent({
+  row,
+  onAction,
+  selected,
+  selectionMode,
+  onSelectedChange,
+  renderActions,
+  compositionMode,
+  highlighted,
+  active,
+  reorderEnabled = false,
+  stickyFirstColumn = false,
+  firstColumnScrolled = false,
+  resolvedTags,
+  resolvedSticker,
+}: AuditDishRowProps & { resolvedTags: string[]; resolvedSticker: string }) {
   const item = row.original;
+  const itemTitle = item.title || "Новая позиция";
   const reducedMotion = usePrefersReducedMotion();
   const {
     attributes: reorderAttributes,
@@ -490,17 +569,23 @@ function AuditDishRow({
     item.nutritionFilledCount === 4 ? "filled" : item.nutritionFilledCount > 0 ? "partial" : "missing";
   const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
   const primaryStatusLabel = getPrimaryRowStatusLabel(item);
+  const stickyRowBackground = selected
+    ? "bg-[#f7f6f2] group-hover:bg-[#fafaf9]"
+    : highlighted && !active
+      ? "bg-[#fff7d6] group-hover:bg-[#fff7d6]"
+      : active
+        ? "bg-[#f1f1ea] group-hover:bg-[#ecece6]"
+        : "bg-white group-hover:bg-[#fafaf9]";
 
   return (
     <div
       ref={setSortableNodeRef}
-      {...(reorderEnabled && reorderListeners?.onPointerDown
-        ? { onPointerDown: reorderListeners.onPointerDown as PointerEventHandler<HTMLDivElement> }
-        : {})}
       data-catalog-table-row={item.id}
       data-row-reorder-enabled={reorderEnabled || undefined}
       aria-roledescription={reorderEnabled ? "sortable" : undefined}
       data-reordering={isReordering || undefined}
+      data-active-position={active ? "true" : undefined}
+      aria-current={active ? "true" : undefined}
       style={{
         transform: CSS.Transform.toString(reorderTransform),
         transition: reducedMotion ? undefined : reorderTransition,
@@ -510,15 +595,17 @@ function AuditDishRow({
       tabIndex={0}
       onClick={primaryClick}
       onKeyDown={(event) => {
+        if ((event.target as HTMLElement | null)?.closest("[data-catalog-dnd-handle]")) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           primaryClick();
         }
       }}
       className={cn(
-        "group flex h-[38px] cursor-pointer items-center border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+        "group relative flex h-[38px] cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f7f6f2]" : "bg-white",
-        highlighted && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
+        highlighted && !active && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
+        active && "bg-[#f1f1ea] shadow-[inset_3px_0_0_#57534d] hover:bg-[#ecece6]",
         isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
       )}
     >
@@ -527,32 +614,21 @@ function AuditDishRow({
         switch (cell.column.id) {
           case "reorder":
             return (
-              <span
+              <StructureDragHandle
                 key={cell.id}
-                data-no-dnd
-                className="flex h-full w-[22px] shrink-0 items-center justify-center"
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                <button
-                  ref={setReorderHandleRef}
-                  type="button"
-                  data-table-reorder-handle={item.id}
-                  aria-label={`Изменить порядок позиции ${item.title}`}
-                  {...reorderAttributes}
-                  {...reorderListeners}
-                  className="flex h-7 w-6 cursor-grab touch-none items-center justify-center rounded-[6px] text-[#a6a09b] transition hover:bg-[#f1f1ea] hover:text-[#57534d] active:cursor-grabbing disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  <DotsSixVertical size={16} weight="bold" />
-                </button>
-              </span>
+                ref={setReorderHandleRef}
+                canDrag={reorderEnabled}
+                ariaLabel={`Изменить порядок позиции ${item.title}`}
+                dragProps={{ ...reorderAttributes, ...reorderListeners }}
+                disabledTooltip="Очистите поиск, чтобы изменить порядок"
+              />
             );
           case "selection":
             return (
               <span
                 key={cell.id}
                 data-no-dnd
-                className="flex h-full w-[42px] shrink-0 items-center justify-center"
+                className={cn("flex h-full w-[42px] shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-10", stickyFirstColumn && stickyRowBackground)}
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
@@ -566,11 +642,11 @@ function AuditDishRow({
             );
           case "position":
             return (
-              <div key={cell.id} className="flex min-w-[160px] flex-1 items-center gap-[7px] pr-3">
+              <div key={cell.id} className={cn("flex shrink-0 items-center gap-[7px] pr-3", TABLE_COL.position, stickyFirstColumn && "sticky left-[42px] z-10", stickyFirstColumn && stickyRowBackground, stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[3px]" />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
-                    {item.title}
+                  <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+                    {itemTitle}
                   </span>
                   {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
                 </div>
@@ -578,8 +654,8 @@ function AuditDishRow({
             );
           case "description":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.description)}>
-                <AuditDot state={item.hasDescription ? "filled" : "missing"} title={item.hasDescription ? "Описание есть" : "Нет описания"} />
+              <span key={cell.id} className={cn("flex min-w-0 items-center px-3 text-[13px] font-normal leading-5 text-[#57534d]", TABLE_COL.description)} title={getDescriptionPreview(item.description) || undefined}>
+                <span className={cn("min-w-0 truncate whitespace-nowrap", !getDescriptionPreview(item.description) && "text-[#a6a09b]")}>{getDescriptionPreview(item.description) || "—"}</span>
               </span>
             );
           case "weight":
@@ -616,12 +692,12 @@ function AuditDishRow({
               </span>
             );
           case "tags": {
-            const [firstTag, ...otherTags] = item.tags;
+            const [firstTag, ...otherTags] = resolvedTags;
             return (
               <span
                 key={cell.id}
                 className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.tags)}
-                title={item.tags.length > 0 ? item.tags.join(", ") : "Теги не назначены"}
+                title={resolvedTags.length > 0 ? resolvedTags.join(", ") : "Теги не назначены"}
               >
                 {firstTag ? (
                   <>
@@ -633,18 +709,15 @@ function AuditDishRow({
             );
           }
           case "stickers": {
-            const [firstSticker, ...otherStickers] = item.guestLabels;
+            const firstSticker = resolvedSticker;
             return (
               <span
                 key={cell.id}
                 className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.stickers)}
-                title={item.guestLabels.length > 0 ? item.guestLabels.join(", ") : "Стикеры не назначены"}
+                title={firstSticker || "Стикеры не назначены"}
               >
                 {firstSticker ? (
-                  <>
-                    <span className="min-w-0 truncate whitespace-nowrap">{firstSticker}</span>
-                    {otherStickers.length > 0 && <span className="shrink-0 tabular-nums text-[#a6a09b]">+{otherStickers.length}</span>}
-                  </>
+                  <span className="min-w-0 truncate whitespace-nowrap">{firstSticker}</span>
                 ) : <span className="text-[#a6a09b]">—</span>}
               </span>
             );
@@ -654,7 +727,7 @@ function AuditDishRow({
               <span
                 key={cell.id}
                 className={cn("flex shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]", TABLE_COL.upsells)}
-                title={`Назначено допродаж: ${item.recommendationsCount}`}
+                title={`Настроено рекомендаций: ${item.recommendationsCount}`}
               >
                 {item.recommendationsCount}
               </span>
@@ -716,7 +789,10 @@ export function VirtualizedAuditRows({
   renderActions,
   compositionMode,
   highlightItemId,
+  activeItemId,
   reorderEnabled = false,
+  stickyFirstColumn = false,
+  firstColumnScrolled = false,
 }: {
   rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
@@ -727,7 +803,10 @@ export function VirtualizedAuditRows({
   renderActions?: (item: CatalogItem, onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void) => ReactNode;
   compositionMode?: boolean;
   highlightItemId?: string | null;
+  activeItemId?: string | null;
   reorderEnabled?: boolean;
+  stickyFirstColumn?: boolean;
+  firstColumnScrolled?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
@@ -765,7 +844,10 @@ export function VirtualizedAuditRows({
               renderActions={renderActions}
               compositionMode={compositionMode}
               highlighted={highlightItemId != null && item.id === highlightItemId}
+              active={activeItemId != null && item.id === activeItemId}
               reorderEnabled={reorderEnabled}
+              stickyFirstColumn={stickyFirstColumn}
+              firstColumnScrolled={firstColumnScrolled}
             />
           </div>
         );
@@ -785,6 +867,7 @@ export function SelectionToolbar({
   onMove,
   onOpenPlaceholder,
   onOpenDelete,
+  labelActions,
 }: {
   count: number;
   onClear: () => void;
@@ -796,6 +879,7 @@ export function SelectionToolbar({
   onMove: (anchor: MovePopoverAnchor) => void;
   onOpenPlaceholder: (title: string, text: string) => void;
   onOpenDelete: () => void;
+  labelActions?: ReactNode;
 }) {
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState<"full" | "medium" | "compact" | "minimal">("full");
@@ -860,6 +944,7 @@ export function SelectionToolbar({
           </ToolbarDropdown>
         </>
       )}
+      {labelActions && <><ToolbarDivider />{labelActions}</>}
       <span className="min-w-0 flex-1" />
       <ToolbarDivider />
       <DropdownMenu.Root>
@@ -897,8 +982,6 @@ export function SelectionToolbar({
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
             </>
           )}
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Добавить тег", "Добавление тегов будет добавлено позже")}>Добавить тег</DropdownActionItem>
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Убрать тег", "Удаление тегов будет добавлено позже")}>Убрать тег</DropdownActionItem>
           <DropdownActionItem onSelect={() => onOpenPlaceholder("Дублировать", "Дублирование будет добавлено позже")}>Дублировать</DropdownActionItem>
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
           <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">Архивировать</DropdownActionItem>
@@ -927,6 +1010,10 @@ export function CatalogTableFilterBar({
   onResetColumns,
   simple = false,
   headerActionsOnly = false,
+  tagCategoryActive = false,
+  stickerCategoryActive = false,
+  onTagCategoryChange,
+  onStickerCategoryChange,
 }: {
   activeFilterIds: OverviewFilterId[];
   mandatoryFilterId?: OverviewFilterId;
@@ -937,6 +1024,10 @@ export function CatalogTableFilterBar({
   onResetColumns: () => void;
   simple?: boolean;
   headerActionsOnly?: boolean;
+  tagCategoryActive?: boolean;
+  stickerCategoryActive?: boolean;
+  onTagCategoryChange?: (active: boolean) => void;
+  onStickerCategoryChange?: (active: boolean) => void;
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
@@ -960,33 +1051,62 @@ export function CatalogTableFilterBar({
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
 
   if (headerActionsOnly) {
-    const completenessIds: OverviewFilterId[] = [
-      "quick:all",
-      "quick:no-description",
-      "quick:no-photo",
-      "quick:no-weight",
-      "quick:no-kbju",
-      "quick:no-translation",
-    ];
-    const activeCompleteness = activeFilterIds[0] ?? "quick:all";
+    const activeCount = activeFilterIds.length + Number(tagCategoryActive) + Number(stickerCategoryActive);
     return (
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="inline-flex h-6 shrink-0 items-center gap-1 rounded-[7px] px-1.5 text-[12px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-            <span>{activeCompleteness === "quick:all" ? "Заполненность" : HYBRID_PRIMARY_FILTER_LABELS[activeCompleteness]}</span>
+          <button type="button" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+            <FunnelSimple size={14} />
+            <span>Фильтры</span>
+            {activeCount > 0 && <span className="rounded-[4px] bg-[#efefea] px-1 text-[11px] tabular-nums text-[#57534d]">{activeCount}</span>}
             <CaretDown size={12} />
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="end">
-          <DropdownMenu.RadioGroup value={activeCompleteness} onValueChange={(value) => onActiveFilterChange(value as OverviewFilterId, value !== "quick:all")}>
-            {completenessIds.map((id) => (
-              <DropdownMenu.RadioItem key={id} value={id} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center"><DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator></span>
-                <span className="min-w-0 flex-1">{id === "quick:all" ? "Все позиции" : HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-              </DropdownMenu.RadioItem>
+          <div className="max-h-[380px] min-w-[280px] overflow-y-auto">
+            {filterGroups.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
+                {group.ids.map((id) => (
+                  <DropdownMenu.CheckboxItem
+                    key={id}
+                    checked={activeFilterIds.includes(id)}
+                    onCheckedChange={(checked) => onActiveFilterChange(id, checked === true)}
+                    onSelect={(event) => event.preventDefault()}
+                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
+                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                    <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                  </DropdownMenu.CheckboxItem>
+                ))}
+              </div>
             ))}
-          </DropdownMenu.RadioGroup>
+            {(onTagCategoryChange || onStickerCategoryChange) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+            {onTagCategoryChange && (
+              <DropdownMenu.CheckboxItem
+                checked={tagCategoryActive}
+                onCheckedChange={(checked) => onTagCategoryChange(checked === true)}
+                onSelect={(event) => event.preventDefault()}
+                className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+              >
+                <span className="flex size-4 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
+                <span>Теги</span>
+              </DropdownMenu.CheckboxItem>
+            )}
+            {onStickerCategoryChange && (
+              <DropdownMenu.CheckboxItem
+                checked={stickerCategoryActive}
+                onCheckedChange={(checked) => onStickerCategoryChange(checked === true)}
+                onSelect={(event) => event.preventDefault()}
+                className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+              >
+                <span className="flex size-4 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
+                <span>Стикеры</span>
+              </DropdownMenu.CheckboxItem>
+            )}
+          </div>
         </DropdownContent>
       </DropdownMenu.Root>
     );

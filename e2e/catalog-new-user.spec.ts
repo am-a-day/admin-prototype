@@ -67,7 +67,7 @@ test("walks the empty catalog first-user flow and records current persistence", 
 
   await chooseScenario(page, "Пустой");
   await resetScenario(page);
-  await expect(page.getByText("Каталог пока пуст", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Начните создавать меню" })).toBeVisible();
   await expect(page.getByText("Кухня", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Омлет с томатами и сыром", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: `${screenshotDirectory}/01-empty-catalog.png` });
@@ -78,18 +78,18 @@ test("walks the empty catalog first-user flow and records current persistence", 
   await sectionDialog.getByRole("button", { name: "Добавить раздел" }).click();
   await expect(page).toHaveURL(/sectionId=draft-section-/);
   await expect(page.getByRole("button", { name: `Действия с разделом «${firstSectionName}»`, exact: true })).toBeVisible();
-  await expect(page.getByText("В меню пока нет позиций", { exact: true })).toBeVisible();
+  await expect(page.getByText("В разделе пока нет позиций", { exact: true })).toBeVisible();
   await expect(page.getByText("Пепперони Фреш", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: `${screenshotDirectory}/02-first-section.png` });
 
-  await page.getByRole("button", { name: "Новая позиция", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить позицию", exact: true }).click();
   const draft = page.locator("[data-structure-position-draft]");
   await expect(draft).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Новая позиция" })).toHaveCount(0);
   await page.screenshot({ path: `${screenshotDirectory}/03-create-position.png` });
-  await draft.getByRole("textbox", { name: "Например, Пицца" }).fill(firstPositionName);
-  await draft.getByRole("button", { name: "Создать", exact: true }).click();
-  await expect(page.getByRole("heading", { name: firstPositionName })).toBeVisible();
+  await draft.getByRole("textbox", { name: "Название позиции" }).fill(firstPositionName);
+  await draft.getByRole("button", { name: "Добавить позицию", exact: true }).click();
+  await expect(page.locator("[data-position-editor-pane]").getByRole("heading", { name: firstPositionName })).toBeVisible();
   await page.screenshot({ path: `${screenshotDirectory}/04-first-position-editor.png` });
 
   const description = page.getByRole("textbox", { name: "Описание" });
@@ -101,12 +101,12 @@ test("walks the empty catalog first-user flow and records current persistence", 
   await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstPositionName })).toBeVisible();
   await page.screenshot({ path: `${screenshotDirectory}/05-after-first-position.png` });
 
-  await page.getByRole("button", { name: "Новая позиция", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить позицию", exact: true }).click();
   const secondDraft = page.locator("[data-structure-position-draft]");
   await expect(page.getByRole("dialog", { name: "Новая позиция" })).toHaveCount(0);
-  await secondDraft.getByRole("textbox", { name: "Например, Пицца" }).fill("Вторая позиция");
-  await secondDraft.getByRole("button", { name: "Создать", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Вторая позиция" })).toBeVisible();
+  await secondDraft.getByRole("textbox", { name: "Название позиции" }).fill("Вторая позиция");
+  await secondDraft.getByRole("button", { name: "Добавить позицию", exact: true }).click();
+  await expect(page.locator("[data-position-editor-pane]").getByRole("heading", { name: "Вторая позиция" })).toBeVisible();
   await page.getByRole("navigation", { name: "Положение позиции в каталоге" })
     .getByRole("button", { name: firstSectionName, exact: true })
     .click();
