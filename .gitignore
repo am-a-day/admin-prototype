@@ -6,4 +6,6 @@ dist
 
 # local dev-server logs
 vite-dev.*.log
+dev-server-*.err.log
+dev-server-*.out.log
 test-results/
