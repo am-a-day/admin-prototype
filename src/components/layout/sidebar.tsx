@@ -5,7 +5,7 @@ import {
   CardsThree,
   CaretDown,
   ChartBar,
-  ClockCounterClockwise,
+  ClockCountdown,
   Coins,
   BookOpen,
   DotsThreeOutline,
@@ -14,7 +14,6 @@ import {
   FilePlus,
   FolderSimplePlus,
   ForkKnife,
-  House,
   List,
   MagnifyingGlass,
   Package,
@@ -24,6 +23,7 @@ import {
   Scan,
   SealPercent,
   ShieldCheck,
+  Stack,
   Swatches,
   Tag,
   ThumbsUp,
@@ -71,7 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Онлайн-меню",
     items: [
-      { label: "Главная", section: "storefront", tab: "home", icon: House },
+      { label: "Главная", section: "storefront", tab: "home", icon: Stack },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
     ],
@@ -80,7 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Заказы",
     items: [
       { label: "Настройка заказов", section: "management", tab: "order-settings", icon: Package },
-      { label: "История заказов", section: "management", tab: "order-history", icon: ClockCounterClockwise },
+      { label: "История заказов", section: "management", tab: "order-history", icon: ClockCountdown },
     ],
   },
 ];
@@ -191,7 +191,7 @@ function MoreMenu({
             "flex cursor-pointer items-center gap-1.5 rounded-[8px] px-2 py-[7px] text-left text-[13px] font-normal leading-4 transition",
             !compact && "w-full",
             isMoreActive || open
-              ? "bg-white text-zinc-950 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+              ? "bg-[#e7e7e8] text-zinc-950"
               : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
           )}
         >
@@ -514,7 +514,7 @@ function NavList({
             "relative flex cursor-pointer items-center gap-1.5 rounded-[8px] text-left text-[13px] font-normal leading-4 transition",
             compact ? "h-[30px] w-8 justify-center p-0" : "w-full px-[7px] py-[6px]",
             active
-              ? "bg-white text-[#1c1917] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+              ? "bg-[#e7e7e8] text-[#1c1917]"
               : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
           )}
         >
@@ -602,7 +602,7 @@ export function NavDrawer({
       <div
         ref={drawerRef}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-56 flex-col bg-white shadow-2xl transition-transform duration-300",
+          "fixed inset-y-0 left-0 z-50 flex w-56 flex-col bg-stone-100 shadow-2xl transition-transform duration-300",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -672,7 +672,7 @@ function StartPlanBlock() {
 export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate }: NavProps) {
   const { planId } = usePlan();
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
       {/* Header row: logo + optional pin (pin appears only in the hover flyout) */}
       <div className="flex h-[59px] shrink-0 items-center justify-between px-4">
         <TaskoLogo className="text-zinc-900" />
@@ -704,7 +704,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
 
 function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate }: NavProps & { showTooltips?: boolean }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
       {/* Header row: mini logo, aligns with app header height */}
       <div className="flex h-[59px] shrink-0 items-center justify-center">
         <MiniLogo className="text-zinc-900" />
