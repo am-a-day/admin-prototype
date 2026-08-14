@@ -1304,7 +1304,7 @@ function AuthenticatedShell() {
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#fbf9f6] text-zinc-950">
+    <div className="flex h-screen overflow-hidden bg-stone-100 text-zinc-950">
 
       {/* ── Left: full-height sidebar (+ desktop hover flyout) ────────────────── */}
       {showInlineSidebar && (
@@ -1339,7 +1339,7 @@ function AuthenticatedShell() {
                 flyoutOpen ? "z-[80] w-48 pointer-events-auto shadow-xl shadow-zinc-400/25" : "w-0 pointer-events-none",
               )}
             >
-              <div className="flex h-full w-48 flex-col bg-[#fbf9f6]">
+              <div className="flex h-full w-48 flex-col bg-stone-100">
                 <FullSidebar
                   section={section}
                   activeTab={activeTab}

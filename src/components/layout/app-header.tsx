@@ -30,7 +30,7 @@ export function AppHeaderRight({
   catalogHasVisibleItems,
 }: AppHeaderRightProps) {
   return (
-    <header className="flex h-[59px] shrink-0 items-center gap-1 bg-[#fbf9f6] pr-3">
+    <header className="flex h-[59px] shrink-0 items-center gap-1 bg-stone-100 pr-3">
 
       {/* ── Left: mobile logo+hamburger, OR fixed collapse toggle + page title (collapsed) ── */}
       {showHamburger ? (
