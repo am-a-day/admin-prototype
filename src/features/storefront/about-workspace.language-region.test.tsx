@@ -52,9 +52,12 @@ describe("language and region workspace", () => {
     expect(screen.getByText("Настройки языка, отображения цен и локального времени")).toBeInTheDocument();
     expect(screen.queryByText("Региональные настройки")).not.toBeInTheDocument();
 
-    screen.getByRole("combobox", { name: "Валюта" }).focus();
+    const currencySelect = screen.getByRole("combobox", { name: "Валюта" });
+    const initialCurrencyIcon = currencySelect.querySelector("svg")?.innerHTML;
+    currencySelect.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    expect(screen.getByRole("combobox", { name: "Валюта" })).toHaveTextContent("Сербский динар — RSD");
+    expect(currencySelect).toHaveTextContent("Сербский динар — RSD");
+    expect(currencySelect.querySelector("svg")?.innerHTML).not.toBe(initialCurrencyIcon);
 
     screen.getByRole("combobox", { name: "Часовой пояс" }).focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
@@ -64,6 +67,9 @@ describe("language and region workspace", () => {
   it("keeps adding, primary-language switching, and removal connected", async () => {
     const user = userEvent.setup();
     renderWorkspace();
+
+    const primaryLanguageChip = screen.getByLabelText("Основной язык").parentElement;
+    expect(primaryLanguageChip?.querySelector('button[aria-label^="Действия для языка"]')).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Действия для языка English" }));
     await user.click(screen.getByRole("menuitem", { name: "Удалить язык" }));

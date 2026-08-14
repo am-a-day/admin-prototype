@@ -6,7 +6,6 @@ import {
   DropdownMenu as LanguageDropdownMenu,
   DropdownMenuContent as LanguageDropdownMenuContent,
   DropdownMenuItem as LanguageDropdownMenuItem,
-  DropdownMenuLabel as LanguageDropdownMenuLabel,
   DropdownMenuTrigger as LanguageDropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -20,10 +19,14 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+  CurrencyDollar,
+  CurrencyEur,
   CurrencyKzt,
+  CurrencyRub,
   DotsThreeVertical,
   GlobeHemisphereWest,
   MagnifyingGlass,
+  Money,
   PlusCircle as PhosphorPlusCircle,
   Star as PhosphorStar,
   Trash,
@@ -1958,6 +1961,14 @@ const CURRENCY_OPTIONS = [
   { value: "EUR", label: "Евро — EUR" },
 ];
 
+const CURRENCY_ICONS: Record<string, PhosphorIcon> = {
+  KZT: CurrencyKzt,
+  RSD: Money,
+  RUB: CurrencyRub,
+  USD: CurrencyDollar,
+  EUR: CurrencyEur,
+};
+
 const TIMEZONE_OPTIONS = [
   { value: "Asia/Almaty", label: "Казахстан, UTC+5" },
   { value: "Europe/Belgrade", label: "Белград, Центральная Европа" },
@@ -2349,39 +2360,32 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                     {translating && (
                       <span className="whitespace-nowrap text-[11px] text-[#79716b]">Переводим…</span>
                     )}
-                    <LanguageDropdownMenu>
-                      <LanguageDropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={`Действия для языка ${language.label}`}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] outline-none transition hover:bg-white/60 hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
-                        >
-                          <DotsThreeVertical size={13} weight="bold" />
-                        </button>
-                      </LanguageDropdownMenuTrigger>
-                      <LanguageDropdownMenuContent align="end">
-                        {primary ? (
-                          <LanguageDropdownMenuLabel className="flex items-center gap-2">
-                            <PhosphorStar size={13} weight="fill" />
-                            Основной язык
-                          </LanguageDropdownMenuLabel>
-                        ) : (
-                          <>
-                            <LanguageDropdownMenuItem onSelect={() => makePrimary(language.code)}>
-                              <PhosphorStar size={14} />
-                              Сделать основным
-                            </LanguageDropdownMenuItem>
-                            <LanguageDropdownMenuItem
-                              onSelect={() => removeLanguage(language.code)}
-                              className="text-[#dc2626] data-[highlighted]:bg-[#fef2f2]"
-                            >
-                              <Trash size={14} />
-                              Удалить язык
-                            </LanguageDropdownMenuItem>
-                          </>
-                        )}
-                      </LanguageDropdownMenuContent>
-                    </LanguageDropdownMenu>
+                    {!primary && (
+                      <LanguageDropdownMenu>
+                        <LanguageDropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={`Действия для языка ${language.label}`}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] outline-none transition hover:bg-white/60 hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
+                          >
+                            <DotsThreeVertical size={13} weight="bold" />
+                          </button>
+                        </LanguageDropdownMenuTrigger>
+                        <LanguageDropdownMenuContent align="end">
+                          <LanguageDropdownMenuItem onSelect={() => makePrimary(language.code)}>
+                            <PhosphorStar size={14} />
+                            Сделать основным
+                          </LanguageDropdownMenuItem>
+                          <LanguageDropdownMenuItem
+                            onSelect={() => removeLanguage(language.code)}
+                            className="text-[#dc2626] data-[highlighted]:bg-[#fef2f2]"
+                          >
+                            <Trash size={14} />
+                            Удалить язык
+                          </LanguageDropdownMenuItem>
+                        </LanguageDropdownMenuContent>
+                      </LanguageDropdownMenu>
+                    )}
                   </div>
                 );
               })}
@@ -2485,7 +2489,7 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
             <BasicSelectField
               id="about-currency"
               label="Валюта"
-              icon={CurrencyKzt}
+              icon={CURRENCY_ICONS[workspace.currency] ?? Money}
               tooltip="Используется для отображения цен в онлайн-меню."
               value={workspace.currency}
               options={CURRENCY_OPTIONS}
