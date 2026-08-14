@@ -1,40 +1,45 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import type { LucideIcon } from "lucide-react";
 import {
-  Ellipsis,
-  FileSearch,
-  FolderPlus,
-  ImagePlus,
-  Import,
-  ListPlus,
-  Menu,
-  Pin,
-  Plus,
-  QrCode,
-  Search,
-  Sheet,
-  ShieldCheck,
-  Tag,
-  X,
-} from "lucide-react";
-import {
-  ClipboardText,
+  Buildings,
+  CardsThree,
+  CaretDown,
+  ChartBar,
   ClockCounterClockwise,
   Coins,
   BookOpen,
+  DotsThreeOutline,
+  DownloadSimple,
+  FileMagnifyingGlass,
+  FilePlus,
+  FolderSimplePlus,
   ForkKnife,
   House,
+  List,
   MagnifyingGlass,
   Package,
+  PlusCircle,
+  PushPin,
+  QrCode,
   Scan,
+  SealPercent,
+  ShieldCheck,
   Swatches,
+  Tag,
   ThumbsUp,
+  X,
   type Icon,
 } from "@phosphor-icons/react";
 import { PlanWidget } from "@/components/layout/plan-widget";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { TaskoLogo } from "@/components/ui/tasko-logo";
 import { MiniLogo } from "@/components/ui/mini-logo";
@@ -64,34 +69,18 @@ type NavGroup = {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Мой ресторан",
+    title: "Онлайн-меню",
     items: [
       { label: "Главная", section: "storefront", tab: "home", icon: House },
-      { label: "Заведение", section: "storefront", tab: "about", icon: ClipboardText },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
     ],
-    trailingCta: { label: "Улучшить тариф", section: "management", tab: "billing" },
   },
   {
     title: "Заказы",
     items: [
       { label: "Настройка заказов", section: "management", tab: "order-settings", icon: Package },
       { label: "История заказов", section: "management", tab: "order-history", icon: ClockCounterClockwise },
-    ],
-  },
-  {
-    title: "Обучение",
-    items: [
-      { label: "Обучение", section: "training", tab: "trainer", icon: BookOpen },
-    ],
-  },
-  {
-    title: "Аналитика",
-    items: [
-      { label: "Сканирования", section: "analytics", tab: "scans", icon: Scan },
-      { label: "Продажи", section: "analytics", tab: "orders", icon: Coins },
-      { label: "Лайки", section: "analytics", tab: "likes", icon: ThumbsUp },
     ],
   },
 ];
@@ -108,33 +97,30 @@ function getOrganizationLabels(type: OrganizationType) {
 
 function getNavGroups(type: OrganizationType) {
   const labels = getOrganizationLabels(type);
-  return NAV_GROUPS.map((group, groupIndex) =>
-    groupIndex === 0
-      ? {
-          ...group,
-          title: labels.group,
-          items: group.items.map((item) =>
-            item.section === "storefront" && item.tab === "about"
-              ? { ...item, label: labels.about }
-              : item,
-          ),
-        }
-      : group,
-  );
+  return {
+    primary: [
+      { label: labels.group, section: "storefront" as const, tab: "about", icon: Buildings },
+      { label: "Аналитика", section: "analytics" as const, tab: "scans", icon: ChartBar },
+    ],
+    groups: NAV_GROUPS,
+  };
 }
 
 
 // ── «Ещё» items ───────────────────────────────────────────────────────────────
 
 type MoreItem =
-  | { label: string; icon: LucideIcon; section: SectionId; tab: string; soon?: false }
-  | { label: string; icon: LucideIcon; soon: true };
+  | { label: string; icon: Icon; section: SectionId; tab: string; soon?: false }
+  | { label: string; icon: Icon; soon: true };
 
 const MORE_ITEMS: MoreItem[] = [
   { label: "QR-коды",         icon: QrCode,     section: "qr",         tab: "qr"   },
   { label: "Промокоды",       icon: Tag,         section: "qr",         tab: "promo" },
-  { label: "SEO",             icon: FileSearch,  section: "management", tab: "seo"  },
-  { label: "Импорт / экспорт",icon: Import,      section: "management", tab: "io"   },
+  { label: "SEO",             icon: FileMagnifyingGlass, section: "management", tab: "seo"  },
+  { label: "Импорт / экспорт",icon: DownloadSimple,      section: "management", tab: "io"   },
+  { label: "Обучение",        icon: BookOpen,            section: "training",   tab: "trainer" },
+  { label: "Продажи",         icon: Coins,               section: "analytics",  tab: "orders" },
+  { label: "Лайки",           icon: ThumbsUp,            section: "analytics",  tab: "likes" },
   ...(CURRENT_ROLE === "am" ? [{ label: "АМ-панель", icon: ShieldCheck, section: "am" as const, tab: "review" }] : []),
 ];
 
@@ -196,7 +182,7 @@ function MoreMenu({
 
   return (
     <>
-      <Tooltip label="Ещё" disabled={!compact || !showTooltip} delayDuration={0}>
+      <Tooltip label="Больше" disabled={!compact || !showTooltip} delayDuration={0}>
         <button
           ref={btnRef}
           type="button"
@@ -209,8 +195,8 @@ function MoreMenu({
               : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
           )}
         >
-          <Ellipsis size={16} className="shrink-0" />
-          {!compact && <span className="truncate flex-1">Ещё</span>}
+          <DotsThreeOutline size={16} weight="fill" className="shrink-0" />
+          {!compact && <span className="truncate flex-1">Больше</span>}
         </button>
       </Tooltip>
 
@@ -300,7 +286,7 @@ function SearchModal({
       <div className="relative w-full max-w-md rounded-2xl border border-border bg-white shadow-2xl shadow-zinc-400/30 overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Search size={16} className="shrink-0 text-zinc-400" />
+          <MagnifyingGlass size={16} className="shrink-0 text-zinc-400" />
           <input
             ref={inputRef}
             value={query}
@@ -376,7 +362,7 @@ function SidebarSearch({
   return (
     <>
       {compact ? (
-        <Tooltip label="Поиск позиций" disabled={!compact || !showTooltip} delayDuration={0}>
+        <Tooltip label="Найти позицию" disabled={!compact || !showTooltip} delayDuration={0}>
           {/* Та же высота (28px) и X иконки, что у поля поиска в full — Y/X не прыгают при раскрытии */}
           <button
             type="button"
@@ -390,18 +376,10 @@ function SidebarSearch({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="relative flex w-full cursor-pointer items-center"
+          className="flex w-full cursor-pointer items-center gap-1.5 rounded-[8px] px-[7px] py-[6px] text-left text-[13px] font-normal leading-4 text-[#5a5a5c] transition hover:bg-white/70 hover:text-zinc-800"
         >
-          <MagnifyingGlass
-            size={14}
-            className="pointer-events-none absolute left-[7px] text-[#5a5a5c]"
-          />
-          <Input
-            readOnly
-            tabIndex={-1}
-            placeholder="Поиск позиций"
-            className="pointer-events-none h-auto cursor-pointer rounded-[7px] border-0 bg-[#e7e5e4]/70 py-[6px] pl-[27px] text-[13px] leading-4 text-[#5a5a5c] shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0"
-          />
+          <MagnifyingGlass size={16} className="shrink-0" />
+          <span>Найти позицию</span>
         </button>
       )}
 
@@ -420,60 +398,74 @@ function QuickCreateMenu({ compact, onAction }: { compact: boolean; onAction?: (
 
   if (!canCreate || !onAction) return null;
 
-  const Item = ({ action, icon: Icon, children, disabled, hint }: {
+  const Item = ({ action, icon: ItemIcon, brandSrc, children, disabled, hint }: {
     action: QuickCreateAction;
-    icon: LucideIcon;
+    icon?: Icon;
+    brandSrc?: string;
     children: ReactNode;
     disabled?: boolean;
     hint?: string;
   }) => (
-    <DropdownMenu.Item
+    <DropdownMenuItem
       disabled={disabled}
       onSelect={() => onAction(action)}
       title={hint}
-      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[7px] px-2 text-[12px] text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4] data-[disabled]:cursor-default data-[disabled]:text-[#a6a09b]"
+      aria-label={typeof children === "string" ? children : undefined}
+      className="h-7 gap-1.5 px-[7px] text-[13px] font-normal text-[#5a5a5c] data-[disabled]:cursor-default data-[disabled]:text-[#a6a09b]"
     >
-      <Icon size={14} className="shrink-0" />
+      {ItemIcon && <ItemIcon size={14} weight="fill" className="shrink-0" />}
+      {brandSrc && <img src={brandSrc} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" />}
       <span className="min-w-0 flex-1">{children}</span>
       {disabled && <span className="rounded bg-[#f5f5f4] px-1 py-0.5 text-[9px] font-semibold">ULTRA</span>}
-    </DropdownMenu.Item>
+    </DropdownMenuItem>
   );
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu>
       <Tooltip label="Создать" disabled={!compact} delayDuration={0}>
-        <DropdownMenu.Trigger asChild>
-          <button
+        <DropdownMenuTrigger asChild>
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             aria-label={compact ? "Создать" : undefined}
             data-sidebar-create-trigger
             className={cn(
-              "flex items-center justify-center gap-2 bg-white font-medium text-[#44403b] shadow-[0_2px_6px_rgba(12,12,13,0.16),0_1px_2px_rgba(12,12,13,0.08)] transition hover:bg-[#fafaf9] hover:shadow-[0_3px_8px_rgba(12,12,13,0.18),0_1px_2px_rgba(12,12,13,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a8a29e]/30 focus-visible:ring-offset-2",
+              "overflow-hidden border-[#e7e5e4] bg-white p-0 font-normal text-[#1c1917] shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:bg-white focus-visible:ring-[#a8a29e]/30",
               compact
                 ? "h-8 w-8 rounded-full"
-                : "h-8 w-full rounded-[10px] px-3 text-[13px]",
+                : "h-7 w-full rounded-[7px] text-[13px]",
             )}
           >
-            <Plus size={compact ? 18 : 16} strokeWidth={compact ? 2 : 2.4} />
-            {!compact && <span>Создать</span>}
-          </button>
-        </DropdownMenu.Trigger>
+            {compact ? (
+              <PlusCircle size={17} />
+            ) : (
+              <>
+                <span className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                  <PlusCircle size={14} />
+                  <span>Создать</span>
+                </span>
+                <span className="flex h-full w-[22px] shrink-0 items-center justify-center border-l border-[#e7e5e4]" aria-hidden="true">
+                  <CaretDown size={12} />
+                </span>
+              </>
+            )}
+          </Button>
+        </DropdownMenuTrigger>
       </Tooltip>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content side="right" align="start" sideOffset={8} className="z-[220] w-[238px] rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-xl shadow-zinc-300/40">
-          <DropdownMenu.Label className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#a6a09b]">Создание</DropdownMenu.Label>
-          <Item action="position" icon={ListPlus}>Создать позицию</Item>
-          <Item action="section" icon={FolderPlus}>Создать раздел</Item>
-          <Item action="promo" icon={Tag}>Создать промокод</Item>
-          <Item action="qr" icon={QrCode}>Создать QR-код</Item>
-          <Item action="banner" icon={ImagePlus}>Создать баннер</Item>
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownMenu.Label className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#a6a09b]">Импорт данных</DropdownMenu.Label>
-          <Item action="iiko" icon={Import} disabled={!canImportIiko} hint={!canImportIiko ? "Импорт из iiko доступен на тарифе Ultra" : undefined}>Импортировать из iiko</Item>
-          <Item action="sheets" icon={Sheet}>Импортировать из Google Таблиц</Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      <DropdownMenuContent side="bottom" align="start" sideOffset={4} className="z-[220] w-[224px] rounded-[7px] p-1 shadow-[0_8px_24px_rgba(41,37,36,0.14)]">
+        <DropdownMenuLabel>Добавить</DropdownMenuLabel>
+        <Item action="position" icon={FilePlus}>Позицию</Item>
+        <Item action="section" icon={FolderSimplePlus}>Раздел</Item>
+        <Item action="qr" icon={Scan}>QR-код</Item>
+        <Item action="banner" icon={CardsThree}>Баннер</Item>
+        <Item action="promo" icon={SealPercent}>Промокод</Item>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Импортировать каталог</DropdownMenuLabel>
+        <Item action="sheets" brandSrc="/brands/google-sheets.png">Импорт из Google Sheets</Item>
+        <Item action="iiko" brandSrc="/brands/iiko.png" disabled={!canImportIiko} hint={!canImportIiko ? "Импорт из iiko доступен на тарифе Ultra" : undefined}>Импорт из iiko</Item>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -507,46 +499,50 @@ function NavList({
   showTooltips?: boolean;
 }) {
   const { account } = useMockAuth();
-  const navGroups = getNavGroups(account?.workspace.organizationType ?? "restaurant");
+  const navigation = getNavGroups(account?.workspace.organizationType ?? "restaurant");
+
+  const renderItem = (item: NavItem) => {
+    const ItemIcon = item.icon;
+    const active = section === item.section && activeTab === item.tab;
+    return (
+      <Tooltip key={item.label} label={item.label} disabled={!compact || !showTooltips} delayDuration={0}>
+        <button
+          type="button"
+          data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
+          onClick={(event) => { event.stopPropagation(); onNavigate(item.section, item.tab); }}
+          className={cn(
+            "relative flex cursor-pointer items-center gap-1.5 rounded-[8px] text-left text-[13px] font-normal leading-4 transition",
+            compact ? "h-[30px] w-8 justify-center p-0" : "w-full px-[7px] py-[6px]",
+            active
+              ? "bg-white text-[#1c1917] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+              : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
+          )}
+        >
+          <ItemIcon size={16} weight="fill" className="shrink-0" />
+          {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+        </button>
+      </Tooltip>
+    );
+  };
 
   return (
     <nav className={cn("flex-1 overflow-y-auto pb-2", compact ? "mt-4 space-y-5 px-[7px]" : "mt-2 space-y-[6px] px-2 pt-1")}>
+      <div className={compact ? "space-y-1" : undefined}>
+        {renderItem(navigation.primary[0])}
+        <SidebarSearch compact={compact} onNavigate={onNavigate} showTooltip={showTooltips} />
+        {renderItem(navigation.primary[1])}
+      </div>
 
-      {navGroups.map((group) => (
+      {navigation.groups.map((group) => (
         <div key={group.title}>
           <GroupHeaderRow compact={compact} title={group.title} />
           <div className={compact ? "space-y-1" : undefined}>
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const active = section === item.section && activeTab === item.tab;
-              return (
-                <Tooltip key={item.label} label={item.label} disabled={!compact || !showTooltips} delayDuration={0}>
-                  <button
-                    type="button"
-                    data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
-                    onClick={(e) => { e.stopPropagation(); onNavigate(item.section, item.tab); }}
-                    className={cn(
-                      "relative flex cursor-pointer items-center gap-1.5 rounded-[8px] text-left text-[13px] font-normal leading-4 transition",
-                      compact ? "h-[30px] w-8 justify-center p-0" : "px-[7px] py-[6px]",
-                      !compact && "w-full",
-                      active
-                        ? "bg-white text-[#1c1917] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                        : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
-                    )}
-                  >
-                    <Icon size={16} weight="fill" className="shrink-0" />
-                    {!compact && <span className="truncate flex-1">{item.label}</span>}
-                  </button>
-                </Tooltip>
-              );
-            })}
+            {group.items.map(renderItem)}
           </div>
         </div>
       ))}
 
-      {/* ── «Ещё» ── */}
       <div>
-        <GroupHeaderRow compact={compact} title="Инструменты" />
         <MoreMenu
           compact={compact}
           showTooltip={showTooltips}
@@ -624,10 +620,7 @@ export function NavDrawer({
         </div>
         <div className="h-px bg-border" />
         <div className="px-3 pt-2">
-          <SidebarSearch compact={false} onNavigate={handleNavigate} />
-          <div className="mt-2">
-            <QuickCreateMenu compact={false} onAction={(action) => { onQuickCreate?.(action); onClose(); }} />
-          </div>
+          <QuickCreateMenu compact={false} onAction={(action) => { onQuickCreate?.(action); onClose(); }} />
         </div>
         <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
       </div>
@@ -694,14 +687,12 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
             aria-pressed={pinned}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-700"
           >
-            <Pin size={15} />
+            <PushPin size={15} />
           </button>
         )}
       </div>
-      {/* Search */}
       <div className="px-3 pb-1">
-        <SidebarSearch compact={false} onNavigate={onNavigate} />
-        <div className="mt-2"><QuickCreateMenu compact={false} onAction={onQuickCreate} /></div>
+        <QuickCreateMenu compact={false} onAction={onQuickCreate} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
       {planId === "Start" ? <StartPlanBlock /> : <PlanWidget onNavigate={onNavigate} compact={false} />}
@@ -718,10 +709,8 @@ function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQ
       <div className="flex h-[59px] shrink-0 items-center justify-center">
         <MiniLogo className="text-zinc-900" />
       </div>
-      {/* Search — тот же wrapper (px-3 pb-1), что и в FullSidebar: одинаковый Y-ритм */}
       <div className="shrink-0 px-[7px] pb-1">
-        <SidebarSearch compact onNavigate={onNavigate} showTooltip={showTooltips} />
-        <div className="mt-2"><QuickCreateMenu compact onAction={onQuickCreate} /></div>
+        <QuickCreateMenu compact onAction={onQuickCreate} />
       </div>
       <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
@@ -768,7 +757,8 @@ export function getPageTitle(
   if (section === "am") return "";
   if (section === "training") return "Обучение";
 
-  const allItems = getNavGroups(organizationType).flatMap((g) => g.items);
+  const navigation = getNavGroups(organizationType);
+  const allItems = [...navigation.primary, ...navigation.groups.flatMap((group) => group.items)];
   const match = allItems.find((i) => i.section === section && i.tab === activeTab);
   return match?.label ?? "";
 }
@@ -798,7 +788,7 @@ export function TopBar({ section, activeTab, onNavigate }: NavProps) {
           className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950"
           title="Меню"
         >
-          <Menu size={18} />
+          <List size={18} />
         </button>
         {title && (
           <span className="text-sm font-semibold text-zinc-800 truncate">{title}</span>

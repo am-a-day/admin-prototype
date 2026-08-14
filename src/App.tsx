@@ -818,10 +818,10 @@ function AuthenticatedShell() {
     };
   }, []);
 
-  // Sidebar visibility / collapse — the current Figma shell uses a fixed rail on desktop.
+  // Sidebar visibility / collapse — desktop starts expanded, matching the shared shell in Figma.
   const [userSidebarPreference, setUserSidebarPreference] = useState<SidebarPreference>(() => {
     const saved = window.localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
-    return saved === "expanded" || saved === "collapsed" ? saved : "collapsed";
+    return saved === "expanded" || saved === "collapsed" ? saved : "expanded";
   });
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
 

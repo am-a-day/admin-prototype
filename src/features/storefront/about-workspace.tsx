@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Star, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu as LanguageDropdownMenu,
@@ -11,7 +11,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  CurrencyKzt,
+  DotsThreeVertical,
+  GlobeHemisphereWest,
+  MagnifyingGlass,
+  PlusCircle as PhosphorPlusCircle,
+  Star as PhosphorStar,
+  Trash,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
@@ -62,8 +79,8 @@ const TAB_LABELS: Record<AboutTab, string> = {
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
   "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас" },
   "language-region": {
-    title: "Язык и регион",
-    subtitle: "Управляйте языками витрины и региональными настройками заведения.",
+    title: "Языки и регион",
+    subtitle: "Настройки языка, отображения цен и локального времени",
   },
   "guest-rules": { title: "Предупреждения", subtitle: "Настройте подтверждения, которые гости увидят перед открытием меню." },
   "public-display": { title: "Мой ресторан в сети", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
@@ -759,6 +776,7 @@ function BasicField({
 function BasicSelectField<T extends string>({
   id,
   label,
+  icon: Icon,
   value,
   options,
   helperText,
@@ -767,6 +785,7 @@ function BasicSelectField<T extends string>({
 }: {
   id: string;
   label: string;
+  icon: PhosphorIcon;
   value: T;
   options: Array<{ value: T; label: string }>;
   helperText?: string;
@@ -785,26 +804,25 @@ function BasicSelectField<T extends string>({
           {label}
         </label>
       )}
-      <div className="relative">
-        <select
+      <Select value={value} onValueChange={(nextValue) => onChange(nextValue as T)}>
+        <SelectTrigger
           id={id}
           aria-labelledby={tooltip ? `${id}-label` : undefined}
-          value={value}
-          onChange={(event) => onChange(event.target.value as T)}
-          className="h-10 w-full appearance-none rounded-[12px] border border-[#e7e5e4] bg-white px-3.5 pr-10 text-[14px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition focus:border-[#c7c2bd]"
+          className="h-[30px] rounded-[10px] border-[#e7e5e4] px-2.5 text-[12px] font-normal shadow-none"
         >
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon size={14} weight="fill" className="shrink-0 text-[#79716b]" aria-hidden="true" />
+            <SelectValue />
+          </span>
+        </SelectTrigger>
+        <SelectContent>
           {options.map((option) => (
-            <option key={option.value} value={option.value}>
+            <SelectItem key={option.value} value={option.value}>
               {option.label}
-            </option>
+            </SelectItem>
           ))}
-        </select>
-        <ChevronDown
-          size={16}
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#79716b]"
-          aria-hidden="true"
-        />
-      </div>
+        </SelectContent>
+      </Select>
       {helperText && (
         <div className="mt-1 text-[12px] leading-4 text-[#a8a29e]">
           {helperText}
@@ -2300,64 +2318,18 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
     translationTimersRef.current.set(language, timer);
   };
 
-  const applyRegionScenario = (region: "KZ" | "RS") => {
-    const serbia = region === "RS";
-    const primaryLanguage: LanguageCode = serbia ? "sr" : "ru";
-    const languages = workspace.languages.some(({ code }) => code === primaryLanguage)
-      ? workspace.languages.map((language) =>
-          language.code === primaryLanguage ? { ...language, visible: true } : language,
-        )
-      : [
-          ...workspace.languages,
-          { code: primaryLanguage, status: "ready" as const, visible: true },
-        ];
-    updateWorkspace({
-      name: "Мой ресторан 5260",
-      organizationType: "restaurant",
-      venueType: "restaurant",
-      primaryLanguage,
-      languages,
-      localizedNames: {
-        ...workspace.localizedNames,
-        [primaryLanguage]: "Мой ресторан 5260",
-      },
-      currency: serbia ? "RSD" : "KZT",
-      timezone: serbia ? "Europe/Belgrade" : "Asia/Almaty",
-      market: serbia ? "Serbia" : "Kazakhstan",
-      marketCode: region,
-      technicalAddress: `${serbia ? "tsqr.app" : "tsqr.me"}/m/5260`,
-      webAddress: "",
-    });
-    setContentLanguage(primaryLanguage);
-    onChange();
-  };
-
   return (
     <TooltipProvider delayDuration={300}>
       <>
       <div className="w-full space-y-6">
         <section aria-labelledby="menu-languages-title">
-          <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex shrink-0 items-center gap-1">
-                <h2 id="menu-languages-title" className="text-[12px] font-medium text-[#292524]">
-                  Языки в меню
-                </h2>
-                <Tooltip
-                  label="Основной язык используется по умолчанию. Добавленные языки доступны гостям в меню, а существующий контент переводится автоматически."
-                  side="top"
-                  contentClassName="max-w-[320px] px-3 py-2 text-left leading-5"
-                >
-                  <button
-                    type="button"
-                    aria-label="О языках в меню"
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-[#a8a29e] outline-none transition hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
-                  >
-                    <Info size={13} />
-                  </button>
-                </Tooltip>
-              </div>
+          <DottedLabelWithTooltip
+            id="menu-languages-title"
+            label="Языки"
+            tooltip="Основной язык используется по умолчанию. Добавленные языки доступны гостям на всей витрине, а существующий контент переводится автоматически."
+          />
 
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {addedLanguages.map((workspaceLanguage) => {
                 const language = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
                 if (!language) return null;
@@ -2368,10 +2340,10 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                   <div
                     key={language.code}
                     data-language-chip={language.code}
-                    className="flex h-6 items-center gap-1 rounded-[7px] bg-[#e7e5e4] pl-2 pr-0.5 text-[12px] text-[#292524]"
+                    className="flex h-6 items-center gap-1 rounded-[6px] bg-[#e7e5e4] pl-1.5 pr-0.5 text-[12px] text-[#292524]"
                   >
                     {primary && (
-                      <Star size={12} aria-label="Основной язык" className="shrink-0 fill-current" />
+                      <PhosphorStar size={12} weight="fill" aria-label="Основной язык" className="shrink-0" />
                     )}
                     <span className="whitespace-nowrap font-medium">{language.label}</span>
                     {translating && (
@@ -2384,26 +2356,26 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                           aria-label={`Действия для языка ${language.label}`}
                           className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] outline-none transition hover:bg-white/60 hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
                         >
-                          <MoreVertical size={13} />
+                          <DotsThreeVertical size={13} weight="bold" />
                         </button>
                       </LanguageDropdownMenuTrigger>
                       <LanguageDropdownMenuContent align="end">
                         {primary ? (
                           <LanguageDropdownMenuLabel className="flex items-center gap-2">
-                            <Star size={13} className="fill-current" />
+                            <PhosphorStar size={13} weight="fill" />
                             Основной язык
                           </LanguageDropdownMenuLabel>
                         ) : (
                           <>
                             <LanguageDropdownMenuItem onSelect={() => makePrimary(language.code)}>
-                              <Star size={14} />
+                              <PhosphorStar size={14} />
                               Сделать основным
                             </LanguageDropdownMenuItem>
                             <LanguageDropdownMenuItem
                               onSelect={() => removeLanguage(language.code)}
                               className="text-[#dc2626] data-[highlighted]:bg-[#fef2f2]"
                             >
-                              <Trash2 size={14} />
+                              <Trash size={14} />
                               Удалить язык
                             </LanguageDropdownMenuItem>
                           </>
@@ -2429,9 +2401,9 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                     type="button"
                     aria-label="Добавить язык"
                     disabled={availableLanguages.length === 0}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#d6d3d1] bg-white text-[#79716b] outline-none transition hover:border-[#a8a29e] hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <Plus size={14} />
+                    <PhosphorPlusCircle size={14} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
@@ -2468,7 +2440,7 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                   ) : (
                     <>
                       <div className="relative">
-                        <Search
+                        <MagnifyingGlass
                           size={14}
                           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#a8a29e]"
                         />
@@ -2506,30 +2478,14 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                   )}
                 </PopoverContent>
               </Popover>
-            </div>
           </div>
         </section>
 
-        <section
-          aria-labelledby="regional-settings-title"
-          className="border-t border-[#e7e5e4] pt-6"
-        >
-          <div>
-            <h2
-              id="regional-settings-title"
-              className="text-[13px] font-semibold text-[#292524]"
-            >
-              Региональные настройки
-            </h2>
-            <p className="mt-1 text-[12px] leading-5 text-[#79716b]">
-              Определяют отображение цен и время работы функций заведения.
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-4">
+        <section aria-label="Региональные параметры" className="space-y-4">
             <BasicSelectField
               id="about-currency"
               label="Валюта"
+              icon={CurrencyKzt}
               tooltip="Используется для отображения цен в онлайн-меню."
               value={workspace.currency}
               options={CURRENCY_OPTIONS}
@@ -2542,6 +2498,7 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
             <BasicSelectField
               id="about-timezone"
               label="Часовой пояс"
+              icon={GlobeHemisphereWest}
               tooltip="Используется для расписаний, заказов, уведомлений и аналитики."
               value={workspace.timezone}
               options={TIMEZONE_OPTIONS}
@@ -2550,36 +2507,6 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
                 onChange();
               }}
             />
-          </div>
-
-          <div
-            data-dev-only="region-scenario"
-            className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#d6d3d1] pt-3"
-          >
-            <span className="text-[11px] font-medium uppercase text-[#a8a29e]">
-              Dev-сценарий регистрации
-            </span>
-            <div className="inline-flex rounded-[8px] bg-[#f5f5f4] p-0.5">
-              {([
-                ["KZ", "tsqr.me · Казахстан"],
-                ["RS", "tsqr.app · Сербия"],
-              ] as const).map(([region, label]) => (
-                <button
-                  key={region}
-                  type="button"
-                  onClick={() => applyRegionScenario(region)}
-                  className={cn(
-                    "rounded-[7px] px-2.5 py-1 text-[11px] transition",
-                    workspace.marketCode === region
-                      ? "bg-white text-[#292524] shadow-sm"
-                      : "text-[#79716b] hover:text-[#44403b]",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
         </section>
       </div>
 
