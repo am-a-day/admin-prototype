@@ -2,8 +2,8 @@ feature: Position editor / Main
 status: draft
 
 prototype:
-  route: "/storefront/catalog?editorNav=unified"
-  entryComponent: "CatalogWorkspace -> PositionEditorDialogShell -> PositionEditorHost -> PositionEditor"
+  route: /storefront/catalog?editorNav=unified
+  entryComponent: CatalogWorkspace -> PositionEditorDialogShell -> PositionEditorHost -> PositionEditor
   sourceFiles:
     - src/App.tsx
     - src/features/storefront/catalog-workspace.tsx
@@ -11,171 +11,198 @@ prototype:
     - src/features/storefront/catalog/editor/position-editor.tsx
     - src/features/storefront/catalog/editor/editor-tabs.tsx
     - src/features/storefront/catalog/editor/editor-queue-controls.tsx
-    - src/features/storefront/catalog/editor/side-peek-context.tsx
     - src/components/workspace/translatable-field.tsx
-    - src/components/workspace/description-rich-text-editor.tsx
-    - src/contexts/catalog-store-context.tsx
+    - src/components/ui/button.tsx
+    - src/components/ui/input.tsx
+    - src/components/ui/tooltip.tsx
     - src/index.css
 
 figma:
-  deliveryFile: "NEW-АДМИНКА"
-  deliveryPage: "Delivery · Catalog"
-  libraryFile: "UI-Lib"
+  delivery:
+    fileKey: vJsF007tTNiL73S40cW8NU
+    pageId: "2307:90"
+    pageName: Delivery · Catalog
+  library:
+    fileKey: Njh3c5L4Dw4u0qkqrBxlIP
+    pages:
+      foundations:
+        pageId: "2:2"
+        pageName: 01 · Foundations
+      primitives:
+        pageId: "2:3"
+        pageName: 02 · Primitives
+      productPatterns:
+        pageId: "2:4"
+        pageName: 03 · Product patterns
 
-viewports:
-  primary:
-    width: 1440
-    height: 900
-  compact:
-    width: 1280
-    height: 800
+responsive:
+  viewportExamples:
+    - viewport: ">=1400px"
+      sidePeekWidth: 470
+    - viewport: "<1400px"
+      sidePeekWidth: 400
+  container:
+    defaultWidths:
+      compact: 400
+      wide: 470
+    resizeRange:
+      min: 380
+      max: 600
+    visibleTableMin: 120
+    headerHeight: 56
+    behavior: overlays-catalog-with-left-border-no-shadow
 
-sections:
-  - Position editor · Context
-  - Position editor · Main flow
-  - Position editor · States
-  - Position editor · Responsive
+componentMap:
+  - figmaComponent: Button
+    codePeer: Button
+    sourcePath: src/components/ui/button.tsx
+    status: mapped
+    codeVariants:
+      variant: [default, destructive, secondary, outline, ghost]
+      size: [default, sm, lg, icon]
+    figmaProperties: [variant, size, label]
+    notes: destructive source token is undefined in the current theme; disabled, hover, and focus remain CSS interaction states rather than invented Figma axes
+  - figmaComponent: Input
+    codePeer: Input
+    sourcePath: src/components/ui/input.tsx
+    status: mapped
+    codeVariants:
+      size: [default, compact]
+    figmaProperties: [size, value]
+    notes: native input type, disabled, and focus ring are behavior-only
+  - figmaComponent: Tooltip
+    codePeer: Tooltip
+    sourcePath: src/components/ui/tooltip.tsx
+    status: mapped
+    codeVariants:
+      side: [right, left, top, bottom]
+      disabled: [true, false]
+    figmaProperties: [side, content]
+    notes: default delayDuration is 300ms and sideOffset is 6px
+  - figmaComponent: PositionEditorDialogShell
+    codePeer: PositionEditorDialogShell
+    sourcePath: src/features/storefront/catalog-workspace.tsx
+    status: mapped
+    codeVariants:
+      presentation: [dialog, pane]
+      creation: [true, false]
+    figmaProperties: [presentation]
+    notes: pane samples 400px and 470px; 380-600px range belongs in description
+  - figmaComponent: SidePeekHeader
+    codePeer: none
+    sourcePath: inline header inside PositionEditor
+    status: candidate-extraction
+    codeVariants: {}
+    figmaProperties: [state]
+    notes: compose nested PositionSaveStatus and PositionQueueControls; header navigation is hover/focus-only
+  - figmaComponent: PositionSaveStatus
+    codePeer: PositionSaveStatus
+    sourcePath: src/features/storefront/catalog/editor/position-editor.tsx
+    status: mapped
+    codeVariants:
+      state: [idle, saving, saved, error]
+    figmaProperties: [state]
+    notes: error renderer exists but is currently unreachable and spec-only
+  - figmaComponent: WorkspaceLocalTabs
+    codePeer: WorkspaceLocalTabs
+    sourcePath: src/features/storefront/catalog/editor/editor-tabs.tsx
+    status: mapped
+    codeVariants:
+      active: [true, false]
+      count: [true, false]
+      endAction: [optional]
+    figmaProperties: [state]
+    notes: endAction exists as an optional ReactNode
+  - figmaComponent: PositionQueueControls
+    codePeer: PositionQueueControls
+    sourcePath: src/features/storefront/catalog/editor/editor-queue-controls.tsx
+    status: mapped
+    codeVariants:
+      previousId: [available, unavailable]
+      nextId: [available, unavailable]
+    figmaProperties: [state]
+    notes: show all four enabled-disabled combinations
+  - figmaComponent: TranslatableField
+    codePeer: TranslatableField
+    sourcePath: src/components/workspace/translatable-field.tsx
+    status: mapped
+    codeVariants:
+      multiline: [true, false]
+      compact: [true, false]
+      plain: [true, false]
+    figmaProperties: [presentation, density, state]
+    notes: no separate translation model may be invented
 
 states:
   - id: default-editing
-    implementation: PositionEditor mode="edit"
+    implemented: true
+    source: PositionEditor mode=edit
+    handoffStatus: mapped
+    notes: active edit state
   - id: saving
-    implementation: PositionSaveStatus status="saving"
+    implemented: true
+    source: PositionSaveStatus status=saving
+    handoffStatus: mapped
+    notes: simulated autosave
   - id: saved
-    implementation: PositionSaveStatus status="saved"
-  - id: save-error
-    implementation: renderer exists but no audited path sets error
-  - id: validation-error
-    implementation: create name, discount, description, and nutrition validations
-  - id: initial-loading
-    implementation: not implemented for edit mode
+    implemented: true
+    source: PositionSaveStatus status=saved
+    handoffStatus: mapped
+    notes: success icon and copy
+  - id: error
+    implemented: false
+    source: PositionSaveStatus renderer
+    handoffStatus: spec-only
+    notes: renderer exists; current prototype never reaches it; not Ready for dev
   - id: long-title
-    implementation: truncated in Side Peek header
-  - id: long-description
-    implementation: 300-character limit with error presentation
-  - id: missing-image
-    implementation: empty media strip or ImageBroken fallback for an entry without a source
-  - id: image-uploaded
-    implementation: local object URL preview
-  - id: disabled-control
-    implementation: queue boundaries, discount inputs, pre-commit actions
-  - id: create-mode
-    implementation: PositionEditor mode="create"
-  - id: edit-mode
-    implementation: PositionEditor mode="edit"
-  - id: compact-desktop
-    implementation: 400px default pane below 1400px viewport
-  - id: closing-editor
-    implementation: collapse, Escape, or outside pointer; 200ms exit
-  - id: switching-positions
-    implementation: same pane shell, item state reset, no content transition
+    implemented: true
+    source: PositionEditor detail-pane header
+    handoffStatus: mapped
+    notes: title truncates
+  - id: navigation-visible
+    implemented: true
+    source: PositionEditor detail-pane controls
+    handoffStatus: mapped
+    notes: hover/focus-only visibility
 
-flows:
-  - open-position
-  - edit-main-fields
-  - autosave
-  - close-editor
-  - switch-position
+tokenStrategy:
+  primitives:
+    - primitive/white
+    - primitive/zinc-950
+    - primitive/transparent
+    - spacing/*
+    - radius/shared/*
+  semantic:
+    - semantic/background
+    - semantic/foreground
+    - semantic/card
+    - semantic/card-foreground
+    - semantic/primary
+    - semantic/primary-foreground
+    - semantic/secondary
+    - semantic/secondary-foreground
+    - semantic/muted
+    - semantic/muted-foreground
+    - semantic/accent
+    - semantic/accent-foreground
+    - semantic/border
+    - semantic/input
+    - semantic/ring
+  legacy:
+    - legacy/position-editor/*
 
-components:
-  - name: Side Peek shell
-    code: PositionEditorDialogShell
-    source: src/features/storefront/catalog-workspace.tsx
-    libraryCandidate: true
-  - name: Side Peek header
-    code: PositionEditor detail-pane header
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: true
-  - name: Autosave status
-    code: PositionSaveStatus
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: true
-  - name: Workspace local tabs
-    code: WorkspaceLocalTabs
-    source: src/features/storefront/catalog/editor/editor-tabs.tsx
-    libraryCandidate: true
-  - name: Entity queue navigation
-    code: PositionQueueControls
-    source: src/features/storefront/catalog/editor/editor-queue-controls.tsx
-    libraryCandidate: true
-  - name: Main tab
-    code: BasicTab
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: false
-  - name: Translatable field
-    code: TranslatableField
-    source: src/components/workspace/translatable-field.tsx
-    libraryCandidate: true
-  - name: Rich text description
-    code: DescriptionRichTextEditor
-    source: src/components/workspace/description-rich-text-editor.tsx
-    libraryCandidate: uncertain
-  - name: Position media strip
-    code: BasicMediaStrip
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: uncertain
-  - name: Discount block
-    code: DiscountBlock
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: false
-  - name: Nutrition block
-    code: KbjuBlock
-    source: src/features/storefront/catalog/editor/position-editor.tsx
-    libraryCandidate: false
+fixture:
+  route: /storefront/catalog?editorNav=unified&positionId=669204cd-0d0d-4782-8784-27df185f169e
+  positionId: 669204cd-0d0d-4782-8784-27df185f169e
+  setup: client scenario with checked-in src/data/catalog.fixture.json; item is Омлет с томатами и сыром
 
-tokens:
-  colors:
-    - "semantic variables available: background, foreground, card, primary, secondary, muted, accent, border, input, ring"
-    - "primary text: #292524"
-    - "secondary text: #57534d and #79716b"
-    - "muted text: #a8a29e and #a6a09b"
-    - "control border: #e5e5e5"
-    - "pane border: #e7e5e4"
-    - "quiet surface: #f5f5f4, #fafaf9, #fbfbf9"
-    - "create action: indigo-600 / #4f39f6"
-    - "saved: #56826a"
-    - "save error: #c10007"
-    - "validation error: #b42318"
-  typography:
-    - "Inter; 14px/20px; 600: Side Peek title"
-    - "Inter; 14px/28px; 600: title editing"
-    - "Inter; 13px/20px; 400: fields and body"
-    - "Inter; 13px/normal; 500: active local tab/actions"
-    - "Inter; 12px/normal; 400: save status"
-    - "Inter; 12px/16px; 400: validation/helper"
-    - "Inter; 11px/16px; 400: section metadata"
-  spacing:
-    - "4px scale: 4, 8, 12, 16, 20, 24, 28, 32, 36"
-    - "valid compact exceptions: 2, 6, 10"
-    - "Side Peek defaults: 470px at >=1400 viewport, otherwise 400px"
-    - "Side Peek resize range: 380-600px"
-    - "Side Peek sticky header: 56px"
-    - "main controls: 30px, 32px, 36px"
-  radius:
-    - "4px: tab count"
-    - "6px: small inline action"
-    - "7px: compact header/toolbar action"
-    - "8px: compact fields and controls"
-    - "10px: compact surface/add media"
-    - "12px: shared rounded-lg actions"
-    - "13px: nutrition card"
-    - "14px: dialog overlay"
-    - "16px: media tile/shared rounded-xl"
-
-openQuestions:
-  - Should Side Peek entity navigation remain hover/focus-only?
-  - Should responsive behavior use viewport or container width?
-  - Should the KБЖУ block avoid viewport-based four-column layout inside a 400px pane?
-  - Which direct colors and radii map to semantic design tokens?
-  - Should save error become reachable in the prototype?
-  - Is immediate commit after the first non-empty create-name change intentional?
-  - Should DescriptionRichTextEditor enter UI-Lib before replacing document.execCommand?
-  - Should Delivery · Catalog remain the last page in NEW-АДМИНКА?
-
-inconsistencies:
-  - Active Side Peek/Main styling relies heavily on direct hex values instead of semantic CSS variables.
-  - KБЖУ removal uses native window.confirm instead of the shared AlertDialog pattern.
-  - Save status code renders "Сохранение…" while the E2E expectation still uses "Сохраняем".
-  - Save-error UI exists but no audited state transition reaches it.
-  - Current Side Peek create call sites use mode="create" with detailPane; the explicit create footer only renders for mode="create-modal".
-  - KБЖУ uses viewport-based lg:grid-cols-4 inside a width-constrained pane.
+deferred:
+  - BasicTab
+  - BasicMediaStrip
+  - MediaTile
+  - DiscountBlock
+  - KbjuBlock
+  - DescriptionRichTextEditor
+  - CatalogContextMenuContent
+  - full PositionEditor composition
+  - delivery screens
