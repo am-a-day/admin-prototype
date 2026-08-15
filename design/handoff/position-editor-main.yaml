@@ -1,0 +1,181 @@
+feature: Position editor / Main
+status: draft
+
+prototype:
+  route: "/storefront/catalog?editorNav=unified"
+  entryComponent: "CatalogWorkspace -> PositionEditorDialogShell -> PositionEditorHost -> PositionEditor"
+  sourceFiles:
+    - src/App.tsx
+    - src/features/storefront/catalog-workspace.tsx
+    - src/features/storefront/catalog/editor/position-editor-host.tsx
+    - src/features/storefront/catalog/editor/position-editor.tsx
+    - src/features/storefront/catalog/editor/editor-tabs.tsx
+    - src/features/storefront/catalog/editor/editor-queue-controls.tsx
+    - src/features/storefront/catalog/editor/side-peek-context.tsx
+    - src/components/workspace/translatable-field.tsx
+    - src/components/workspace/description-rich-text-editor.tsx
+    - src/contexts/catalog-store-context.tsx
+    - src/index.css
+
+figma:
+  deliveryFile: "NEW-АДМИНКА"
+  deliveryPage: "Delivery · Catalog"
+  libraryFile: "UI-Lib"
+
+viewports:
+  primary:
+    width: 1440
+    height: 900
+  compact:
+    width: 1280
+    height: 800
+
+sections:
+  - Position editor · Context
+  - Position editor · Main flow
+  - Position editor · States
+  - Position editor · Responsive
+
+states:
+  - id: default-editing
+    implementation: PositionEditor mode="edit"
+  - id: saving
+    implementation: PositionSaveStatus status="saving"
+  - id: saved
+    implementation: PositionSaveStatus status="saved"
+  - id: save-error
+    implementation: renderer exists but no audited path sets error
+  - id: validation-error
+    implementation: create name, discount, description, and nutrition validations
+  - id: initial-loading
+    implementation: not implemented for edit mode
+  - id: long-title
+    implementation: truncated in Side Peek header
+  - id: long-description
+    implementation: 300-character limit with error presentation
+  - id: missing-image
+    implementation: empty media strip or ImageBroken fallback for an entry without a source
+  - id: image-uploaded
+    implementation: local object URL preview
+  - id: disabled-control
+    implementation: queue boundaries, discount inputs, pre-commit actions
+  - id: create-mode
+    implementation: PositionEditor mode="create"
+  - id: edit-mode
+    implementation: PositionEditor mode="edit"
+  - id: compact-desktop
+    implementation: 400px default pane below 1400px viewport
+  - id: closing-editor
+    implementation: collapse, Escape, or outside pointer; 200ms exit
+  - id: switching-positions
+    implementation: same pane shell, item state reset, no content transition
+
+flows:
+  - open-position
+  - edit-main-fields
+  - autosave
+  - close-editor
+  - switch-position
+
+components:
+  - name: Side Peek shell
+    code: PositionEditorDialogShell
+    source: src/features/storefront/catalog-workspace.tsx
+    libraryCandidate: true
+  - name: Side Peek header
+    code: PositionEditor detail-pane header
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: true
+  - name: Autosave status
+    code: PositionSaveStatus
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: true
+  - name: Workspace local tabs
+    code: WorkspaceLocalTabs
+    source: src/features/storefront/catalog/editor/editor-tabs.tsx
+    libraryCandidate: true
+  - name: Entity queue navigation
+    code: PositionQueueControls
+    source: src/features/storefront/catalog/editor/editor-queue-controls.tsx
+    libraryCandidate: true
+  - name: Main tab
+    code: BasicTab
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: false
+  - name: Translatable field
+    code: TranslatableField
+    source: src/components/workspace/translatable-field.tsx
+    libraryCandidate: true
+  - name: Rich text description
+    code: DescriptionRichTextEditor
+    source: src/components/workspace/description-rich-text-editor.tsx
+    libraryCandidate: uncertain
+  - name: Position media strip
+    code: BasicMediaStrip
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: uncertain
+  - name: Discount block
+    code: DiscountBlock
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: false
+  - name: Nutrition block
+    code: KbjuBlock
+    source: src/features/storefront/catalog/editor/position-editor.tsx
+    libraryCandidate: false
+
+tokens:
+  colors:
+    - "semantic variables available: background, foreground, card, primary, secondary, muted, accent, border, input, ring"
+    - "primary text: #292524"
+    - "secondary text: #57534d and #79716b"
+    - "muted text: #a8a29e and #a6a09b"
+    - "control border: #e5e5e5"
+    - "pane border: #e7e5e4"
+    - "quiet surface: #f5f5f4, #fafaf9, #fbfbf9"
+    - "create action: indigo-600 / #4f39f6"
+    - "saved: #56826a"
+    - "save error: #c10007"
+    - "validation error: #b42318"
+  typography:
+    - "Inter; 14px/20px; 600: Side Peek title"
+    - "Inter; 14px/28px; 600: title editing"
+    - "Inter; 13px/20px; 400: fields and body"
+    - "Inter; 13px/normal; 500: active local tab/actions"
+    - "Inter; 12px/normal; 400: save status"
+    - "Inter; 12px/16px; 400: validation/helper"
+    - "Inter; 11px/16px; 400: section metadata"
+  spacing:
+    - "4px scale: 4, 8, 12, 16, 20, 24, 28, 32, 36"
+    - "valid compact exceptions: 2, 6, 10"
+    - "Side Peek defaults: 470px at >=1400 viewport, otherwise 400px"
+    - "Side Peek resize range: 380-600px"
+    - "Side Peek sticky header: 56px"
+    - "main controls: 30px, 32px, 36px"
+  radius:
+    - "4px: tab count"
+    - "6px: small inline action"
+    - "7px: compact header/toolbar action"
+    - "8px: compact fields and controls"
+    - "10px: compact surface/add media"
+    - "12px: shared rounded-lg actions"
+    - "13px: nutrition card"
+    - "14px: dialog overlay"
+    - "16px: media tile/shared rounded-xl"
+
+openQuestions:
+  - Should Side Peek entity navigation remain hover/focus-only?
+  - Should responsive behavior use viewport or container width?
+  - Should the KБЖУ block avoid viewport-based four-column layout inside a 400px pane?
+  - Which direct colors and radii map to semantic design tokens?
+  - Should save error become reachable in the prototype?
+  - Is immediate commit after the first non-empty create-name change intentional?
+  - Should DescriptionRichTextEditor enter UI-Lib before replacing document.execCommand?
+  - Should Delivery · Catalog remain the last page in NEW-АДМИНКА?
+
+inconsistencies:
+  - Active Side Peek/Main styling relies heavily on direct hex values instead of semantic CSS variables.
+  - KБЖУ removal uses native window.confirm instead of the shared AlertDialog pattern.
+  - Save status code renders "Сохранение…" while the E2E expectation still uses "Сохраняем".
+  - Save-error UI exists but no audited state transition reaches it.
+  - Current Side Peek create call sites use mode="create" with detailPane; the explicit create footer only renders for mode="create-modal".
+  - KБЖУ uses viewport-based lg:grid-cols-4 inside a width-constrained pane.
