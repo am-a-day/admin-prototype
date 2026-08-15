@@ -1,16 +1,63 @@
-# Position Editor pilot — UI-Lib specification (draft)
+# Position Editor pilot — UI-Lib specification (Block 2B rebase)
 
-Status: draft. Source of truth is the current React code and `src/index.css`; this specification does not alter product code.
+Status: rebase planned; execution is blocked until the authenticated Figma UI exposes the existing tab to automation. Source of truth remains the current React code and `src/index.css`; this specification does not alter product code.
+
+This document intentionally preserves the **Block 2 generated attempt** below as an auditable historical record. It is not the target architecture. The sections immediately below define the **Block 2B target architecture**.
+
+## Current prototype debt
+
+- Block 2 created a hand-assembled primitive layer instead of using shadcncraft as the base kit.
+- Its Foundations include a `legacy/position-editor/*` color collection, component-specific text styles, and legacy radius tokens. These are useful evidence of the current prototype, but they are not a reusable foundation system.
+- The Block 2 audit recorded 12 text styles, while the rebase target permits at most eight general-purpose Inter styles.
+- The previous primitives and product patterns must be preserved as an experiment on `99 · Deprecated`; they must not silently remain the active library source.
+- The existing code still contains direct compact-density values, Side Peek dimensions, and other product-specific details. Those remain code debt until a separately scoped migration; they are not reasons to add legacy collections to the new UI-Lib.
+
+## Target UI-Lib system
+
+### Block 2B target architecture
+
+- Base kit: **shadcncraft**. Button, Input, and Tooltip are imported/reused from the kit, not manually rebuilt.
+- Product theme: Tasko's existing calm zinc/white surfaces, indigo action accent, and restrained red/amber/green-or-emerald states, mapped through semantic aliases.
+- Icons: nested instances from the **Phosphor Icons** library only. If the library is unavailable, use a named icon slot and record the blocker; never substitute glyphs, text arrows, or drawn symbols.
+- Product patterns are composed from existing primitives with Auto Layout, shared type, semantic variables, and clean PascalCase/kebab-case naming.
+
+### Foundations
+
+Create a small primitive collection with `primitive/zinc/*`, `primitive/indigo/*`, `primitive/red/*`, `primitive/amber/*`, `primitive/green/*` or `primitive/emerald/*`, plus `primitive/white`, `primitive/black`, and `primitive/transparent`. The values should be the minimal Tailwind-compatible scale needed by the imported kit and Tasko theme, not a legacy product-color dump.
+
+Create semantic shadcn aliases: `semantic/background`, `semantic/foreground`, `semantic/card`, `semantic/card-foreground`, `semantic/popover`, `semantic/popover-foreground`, `semantic/primary`, `semantic/primary-foreground`, `semantic/secondary`, `semantic/secondary-foreground`, `semantic/muted`, `semantic/muted-foreground`, `semantic/accent`, `semantic/accent-foreground`, `semantic/destructive`, `semantic/destructive-foreground`, `semantic/border`, `semantic/input`, and `semantic/ring`.
+
+Use one `Default (light)` mode; no dark mode is implied by the prototype. Keep a shared spacing scale of `spacing/4` through `spacing/48` in 4 px increments. Define no legacy radius foundation: use the base kit's shared radius treatment. Keep at most eight native Inter text styles for general button, body, label, title, helper, and metadata use; component-specific text styles do not belong in the target system.
+
+### Primitive reuse
+
+Tasko-supported usage of imported shadcncraft components is:
+
+| Primitive | Tasko-supported subset | Rebase rule |
+| --- | --- | --- |
+| `Button` | `variant=default/destructive/secondary/outline/ghost`; `size=default/sm/lg/icon` | Keep any extra kit variants, but mark this subset rather than creating a second Button. |
+| `Input` | `size=default/compact` | Add only the confirmed compact density if it is absent from the kit. |
+| `Tooltip` | `side=top/right/bottom/left` | Reuse the kit Tooltip; do not create a Side Peek-specific copy. |
+
+### Product-pattern boundary
+
+Only Tasko-specific compositions belong in the rebase: `PositionSaveStatus`, `PositionQueueControls`, `WorkspaceLocalTabs`, `TranslatableField`, then (only after the first group passes QA) `SidePeekHeader` and `PositionEditorDialogShell`. No complete editor screen, `BasicTab`, media, discount, nutrition, rich text, or delivery screen belongs here.
+
+## Code ↔ Figma mapping
+
+The mapping is implementation-led: preserve the verified source paths, actual props, and behaviour-only distinctions in the historical source audit below. The target library must not invent component axes for CSS interaction state, translation behaviour, resize ranges, or runtime-only values. `SidePeekHeader` remains a candidate extraction from the inline `PositionEditor` header, not a fictional source export.
 
 ## Naming contract
 
 - Components: PascalCase (`Button`, `PositionSaveStatus`, `WorkspaceLocalTabs`).
 - Internal layers/slots: kebab-case (`button-icon`, `side-peek-header`, `tabs-list`, `tabs-trigger`).
 - Properties: lowercase. Use only `variant`, `size`, `state`, `density`, `presentation`, and `side` where the code supports the concept.
-- Variables: slash hierarchy. Color variables stay under `primitive/*`, `semantic/*`, or `legacy/position-editor/*`.
+- Variables: slash hierarchy. Target color variables stay under `primitive/*` or `semantic/*`; `legacy/position-editor/*` appears only in the retained Block 2 history and must not be recreated.
 - No default layer names such as `Frame 123`, `Rectangle 456`, `Component 1`, or `Group 42`.
 
-## Foundations
+## Historical record — Block 2 generated attempt (rejected as a target)
+
+The following registry records what Block 2 generated and why the rebase is necessary. It is retained for traceability only; instructions in this historical record must not be used to extend the new target system.
 
 Create exactly these native collections/styles. There is one mode, `Default (light)`; source code does not define dark mode.
 
@@ -99,7 +146,7 @@ Use `Inter` only, normal letter spacing / 0.
 | `dimension/side-peek/header-height` | number | 56 px | `h-14` | SidePeekHeader | legacy |
 | `dimension/side-peek/save-status-width`, `dimension/side-peek/navigation-region-width` | number | 96 px, 104 px | PositionEditor | layout stability | legacy |
 
-## Component mapping
+### Component mapping (source audit retained from Block 2)
 
 | Figma component | Code peer | Source path | Code variants | Figma properties | States | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -113,11 +160,11 @@ Use `Inter` only, normal letter spacing / 0.
 | `PositionQueueControls` | `PositionQueueControls` | `src/features/storefront/catalog/editor/editor-queue-controls.tsx` | previous/next available or unavailable | `state` | both enabled, previous disabled, next disabled, both disabled | mapped | 32×32. Header visibility is hover/focus-only; document it. |
 | `TranslatableField` | `TranslatableField` | `src/components/workspace/translatable-field.tsx` | multiline, compact, plain, rows, autoFocus, persist | `presentation`, `density`, `state` | default, placeholder, filled, focus | mapped | `presentation=plain/surface`; `density=compact/default`; do not invent language behavior. |
 
-## Scope exclusions
+## Deferred migration work
 
 Deferred: `BasicTab`, `BasicMediaStrip`, `MediaTile`, `DiscountBlock`, `KbjuBlock`, `DescriptionRichTextEditor`, `CatalogContextMenuContent`, full `PositionEditor`, and all delivery screens.
 
-## Figma task boundaries
+### Block 2 historical Figma task boundary (superseded)
 
 - Work only on the named UI-Lib page; organize it with native Sections.
 - Use native variables, text/effect styles, components/component sets, Auto Layout, and nested instances.

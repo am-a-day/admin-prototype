@@ -1,5 +1,15 @@
 feature: Position editor / Main
-status: draft
+status: rebase-planned
+uiLibraryBase: shadcncraft
+iconSystem: phosphor
+typographyStrategy: shared-scale
+colorStrategy: primitive-plus-semantic
+
+rebase:
+  block: Block 2B
+  targetArchitecture: shadcncraft + Tasko theme + Phosphor Icons + Tasko-specific patterns
+  historicalAttempt: Block 2 generated attempt
+  executionStatus: blocked-awaiting-authenticated-figma-ui-automation
 
 prototype:
   route: /storefront/catalog?editorNav=unified
