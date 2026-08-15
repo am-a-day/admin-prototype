@@ -9,7 +9,7 @@ rebase:
   block: Block 2B
   targetArchitecture: shadcncraft + Tasko theme + Phosphor Icons + Tasko-specific patterns
   historicalAttempt: Block 2 generated attempt
-  executionStatus: blocked-awaiting-authenticated-figma-ui-automation
+  executionStatus: blocked-awaiting-manual-shadcncraft-setup
 
 prototype:
   route: /storefront/catalog?editorNav=unified

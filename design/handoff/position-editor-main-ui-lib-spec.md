@@ -1,6 +1,6 @@
 # Position Editor pilot — UI-Lib specification (Block 2B rebase)
 
-Status: rebase planned; execution is blocked until the authenticated Figma UI exposes the existing tab to automation. Source of truth remains the current React code and `src/index.css`; this specification does not alter product code.
+Status: rebase planned; the authenticated Figma tab is accessible, but execution is paused until shadcncraft can be configured through an automatable plugin surface. Source of truth remains the current React code and `src/index.css`; this specification does not alter product code.
 
 This document intentionally preserves the **Block 2 generated attempt** below as an auditable historical record. It is not the target architecture. The sections immediately below define the **Block 2B target architecture**.
 
