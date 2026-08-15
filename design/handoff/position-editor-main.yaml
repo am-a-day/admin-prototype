@@ -1,5 +1,5 @@
 feature: Position editor / Main
-status: rebase-planned
+status: canonical-rebase-in-progress
 uiLibraryBase: shadcncraft
 iconSystem: phosphor
 typographyStrategy: shared-scale
@@ -10,6 +10,23 @@ rebase:
   targetArchitecture: shadcncraft + Tasko theme + Phosphor Icons + Tasko-specific patterns
   historicalAttempt: Block 2 generated attempt
   executionStatus: blocked-awaiting-manual-shadcncraft-setup
+
+uiLibrary:
+  strategy: canonical-shadcn-kit
+  canonicalFile: https://www.figma.com/design/ov1ltJWzueueEUHShcQAmk/Shadcn-ui-Figma-Library-%E2%80%93-UI-Kit--Components--Design-System--2026---Community-
+  taskoFile:
+    fileKey: VjHj3vPArq0S7aBAzWipqg
+    fileName: Tasko UI
+    productPatternsPage: Tasko · Product patterns
+  iconSystem: phosphor
+  primitiveStrategy: reuse
+  tokenStrategy: shadcn-semantic
+  componentStrategy: reuse-before-custom
+  themeDelta:
+    status: audited
+    primaryAccent: indigo
+    fontFamily: Inter
+    notes: Keep canonical primitive and semantic structure; direct Position Editor values remain migration debt.
 
 prototype:
   route: /storefront/catalog?editorNav=unified
@@ -198,8 +215,7 @@ tokenStrategy:
     - semantic/border
     - semantic/input
     - semantic/ring
-  legacy:
-    - legacy/position-editor/*
+  legacy: [] # Deliberately not imported into the canonical Tasko UI file.
 
 fixture:
   route: /storefront/catalog?editorNav=unified&positionId=669204cd-0d0d-4782-8784-27df185f169e
