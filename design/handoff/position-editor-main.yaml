@@ -28,6 +28,27 @@ uiLibrary:
     fontFamily: Inter
     notes: Keep canonical primitive and semantic structure; direct Position Editor values remain migration debt.
 
+handoff:
+  block: Block 3
+  status: blocked-library-publish-required
+  target:
+    fileKey: vJsF007tTNiL73S40cW8NU
+    pageId: "2307:90"
+    pageName: Delivery · Catalog
+    sections:
+      context: { nodeId: "2307:91", name: Position editor · Context }
+      mainFlow: { nodeId: "2307:92", name: Position editor · Main flow }
+      states: { nodeId: "2307:93", name: Position editor · States }
+      responsive: { nodeId: "2307:94", name: Position editor · Responsive }
+  canonicalReuse:
+    taskoUiLibraryAvailableInDelivery: false
+    crossFileInstancesWorked: false
+    libraryPublishRequired: true
+    notes: Delivery's added-library inventory does not contain Tasko UI. Do not recreate Shadcn primitives or copy/detach them across files; publish and enable Tasko UI first.
+  figmaWrites:
+    count: 0
+    notes: Delivery sections were intentionally left unchanged while native component reuse was unavailable.
+
 prototype:
   route: /storefront/catalog?editorNav=unified
   entryComponent: CatalogWorkspace -> PositionEditorDialogShell -> PositionEditorHost -> PositionEditor
