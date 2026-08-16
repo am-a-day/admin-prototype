@@ -3,6 +3,11 @@ import { createContext, useContext, type ReactNode } from "react";
 type PositionEditorFixtureState = {
   /** Allows deterministic visual fixtures to exercise the existing validation UI. */
   nameError?: string;
+  /** Keeps real Recommendations-tab controls open for deterministic Design Lab captures. */
+  promo?: {
+    recommendationPickerOpen?: boolean;
+    creatingLabelType?: "tag" | "sticker";
+  };
 };
 
 const PositionEditorFixtureContext = createContext<PositionEditorFixtureState | null>(null);

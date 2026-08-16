@@ -4,6 +4,14 @@ import type { CatalogItem, CatalogSection } from "@/data/catalog";
 export const POSITION_EDITOR_DESIGN_SCENARIOS = [
   "default",
   "discount-kbju",
+  "recommendations",
+  "recommendations/default",
+  "recommendations/picker",
+  "recommendations/added",
+  "recommendations/tag-create",
+  "recommendations/tag-assigned",
+  "recommendations/sticker-create",
+  "recommendations/sticker-assigned",
   "saving",
   "validation",
   "long-content",
@@ -18,6 +26,10 @@ export type PositionEditorDesignFixture = {
   items: CatalogItem[];
   autosaveByItem?: Record<string, CatalogAutosaveState>;
   validationMessage?: string;
+  promo?: {
+    recommendationPickerOpen?: boolean;
+    creatingLabelType?: "tag" | "sticker";
+  };
 };
 
 const DESIGN_SECTION: CatalogSection = {
@@ -87,7 +99,7 @@ export function isPositionEditorDesignScenario(
 }
 
 export function getPositionEditorDesignScenario(pathname: string): PositionEditorDesignScenario | null {
-  const match = pathname.match(/^\/__design\/position-editor\/([^/]+)\/?$/);
+  const match = pathname.match(/^\/__design\/position-editor\/(.+?)\/?$/);
   const scenario = match?.[1];
   return isPositionEditorDesignScenario(scenario) ? scenario : null;
 }
@@ -140,6 +152,42 @@ export function getPositionEditorDesignFixture(
       },
       description: createLongContent(),
       hasDescription: true,
+    });
+  }
+
+  if (scenario === "recommendations/picker") {
+    fixture.promo = { recommendationPickerOpen: true };
+  }
+
+  if (scenario === "recommendations/added") {
+    fixture.items[0] = createBaseItem({
+      recommendationsCount: 1,
+      upsell: {
+        recommendationIds: ["design-lab-supporting-position"],
+        recommendationSources: { "design-lab-supporting-position": "manual" },
+      },
+    });
+  }
+
+  if (scenario === "recommendations/tag-create") {
+    fixture.promo = { creatingLabelType: "tag" };
+  }
+
+  if (scenario === "recommendations/tag-assigned") {
+    fixture.items[0] = createBaseItem({
+      tags: ["Острое"],
+      upsell: { tags: [{ ru: "Острое" }] },
+    });
+  }
+
+  if (scenario === "recommendations/sticker-create") {
+    fixture.promo = { creatingLabelType: "sticker" };
+  }
+
+  if (scenario === "recommendations/sticker-assigned") {
+    fixture.items[0] = createBaseItem({
+      guestLabels: ["Хит"],
+      upsell: { sticker: { ru: "Хит" } },
     });
   }
 

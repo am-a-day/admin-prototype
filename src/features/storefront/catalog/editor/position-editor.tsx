@@ -1488,6 +1488,7 @@ export function PromoRecommendationsCard({
   onGenerate,
   isReciprocal,
   generationBusy = false,
+  initialSelectorOpen = false,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
@@ -1497,8 +1498,9 @@ export function PromoRecommendationsCard({
   onGenerate?: (mode: "supplement" | "regenerate") => void;
   isReciprocal?: (recommendationId: string) => boolean;
   generationBusy?: boolean;
+  initialSelectorOpen?: boolean;
 }) {
-  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(initialSelectorOpen);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
   const recommendationSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1735,12 +1737,14 @@ export function PromoTab({
   upsell,
   onChange,
   onItemChange,
+  initialLabelCreatingType,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
   upsell: CatalogItemUpsellState;
   onChange: (next: CatalogItemUpsellState) => void;
   onItemChange: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
+  initialLabelCreatingType?: "tag" | "sticker";
 }) {
   const { contentLanguage } = useAppSettings();
   const [localizedDialog, setLocalizedDialog] = useState<PromoLocalizedDialogState | null>(null);
@@ -1770,7 +1774,12 @@ export function PromoTab({
   return (
     <>
       <div data-upsell-stack className="flex flex-col gap-2">
-        <CatalogLabelControls item={item} allItems={allItems} onPatchItem={onItemChange} />
+        <CatalogLabelControls
+          item={item}
+          allItems={allItems}
+          onPatchItem={onItemChange}
+          initialCreatingType={initialLabelCreatingType}
+        />
 
         <PromoCompactCard cardName="keywords" label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню">
           {keywordValues.map((keyword, index) => {
@@ -3197,7 +3206,11 @@ export function PositionEditor({
   const creationCanvas = mode === "create-modal";
   const creationPane = detailPane && mode === "create";
   const sidePeekActionsEnabled = mode === "edit" || createCommitted;
-  const nextForcedTab = forcedEditorTab ?? (mode !== "edit" || forceBasicTabOnItemChange ? "basic" : undefined);
+  const recommendationsDesignFixture = typeof window !== "undefined"
+    && window.location.pathname.startsWith("/__design/position-editor/recommendations");
+  const nextForcedTab = recommendationsDesignFixture
+    ? "promo"
+    : forcedEditorTab ?? (mode !== "edit" || forceBasicTabOnItemChange ? "basic" : undefined);
 
   useEffect(() => {
     const nextTab = mountedItemRef.current
@@ -3717,13 +3730,20 @@ export function PositionEditor({
             )}
             promoContent={(
               <div className="space-y-2">
-                <PromoRecommendationsCard item={item} allItems={allItems} upsell={upsell} onChange={onUpsellChange} />
+                <PromoRecommendationsCard
+                  item={item}
+                  allItems={allItems}
+                  upsell={upsell}
+                  onChange={onUpsellChange}
+                  initialSelectorOpen={fixture?.promo?.recommendationPickerOpen}
+                />
                 <PromoTab
                   item={item}
                   allItems={allItems}
                   upsell={upsell}
                   onChange={onUpsellChange}
                   onItemChange={(target, nextPatch) => onItemChange?.(target, nextPatch)}
+                  initialLabelCreatingType={fixture?.promo?.creatingLabelType}
                 />
               </div>
             )}

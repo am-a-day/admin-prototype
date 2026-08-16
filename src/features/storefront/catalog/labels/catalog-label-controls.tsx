@@ -592,9 +592,11 @@ function LocalLabelEditPopover({
 function LocalCatalogLabelControls({
   item,
   onPatchItem,
+  initialCreatingType,
 }: {
   item: CatalogItem;
   onPatchItem: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
+  initialCreatingType?: CatalogLabelType;
 }) {
   const { contentLanguage } = useAppSettings();
   const { account } = useMockAuth();
@@ -608,12 +610,12 @@ function LocalCatalogLabelControls({
   const itemLabels = getLocalCatalogItemLabels(item, primaryLanguage);
   const itemLabelsKey = JSON.stringify(itemLabels);
   const [optimistic, setOptimistic] = useState(() => ({ itemId: item.id, ...itemLabels }));
-  const [creatingType, setCreatingType] = useState<CatalogLabelType | null>(null);
+  const [creatingType, setCreatingType] = useState<CatalogLabelType | null>(initialCreatingType ?? null);
 
   useEffect(() => {
     setOptimistic({ itemId: item.id, ...itemLabels });
-    setCreatingType(null);
-  }, [item.id, itemLabelsKey]);
+    setCreatingType(initialCreatingType ?? null);
+  }, [initialCreatingType, item.id, itemLabelsKey]);
 
   const labels = optimistic.itemId === item.id ? optimistic : { itemId: item.id, ...itemLabels };
   const apply = (next: { tags: CatalogLocalizedValue[]; sticker: CatalogLocalizedValue | null }) => {
@@ -776,10 +778,16 @@ export function CatalogLabelControls(props: {
   item: CatalogItem;
   allItems: CatalogItem[];
   onPatchItem: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
+  /** Used only by deterministic Design Lab captures of the active local-label UI. */
+  initialCreatingType?: CatalogLabelType;
 }) {
   return USE_SHARED_TAGS_AND_STICKERS
     ? <SharedCatalogLabelControls {...props} />
-    : <LocalCatalogLabelControls item={props.item} onPatchItem={props.onPatchItem} />;
+    : <LocalCatalogLabelControls
+      item={props.item}
+      onPatchItem={props.onPatchItem}
+      initialCreatingType={props.initialCreatingType}
+    />;
 }
 
 export function CatalogBulkLabelPicker({

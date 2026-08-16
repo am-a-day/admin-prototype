@@ -1584,7 +1584,9 @@ function PositionEditorDesignLabRoot({ fixture }: { fixture: PositionEditorDesig
               persistence={false}
             >
               <PositionEditorFixtureProvider value={
-                fixture.validationMessage ? { nameError: fixture.validationMessage } : null
+                fixture.validationMessage || fixture.promo
+                  ? { nameError: fixture.validationMessage, promo: fixture.promo }
+                  : null
               }>
                 <PositionEditorDesignLab fixture={fixture} />
               </PositionEditorFixtureProvider>
