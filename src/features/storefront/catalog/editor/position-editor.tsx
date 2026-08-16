@@ -1489,6 +1489,7 @@ export function PromoRecommendationsCard({
   isReciprocal,
   generationBusy = false,
   initialSelectorOpen = false,
+  showRecommendationRemoveAction = false,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
@@ -1499,6 +1500,8 @@ export function PromoRecommendationsCard({
   isReciprocal?: (recommendationId: string) => boolean;
   generationBusy?: boolean;
   initialSelectorOpen?: boolean;
+  /** Used only by deterministic Design Lab captures of the existing row action. */
+  showRecommendationRemoveAction?: boolean;
 }) {
   const [selectorOpen, setSelectorOpen] = useState(initialSelectorOpen);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
@@ -1628,7 +1631,10 @@ export function PromoRecommendationsCard({
                             type="button"
                             aria-label={`Удалить рекомендацию «${recommended.title}»`}
                             onClick={() => setRecommendationIds(recommendationIds.filter((id) => id !== recommended.id))}
-                            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100"
+                            className={cn(
+                              "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100",
+                              showRecommendationRemoveAction ? "opacity-100" : "opacity-0",
+                            )}
                           >
                             <XCircle size={18} />
                           </button>
@@ -1738,6 +1744,7 @@ export function PromoTab({
   onChange,
   onItemChange,
   initialLabelCreatingType,
+  initialLabelEditingType,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
@@ -1745,6 +1752,7 @@ export function PromoTab({
   onChange: (next: CatalogItemUpsellState) => void;
   onItemChange: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   initialLabelCreatingType?: "tag" | "sticker";
+  initialLabelEditingType?: "tag" | "sticker";
 }) {
   const { contentLanguage } = useAppSettings();
   const [localizedDialog, setLocalizedDialog] = useState<PromoLocalizedDialogState | null>(null);
@@ -1779,6 +1787,7 @@ export function PromoTab({
           allItems={allItems}
           onPatchItem={onItemChange}
           initialCreatingType={initialLabelCreatingType}
+          initialEditingType={initialLabelEditingType}
         />
 
         <PromoCompactCard cardName="keywords" label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню">
@@ -3404,7 +3413,7 @@ export function PositionEditor({
         : "available";
     const stopDisplayMode: CatalogStopDisplayMode = unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
     return (
-      <DropdownMenu.Root>
+      <DropdownMenu.Root open={fixture?.positionActionsOpen ? true : undefined}>
         <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
         <DropdownContent align="start">
           <CatalogContextMenuContent
@@ -3736,6 +3745,7 @@ export function PositionEditor({
                   upsell={upsell}
                   onChange={onUpsellChange}
                   initialSelectorOpen={fixture?.promo?.recommendationPickerOpen}
+                  showRecommendationRemoveAction={fixture?.promo?.showRecommendationRemoveAction}
                 />
                 <PromoTab
                   item={item}
@@ -3744,6 +3754,7 @@ export function PositionEditor({
                   onChange={onUpsellChange}
                   onItemChange={(target, nextPatch) => onItemChange?.(target, nextPatch)}
                   initialLabelCreatingType={fixture?.promo?.creatingLabelType}
+                  initialLabelEditingType={fixture?.promo?.editingLabelType}
                 />
               </div>
             )}

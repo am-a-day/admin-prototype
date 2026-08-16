@@ -498,6 +498,7 @@ function LocalLabelEditPopover({
   displayLanguage,
   onChange,
   onRemove,
+  initialOpen = false,
 }: {
   type: CatalogLabelType;
   value: CatalogLocalizedValue;
@@ -506,8 +507,10 @@ function LocalLabelEditPopover({
   displayLanguage: CatalogLanguageCode;
   onChange: (value: CatalogLocalizedValue) => void;
   onRemove: () => void;
+  /** Used only by deterministic Design Lab captures of the existing edit popover. */
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [draft, setDraft] = useState<Partial<CatalogLocalizedValue>>(value);
   const displayText = getLocalCatalogLabelText(value, displayLanguage, primaryLanguage);
 
@@ -593,10 +596,12 @@ function LocalCatalogLabelControls({
   item,
   onPatchItem,
   initialCreatingType,
+  initialEditingType,
 }: {
   item: CatalogItem;
   onPatchItem: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   initialCreatingType?: CatalogLabelType;
+  initialEditingType?: CatalogLabelType;
 }) {
   const { contentLanguage } = useAppSettings();
   const { account } = useMockAuth();
@@ -648,6 +653,7 @@ function LocalCatalogLabelControls({
               onRemove={() => apply(type === "tag"
                 ? { tags: labels.tags.filter((_, tagIndex) => tagIndex !== index), sticker: labels.sticker }
                 : { tags: labels.tags, sticker: null })}
+              initialOpen={initialEditingType === type && index === 0}
             />
           ))}
           {creatingType === type && (
@@ -780,6 +786,8 @@ export function CatalogLabelControls(props: {
   onPatchItem: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   /** Used only by deterministic Design Lab captures of the active local-label UI. */
   initialCreatingType?: CatalogLabelType;
+  /** Used only by deterministic Design Lab captures of the active local-label edit popover. */
+  initialEditingType?: CatalogLabelType;
 }) {
   return USE_SHARED_TAGS_AND_STICKERS
     ? <SharedCatalogLabelControls {...props} />
@@ -787,6 +795,7 @@ export function CatalogLabelControls(props: {
       item={props.item}
       onPatchItem={props.onPatchItem}
       initialCreatingType={props.initialCreatingType}
+      initialEditingType={props.initialEditingType}
     />;
 }
 

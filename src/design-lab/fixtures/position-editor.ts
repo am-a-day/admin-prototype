@@ -7,11 +7,15 @@ export const POSITION_EDITOR_DESIGN_SCENARIOS = [
   "recommendations",
   "recommendations/default",
   "recommendations/picker",
+  "recommendations/selected",
   "recommendations/added",
   "recommendations/tag-create",
   "recommendations/tag-assigned",
+  "recommendations/tag-edit",
   "recommendations/sticker-create",
   "recommendations/sticker-assigned",
+  "recommendations/sticker-edit",
+  "position-actions",
   "saving",
   "validation",
   "long-content",
@@ -26,9 +30,12 @@ export type PositionEditorDesignFixture = {
   items: CatalogItem[];
   autosaveByItem?: Record<string, CatalogAutosaveState>;
   validationMessage?: string;
+  positionActionsOpen?: boolean;
   promo?: {
     recommendationPickerOpen?: boolean;
     creatingLabelType?: "tag" | "sticker";
+    editingLabelType?: "tag" | "sticker";
+    showRecommendationRemoveAction?: boolean;
   };
 };
 
@@ -71,11 +78,14 @@ function createBaseItem(patch: Partial<CatalogItem> = {}): CatalogItem {
   };
 }
 
-function createSupportingItem(): CatalogItem {
+function createSupportingItem(
+  id = "design-lab-supporting-position",
+  title = "Зелёный салат",
+): CatalogItem {
   return createBaseItem({
-    id: "design-lab-supporting-position",
-    title: "Зелёный салат",
-    titleTranslations: { ru: "Зелёный салат" },
+    id,
+    title,
+    titleTranslations: { ru: title },
     price: 2190,
     description: "",
     hasDescription: false,
@@ -112,7 +122,12 @@ export function getPositionEditorDesignFixture(
     scenario,
     selectedItemId: DESIGN_ITEM_ID,
     sections: [{ ...DESIGN_SECTION }],
-    items: [base, createSupportingItem()],
+    items: [
+      base,
+      createSupportingItem(),
+      createSupportingItem("design-lab-supporting-drink", "Ягодный морс"),
+      createSupportingItem("design-lab-supporting-dessert", "Медовик"),
+    ],
   };
 
   if (scenario === "discount-kbju") {
@@ -159,6 +174,17 @@ export function getPositionEditorDesignFixture(
     fixture.promo = { recommendationPickerOpen: true };
   }
 
+  if (scenario === "recommendations/selected") {
+    fixture.items[0] = createBaseItem({
+      recommendationsCount: 1,
+      upsell: {
+        recommendationIds: ["design-lab-supporting-position"],
+        recommendationSources: { "design-lab-supporting-position": "manual" },
+      },
+    });
+    fixture.promo = { recommendationPickerOpen: true };
+  }
+
   if (scenario === "recommendations/added") {
     fixture.items[0] = createBaseItem({
       recommendationsCount: 1,
@@ -167,6 +193,7 @@ export function getPositionEditorDesignFixture(
         recommendationSources: { "design-lab-supporting-position": "manual" },
       },
     });
+    fixture.promo = { showRecommendationRemoveAction: true };
   }
 
   if (scenario === "recommendations/tag-create") {
@@ -180,6 +207,14 @@ export function getPositionEditorDesignFixture(
     });
   }
 
+  if (scenario === "recommendations/tag-edit") {
+    fixture.items[0] = createBaseItem({
+      tags: ["Острое"],
+      upsell: { tags: [{ ru: "Острое" }] },
+    });
+    fixture.promo = { editingLabelType: "tag" };
+  }
+
   if (scenario === "recommendations/sticker-create") {
     fixture.promo = { creatingLabelType: "sticker" };
   }
@@ -189,6 +224,18 @@ export function getPositionEditorDesignFixture(
       guestLabels: ["Хит"],
       upsell: { sticker: { ru: "Хит" } },
     });
+  }
+
+  if (scenario === "recommendations/sticker-edit") {
+    fixture.items[0] = createBaseItem({
+      guestLabels: ["Хит"],
+      upsell: { sticker: { ru: "Хит" } },
+    });
+    fixture.promo = { editingLabelType: "sticker" };
+  }
+
+  if (scenario === "position-actions") {
+    fixture.positionActionsOpen = true;
   }
 
   return fixture;
