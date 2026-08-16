@@ -335,18 +335,20 @@ function validateContact(value: string, kind: AuthContactKind): ValidatedContact
     : { ok: false, error: "Введите номер телефона: от 10 до 15 цифр." };
 }
 
+function createSeedAuthState(): StoredAuthState {
+  const seed = createSeedAccount();
+  const phoneSeed = createSeedPhoneAccount();
+  return {
+    accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
+    contactIndex: {
+      [normalizeContact(seed.contact)]: seed.id,
+      [normalizeContact(phoneSeed.contact)]: phoneSeed.id,
+    },
+  };
+}
+
 function readAuthState(): StoredAuthState {
-  if (typeof window === "undefined") {
-    const seed = createSeedAccount();
-    const phoneSeed = createSeedPhoneAccount();
-    return {
-      accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
-      contactIndex: {
-        [normalizeContact(seed.contact)]: seed.id,
-        [normalizeContact(phoneSeed.contact)]: phoneSeed.id,
-      },
-    };
-  }
+  if (typeof window === "undefined") return createSeedAuthState();
 
   try {
     const raw = window.localStorage.getItem(AUTH_STATE_KEY);
@@ -454,15 +456,7 @@ function readAuthState(): StoredAuthState {
     // Ignore malformed prototype state.
   }
 
-  const seed = createSeedAccount();
-  const phoneSeed = createSeedPhoneAccount();
-  return {
-    accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
-    contactIndex: {
-      [normalizeContact(seed.contact)]: seed.id,
-      [normalizeContact(phoneSeed.contact)]: phoneSeed.id,
-    },
-  };
+  return createSeedAuthState();
 }
 
 function writeAuthState(state: StoredAuthState) {
@@ -527,9 +521,20 @@ function upsertAccountWithSnapshot(state: StoredAuthState, account: MockAccount 
 
 const MockAuthContext = createContext<MockAuthContextValue | null>(null);
 
-export function MockAuthProvider({ children }: { children: ReactNode }) {
-  const [authState, setAuthState] = useState<StoredAuthState>(() => readAuthState());
-  const [sessionId, setSessionId] = useState<string | null>(() => readSessionId());
+export function MockAuthProvider({
+  children,
+  fixture = false,
+}: {
+  children: ReactNode;
+  /** Uses the fixed seed account without reading the user's persisted prototype session. */
+  fixture?: boolean;
+}) {
+  const [authState, setAuthState] = useState<StoredAuthState>(
+    () => fixture ? createSeedAuthState() : readAuthState(),
+  );
+  const [sessionId, setSessionId] = useState<string | null>(
+    () => fixture ? SEED_ACCOUNT_ID : readSessionId(),
+  );
   const [authResolution, setAuthResolution] = useState<AuthResolution | null>(null);
   const account = sessionId ? authState.accounts[sessionId] ?? null : null;
 

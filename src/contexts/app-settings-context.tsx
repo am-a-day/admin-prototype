@@ -81,9 +81,18 @@ function readOrderSettings(accountId?: string): StoredOrderSettings {
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
-export function AppSettingsProvider({ children }: { children: ReactNode }) {
+export function AppSettingsProvider({
+  children,
+  persistence = true,
+}: {
+  children: ReactNode;
+  persistence?: boolean;
+}) {
   const { account } = useMockAuth();
-  const initialOrderSettings = useMemo(() => readOrderSettings(account?.id), [account?.id]);
+  const initialOrderSettings = useMemo(
+    () => persistence ? readOrderSettings(account?.id) : EMPTY_ORDER_SETTINGS,
+    [account?.id, persistence],
+  );
   const [contentLanguage, setContentLanguage] = useState<LanguageCode>(
     () => account?.workspace.primaryLanguage ?? "ru",
   );
@@ -101,7 +110,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [pickupAddress, setPickupAddress] = useState(initialOrderSettings.pickupAddress);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!persistence || typeof window === "undefined") return;
     window.localStorage.setItem(orderSettingsStorageKey(account?.id), JSON.stringify({
       serviceFeeEnabled,
       serviceFeePercent,
@@ -124,6 +133,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     deliveryComment,
     pickupComment,
     pickupAddress,
+    persistence,
   ]);
 
   useEffect(() => {

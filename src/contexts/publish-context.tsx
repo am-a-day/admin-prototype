@@ -109,14 +109,22 @@ function writeStoredChanges(accountId: string | undefined, changes: Record<PageK
 
 const PublishContext = createContext<PublishContextValue | null>(null);
 
-export function PublishProvider({ children }: { children: ReactNode }) {
+export function PublishProvider({
+  children,
+  persistence = true,
+}: {
+  children: ReactNode;
+  persistence?: boolean;
+}) {
   const {
     account,
     markDraftChanged,
     publishWorkspace,
   } = useMockAuth();
   const accountId = account?.id;
-  const [changes, setChanges] = useState<Record<PageKey, number>>(() => readStoredChanges(accountId));
+  const [changes, setChanges] = useState<Record<PageKey, number>>(
+    () => persistence ? readStoredChanges(accountId) : emptyChanges(),
+  );
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishVersion, setPublishVersion] = useState(0);
@@ -136,15 +144,15 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const isFirstPublication = useRef(false);
 
   useEffect(() => {
-    setChanges(readStoredChanges(accountId));
+    setChanges(persistence ? readStoredChanges(accountId) : emptyChanges());
     setLastPublishedAt(account?.workspace.publishedSnapshot?.publishedAt ?? null);
-  }, [accountId, account?.workspace.publishedSnapshot?.publishedAt]);
+  }, [accountId, account?.workspace.publishedSnapshot?.publishedAt, persistence]);
 
   const registerChange = useCallback(
     (page: PageKey) => {
       setChanges((prev) => {
         const next = { ...prev, [page]: prev[page] + 1 };
-        writeStoredChanges(accountId, next);
+        if (persistence) writeStoredChanges(accountId, next);
         return next;
       });
       setLastChangeAt(Date.now());
@@ -164,6 +172,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
     [
       accountId,
       markDraftChanged,
+      persistence,
       saveMode,
     ],
   );
@@ -209,9 +218,9 @@ export function PublishProvider({ children }: { children: ReactNode }) {
   const clearChanges = useCallback(() => {
     const next = emptyChanges();
     setChanges(next);
-    writeStoredChanges(accountId, next);
+    if (persistence) writeStoredChanges(accountId, next);
     setLastChangeAt(null);
-  }, [accountId]);
+  }, [accountId, persistence]);
 
   // ── Публикация витрины ──────────────────────────────────────────────────────
   // Ревалидация Next/cache почти мгновенна, но момент готовности неизвестен —
@@ -236,7 +245,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
           } else {
             const next = emptyChanges();
             setChanges(next);
-            writeStoredChanges(accountId, next);
+            if (persistence) writeStoredChanges(accountId, next);
             setLastChangeAt(null);
             setPublishVersion((v) => v + 1);
             setPublishPhase("idle");
@@ -248,7 +257,7 @@ export function PublishProvider({ children }: { children: ReactNode }) {
         opts?.fail ? 600 : 3000, // ошибку показываем сразу, успех — после 3 сек
       ),
     );
-  }, [account?.workspace.publishedSnapshot, accountId, publishWorkspace]);
+  }, [account?.workspace.publishedSnapshot, accountId, persistence, publishWorkspace]);
 
   const dismissPublishResult = useCallback(() => setPublishResult(null), []);
 

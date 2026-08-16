@@ -22,6 +22,7 @@ import { trackAuthEvent } from "@/lib/auth-analytics";
 import {
   catalogStorageKey,
   IS_PRAGMATIC_CATALOG_PREVIEW,
+  resetDesignLabStorage,
   resetPragmaticCatalogPreview,
 } from "@/lib/catalog-preview";
 import {
@@ -31,6 +32,13 @@ import {
   type CatalogDataScenario,
 } from "@/lib/catalog-data-scenarios";
 import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
+import { PositionEditorFixtureProvider } from "@/features/storefront/catalog/editor/position-editor-fixture-context";
+import { PositionEditorDesignLab } from "@/design-lab/position-editor-lab";
+import {
+  getPositionEditorDesignFixture,
+  getPositionEditorDesignScenario,
+  type PositionEditorDesignFixture,
+} from "@/design-lab/fixtures/position-editor";
 import { ChangeTracker } from "@/components/workspace/change-tracker";
 import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
@@ -1524,6 +1532,18 @@ export default function App() {
     };
   }, []);
 
+  const designLabPath = window.location.pathname.startsWith("/__design/");
+  const designLabScenario = designLabPath
+    ? getPositionEditorDesignScenario(window.location.pathname)
+    : null;
+  const designLabEnabled = import.meta.env.DEV || import.meta.env.MODE === "test";
+
+  if (designLabPath) {
+    if (!designLabEnabled || !designLabScenario) return <DesignLabNotFound />;
+    resetDesignLabStorage();
+    return <PositionEditorDesignLabRoot fixture={getPositionEditorDesignFixture(designLabScenario)} />;
+  }
+
   return (
     <TooltipProvider delayDuration={300}>
       <MockAuthProvider>
@@ -1546,6 +1566,41 @@ export default function App() {
         </AppSettingsProvider>
       </MockAuthProvider>
     </TooltipProvider>
+  );
+}
+
+function PositionEditorDesignLabRoot({ fixture }: { fixture: PositionEditorDesignFixture }) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <MockAuthProvider fixture>
+        <AppSettingsProvider persistence={false}>
+          <PublishProvider persistence={false}>
+            <CatalogStoreProvider
+              initialData={{
+                sections: fixture.sections,
+                items: fixture.items,
+                autosaveByItem: fixture.autosaveByItem,
+              }}
+              persistence={false}
+            >
+              <PositionEditorFixtureProvider value={
+                fixture.validationMessage ? { nameError: fixture.validationMessage } : null
+              }>
+                <PositionEditorDesignLab fixture={fixture} />
+              </PositionEditorFixtureProvider>
+            </CatalogStoreProvider>
+          </PublishProvider>
+        </AppSettingsProvider>
+      </MockAuthProvider>
+    </TooltipProvider>
+  );
+}
+
+function DesignLabNotFound() {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-white text-sm text-zinc-600">
+      404
+    </main>
   );
 }
 

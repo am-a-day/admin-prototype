@@ -63,6 +63,7 @@ import { WorkspaceLocalTabs } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
 import { usePositionSidePeek } from "./side-peek-context";
+import { usePositionEditorFixture } from "./position-editor-fixture-context";
 import { CatalogLabelControls } from "../labels/catalog-label-controls";
 
 export { createDefaultWeeklySchedule, createEmptyWeeklySchedule, isWeeklyScheduleValid } from "../ui/catalog-schedule-editor";
@@ -3191,6 +3192,7 @@ export function PositionEditor({
   const mountedItemRef = useRef(false);
   const [createNameError, setCreateNameError] = useState("");
   const sidePeek = usePositionSidePeek();
+  const fixture = usePositionEditorFixture();
 
   const creationCanvas = mode === "create-modal";
   const creationPane = detailPane && mode === "create";
@@ -3493,6 +3495,7 @@ export function PositionEditor({
       data-position-create-canvas={creationCanvas || undefined}
       data-position-detail-pane={detailPane || undefined}
       data-position-create-pane-content={creationPane || undefined}
+      data-position-editor-validation={fixture?.nameError ? "invalid" : undefined}
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", creationCanvas && "bg-white")}
     >
       {creationCanvas && (
@@ -3693,7 +3696,7 @@ export function PositionEditor({
                 autoFocusName={mode !== "edit"}
                 hideName={false}
                 prioritizeName={mode !== "edit"}
-                nameError={mode !== "edit" ? createNameError : undefined}
+                nameError={fixture?.nameError ?? (mode !== "edit" ? createNameError : undefined)}
                 namePlaceholder={mode !== "edit" ? "Название позиции" : "Введите перевод…"}
                 nameResetKey={mode === "edit" ? item.id : "active-create-session"}
                 onNameChange={(value) => {

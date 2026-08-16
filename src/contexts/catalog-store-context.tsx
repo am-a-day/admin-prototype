@@ -58,6 +58,12 @@ export type CatalogMenu = {
   name: string;
 };
 
+export type CatalogStoreInitialData = {
+  sections: CatalogSection[];
+  items: CatalogItem[];
+  autosaveByItem?: Record<string, CatalogAutosaveState>;
+};
+
 type CatalogAction =
   | { type: "update-item"; id: string; patch: Partial<CatalogItem>; autosave: boolean }
   | { type: "add-item"; item: CatalogItem }
@@ -82,7 +88,11 @@ function readRecord<T>(key: string): Record<string, T> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, T> : {};
 }
 
-function createCatalogState(sections: CatalogSection[], items: CatalogItem[]): CatalogState {
+function createCatalogState(
+  sections: CatalogSection[],
+  items: CatalogItem[],
+  autosaveByItem: Record<string, CatalogAutosaveState> = {},
+): CatalogState {
   const sectionsById = Object.fromEntries(sections.map((section) => [section.id, section]));
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
   const itemOrderBySection = Object.fromEntries(sections.map((section) => [
@@ -94,7 +104,7 @@ function createCatalogState(sections: CatalogSection[], items: CatalogItem[]): C
     itemsById,
     sectionOrder: [...sections].sort((left, right) => left.sortOrder - right.sortOrder).map((section) => section.id),
     itemOrderBySection,
-    autosaveByItem: {},
+    autosaveByItem: { ...autosaveByItem },
     revision: 0,
   };
 }
@@ -367,7 +377,15 @@ export type CatalogMutationFacade = {
 
 const CatalogStoreContext = createContext<CatalogStoreValue | null>(null);
 
-export function CatalogStoreProvider({ children }: { children: ReactNode }) {
+export function CatalogStoreProvider({
+  children,
+  initialData,
+  persistence = true,
+}: {
+  children: ReactNode;
+  initialData?: CatalogStoreInitialData;
+  persistence?: boolean;
+}) {
   const { account } = useMockAuth();
   const [menus, setMenus] = useState<CatalogMenu[]>([
     { id: "primary", name: "Основное меню" },
@@ -377,7 +395,9 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const [activeMenuId, setActiveMenuId] = useState("primary");
   const [guestFacingMenuId, setGuestFacingMenuId] = useState("primary");
   const [menuStates, setMenuStates] = useState<Record<string, CatalogState>>(() => ({
-    primary: buildInitialState(),
+    primary: initialData
+      ? createCatalogState(initialData.sections, initialData.items, initialData.autosaveByItem)
+      : buildInitialState(),
     summer: buildDemoMenuState("summer"),
     breakfast: buildDemoMenuState("breakfast"),
   }));
@@ -413,7 +433,7 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
   const catalogPersistenceTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (activeMenuId !== "primary") return;
+    if (!persistence || activeMenuId !== "primary") return;
     if (catalogPersistenceTimerRef.current) window.clearTimeout(catalogPersistenceTimerRef.current);
     const itemsById = state.itemsById;
     const itemOrderBySection = state.itemOrderBySection;
@@ -439,16 +459,17 @@ export function CatalogStoreProvider({ children }: { children: ReactNode }) {
       if (catalogPersistenceTimerRef.current) window.clearTimeout(catalogPersistenceTimerRef.current);
       catalogPersistenceTimerRef.current = null;
     };
-  }, [activeMenuId, state.itemsById, state.itemOrderBySection]);
+  }, [activeMenuId, persistence, state.itemsById, state.itemOrderBySection]);
 
   useEffect(() => {
+    if (!persistence) return;
     Object.entries(upsellByItem).forEach(([id, upsell]) => {
       const item = state.itemsById[id];
       if (!item || JSON.stringify(item.upsell ?? {}) === JSON.stringify(upsell)) return;
       dispatch({ type: "update-item", id, patch: { upsell }, autosave: true });
     });
     if (activeMenuId === "primary") writeCatalogUpsellState(upsellByItem);
-  }, [activeMenuId, dispatch, state.itemsById, upsellByItem]);
+  }, [activeMenuId, dispatch, persistence, state.itemsById, upsellByItem]);
 
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
