@@ -1,78 +1,63 @@
 # Scope
 
-Block 3 targets the production-oriented handoff of Position Editor → Side Peek → «Основное» into [Delivery · Catalog](https://www.figma.com/design/vJsF007tTNiL73S40cW8NU/NEW-%D0%90%D0%90%D0%94%D0%9C%D0%98%D0%9D%D0%9A%D0%90?node-id=2307-90). Product code was not changed and Figma Agent was not used.
+Block 3 delivers the production-oriented Figma handoff for Position Editor → Side Peek → «Основное» in [Delivery · Catalog](https://www.figma.com/design/vJsF007tTNiL73S40cW8NU/NEW-%D0%90%D0%90%D0%94%D0%9C%D0%98%D0%9D%D0%9A%D0%90?node-id=2307-90). Product code was not changed and Figma Agent was not used.
 
-The four existing native target sections were verified and left untouched:
+## Cross-file preflight
 
-- `Position editor · Context` — `2307:91`
-- `Position editor · Main flow` — `2307:92`
-- `Position editor · States` — `2307:93`
-- `Position editor · Responsive` — `2307:94`
+`Tasko UI` is published and enabled as a Delivery team library. Before the handoff build, a temporary native `Library preflight` Section with exactly one Tasko UI `Button` was created and then removed.
+
+- node type: `INSTANCE`;
+- main component set: remote `Tasko UI / Button`;
+- detached: no;
+- component properties: available;
+- semantic bindings: preserved;
+- local Button copy: not created.
+
+## Delivery canvas
+
+All four pre-existing native Sections are now populated:
+
+| Section | Root | Result |
+| --- | --- | --- |
+| `Position editor · Context` (`2307:91`) | `01 · Default editing` (`2328:92`) | Full 1440×900 Catalog with 470 px right-overlay Side Peek. |
+| `Position editor · Main flow` (`2307:92`) | `Position editor · Main flow` (`2328:93`) | Catalog → opened → editing → saving → saved. |
+| `Position editor · States` (`2307:93`) | `Position editor · States` (`2328:94`) | Required isolated states and KBJU confirmation. |
+| `Position editor · Responsive` (`2307:94`) | `Position editor · Responsive` (`2328:95`) | 1440×900 / 470 and 1280×800 / 400 coverage. |
 
 ## Canonical components reused
 
-None in Delivery. The direct library audit found that Delivery has no `Tasko UI` library subscription, so native cross-file instances of the canonical Button, Input, Tabs, Tooltip, Spinner, Field, Dropdown, Sheet/Dialog, or Phosphor icons cannot be placed safely.
+The final programmatic audit found 114 live remote Tasko UI instances and zero detached instances. The build includes 5 Buttons, 56 Inputs, 4 Textareas, 18 WorkspaceLocalTabs instances, 2 Spinners, a canonical Alert Dialog, and nested Phosphor icon instances. All local frames and text with fills or strokes use semantic variable bindings; no unbound local paint was found.
 
-## Tasko components created
-
-None. Existing experimental Tasko patterns were not treated as an approved Delivery dependency: their source file is not published/available to Delivery, and no new component was created as a fallback.
+`WorkspaceLocalTabs` was quality-checked and reused: its active/inactive, count, and end-action properties match the current React structure. The historical `PositionSaveStatus` was inspected but not reused: it exposes four states yet has no exposed semantic bindings. Saving, saved, and spec-only error are therefore local state compositions built from canonical Spinner / Phosphor instances and semantic variables. No new Tasko-specific component was created.
 
 ## Local compositions
 
-None. Creating local look-alikes for Button, Input, Tabs, Tooltip, Spinner, or icons would violate reuse-before-custom and sever the requested canonical relationships.
+The Side Peek shell/header, Catalog context, media strip, discount block, description block, KBJU grid, flow cards, and isolated state cards are local feature compositions. Canonical controls are kept as live instances; no local replacement was made for Button, Input, Textarea, Alert Dialog, Spinner, or icons.
 
-## Screens created
+## States and responsive behavior
 
-None. `01 · Default editing`, flow, state, and responsive screens were not built because their mandatory primitive instances could not be reused across files.
+Rendered states: default, saving, saved, validation error, long title, long description/content, and `Save error · spec only`. The save-error renderer is documented as unreachable in the current prototype. Create mode is called out as a separate entry state with the same form composition rather than a duplicate full screen.
 
-## States covered
+The Figma-approved KBJU layout is 2×2 at both 400 px and 470 px Side Peek widths; four columns may appear only around a pane width of 560 px or more. The 400 px responsive sample retains usable content, title truncation, media, form controls, long description, vertical scroll ownership, and 2×2 KBJU.
 
-No Delivery state was rendered. The code specification remains mapped for a future handoff:
+## Prototype ↔ Figma differences and implementation debt
 
-- default editing, saving, saved, long title, and long content are implemented prototype states;
-- validation is local BasicTab behavior;
-- save error is explicitly spec-only and unreachable in the current prototype;
-- create mode is supported by code but was not designed in this blocked run.
-
-## Responsive coverage
-
-No Delivery frame was created. The verified source specification is still: 470 px Side Peek at viewport ≥1400, 400 px below 1400, with 380–600 px resize bounds, a 56 px sticky header, left border, no pane shadow, and overlay behavior. The intended Figma KBJU composition is 2×2 at 400/470 px and may become four columns around 560 px; current viewport-based code needs an update for that intended rule.
-
-## Prototype ↔ Figma differences
-
-No visual translation was made. The intended handoff must preserve information architecture and density while normalising direct hex colours and one-off radii through canonical semantic variables. It must not copy the prototype's `lg:grid-cols-4` KBJU behavior into a narrow Side Peek.
-
-## Implementation debt
-
-- `PositionSaveStatus` error renderer is not reachable in current code; show it only as `Spec only · not reachable in current implementation`.
-- KBJU grid is viewport-driven rather than pane-width-driven; Delivery should use 2×2 at 400/470 px.
-- Filled KBJU deletion relies on `window.confirm`; an approved handoff should use canonical Alert Dialog.
-- Main editor branches use direct hex colours and local radii; these are migration debt, not new foundation tokens.
+- Autosave status is rendered with normalized semantic variables; current code still contains direct color values.
+- Current code selects the KBJU four-column grid from viewport `lg`, not actual pane width. It needs a pane-width-based update.
+- Filled KBJU deletion uses `window.confirm` in code; the handoff uses canonical Alert Dialog.
+- The save-error state remains specification-only and must not be treated as Ready for dev.
 
 ## QA
 
-Direct Figma audit verified the Delivery page/section IDs and Delivery's added-library inventory. No visual prototype ↔ Figma comparison occurred because there is no new Delivery canvas result to inspect. No Figma write or correction was performed.
+Visual QA covered Context, Main flow, States, Responsive, and a close-up of the saving state. Four visual defects were found and fixed: wrapped saving copy, long-title overlap, spec-only error overlap, and Alert Dialog action localization.
 
-## Remaining blockers for Verify
+Final structural QA verified:
 
-`Tasko UI` must be published as a Figma library and enabled in `NEW-АДМИНКА` / Delivery before real cross-file component instances can be used. The direct Delivery library inventory did not list it. The Code Connect publication-inspection endpoint additionally requires a Dev or Full seat, so it could not be used to inspect Tasko UI's published-component inventory. Publishing/enabling is an external Figma permission/action, so it was not attempted automatically.
+- all four target Sections contain exactly one named handoff root;
+- all 114 component instances remain remote and none is detached;
+- cross-file Button, Input, Textarea, WorkspaceLocalTabs, Spinner, and Alert Dialog relationships are present;
+- zero local fill/stroke bindings are missing.
 
-## Performance
+## Completion boundary
 
-| Event | Time | Result |
-| --- | --- | --- |
-| T0 — start | unavailable | timestamp was not sampled at task receipt |
-| T1 — code/spec audit complete | unavailable | source and prior handoff artifacts reviewed |
-| T2 — canonical reuse audit complete | unavailable | Tasko UI not available in Delivery |
-| T3–T9 — Figma write through corrections | not applicable | no safe write path under reuse constraints |
-| T10 — docs/manifest complete | 2026-08-16 11:46:12 +05:00 | blocker recorded |
-| T11 — finished | 2026-08-16 11:46:12 +05:00 | no Block 4 started |
-
-- Total wall-clock and time before first canvas result: unavailable; no task-start timestamp and no canvas result.
-- Direct Figma writes: 0.
-- Direct Figma read/QA calls: 6.
-- Custom Tasko components created: 0.
-- Canonical components reused in Delivery: 0 (the canonical base was available only in its separate file).
-- Visual QA defects found / corrections: 0 / 0; visual QA is not applicable without a new screen.
-- Manual user interventions: 0.
-- Passive waiting: 0.
+This is a Block 3 handoff draft only. Block 4 Verify was not started, and nothing is marked Ready for dev.

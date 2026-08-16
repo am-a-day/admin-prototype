@@ -1,5 +1,5 @@
 feature: Position editor / Main
-status: canonical-rebase-in-progress
+status: handoff-draft-complete-awaiting-block-4
 uiLibraryBase: shadcncraft
 iconSystem: phosphor
 typographyStrategy: shared-scale
@@ -9,7 +9,7 @@ rebase:
   block: Block 2B
   targetArchitecture: shadcncraft + Tasko theme + Phosphor Icons + Tasko-specific patterns
   historicalAttempt: Block 2 generated attempt
-  executionStatus: blocked-awaiting-manual-shadcncraft-setup
+  executionStatus: canonical-Tasko-UI-reuse-verified-in-Delivery
 
 uiLibrary:
   strategy: canonical-shadcn-kit
@@ -30,7 +30,7 @@ uiLibrary:
 
 handoff:
   block: Block 3
-  status: blocked-library-publish-required
+  status: complete-handoff-draft
   target:
     fileKey: vJsF007tTNiL73S40cW8NU
     pageId: "2307:90"
@@ -41,13 +41,30 @@ handoff:
       states: { nodeId: "2307:93", name: Position editor · States }
       responsive: { nodeId: "2307:94", name: Position editor · Responsive }
   canonicalReuse:
-    taskoUiLibraryAvailableInDelivery: false
-    crossFileInstancesWorked: false
-    libraryPublishRequired: true
-    notes: Delivery's added-library inventory does not contain Tasko UI. Do not recreate Shadcn primitives or copy/detach them across files; publish and enable Tasko UI first.
+    taskoUiLibraryAvailableInDelivery: true
+    crossFileInstancesWorked: true
+    libraryPublishRequired: false
+    preflight:
+      section: Library preflight
+      result: pass
+      nodeType: INSTANCE
+      mainComponentSet: Tasko UI / Button
+      detached: false
+      componentPropertiesAvailable: true
+      variableBindingsPreserved: true
+      cleanup: deleted
+    notes: Tasko UI is published and enabled in Delivery. The required temporary Button was a live remote instance with available properties and preserved bindings; the temporary Section was removed before the handoff build.
   figmaWrites:
-    count: 0
-    notes: Delivery sections were intentionally left unchanged while native component reuse was unavailable.
+    count: 10
+    notes: Includes the required preflight create/delete, four root builds, Context/Main flow/States/Responsive content, and targeted state QA fixes. No Figma Agent or product-code write was used.
+  figmaQaReads:
+    count: 22
+    notes: Includes library/design-system discovery, component-property inspection, screenshots, hierarchy reads, and final programmatic validation.
+  canvas:
+    contextRoot: { nodeId: "2328:92", name: "01 · Default editing", viewport: "1440×900", sidePeekWidth: 470 }
+    mainFlowRoot: { nodeId: "2328:93", name: Position editor · Main flow, states: [Catalog, Position opened, Editing, Saving, Saved] }
+    statesRoot: { nodeId: "2328:94", name: Position editor · States, coverage: [Default, Saving, Saved, Validation error, Long title, Long description/content, Save error spec-only, KBJU delete confirmation] }
+    responsiveRoot: { nodeId: "2328:95", name: Position editor · Responsive, coverage: ["1440×900 / 470", "1280×800 / 400"] }
 
 prototype:
   route: /storefront/catalog?editorNav=unified
@@ -71,17 +88,10 @@ figma:
     pageId: "2307:90"
     pageName: Delivery · Catalog
   library:
-    fileKey: Njh3c5L4Dw4u0qkqrBxlIP
-    pages:
-      foundations:
-        pageId: "2:2"
-        pageName: 01 · Foundations
-      primitives:
-        pageId: "2:3"
-        pageName: 02 · Primitives
-      productPatterns:
-        pageId: "2:4"
-        pageName: 03 · Product patterns
+    fileKey: VjHj3vPArq0S7aBAzWipqg
+    fileName: Tasko UI
+    published: true
+    enabledInDelivery: true
 
 responsive:
   viewportExamples:
@@ -139,18 +149,18 @@ componentMap:
   - figmaComponent: SidePeekHeader
     codePeer: none
     sourcePath: inline header inside PositionEditor
-    status: candidate-extraction
+    status: local-composition
     codeVariants: {}
     figmaProperties: [state]
-    notes: compose nested PositionSaveStatus and PositionQueueControls; header navigation is hover/focus-only
+    notes: local screen composition; header navigation remains hover/focus-only
   - figmaComponent: PositionSaveStatus
     codePeer: PositionSaveStatus
     sourcePath: src/features/storefront/catalog/editor/position-editor.tsx
-    status: mapped
+    status: not-reused-historical-pattern
     codeVariants:
       state: [idle, saving, saved, error]
     figmaProperties: [state]
-    notes: error renderer exists but is currently unreachable and spec-only
+    notes: published historical pattern has four states but no exposed semantic bindings, so the handoff uses local state compositions with canonical Spinner/Phosphor instances and semantic variables; error remains spec-only
   - figmaComponent: WorkspaceLocalTabs
     codePeer: WorkspaceLocalTabs
     sourcePath: src/features/storefront/catalog/editor/editor-tabs.tsx
@@ -160,7 +170,7 @@ componentMap:
       count: [true, false]
       endAction: [optional]
     figmaProperties: [state]
-    notes: endAction exists as an optional ReactNode
+    notes: quality-checked and reused as remote Tasko UI instances; its active/inactive, count, and endAction properties match the current React structure
   - figmaComponent: PositionQueueControls
     codePeer: PositionQueueControls
     sourcePath: src/features/storefront/catalog/editor/editor-queue-controls.tsx
