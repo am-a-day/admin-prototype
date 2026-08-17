@@ -186,7 +186,7 @@ test("switches the open detail pane from the visible list without closing it", a
   await expect(page.locator(`[data-catalog-table-row="${targetId}"]`)).toHaveAttribute("data-active-position", "true");
 });
 
-test("uses the availability tab and original price-volume field order in the side peek", async ({ page }) => {
+test("keeps price-volume order and renders optional fields inline in the side peek", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
@@ -194,16 +194,15 @@ test("uses the availability tab and original price-volume field order in the sid
   await expect(pane.locator("[data-position-availability-trigger]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Свернуть редактор" })).toBeVisible();
 
-  const priceLabel = pane.getByText("Цена", { exact: true }).first();
   const price = await pane.getByRole("textbox", { name: "Цена позиции" }).boundingBox();
   const volume = await pane.getByRole("textbox", { name: "Объем позиции" }).boundingBox();
-  const discount = await pane.getByRole("button", { name: "Добавить скидку" }).boundingBox();
-  const priceLabelBox = await priceLabel.boundingBox();
-  expect(price && volume && discount && priceLabelBox).toBeTruthy();
+  const optionalFields = pane.locator("[data-inline-optional-fields]");
+  const discount = await optionalFields.getByRole("button", { name: "Добавить скидку" }).boundingBox();
+  const optionalFieldsBox = await optionalFields.boundingBox();
+  expect(price && volume && discount && optionalFieldsBox).toBeTruthy();
   expect(price!.x).toBeLessThan(volume!.x);
-  expect(Math.abs(discount!.y - priceLabelBox!.y)).toBeLessThanOrEqual(2);
-  expect(discount!.x).toBeGreaterThanOrEqual(priceLabelBox!.x);
-  expect(discount!.x + discount!.width).toBeLessThan(volume!.x);
+  expect(discount!.y).toBeGreaterThanOrEqual(optionalFieldsBox!.y);
+  await expect(optionalFields).toContainText("КБЖУ");
 
   await pane.getByRole("button", { name: "Доступность", exact: true }).click();
   const availabilityEditor = pane.getByRole("radiogroup", { name: "Доступность позиции" });
@@ -408,13 +407,13 @@ test("edits and removes a discount in a compact popover", async ({ page }) => {
   await page.getByLabel("Размер скидки").fill("10");
   await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(String(Math.round(basePrice * 0.9)));
   await expect(pane.locator("[data-discount-trigger]")).toContainText("−10%");
+  await expect(pane.locator("[data-discount-badge]")).toContainText("−10%");
   await expect(pane.locator("[data-discount-trigger]")).not.toContainText("итог");
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("Цена после скидки")).toHaveCount(0);
   await expect(pane).toBeVisible();
 
-  await pane.locator("[data-discount-trigger]").click();
-  await page.getByRole("button", { name: "Убрать скидку", exact: true }).click();
+  await pane.getByRole("button", { name: "Убрать скидку", exact: true }).click();
   await expect(pane.getByRole("button", { name: "Добавить скидку", exact: true })).toBeVisible();
   await expect(page.getByLabel("Цена после скидки")).toHaveCount(0);
 });

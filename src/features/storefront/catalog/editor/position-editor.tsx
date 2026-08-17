@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, Play, Plus, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -526,12 +526,16 @@ function BasicTab({
   weightUnit,
   discountOpen,
   discountAutofocusKey,
+  kbjuOpen,
   onDiscountChange,
   onWeightUnitChange,
   onBasePriceChange,
   onBasePriceBlur,
   onAddDiscount,
   onRemoveDiscount,
+  onAddKbju,
+  onNutritionChange,
+  onRemoveKbju,
   onAddPhotoFile,
   onAddVideoFile,
   onReorderMedia,
@@ -555,12 +559,16 @@ function BasicTab({
   weightUnit: string;
   discountOpen: boolean;
   discountAutofocusKey: number;
+  kbjuOpen: boolean;
   onDiscountChange: (priceWithSale: number | null) => void;
   onWeightUnitChange: (unit: string) => void;
   onBasePriceChange: (value: string) => void;
   onBasePriceBlur: () => void;
   onAddDiscount: () => void;
   onRemoveDiscount: () => void;
+  onAddKbju: () => void;
+  onNutritionChange: (values: CatalogNutrition) => void;
+  onRemoveKbju: () => void;
   onAddPhotoFile: (file: File) => void;
   onAddVideoFile: (file: File) => void;
   onReorderMedia: (fromIndex: number, toIndex: number) => void;
@@ -634,17 +642,6 @@ function BasicTab({
         <div className="min-w-0">
           <EditorField
             label="Цена"
-            rightSlot={(
-              <DiscountPopover
-                item={item}
-                basePrice={basePrice}
-                discountOpen={discountOpen}
-                autofocusKey={discountAutofocusKey}
-                onChange={onDiscountChange}
-                onAddDiscount={onAddDiscount}
-                onRemove={onRemoveDiscount}
-              />
-            )}
           >
             <input aria-label="Цена позиции" value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
             <span className="shrink-0 text-[13px] text-[#a6a09b]">₸</span>
@@ -697,6 +694,60 @@ function BasicTab({
           compact
         />
       </div>
+
+      <div className="border-t border-[#e7e5e4] pt-2" data-inline-optional-fields>
+        <div className="space-y-0.5">
+          <div className="flex min-h-8 items-center gap-2 rounded-[8px] px-1">
+            <div className="w-16 shrink-0 text-[13px] leading-5 text-[#303030]">Скидка</div>
+            <div className="min-w-0 flex-1">
+              <DiscountPopover
+                item={item}
+                basePrice={basePrice}
+                discountOpen={discountOpen}
+                autofocusKey={discountAutofocusKey}
+                onChange={onDiscountChange}
+                onAddDiscount={onAddDiscount}
+                onRemove={onRemoveDiscount}
+              />
+            </div>
+            {discountOpen && (
+              <button
+                type="button"
+                title="Убрать скидку"
+                aria-label="Убрать скидку"
+                onClick={onRemoveDiscount}
+                className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <Trash size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          {kbjuOpen ? (
+            <div data-kbju-editor-anchor>
+              <KbjuBlock
+                weightUnit={weightUnit}
+                initialValues={item.nutrition}
+                onChange={onNutritionChange}
+                onRemove={onRemoveKbju}
+              />
+            </div>
+          ) : (
+            <div className="flex min-h-8 items-center gap-2 rounded-[8px] px-1">
+              <div className="w-16 shrink-0 text-[13px] leading-5 text-[#303030]">КБЖУ</div>
+              <button
+                type="button"
+                aria-label="Добавить КБЖУ"
+                onClick={onAddKbju}
+                className="inline-flex h-7 items-center gap-1 rounded-[7px] px-1 text-[12px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <Plus size={14} className="text-[#a8a29e]" aria-hidden="true" />
+                Добавить
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -726,7 +777,7 @@ function EditorBlockHeader({
         title={removeLabel}
         aria-label={removeLabel}
         onClick={onRemove}
-        className="ml-1 flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] opacity-0 transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="ml-1 flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
       >
         <Trash size={15} />
       </button>
@@ -836,10 +887,29 @@ function DiscountPopover({
           type="button"
           data-discount-trigger
           aria-label={discountOpen ? triggerLabel : "Добавить скидку"}
-          className="inline-flex h-5 max-w-full items-center gap-1 rounded-[6px] px-1 text-left text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] hover:underline hover:underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className={cn(
+            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-[6px] px-1 text-left text-[12px] leading-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            discountOpen ? "text-[#57534d] hover:bg-[#f5f5f4] hover:text-[#292524]" : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]",
+          )}
         >
-          {!discountOpen && <Plus size={14} className="shrink-0 text-[#a8a29e]" />}
-          <span className="truncate">{triggerLabel}</span>
+          {discountOpen ? (
+            <>
+              <span
+                data-discount-badge
+                className="inline-flex h-5 shrink-0 items-center rounded-[5px] bg-[#f1f1ea] px-1.5 text-[11px] font-medium leading-4 text-[#57534d]"
+              >
+                −{formatDiscountPercent(summaryPercent)}%
+              </span>
+              <span className="truncate text-[12px] text-[#79716b]">
+                · {summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}
+              </span>
+            </>
+          ) : (
+            <>
+              <Plus size={14} className="shrink-0 text-[#a8a29e]" aria-hidden="true" />
+              <span className="truncate">{triggerLabel}</span>
+            </>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -1124,7 +1194,7 @@ function KbjuBlock({
         onRemove={removeNutrition}
       />
       <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(12,12,13,0.05)]">
-        <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2">
           {NUTRITION_FIELDS.map((field) => (
             <label key={field.key} className="min-w-0">
               <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{field.label}</div>
@@ -3286,7 +3356,6 @@ function PositionEditorBody({
   optionsContent,
   displayContent,
   availabilityContent,
-  basicFooter,
 }: {
   activeTab: EditorTab;
   onTabChange: (tab: EditorTab) => void;
@@ -3295,7 +3364,6 @@ function PositionEditorBody({
   optionsContent: ReactNode;
   displayContent: ReactNode;
   availabilityContent: ReactNode;
-  basicFooter: ReactNode;
 }) {
   const activeContent = activeTab === "basic"
     ? <div data-editor-form-card className="bg-white pb-4 pt-4">{basicContent}</div>
@@ -3315,7 +3383,6 @@ function PositionEditorBody({
         onValueChange={onTabChange}
       />
       <div className="pt-2">{activeContent}</div>
-      {activeTab === "basic" && basicFooter}
     </div>
   );
 }
@@ -3610,9 +3677,6 @@ export function PositionEditor({
     setTitleEditing(false);
   };
 
-  const addRowClass =
-    "flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] text-[#44403b] transition hover:bg-[#f5f5f4]";
-
   const renderPositionActionsMenu = (trigger: ReactNode) => {
     const availability: CatalogMenuAvailability = item.status === "stopped" || item.status === "coming-soon"
       ? "stopped"
@@ -3905,6 +3969,7 @@ export function PositionEditor({
                 weightUnit={weightUnit}
                 discountOpen={discountOpen}
                 discountAutofocusKey={discountAutofocusKey}
+                kbjuOpen={kbjuOpen}
                 onDiscountChange={(priceWithSale) => onDraftChange?.({ hasDiscount: true, priceWithSale })}
                 onWeightUnitChange={(unit) => {
                   setWeightUnit(unit);
@@ -3914,6 +3979,14 @@ export function PositionEditor({
                 onBasePriceBlur={formatBasePrice}
                 onAddDiscount={addDiscount}
                 onRemoveDiscount={removeDiscount}
+                onAddKbju={() => { setKbjuOpen(true); onDraftChange?.({}); }}
+                onNutritionChange={(nutrition) => {
+                  onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
+                }}
+                onRemoveKbju={() => {
+                  setKbjuOpen(false);
+                  onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
+                }}
                 onAddPhotoFile={addPhotoFile}
                 onAddVideoFile={addVideoFile}
                 onReorderMedia={reorderMedia}
@@ -3990,32 +4063,6 @@ export function PositionEditor({
                 onOutsideScheduleModeChange={onOutsideScheduleModeChange}
                 onWeeklyScheduleChange={onWeeklyScheduleChange}
               />
-            )}
-            basicFooter={(
-              <div className="mt-4 space-y-4">
-                <div data-kbju-editor-anchor>
-                  {kbjuOpen ? (
-                    <KbjuBlock
-                      weightUnit={weightUnit}
-                      initialValues={item.nutrition}
-                      onChange={(nutrition) => {
-                        onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
-                      }}
-                      onRemove={() => {
-                        setKbjuOpen(false);
-                        onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
-                      }}
-                    />
-                  ) : (
-                    <div className="px-1.5 pt-1">
-                      <button type="button" className={addRowClass} onClick={() => { setKbjuOpen(true); onDraftChange?.({}); }}>
-                        <PlusCircle size={16} className="text-[#a8a29e]" />
-                        Добавить КБЖУ
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
             )}
           />
         </div>
