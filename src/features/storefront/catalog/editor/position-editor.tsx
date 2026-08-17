@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -17,6 +17,7 @@ import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -2311,23 +2312,7 @@ function getInitialMedia(item: CatalogItem): MediaEntry[] {
   return item.thumbnailUrl ? [{ id: "photo-1", kind: "photo" }] : [];
 }
 
-type OptionGroupCardProps = {
-  group: PositionOptionGroup;
-  currency: string;
-  focused: boolean;
-  transientVariantIds: Set<string>;
-  focusedVariantId: string | null;
-  nameInputRef?: RefObject<HTMLInputElement | null>;
-  onFocus: () => void;
-  onDone: () => void;
-  onPatch: (patch: Partial<PositionOptionGroup>) => void;
-  onDuplicate?: () => void;
-  onDelete: () => void;
-  onBeginVariant: (value: string) => void;
-  onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
-  onVariantNameBlur: (id: string) => void;
-  onDeleteVariant: (id: string) => void;
-};
+type OptionsPopoverTab = "variants" | "settings";
 
 function OptionSegment<T extends string>({
   value,
@@ -2339,16 +2324,16 @@ function OptionSegment<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center rounded-[9px] bg-[#fafaf9] p-0.5">
+    <div className="flex shrink-0 items-center overflow-hidden rounded-[8px] border border-[#e7e5e4] bg-[#f5f5f4]">
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
           className={cn(
-            "flex h-7 min-w-[84px] items-center justify-center rounded-[7px] px-2.5 text-[13px] transition",
+            "flex h-[26px] min-w-[90px] items-center justify-center rounded-[7px] px-2.5 text-[13px] transition",
             value === option.value
-              ? "bg-[#f1f1ee] font-medium text-[#292524] shadow-[0_1px_2px_rgba(41,37,36,0.06)]"
+              ? "bg-white font-normal text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
               : "text-[#79716b] hover:text-[#44403b]",
           )}
         >
@@ -2404,7 +2389,7 @@ function OptionVariantRow({
           }}
           className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white pl-3 pr-[52px] text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition focus:border-[#a8a29e]"
         />
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[12px] text-[#79716b]">
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] text-[#666]">
           {currency}
         </span>
       </div>
@@ -2413,146 +2398,381 @@ function OptionVariantRow({
           type="button"
           aria-label="Удалить вариант"
           onClick={onDelete}
-          className="flex h-8 w-4 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:text-[#c10007] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex size-4 shrink-0 items-center justify-center rounded-full text-[#79716b] transition hover:text-[#c10007] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <XCircle size={17} />
+          <X size={16} />
         </button>
       </Tooltip>
     </div>
   );
 }
 
-function OptionGroupCard({
+function SortableOptionVariantRow({
+  variant,
+  currency,
+  transient,
+  autoFocus,
+  onPatch,
+  onNameBlur,
+  onDelete,
+}: {
+  variant: PositionOptionVariant;
+  currency: string;
+  transient: boolean;
+  autoFocus: boolean;
+  onPatch: (patch: Partial<PositionOptionVariant>) => void;
+  onNameBlur: () => void;
+  onDelete: () => void;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: variant.id,
+    transition: DND_TRANSITION,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: reducedMotion ? undefined : transition,
+        zIndex: isDragging ? 2 : undefined,
+      }}
+      className={cn(
+        "flex h-9 w-full items-center gap-1.5",
+        isDragging && "relative rounded-[8px] bg-white opacity-80 shadow-[0_8px_24px_rgba(41,37,36,0.12)]",
+      )}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        aria-label={`Перетащить вариант «${variant.name || "Новый вариант"}»`}
+        {...attributes}
+        {...listeners}
+        className="flex size-4 shrink-0 touch-none cursor-grab items-center justify-center rounded-[4px] text-[#79716b] transition hover:bg-[#f5f5f4] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+      >
+        <DotsSixVertical size={16} />
+      </button>
+      <div className="min-w-0 flex-1">
+        <OptionVariantRow
+          variant={variant}
+          currency={currency}
+          transient={transient}
+          autoFocus={autoFocus}
+          onPatch={onPatch}
+          onNameBlur={onNameBlur}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OptionGroupPopoverContent({
   group,
   currency,
-  focused,
+  open,
+  defaultTab,
   transientVariantIds,
   focusedVariantId,
-  nameInputRef,
-  onFocus,
-  onDone,
+  autoFocusName,
+  onOpenChange,
   onPatch,
-  onDuplicate,
-  onDelete,
-  onBeginVariant,
+  onAddVariant,
   onPatchVariant,
   onVariantNameBlur,
   onDeleteVariant,
-}: OptionGroupCardProps) {
-  if (!focused) {
-    return (
-      <div className="flex h-12 items-center gap-3 border-b border-[#f5f5f4] px-4 last:border-b-0">
-        <button type="button" onClick={onFocus} aria-label={`Редактировать группу «${group.name || "Новая группа"}»`} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none">
-          <CaretRight size={16} className="shrink-0 text-[#a8a29e]" />
-          <span className="truncate text-[14px] font-medium text-[#57534d]">{group.name || "Новая группа"}</span>
-          <span className="flex h-[18px] min-w-[21px] shrink-0 items-center justify-center rounded-[3px] bg-[#f5f5f4] px-1 text-[11px] tabular-nums text-[#79716b]">{group.variants.length}</span>
-        </button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button type="button" aria-label={`Действия с группой «${group.name}»`} className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-              <DotsThreeVertical size={18} />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownContent align="end">
-            <DropdownActionItem onSelect={() => onDuplicate?.()}>Дублировать группу</DropdownActionItem>
-            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            <DropdownActionItem tone="danger" onSelect={onDelete}>Удалить группу</DropdownActionItem>
-          </DropdownContent>
-        </DropdownMenu.Root>
-      </div>
-    );
-  }
+  onReorderVariants,
+  onDelete,
+  onDone,
+}: {
+  group: PositionOptionGroup;
+  currency: string;
+  open: boolean;
+  defaultTab: OptionsPopoverTab;
+  transientVariantIds: Set<string>;
+  focusedVariantId: string | null;
+  autoFocusName: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPatch: (patch: Partial<PositionOptionGroup>) => void;
+  onAddVariant: () => void;
+  onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
+  onVariantNameBlur: (id: string) => void;
+  onDeleteVariant: (id: string) => void;
+  onReorderVariants: (variants: PositionOptionVariant[]) => void;
+  onDelete: () => void;
+  onDone: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<OptionsPopoverTab>(defaultTab);
+  usePositionSidePeekOverlay(open, () => onOpenChange(false));
+
+  useEffect(() => {
+    if (open) setActiveTab(defaultTab);
+  }, [defaultTab, open]);
+
+  const variantSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const lastVariantOverId = useRef<string | null>(null);
+  const handleVariantDragEnd = ({ active, over }: DragEndEvent) => {
+    const overId = over && active.id !== over.id ? String(over.id) : lastVariantOverId.current;
+    lastVariantOverId.current = null;
+    if (!overId || active.id === overId) return;
+    const fromIndex = group.variants.findIndex((variant) => variant.id === String(active.id));
+    const toIndex = group.variants.findIndex((variant) => variant.id === overId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    onReorderVariants(arrayMove(group.variants, fromIndex, toIndex));
+  };
 
   return (
-    <div className="overflow-hidden bg-white" data-option-group-focused>
-      <div className="space-y-3 px-3 pb-3 pt-3">
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium leading-5 text-[#44403b]" htmlFor={`option-group-name-${group.id}`}>
-            Название опции
-          </label>
-            <input
-              ref={nameInputRef}
-              id={`option-group-name-${group.id}`}
-              value={group.name}
-              onChange={(event) => onPatch({ name: event.target.value })}
-              placeholder="Например, Размер"
-              aria-label="Название опции"
-              className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition placeholder:text-[#a8a29e] focus:border-[#a8a29e]"
-            />
-        </div>
+    <PopoverContent
+      data-option-popover
+      align="end"
+      sideOffset={6}
+      collisionPadding={12}
+      className="flex max-h-[min(640px,calc(100vh-24px))] w-[334px] flex-col gap-4 overflow-hidden rounded-[12px] border-[#e7e5e4] p-[13px] shadow-[0_18px_42px_rgba(41,37,36,0.14)]"
+    >
+      <div className="shrink-0 space-y-1.5">
+        <label className="block text-[13px] font-medium leading-5 text-[#44403b]" htmlFor={`option-group-name-${group.id}`}>
+          Название опции
+        </label>
+        <Input
+          id={`option-group-name-${group.id}`}
+          autoFocus={autoFocusName}
+          value={group.name}
+          onChange={(event) => onPatch({ name: event.target.value })}
+          placeholder="Например, Размер"
+          aria-label="Название опции"
+          className="h-9 rounded-[8px] border-[#e5e5e5] bg-white px-3 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.1)] focus:border-[#a8a29e]"
+        />
+      </div>
 
-        <div className="space-y-1.5 border-t border-[#f5f5f4] pt-3">
-          <div className="text-[13px] font-medium leading-5 text-[#44403b]">Варианты</div>
-            <div className="space-y-1.5">
-                {group.variants.map((variant) => (
-                  <OptionVariantRow
-                    key={variant.id}
-                    variant={variant}
-                    currency={currency}
-                    transient={transientVariantIds.has(variant.id)}
-                    autoFocus={focusedVariantId === variant.id}
-                    onPatch={(patch) => onPatchVariant(variant.id, patch)}
-                    onNameBlur={() => onVariantNameBlur(variant.id)}
-                    onDelete={() => onDeleteVariant(variant.id)}
-                  />
-                ))}
-              <input
-                value=""
-                onChange={(event) => {
-                  if (event.target.value) onBeginVariant(event.target.value);
-                }}
-                placeholder="Добавить еще вариант"
-                aria-label="Добавить еще вариант"
-                className="h-9 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] outline-none transition placeholder:text-[#79716b] focus:border-[#a8a29e]"
-              />
-            </div>
-        </div>
-
-        <details className="group border-t border-[#f5f5f4] pt-3" open>
-          <summary className="flex h-5 cursor-pointer list-none items-center justify-between text-[13px] font-medium text-[#44403b] [&::-webkit-details-marker]:hidden">
-            Настройки
-            <CaretDown size={16} className="transition group-open:rotate-180" />
-          </summary>
-          <div className="mt-2">
-            <div className="flex min-h-9 items-center justify-between gap-6 border-b border-[#e7e5e4] py-2">
-              <Tooltip label="Гость должен выбрать хотя бы один вариант из этой группы" side="top">
-                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Обязательный выбор</span>
-              </Tooltip>
-              <Switch
-                checked={group.required}
-                onCheckedChange={(checked) => onPatch({ required: checked })}
-                aria-label="Обязательный выбор"
-                className="data-[state=checked]:bg-[#44403b]"
-              />
-            </div>
-            <div className="flex min-h-9 items-center justify-between gap-4 border-b border-[#e7e5e4] py-2">
-              <Tooltip label="Один вариант ограничивает выбор одним значением; несколько позволяет выбрать несколько" side="top">
-                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Можно выбрать</span>
-              </Tooltip>
-              <OptionSegment<PositionOptionSelection>
-                value={group.selection}
-                options={[{ value: "single", label: "Один вариант" }, { value: "multiple", label: "Несколько" }]}
-                onChange={(selection) => onPatch({ selection })}
-              />
-            </div>
-            <div className="flex min-h-9 items-center justify-between gap-4 py-2">
-              <Tooltip label="Итоговая заменяет цену позиции, доплата прибавляется к ней" side="top">
-                <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] text-[#57534d]">Цена вариантов</span>
-              </Tooltip>
-              <OptionSegment<PositionOptionPricing>
-                value={group.pricing}
-                options={[{ value: "total", label: "Итоговая" }, { value: "surcharge", label: "Доплата" }]}
-                onChange={(pricing) => onPatch({ pricing })}
-              />
-            </div>
+      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div className="space-y-2">
+          <div className="flex items-center" role="tablist" aria-label="Настройки опции">
+            {([
+              { id: "variants", label: "Варианты" },
+              { id: "settings", label: "Настройки" },
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex h-[26px] items-center rounded-[7px] px-2.5 text-[12px] transition",
+                  activeTab === tab.id
+                    ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                    : "text-[#79716b] hover:text-[#44403b]",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </details>
+
+          {activeTab === "settings" ? (
+            <div className="space-y-0">
+              <div className="flex min-h-9 items-center justify-between gap-6 py-2">
+                <Tooltip label="Гость должен выбрать хотя бы один вариант из этой группы" side="top">
+                  <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] leading-5 text-[#57534d]">Обязательный выбор</span>
+                </Tooltip>
+                <Switch
+                  checked={group.required}
+                  onCheckedChange={(checked) => onPatch({ required: checked })}
+                  aria-label="Обязательный выбор"
+                  className="data-[state=checked]:bg-[#44403b]"
+                />
+              </div>
+              <div className="flex min-h-9 items-center justify-between gap-4 py-2">
+                <Tooltip label="Один вариант ограничивает выбор одним значением; несколько позволяет выбрать несколько" side="top">
+                  <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] leading-5 text-[#57534d]">Можно выбрать</span>
+                </Tooltip>
+                <OptionSegment<PositionOptionSelection>
+                  value={group.selection}
+                  options={[{ value: "single", label: "Один" }, { value: "multiple", label: "Несколько" }]}
+                  onChange={(selection) => onPatch({ selection })}
+                />
+              </div>
+              <div className="flex min-h-9 items-center justify-between gap-4 py-2">
+                <Tooltip label="Итоговая заменяет цену позиции, доплата прибавляется к ней" side="top">
+                  <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] leading-5 text-[#57534d]">Цена вариантов</span>
+                </Tooltip>
+                <OptionSegment<PositionOptionPricing>
+                  value={group.pricing}
+                  options={[{ value: "total", label: "Итоговая" }, { value: "surcharge", label: "Доплата" }]}
+                  onChange={(pricing) => onPatch({ pricing })}
+                />
+              </div>
+            </div>
+          ) : (
+            <DndContext
+              sensors={variantSensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictTableSortToVerticalAxis]}
+              onDragStart={() => {
+                lastVariantOverId.current = null;
+              }}
+              onDragOver={({ active, over }) => {
+                if (over && active.id !== over.id) lastVariantOverId.current = String(over.id);
+              }}
+              onDragCancel={() => {
+                lastVariantOverId.current = null;
+              }}
+              onDragEnd={handleVariantDragEnd}
+            >
+              <SortableContext items={group.variants.map((variant) => variant.id)} strategy={verticalListSortingStrategy}>
+                <div data-option-variants-list className="max-h-[260px] space-y-1.5 overflow-y-auto pr-0.5">
+                  {group.variants.map((variant) => (
+                    <SortableOptionVariantRow
+                      key={variant.id}
+                      variant={variant}
+                      currency={currency}
+                      transient={transientVariantIds.has(variant.id)}
+                      autoFocus={focusedVariantId === variant.id}
+                      onPatch={(patch) => onPatchVariant(variant.id, patch)}
+                      onNameBlur={() => onVariantNameBlur(variant.id)}
+                      onDelete={() => onDeleteVariant(variant.id)}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    aria-label="Добавить еще вариант"
+                    onClick={onAddVariant}
+                    className="ml-[22px] flex h-9 w-[calc(100%-22px)] min-w-0 items-center rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-left text-[13px] text-[#79716b] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition hover:border-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  >
+                    Добавить еще вариант
+                  </button>
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
       </div>
-      <div className="flex h-12 items-center justify-end gap-2 border-t border-[#e7e5e4] px-3">
-        <Button type="button" variant="outline" size="sm" onClick={onDelete} className="h-8 rounded-[10px] border-[#e7e5e4] px-3 text-[13px] text-[#c10007] hover:bg-[#fff7f7] hover:text-[#c10007]">Удалить</Button>
-        <Button type="button" size="sm" onClick={onDone} className="h-8 rounded-[10px] bg-[#4f39f6] px-3 text-[13px] text-white hover:bg-[#4030d4]">Готово</Button>
+
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onDelete} className="h-8 rounded-[10px] border-[#e7e5e4] px-2.5 text-[14px] font-normal text-[#c10007] hover:bg-[#fff7f7] hover:text-[#c10007]">
+          Удалить опцию
+        </Button>
+        <Button type="button" size="sm" onClick={onDone} className="h-8 rounded-[10px] bg-[#4f39f6] px-2.5 text-[14px] font-medium text-white hover:bg-[#4030d4]">
+          Готово
+        </Button>
       </div>
-    </div>
+    </PopoverContent>
+  );
+}
+
+function SortableOptionGroupRow({
+  group,
+  currency,
+  open,
+  defaultTab,
+  transientVariantIds,
+  focusedVariantId,
+  autoFocusName,
+  onOpenChange,
+  onPatch,
+  onAddVariant,
+  onPatchVariant,
+  onVariantNameBlur,
+  onDeleteVariant,
+  onReorderVariants,
+  onDelete,
+  onDone,
+}: {
+  group: PositionOptionGroup;
+  currency: string;
+  open: boolean;
+  defaultTab: OptionsPopoverTab;
+  transientVariantIds: Set<string>;
+  focusedVariantId: string | null;
+  autoFocusName: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPatch: (patch: Partial<PositionOptionGroup>) => void;
+  onAddVariant: () => void;
+  onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
+  onVariantNameBlur: (id: string) => void;
+  onDeleteVariant: (id: string) => void;
+  onReorderVariants: (variants: PositionOptionVariant[]) => void;
+  onDelete: () => void;
+  onDone: () => void;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: group.id,
+    transition: DND_TRANSITION,
+  });
+  const displayName = group.name || "Новая опция";
+  const previewVariants = group.variants.slice(0, 4);
+  const extraVariants = Math.max(0, group.variants.length - previewVariants.length);
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <div
+        ref={setNodeRef}
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition: reducedMotion ? undefined : transition,
+          zIndex: isDragging ? 2 : undefined,
+        }}
+        className={cn(
+          "flex min-h-[55px] w-full items-center gap-2 border-b border-[#e7e5e4] px-3 last:border-b-0",
+          isDragging && "relative rounded-[8px] bg-white opacity-80 shadow-[0_8px_24px_rgba(41,37,36,0.12)]",
+        )}
+        data-option-group-row
+      >
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label={`Перетащить опцию «${displayName}»`}
+          {...attributes}
+          {...listeners}
+          className="flex size-4 shrink-0 touch-none cursor-grab items-center justify-center rounded-[4px] text-[#79716b] transition hover:bg-[#f5f5f4] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        >
+          <DotsSixVertical size={16} />
+        </button>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Редактировать группу «${displayName}»`}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] leading-4 text-[#292524]">{displayName}</span>
+              <span className="mt-1 flex min-w-0 gap-1 overflow-hidden">
+                {previewVariants.map((variant) => (
+                  <span key={variant.id} className="max-w-[92px] shrink-0 truncate rounded-[5px] bg-[#f5f5f4] px-1.5 py-0.5 text-[11px] leading-4 text-[#79716b]">
+                    {variant.name || "Без названия"}
+                  </span>
+                ))}
+                {extraVariants > 0 && <span className="shrink-0 rounded-[5px] bg-[#f5f5f4] px-1.5 py-0.5 text-[11px] leading-4 text-[#79716b]">+{extraVariants}</span>}
+              </span>
+            </span>
+            <CaretRight size={16} className="shrink-0 text-[#a8a29e]" />
+          </button>
+        </PopoverTrigger>
+      </div>
+      <OptionGroupPopoverContent
+        group={group}
+        currency={currency}
+        open={open}
+        defaultTab={defaultTab}
+        transientVariantIds={transientVariantIds}
+        focusedVariantId={focusedVariantId}
+        autoFocusName={autoFocusName}
+        onOpenChange={onOpenChange}
+        onPatch={onPatch}
+        onAddVariant={onAddVariant}
+        onPatchVariant={onPatchVariant}
+        onVariantNameBlur={onVariantNameBlur}
+        onDeleteVariant={onDeleteVariant}
+        onReorderVariants={onReorderVariants}
+        onDelete={onDelete}
+        onDone={onDone}
+      />
+    </Popover>
   );
 }
 
@@ -2571,17 +2791,23 @@ function OptionsTab({
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
     return item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount));
   });
-  const [focusedGroupId, setFocusedGroupId] = useState<string | null>(null);
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [openTab, setOpenTab] = useState<OptionsPopoverTab>("variants");
+  const [newGroupId, setNewGroupId] = useState<string | null>(null);
   const [transientVariantIds, setTransientVariantIds] = useState<Set<string>>(() => new Set());
   const [focusedVariantId, setFocusedVariantId] = useState<string | null>(null);
-  const draftNameRef = useRef<HTMLInputElement | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PositionOptionGroup | null>(null);
+  usePositionSidePeekOverlay(Boolean(pendingDelete), () => setPendingDelete(null));
 
   useEffect(() => {
     const stored = readJsonRecord<Record<string, PositionOptionGroup[]>>(CATALOG_POSITION_OPTIONS_STORAGE_KEY, {});
     setGroups(item.optionGroups ?? (Array.isArray(stored[item.id]) ? stored[item.id] : seedOptionGroups(item.optionsCount)));
-    setFocusedGroupId(null);
+    setOpenGroupId(null);
+    setOpenTab("variants");
+    setNewGroupId(null);
     setTransientVariantIds(new Set());
     setFocusedVariantId(null);
+    setPendingDelete(null);
   }, [item.id]);
 
   const commitGroups = (next: PositionOptionGroup[]) => {
@@ -2598,21 +2824,23 @@ function OptionsTab({
     commitGroups(groups.map((group) => group.id === groupId ? updater(group) : group));
   };
 
-  const beginVariant = (groupId: string, value: string) => {
+  const addVariant = (groupId: string) => {
     const id = createOptionEntityId("variant");
     setTransientVariantIds((current) => new Set(current).add(id));
     setFocusedVariantId(id);
     updateGroup(groupId, (group) => ({
       ...group,
-      variants: [...group.variants, { id, name: value, price: "0" }],
+      variants: [...group.variants, { id, name: "", price: "0" }],
     }));
   };
+
   const patchVariant = (groupId: string, variantId: string, patch: Partial<PositionOptionVariant>) => {
     updateGroup(groupId, (group) => ({
       ...group,
       variants: group.variants.map((variant) => variant.id === variantId ? { ...variant, ...patch } : variant),
     }));
   };
+
   const deleteVariant = (groupId: string, variantId: string) => {
     updateGroup(groupId, (group) => ({ ...group, variants: group.variants.filter((variant) => variant.id !== variantId) }));
     setTransientVariantIds((current) => {
@@ -2620,77 +2848,146 @@ function OptionsTab({
       next.delete(variantId);
       return next;
     });
+    setFocusedVariantId((current) => current === variantId ? null : current);
   };
+
   const handleVariantNameBlur = (groupId: string, variantId: string) => {
     setFocusedVariantId((current) => current === variantId ? null : current);
     if (!transientVariantIds.has(variantId)) return;
     const group = groups.find((candidate) => candidate.id === groupId);
     const variant = group?.variants.find((candidate) => candidate.id === variantId);
-    if (!variant?.name.trim()) deleteVariant(groupId, variantId);
-    else {
-      setTransientVariantIds((current) => {
-        const next = new Set(current);
-        next.delete(variantId);
-        return next;
-      });
+    if (!variant?.name.trim()) {
+      deleteVariant(groupId, variantId);
+      return;
     }
+    setTransientVariantIds((current) => {
+      const next = new Set(current);
+      next.delete(variantId);
+      return next;
+    });
   };
 
-  const groupProps = (group: PositionOptionGroup): OptionGroupCardProps => ({
-    group,
-    currency,
-    focused: focusedGroupId === group.id,
-    transientVariantIds,
-    focusedVariantId,
-    onFocus: () => setFocusedGroupId(group.id),
-    onDone: () => setFocusedGroupId(null),
-    onPatch: (patch) => patchGroup(group.id, patch),
-    onDuplicate: () => {
-      const index = groups.findIndex((candidate) => candidate.id === group.id);
-      const copy: PositionOptionGroup = {
-        ...group,
-        id: createOptionEntityId("group"),
-        name: `${group.name} — копия`,
-        variants: group.variants.map((variant) => ({ ...variant, id: createOptionEntityId("variant") })),
-      };
-      const next = [...groups];
-      next.splice(index + 1, 0, copy);
-      commitGroups(next);
-    },
-    onDelete: () => {
-      if (group.variants.length > 0 && !window.confirm(`Удалить группу «${group.name}» и все её варианты?`)) return;
-      commitGroups(groups.filter((candidate) => candidate.id !== group.id));
-      setFocusedGroupId((current) => current === group.id ? null : current);
-    },
-    onBeginVariant: (value) => beginVariant(group.id, value),
-    onPatchVariant: (variantId, patch) => patchVariant(group.id, variantId, patch),
-    onVariantNameBlur: (variantId) => handleVariantNameBlur(group.id, variantId),
-    onDeleteVariant: (variantId) => deleteVariant(group.id, variantId),
-  });
+  const closeGroup = (groupId: string) => {
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (group) {
+      const transientIds = new Set(transientVariantIds);
+      const cleanedVariants = group.variants.filter((variant) => !transientIds.has(variant.id) || variant.name.trim());
+      if (cleanedVariants.length !== group.variants.length) {
+        commitGroups(groups.map((candidate) => candidate.id === groupId ? { ...candidate, variants: cleanedVariants } : candidate));
+      }
+      const groupVariantIds = new Set(group.variants.map((variant) => variant.id));
+      setTransientVariantIds((current) => new Set([...current].filter((id) => !groupVariantIds.has(id))));
+    }
+    setOpenGroupId((current) => current === groupId ? null : current);
+    setNewGroupId((current) => current === groupId ? null : current);
+    setFocusedVariantId(null);
+  };
+
+  const requestDelete = (group: PositionOptionGroup) => {
+    closeGroup(group.id);
+    if (group.variants.length > 0) {
+      setPendingDelete(group);
+      return;
+    }
+    commitGroups(groups.filter((candidate) => candidate.id !== group.id));
+  };
+
+  const deletePendingGroup = () => {
+    if (!pendingDelete) return;
+    commitGroups(groups.filter((candidate) => candidate.id !== pendingDelete.id));
+    setPendingDelete(null);
+  };
+
+  const handleGroupDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const fromIndex = groups.findIndex((group) => group.id === String(active.id));
+    const toIndex = groups.findIndex((group) => group.id === String(over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+    commitGroups(arrayMove(groups, fromIndex, toIndex));
+  };
 
   const startDraft = () => {
     const next = createOptionGroup();
     commitGroups([...groups, next]);
-    setFocusedGroupId(next.id);
-    window.setTimeout(() => {
-      draftNameRef.current?.focus();
-    }, 0);
+    setOpenTab("settings");
+    setNewGroupId(next.id);
+    setOpenGroupId(next.id);
   };
+  const groupSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   return (
-    <div className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]" data-options-editor>
-        {groups.map((group) => (
-          <OptionGroupCard key={group.id} {...groupProps(group)} nameInputRef={focusedGroupId === group.id ? draftNameRef : undefined} />
-        ))}
-        <button
-          type="button"
-          onClick={startDraft}
-          className="flex h-11 w-full items-center gap-1.5 border-t border-[#f5f5f4] px-4 text-[12px] font-medium text-[#292524] transition hover:bg-[#fafaf9]"
-        >
-          <PlusCircle size={16} />
-          Добавить группу опций
-        </button>
-    </div>
+    <>
+      <div data-options-editor className="w-full">
+        <div className="mb-1.5 px-1">
+          <h3 className="inline-flex border-b border-dashed border-[#a8a29e] px-0.5 pb-0.5 text-[13px] font-normal leading-5 text-[#292524]">Опции</h3>
+        </div>
+        <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white">
+          <DndContext
+            sensors={groupSensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictTableSortToVerticalAxis]}
+            onDragEnd={handleGroupDragEnd}
+          >
+            <SortableContext items={groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
+              {groups.map((group) => (
+                <SortableOptionGroupRow
+                  key={group.id}
+                  group={group}
+                  currency={currency}
+                  open={openGroupId === group.id}
+                  defaultTab={openTab}
+                  transientVariantIds={transientVariantIds}
+                  focusedVariantId={focusedVariantId}
+                  autoFocusName={newGroupId === group.id}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setOpenGroupId(group.id);
+                      setOpenTab("variants");
+                      setNewGroupId(null);
+                    } else {
+                      closeGroup(group.id);
+                    }
+                  }}
+                  onPatch={(patch) => patchGroup(group.id, patch)}
+                  onAddVariant={() => addVariant(group.id)}
+                  onPatchVariant={(variantId, patch) => patchVariant(group.id, variantId, patch)}
+                  onVariantNameBlur={(variantId) => handleVariantNameBlur(group.id, variantId)}
+                  onDeleteVariant={(variantId) => deleteVariant(group.id, variantId)}
+                  onReorderVariants={(variants) => updateGroup(group.id, (candidate) => ({ ...candidate, variants }))}
+                  onDelete={() => requestDelete(group)}
+                  onDone={() => closeGroup(group.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+          <button
+            type="button"
+            aria-label="Добавить опцию"
+            onClick={startDraft}
+            className="flex h-9 w-full items-center gap-2 px-3 text-[12px] font-medium text-[#292524] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          >
+            <Plus size={16} />
+            Добавить опцию
+          </button>
+        </div>
+      </div>
+
+      <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить опцию «{pendingDelete?.name || "Новая опция"}»?</AlertDialogTitle>
+            <AlertDialogDescription>Опция и все её варианты будут удалены.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={deletePendingGroup} className="bg-[#c10007] text-white hover:bg-[#a00006]">Удалить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

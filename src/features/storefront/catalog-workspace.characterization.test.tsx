@@ -377,12 +377,14 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByText(firstItemTitle, { exact: true }));
     const sidePeek = getPositionSidePeek(firstItemTitle);
 
-    await user.click(within(sidePeek).getByRole("button", { name: "Рекомендации" }));
-    await user.click(screen.getByRole("button", { name: "Добавить ключевое слово" }));
-    expect(screen.getByRole("dialog", { name: "Ключевое слово" })).toBeInTheDocument();
+    await user.click(within(sidePeek).getByRole("button", { name: /Опции/ }));
+    await user.click(within(sidePeek).getByRole("button", { name: /^Добавить опцию$/ }));
+    expect(screen.getByRole("tab", { name: /^Настройки$/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "Ключевое слово" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("tab", { name: /^Настройки$/ })).not.toBeInTheDocument(),
+    );
     expect(getPositionSidePeek(firstItemTitle)).toBeInTheDocument();
 
     await user.keyboard("{Escape}");

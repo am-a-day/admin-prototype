@@ -657,7 +657,7 @@ test("restores structured promo, options, and availability editor state", async 
   await expect(page.locator("[data-position-editor-pane]").getByText("Хит", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Опции" }).click();
-  await page.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить опцию", exact: true }).click();
   await page.getByLabel("Название опции").fill("Размер порции");
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
@@ -688,39 +688,114 @@ test("restores structured promo, options, and availability editor state", async 
   await expect(page.getByRole("region", { name: "Расписание" }).getByLabel("Понедельник: конец")).toHaveValue("19:00");
 });
 
-test("edits option groups in one compact focused state without drag and drop", async ({ page }) => {
+test("edits option groups in compact option popovers", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
   await pane.getByRole("button", { name: /Опции/ }).click();
-  await pane.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
+  await pane.getByRole("button", { name: "Добавить опцию", exact: true }).click();
 
-  const focusedGroup = pane.locator("[data-option-group-focused]");
-  await expect(focusedGroup).toBeVisible();
-  await expect(focusedGroup.getByLabel("Название опции")).toBeVisible();
-  await expect(focusedGroup.getByText("Варианты", { exact: true })).toBeVisible();
-  await expect(focusedGroup.getByText("Настройки", { exact: true })).toBeVisible();
-  await expect(focusedGroup.getByRole("button", { name: "Готово", exact: true })).toBeVisible();
-  await expect(focusedGroup.locator('[aria-label^="Перетащить"]')).toHaveCount(0);
+  const optionPopover = page.locator("[data-option-popover]");
+  await expect(optionPopover).toBeVisible();
+  await expect(optionPopover.getByLabel("Название опции")).toBeFocused();
+  await expect(optionPopover.getByRole("tab", { name: "Варианты", exact: true })).toBeVisible();
+  await expect(optionPopover.getByRole("tab", { name: "Настройки", exact: true })).toBeVisible();
+  await expect(optionPopover.getByRole("button", { name: "Готово", exact: true })).toBeVisible();
 
-  await focusedGroup.getByLabel("Название опции").fill("Добавки");
-  await focusedGroup.getByLabel("Добавить еще вариант").fill("Сыр");
-  await expect(focusedGroup.getByLabel("Название варианта")).toHaveValue("Сыр");
-  await focusedGroup.getByRole("switch", { name: "Обязательный выбор" }).click();
-  await expect(focusedGroup.getByRole("switch", { name: "Обязательный выбор" })).toBeChecked();
+  await optionPopover.getByLabel("Название опции").fill("Добавки");
+  await optionPopover.getByRole("tab", { name: "Варианты", exact: true }).click();
+  await optionPopover.getByRole("button", { name: "Добавить еще вариант" }).click();
+  await optionPopover.getByLabel("Название варианта").fill("Сыр");
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveValue("Сыр");
+  await optionPopover.getByLabel("Стоимость варианта").fill("500");
 
-  await focusedGroup.getByRole("button", { name: "Готово", exact: true }).click();
-  await expect(pane.locator("[data-option-group-focused]")).toHaveCount(0);
+  await optionPopover.getByRole("tab", { name: "Настройки", exact: true }).click();
+  await optionPopover.getByRole("switch", { name: "Обязательный выбор" }).click();
+  await expect(optionPopover.getByRole("switch", { name: "Обязательный выбор" })).toBeChecked();
+  await optionPopover.getByRole("button", { name: "Несколько", exact: true }).click();
+  await optionPopover.getByRole("button", { name: "Доплата", exact: true }).click();
+
+  await optionPopover.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect(page.locator("[data-option-popover]")).toHaveCount(0);
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
 
-  await pane.getByRole("button", { name: "Добавить группу опций", exact: true }).click();
-  await expect(pane.locator("[data-option-group-focused]")).toHaveCount(1);
+  await pane.getByRole("button", { name: "Добавить опцию", exact: true }).click();
+  await expect(page.locator("[data-option-popover]")).toHaveCount(1);
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
-  await pane.getByLabel("Название опции").fill("Соусы");
-  await pane.getByRole("button", { name: "Готово", exact: true }).click();
+  await page.locator("[data-option-popover]").getByLabel("Название опции").fill("Соусы");
+  await page.locator("[data-option-popover]").getByRole("button", { name: "Готово", exact: true }).click();
 
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
   await expect(pane.getByRole("button", { name: "Редактировать группу «Соусы»" })).toBeVisible();
+
+  const groupHandles = pane.getByRole("button", { name: /Перетащить опцию/ });
+  await groupHandles.first().focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Space");
+  await expect(pane.getByRole("button", { name: /Редактировать группу «Соусы»/ }).first()).toBeVisible();
+
+  await pane.getByRole("button", { name: "Редактировать группу «Добавки»" }).click();
+  await page.locator("[data-option-popover]").getByRole("button", { name: "Удалить опцию", exact: true }).click();
+  const deleteDialog = page.getByRole("alertdialog");
+  await expect(deleteDialog).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Удалить", exact: true }).click();
+  await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toHaveCount(0);
+});
+
+test("keeps option variants editable, reorderable, and scrollable", async ({ page }) => {
+  test.setTimeout(30_000);
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: /Опции/ }).click();
+  await pane.getByRole("button", { name: "Добавить опцию", exact: true }).click();
+
+  const optionPopover = page.locator("[data-option-popover]");
+  await optionPopover.getByLabel("Название опции").fill("Размер");
+  await optionPopover.getByRole("tab", { name: "Варианты", exact: true }).click();
+
+  for (let index = 1; index <= 8; index += 1) {
+    await optionPopover.getByRole("button", { name: "Добавить еще вариант" }).click();
+    const nameInput = optionPopover.getByLabel("Название варианта").last();
+    await nameInput.fill(`${index}0см`);
+    await optionPopover.getByLabel("Стоимость варианта").last().fill(String(index * 100));
+    await nameInput.blur();
+  }
+
+  const variantsList = optionPopover.locator("[data-option-variants-list]");
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(8);
+  await expect(variantsList).toHaveCSS("max-height", "260px");
+  await expect(variantsList.evaluate((element) => element.scrollHeight > element.clientHeight)).resolves.toBe(true);
+
+  const firstHandle = optionPopover.getByRole("button", { name: /Перетащить вариант/ }).first();
+  await firstHandle.focus();
+  await expect(firstHandle).toBeFocused();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(100);
+  await page.keyboard.press("Space");
+  await expect(optionPopover.getByLabel("Название варианта").first()).toHaveValue("20см");
+
+  await optionPopover.getByRole("button", { name: "Удалить вариант" }).last().click();
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(7);
+
+  await optionPopover.getByRole("button", { name: "Готово", exact: true }).click();
+  const optionRow = pane.getByRole("button", { name: "Редактировать группу «Размер»" });
+  await expect(optionRow).toContainText("20см");
+
+  await optionRow.click();
+  const reopenedPopover = page.locator("[data-option-popover]");
+  await expect(reopenedPopover.getByLabel("Название опции")).toHaveValue("Размер");
+  await expect(reopenedPopover.getByLabel("Название варианта")).toHaveCount(7);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-option-popover]")).toHaveCount(0);
+  await expect(pane).toBeVisible();
+
+  await optionRow.click();
+  await expect(page.locator("[data-option-popover]")).toBeVisible();
+  await page.mouse.click(20, 20);
+  await expect(page.locator("[data-option-popover]")).toHaveCount(0);
 });
 
 test("does not leak editor values between queued positions", async ({ page }) => {
