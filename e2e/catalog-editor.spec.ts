@@ -383,7 +383,7 @@ test("edits and removes a discount in a compact popover", async ({ page }) => {
   await expect(pane).toBeVisible();
 
   await pane.locator("[data-discount-trigger]").click();
-  await page.getByRole("button", { name: "Удалить скидку", exact: true }).click();
+  await page.getByRole("button", { name: "Убрать скидку", exact: true }).click();
   await expect(pane.getByRole("button", { name: "Добавить скидку", exact: true })).toBeVisible();
   await expect(page.getByLabel("Цена после скидки")).toHaveCount(0);
 });
@@ -659,7 +659,7 @@ test("restores structured promo, options, and availability editor state", async 
   await page.getByRole("button", { name: "Опции" }).click();
   await page.getByRole("button", { name: "Добавить опцию", exact: true }).click();
   await page.getByLabel("Название опции").fill("Размер порции");
-  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Доступность" }).click();
@@ -698,13 +698,27 @@ test("edits option groups in compact option popovers", async ({ page }) => {
   const optionPopover = page.locator("[data-option-popover]");
   await expect(optionPopover).toBeVisible();
   await expect(optionPopover.getByLabel("Название опции")).toBeFocused();
+  await expect(optionPopover.getByLabel("Название опции")).toHaveValue("Новая опция");
+  await expect.poll(async () => optionPopover.getByLabel("Название опции").evaluate((input) => ({
+    start: input.selectionStart,
+    end: input.selectionEnd,
+  }))).toEqual({ start: 0, end: "Новая опция".length });
   await expect(optionPopover.getByRole("tab", { name: "Варианты", exact: true })).toBeVisible();
   await expect(optionPopover.getByRole("tab", { name: "Настройки", exact: true })).toBeVisible();
-  await expect(optionPopover.getByRole("button", { name: "Готово", exact: true })).toBeVisible();
+  await expect(optionPopover.getByRole("button", { name: "Удалить опцию", exact: true })).toBeVisible();
 
   await optionPopover.getByLabel("Название опции").fill("Добавки");
   await optionPopover.getByRole("tab", { name: "Варианты", exact: true }).click();
-  await optionPopover.getByRole("button", { name: "Добавить еще вариант" }).click();
+  await optionPopover.getByRole("button", { name: "Добавить вариант", exact: true }).click();
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(1);
+  await optionPopover.getByLabel("Название варианта").press("Escape");
+  await expect(optionPopover).toHaveCount(0);
+  await pane.getByRole("button", { name: "Редактировать группу «Добавки»" }).click();
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(0);
+  await optionPopover.getByRole("button", { name: "Добавить вариант", exact: true }).click();
+  await optionPopover.getByLabel("Название варианта").blur();
+  await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(0);
+  await optionPopover.getByRole("button", { name: "Добавить вариант", exact: true }).click();
   await optionPopover.getByLabel("Название варианта").fill("Сыр");
   await expect(optionPopover.getByLabel("Название варианта")).toHaveValue("Сыр");
   await optionPopover.getByLabel("Стоимость варианта").fill("500");
@@ -715,7 +729,7 @@ test("edits option groups in compact option popovers", async ({ page }) => {
   await optionPopover.getByRole("button", { name: "Несколько", exact: true }).click();
   await optionPopover.getByRole("button", { name: "Доплата", exact: true }).click();
 
-  await optionPopover.getByRole("button", { name: "Готово", exact: true }).click();
+  await page.keyboard.press("Escape");
   await expect(page.locator("[data-option-popover]")).toHaveCount(0);
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
 
@@ -723,7 +737,7 @@ test("edits option groups in compact option popovers", async ({ page }) => {
   await expect(page.locator("[data-option-popover]")).toHaveCount(1);
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
   await page.locator("[data-option-popover]").getByLabel("Название опции").fill("Соусы");
-  await page.locator("[data-option-popover]").getByRole("button", { name: "Готово", exact: true }).click();
+  await page.keyboard.press("Escape");
 
   await expect(pane.getByRole("button", { name: "Редактировать группу «Добавки»" })).toBeVisible();
   await expect(pane.getByRole("button", { name: "Редактировать группу «Соусы»" })).toBeVisible();
@@ -756,7 +770,7 @@ test("keeps option variants editable, reorderable, and scrollable", async ({ pag
   await optionPopover.getByRole("tab", { name: "Варианты", exact: true }).click();
 
   for (let index = 1; index <= 8; index += 1) {
-    await optionPopover.getByRole("button", { name: "Добавить еще вариант" }).click();
+    await optionPopover.getByRole("button", { name: /Добавить(?: еще)? вариант/ }).last().click();
     const nameInput = optionPopover.getByLabel("Название варианта").last();
     await nameInput.fill(`${index}0см`);
     await optionPopover.getByLabel("Стоимость варианта").last().fill(String(index * 100));
@@ -780,7 +794,7 @@ test("keeps option variants editable, reorderable, and scrollable", async ({ pag
   await optionPopover.getByRole("button", { name: "Удалить вариант" }).last().click();
   await expect(optionPopover.getByLabel("Название варианта")).toHaveCount(7);
 
-  await optionPopover.getByRole("button", { name: "Готово", exact: true }).click();
+  await page.keyboard.press("Escape");
   const optionRow = pane.getByRole("button", { name: "Редактировать группу «Размер»" });
   await expect(optionRow).toContainText("20см");
 
@@ -794,6 +808,7 @@ test("keeps option variants editable, reorderable, and scrollable", async ({ pag
 
   await optionRow.click();
   await expect(page.locator("[data-option-popover]")).toBeVisible();
+  await page.waitForTimeout(100);
   await page.mouse.click(20, 20);
   await expect(page.locator("[data-option-popover]")).toHaveCount(0);
 });

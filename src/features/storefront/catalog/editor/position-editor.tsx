@@ -235,7 +235,7 @@ function createOptionEntityId(prefix: "group" | "variant") {
   return `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
 
-function createOptionGroup(name = ""): PositionOptionGroup {
+function createOptionGroup(name = "Новая опция"): PositionOptionGroup {
   return {
     id: createOptionEntityId("group"),
     name,
@@ -847,6 +847,7 @@ function DiscountPopover({
         align="start"
         sideOffset={6}
         collisionPadding={12}
+        onPointerDownOutside={() => handleOpenChange(false)}
         className="w-[min(340px,calc(100vw-24px))] rounded-[12px] p-3 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
       >
         <DiscountBlock
@@ -1023,14 +1024,14 @@ function DiscountBlock({
       ) : percentError ? (
         <div className="text-[12px] leading-4 text-[#b42318]">{percentError}</div>
       ) : null}
-      <div className="border-t border-[#eceae7] pt-2">
+      <div className="-mx-3 -mb-3 flex h-[35px] items-center border-t border-[#e7e5e4] px-3">
         <button
           type="button"
           onClick={removeDiscount}
-          className="inline-flex h-7 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#a63d36] transition hover:bg-[#fff5f3] hover:text-[#8f2f28] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a63d36]/20"
+          className="inline-flex h-full items-center gap-2 text-[12px] font-normal text-[#e7000b] transition hover:text-[#b90008] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e7000b]/20"
         >
-          <Trash size={14} aria-hidden="true" />
-          Удалить скидку
+          <Trash size={16} aria-hidden="true" />
+          Убрать скидку
         </button>
       </div>
     </div>
@@ -2478,13 +2479,12 @@ function OptionGroupPopoverContent({
   autoFocusName,
   onOpenChange,
   onPatch,
-  onAddVariant,
+  onCreateVariant,
   onPatchVariant,
   onVariantNameBlur,
   onDeleteVariant,
   onReorderVariants,
   onDelete,
-  onDone,
 }: {
   group: PositionOptionGroup;
   currency: string;
@@ -2495,20 +2495,32 @@ function OptionGroupPopoverContent({
   autoFocusName: boolean;
   onOpenChange: (open: boolean) => void;
   onPatch: (patch: Partial<PositionOptionGroup>) => void;
-  onAddVariant: () => void;
+  onCreateVariant: (name: string) => void;
   onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
   onVariantNameBlur: (id: string) => void;
   onDeleteVariant: (id: string) => void;
   onReorderVariants: (variants: PositionOptionVariant[]) => void;
   onDelete: () => void;
-  onDone: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<OptionsPopoverTab>(defaultTab);
+  const [pendingVariantDraft, setPendingVariantDraft] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   usePositionSidePeekOverlay(open, () => onOpenChange(false));
 
   useEffect(() => {
-    if (open) setActiveTab(defaultTab);
+    if (open) {
+      setActiveTab(defaultTab);
+      setPendingVariantDraft(null);
+    } else {
+      setPendingVariantDraft(null);
+    }
   }, [defaultTab, open]);
+
+  useEffect(() => {
+    if (!open || !autoFocusName) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [autoFocusName, open]);
 
   const variantSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -2525,12 +2537,24 @@ function OptionGroupPopoverContent({
     onReorderVariants(arrayMove(group.variants, fromIndex, toIndex));
   };
 
+  const handlePendingVariantChange = (value: string) => {
+    setPendingVariantDraft(value);
+    if (!value.trim()) return;
+    setPendingVariantDraft(null);
+    onCreateVariant(value);
+  };
+
+  const handlePendingVariantBlur = () => {
+    if (!pendingVariantDraft?.trim()) setPendingVariantDraft(null);
+  };
+
   return (
     <PopoverContent
       data-option-popover
       align="end"
       sideOffset={6}
       collisionPadding={12}
+      onPointerDownOutside={() => onOpenChange(false)}
       className="flex max-h-[min(640px,calc(100vh-24px))] w-[334px] flex-col gap-4 overflow-hidden rounded-[12px] border-[#e7e5e4] p-[13px] shadow-[0_18px_42px_rgba(41,37,36,0.14)]"
     >
       <div className="shrink-0 space-y-1.5">
@@ -2539,7 +2563,11 @@ function OptionGroupPopoverContent({
         </label>
         <Input
           id={`option-group-name-${group.id}`}
+          ref={nameInputRef}
           autoFocus={autoFocusName}
+          onFocus={(event) => {
+            if (autoFocusName) event.currentTarget.select();
+          }}
           value={group.name}
           onChange={(event) => onPatch({ name: event.target.value })}
           placeholder="Например, Размер"
@@ -2587,7 +2615,11 @@ function OptionGroupPopoverContent({
                 />
               </div>
               <div className="flex min-h-9 items-center justify-between gap-4 py-2">
-                <Tooltip label="Один вариант ограничивает выбор одним значением; несколько позволяет выбрать несколько" side="top">
+                <Tooltip
+                  label="Один вариант ограничивает выбор одним значением; несколько позволяет выбрать несколько"
+                  side="top"
+                  contentClassName="max-w-[240px] whitespace-normal"
+                >
                   <span className="cursor-help border-b border-dashed border-[#79716b] text-[13px] leading-5 text-[#57534d]">Можно выбрать</span>
                 </Tooltip>
                 <OptionSegment<PositionOptionSelection>
@@ -2637,14 +2669,29 @@ function OptionGroupPopoverContent({
                       onDelete={() => onDeleteVariant(variant.id)}
                     />
                   ))}
-                  <button
-                    type="button"
-                    aria-label="Добавить еще вариант"
-                    onClick={onAddVariant}
-                    className="ml-[22px] flex h-9 w-[calc(100%-22px)] min-w-0 items-center rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-left text-[13px] text-[#79716b] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition hover:border-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    Добавить еще вариант
-                  </button>
+                  {pendingVariantDraft === null ? (
+                    <button
+                      type="button"
+                      aria-label={group.variants.length === 0 ? "Добавить вариант" : "Добавить еще вариант"}
+                      onClick={() => setPendingVariantDraft("")}
+                      className="ml-[22px] flex h-9 w-[calc(100%-22px)] min-w-0 items-center rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-left text-[13px] text-[#79716b] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition hover:border-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    >
+                      {group.variants.length === 0 ? "Добавить вариант" : "Добавить еще вариант"}
+                    </button>
+                  ) : (
+                    <Input
+                      autoFocus
+                      value={pendingVariantDraft}
+                      aria-label="Название варианта"
+                      placeholder={group.variants.length === 0 ? "Добавить вариант" : "Добавить еще вариант"}
+                      onChange={(event) => handlePendingVariantChange(event.target.value)}
+                      onBlur={handlePendingVariantBlur}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape" && !pendingVariantDraft.trim()) setPendingVariantDraft(null);
+                      }}
+                      className="ml-[22px] h-9 w-[calc(100%-22px)] rounded-[8px] border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] focus:border-[#a8a29e]"
+                    />
+                  )}
                 </div>
               </SortableContext>
             </DndContext>
@@ -2652,13 +2699,15 @@ function OptionGroupPopoverContent({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onDelete} className="h-8 rounded-[10px] border-[#e7e5e4] px-2.5 text-[14px] font-normal text-[#c10007] hover:bg-[#fff7f7] hover:text-[#c10007]">
+      <div className="-mx-[13px] -mb-[13px] flex h-[35px] shrink-0 items-center border-t border-[#e7e5e4] px-3">
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex h-full items-center gap-2 text-[12px] font-normal text-[#e7000b] transition hover:text-[#b90008] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e7000b]/20"
+        >
+          <Trash size={16} aria-hidden="true" />
           Удалить опцию
-        </Button>
-        <Button type="button" size="sm" onClick={onDone} className="h-8 rounded-[10px] bg-[#4f39f6] px-2.5 text-[14px] font-medium text-white hover:bg-[#4030d4]">
-          Готово
-        </Button>
+        </button>
       </div>
     </PopoverContent>
   );
@@ -2674,13 +2723,12 @@ function SortableOptionGroupRow({
   autoFocusName,
   onOpenChange,
   onPatch,
-  onAddVariant,
+  onCreateVariant,
   onPatchVariant,
   onVariantNameBlur,
   onDeleteVariant,
   onReorderVariants,
   onDelete,
-  onDone,
 }: {
   group: PositionOptionGroup;
   currency: string;
@@ -2691,13 +2739,12 @@ function SortableOptionGroupRow({
   autoFocusName: boolean;
   onOpenChange: (open: boolean) => void;
   onPatch: (patch: Partial<PositionOptionGroup>) => void;
-  onAddVariant: () => void;
+  onCreateVariant: (name: string) => void;
   onPatchVariant: (id: string, patch: Partial<PositionOptionVariant>) => void;
   onVariantNameBlur: (id: string) => void;
   onDeleteVariant: (id: string) => void;
   onReorderVariants: (variants: PositionOptionVariant[]) => void;
   onDelete: () => void;
-  onDone: () => void;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
@@ -2764,13 +2811,12 @@ function SortableOptionGroupRow({
         autoFocusName={autoFocusName}
         onOpenChange={onOpenChange}
         onPatch={onPatch}
-        onAddVariant={onAddVariant}
+        onCreateVariant={onCreateVariant}
         onPatchVariant={onPatchVariant}
         onVariantNameBlur={onVariantNameBlur}
         onDeleteVariant={onDeleteVariant}
         onReorderVariants={onReorderVariants}
         onDelete={onDelete}
-        onDone={onDone}
       />
     </Popover>
   );
@@ -2824,13 +2870,12 @@ function OptionsTab({
     commitGroups(groups.map((group) => group.id === groupId ? updater(group) : group));
   };
 
-  const addVariant = (groupId: string) => {
+  const createVariant = (groupId: string, name: string) => {
     const id = createOptionEntityId("variant");
-    setTransientVariantIds((current) => new Set(current).add(id));
     setFocusedVariantId(id);
     updateGroup(groupId, (group) => ({
       ...group,
-      variants: [...group.variants, { id, name: "", price: "0" }],
+      variants: [...group.variants, { id, name, price: "0" }],
     }));
   };
 
@@ -2952,13 +2997,12 @@ function OptionsTab({
                     }
                   }}
                   onPatch={(patch) => patchGroup(group.id, patch)}
-                  onAddVariant={() => addVariant(group.id)}
+                  onCreateVariant={(name) => createVariant(group.id, name)}
                   onPatchVariant={(variantId, patch) => patchVariant(group.id, variantId, patch)}
                   onVariantNameBlur={(variantId) => handleVariantNameBlur(group.id, variantId)}
                   onDeleteVariant={(variantId) => deleteVariant(group.id, variantId)}
                   onReorderVariants={(variants) => updateGroup(group.id, (candidate) => ({ ...candidate, variants }))}
                   onDelete={() => requestDelete(group)}
-                  onDone={() => closeGroup(group.id)}
                 />
               ))}
             </SortableContext>
