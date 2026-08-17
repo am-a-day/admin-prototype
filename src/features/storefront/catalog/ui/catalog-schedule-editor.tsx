@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, CaretUpDown, Copy } from "@phosphor-icons/react";
+import { CaretDown, CaretUpDown, Clock, Copy } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import type {
   CatalogAvailabilityScheduleMode,
@@ -14,6 +14,7 @@ import {
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
 } from "./catalog-dropdown";
+import { usePositionSidePeekOverlay } from "../editor/side-peek-context";
 
 export type ScheduleDay = CatalogScheduleDay;
 export type ScheduleDayKey = CatalogScheduleDayKey;
@@ -136,13 +137,17 @@ function WeeklyScheduleRows({
   scheduleId,
   weeklySchedule,
   onWeeklyScheduleChange,
+  variant = "default",
 }: {
   scheduleId: string;
   weeklySchedule: WeeklySchedule;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+  variant?: "default" | "availability";
 }) {
   const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
   const schedule = normalizeWeeklySchedule(weeklySchedule);
+  const compactAvailability = variant === "availability";
+  usePositionSidePeekOverlay(openDayMenu !== null, () => setOpenDayMenu(null));
 
   const updateDay = (dayKey: ScheduleDayKey, day: ScheduleDay) => {
     onWeeklyScheduleChange({ ...schedule, [dayKey]: cloneDay(day) });
@@ -157,7 +162,7 @@ function WeeklyScheduleRows({
   };
 
   return (
-    <div data-weekly-schedule-id={scheduleId} className="overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white">
+    <div data-weekly-schedule-id={scheduleId} className={cn("overflow-hidden border border-[#e7e5e4] bg-white", compactAvailability ? "rounded-[15px]" : "rounded-[11px]")}>
       {DAY_LABELS.map(({ key, label }) => {
         const day = schedule[key];
         const timeRange = day.mode === "custom" ? getTimeRange(day) : null;
@@ -184,25 +189,39 @@ function WeeklyScheduleRows({
               <div className={cn("flex shrink-0 items-center justify-end", day.mode === "custom" ? "w-[162px] gap-1" : "w-[120px]")}>
                 {timeRange ? (
                   <>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={timeRange.start}
-                      aria-label={`${label}: начало интервала`}
-                      aria-invalid={errors.length > 0}
-                      onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, start: event.target.value } })}
-                      className={cn("h-7 w-[52px] rounded-[9px] border bg-white px-1 text-center text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5", errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]")}
-                    />
+                    <div className={cn("relative shrink-0", compactAvailability ? "w-[60px]" : "w-[52px]")}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={timeRange.start}
+                        aria-label={`${label}: начало интервала`}
+                        aria-invalid={errors.length > 0}
+                        onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, start: event.target.value } })}
+                        className={cn(
+                          "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
+                          compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
+                          errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
+                        )}
+                      />
+                      {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
+                    </div>
                     <span className="px-0.5 text-[14px] leading-none text-[#79716b]">–</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={timeRange.end}
-                      aria-label={`${label}: конец интервала`}
-                      aria-invalid={errors.length > 0}
-                      onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, end: event.target.value } })}
-                      className={cn("h-7 w-[52px] rounded-[9px] border bg-white px-1 text-center text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5", errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]")}
-                    />
+                    <div className={cn("relative shrink-0", compactAvailability ? "w-[66px]" : "w-[52px]")}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={timeRange.end}
+                        aria-label={`${label}: конец интервала`}
+                        aria-invalid={errors.length > 0}
+                        onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, end: event.target.value } })}
+                        className={cn(
+                          "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
+                          compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
+                          errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
+                        )}
+                      />
+                      {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
+                    </div>
                     <DropdownMenu.Trigger asChild>
                       <button
                         type="button"
@@ -281,10 +300,12 @@ export function CatalogWeeklyScheduleEditor({
   scheduleId,
   weeklySchedule,
   onWeeklyScheduleChange,
+  variant = "default",
 }: {
   scheduleId: string;
   weeklySchedule: WeeklySchedule;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
+  variant?: "default" | "availability";
 }) {
   return (
     <div data-weekly-schedule-editor={scheduleId}>
@@ -292,6 +313,7 @@ export function CatalogWeeklyScheduleEditor({
         scheduleId={scheduleId}
         weeklySchedule={weeklySchedule}
         onWeeklyScheduleChange={onWeeklyScheduleChange}
+        variant={variant}
       />
     </div>
   );

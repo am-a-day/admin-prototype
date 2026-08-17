@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -50,7 +50,6 @@ import {
 import {
   CatalogWeeklyScheduleEditor,
   CatalogSchedulePopover,
-  PositionWeeklyScheduleEditor,
   createDefaultWeeklySchedule,
   isWeeklyScheduleOrderable,
   type AvailabilityScheduleMode,
@@ -3038,9 +3037,105 @@ function OptionsTab({
   );
 }
 
+const POSITION_AVAILABILITY_OPTIONS = [
+  { id: "always", label: "Доступно", Icon: CheckCircle },
+  { id: "unavailable", label: "На стопе", Icon: LockLaminated },
+  { id: "schedule", label: "По расписанию", Icon: CalendarDots },
+] as const satisfies Array<{ id: AvailabilityMode; label: string; Icon: typeof CheckCircle }>;
+
+function PositionAvailabilitySegmented({
+  itemId,
+  mode,
+  disabled = false,
+  onChange,
+}: {
+  itemId: string;
+  mode: AvailabilityMode;
+  disabled?: boolean;
+  onChange: (mode: AvailabilityMode) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Доступность позиции"
+      aria-disabled={disabled || undefined}
+      className="grid h-7 grid-cols-[0.92fr_0.92fr_1.25fr] gap-0.5 overflow-hidden rounded-[8px] border border-[#e7e5e4] bg-[#f5f5f4] p-0.5"
+      data-position-availability-segmented={itemId}
+    >
+      {POSITION_AVAILABILITY_OPTIONS.map(({ id, label, Icon }) => {
+        const selected = mode === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={disabled}
+            onClick={() => onChange(id)}
+            className={cn(
+              "flex min-w-0 items-center justify-center gap-1 rounded-[7px] px-1 text-[13px] leading-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed",
+              disabled
+                ? "text-[#a8a29e]"
+                : selected
+                  ? "bg-white text-[#292524] shadow-[0_1px_1px_rgba(0,0,0,0.05)]"
+                  : "text-[#79716b] hover:text-[#292524]",
+            )}
+          >
+            <Icon size={14} weight="regular" className="shrink-0" aria-hidden="true" />
+            <span className="truncate">{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PositionAvailabilityDisplayGroup({
+  ariaLabel,
+  value,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: "hidden" | "comingSoon";
+  onChange: (value: "hidden" | "comingSoon") => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={ariaLabel} className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white">
+      {([
+        { id: "hidden", label: "Скрывать из меню" },
+        { id: "comingSoon", label: "Показывать без возможности заказа" },
+      ] as const).map((option, index) => {
+        const selected = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.id)}
+            className={cn(
+              "flex h-[35px] w-full items-center gap-2 px-3 text-left text-[13px] leading-[18px] text-[#292524] transition hover:bg-[#fafaf9] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+              index > 0 && "border-t border-[#e7e5e4]",
+            )}
+          >
+            <span className={cn(
+              "flex size-4 shrink-0 items-center justify-center rounded-full border bg-white",
+              selected ? "border-[#292524]" : "border-[#d6d3d1]",
+            )}>
+              {selected && <span className="size-2 rounded-full bg-[#292524]" />}
+            </span>
+            <span className="min-w-0 truncate">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function PositionAvailabilityTab({
   item,
   editMode,
+  onRestoreItem,
   unavailableDisplayMode,
   outsideScheduleMode,
   weeklySchedule,
@@ -3051,6 +3146,7 @@ function PositionAvailabilityTab({
 }: {
   item: CatalogItem;
   editMode: boolean;
+  onRestoreItem: (item: CatalogItem) => void;
   unavailableDisplayMode: UnavailableDisplayMode;
   outsideScheduleMode: OutsideScheduleMode;
   weeklySchedule: WeeklySchedule;
@@ -3059,102 +3155,78 @@ function PositionAvailabilityTab({
   onOutsideScheduleModeChange: (mode: OutsideScheduleMode) => void;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
 }) {
-  const mode: AvailabilityMode = isItemStopOverrideActive(item)
-    ? "unavailable"
-    : item.scheduled
-      ? "schedule"
-      : "always";
+  const mode: AvailabilityMode = item.status === "archive"
+    ? item.archivedAvailabilityMode ?? (item.scheduled ? "schedule" : "always")
+    : isItemStopOverrideActive(item)
+      ? "unavailable"
+      : item.scheduled
+        ? "schedule"
+        : "always";
 
   if (editMode) {
-    const unavailableBehavior = mode === "schedule" ? outsideScheduleMode : unavailableDisplayMode;
-    const setUnavailableBehavior = (next: "hidden" | "comingSoon") => {
-      if (mode === "schedule") onOutsideScheduleModeChange(next);
-      else onUnavailableDisplayModeChange(next);
-    };
+    const isArchived = item.status === "archive";
+    const displayMode = mode === "schedule" ? outsideScheduleMode : unavailableDisplayMode;
 
     return (
-      <div className="space-y-2">
-        <div
-          role="radiogroup"
-          aria-label="Доступность позиции"
-          className="grid grid-cols-[0.92fr_0.92fr_1.25fr] gap-0.5 rounded-[11px] border border-[#e7e5e4] bg-white p-1"
-        >
-          {([
-            { id: "always", label: "Доступно" },
-            { id: "unavailable", label: "На стопе" },
-            { id: "schedule", label: "По расписанию" },
-          ] as const).map((option) => {
-            const selected = mode === option.id;
-            return (
-              <label
-                key={option.id}
-                className={cn(
-                  "relative flex h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-[8px] px-1.5 text-[12px] font-medium transition focus-within:outline-none focus-within:ring-2 focus-within:ring-[#292524]/10",
-                  selected ? "bg-[#f3f3ed] text-[#292524]" : "text-[#79716b] hover:bg-[#fafaf9] hover:text-[#292524]",
-                  item.status === "archive" && "pointer-events-none opacity-50",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={`position-availability-${item.id}`}
-                  value={option.id}
-                  checked={selected}
-                  disabled={item.status === "archive"}
-                  onChange={() => onModeChange(option.id)}
-                  className="absolute inset-0 z-10 cursor-pointer opacity-0"
-                />
-                <span className={cn(
-                  "flex size-3.5 shrink-0 items-center justify-center rounded-full border bg-white",
-                  selected ? "border-[#292524]" : "border-[#d6d3d1]",
-                )}>
-                  {selected && <span className="size-1.5 rounded-full bg-[#292524]" />}
-                </span>
-                <span className="truncate">{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-
-        {mode === "schedule" && (
-          <PositionWeeklyScheduleEditor
-            scheduleId={`item-${item.id}`}
-            weeklySchedule={weeklySchedule}
-            onWeeklyScheduleChange={onWeeklyScheduleChange}
-          />
+      <div className="space-y-3 px-4 pb-6 pt-2" data-position-availability-content={mode}>
+        {isArchived && (
+          <section
+            aria-label="Архивная позиция"
+            className="rounded-[14px] bg-[#f5f5f4] px-3.5 py-3"
+          >
+            <h3 className="text-[13px] font-semibold leading-[18px] text-[#292524]">Эти настройки недоступны для архивной позиции</h3>
+            <p className="mt-1.5 max-w-[345px] text-[13px] leading-[18px] text-[#79716b]">Позиция в архиве. Чтобы изменить настройки доступности, верните ее из архива</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onRestoreItem(item)}
+              className="mt-2 h-7 rounded-[9px] border-[#e7e5e4] bg-white px-2 text-[12px] font-normal text-[#79716b] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:ring-[#292524]/10"
+            >
+              <ArrowUUpLeft size={16} aria-hidden="true" />
+              Вернуть из архива
+            </Button>
+          </section>
         )}
 
-        {mode !== "always" && (
-          <section
-            aria-label="Когда недоступно"
-            className="rounded-[11px] border border-[#e7e5e4] bg-white p-3"
-          >
-            <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Когда недоступно</h3>
-            <div
-              role="group"
-              aria-label="Поведение при недоступности"
-              className="mt-2 grid grid-cols-[0.72fr_1.65fr] rounded-[8px] bg-[#f5f5f4] p-0.5"
-            >
-              {([
-                { id: "hidden", label: "Скрыть" },
-                { id: "comingSoon", label: "Показать «Скоро будет»" },
-              ] as const).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={unavailableBehavior === option.id}
-                  onClick={() => setUnavailableBehavior(option.id)}
-                  className={cn(
-                    "h-7 truncate rounded-[7px] px-2 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                    unavailableBehavior === option.id
-                      ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-sm"
-                      : "text-[#79716b] hover:text-[#292524]",
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+        <PositionAvailabilitySegmented
+          itemId={item.id}
+          mode={mode}
+          disabled={isArchived}
+          onChange={onModeChange}
+        />
+
+        {!isArchived && mode === "unavailable" && (
+          <section aria-label="Отображение в меню" className="space-y-1.5">
+            <h3 className="px-1.5 text-[13px] font-normal leading-5 text-[#0a0a0a]">Отображение в меню</h3>
+            <PositionAvailabilityDisplayGroup
+              ariaLabel="Отображение в меню"
+              value={displayMode}
+              onChange={onUnavailableDisplayModeChange}
+            />
           </section>
+        )}
+
+        {!isArchived && mode === "schedule" && (
+          <>
+            <section aria-label="Расписание доступности" className="space-y-1.5">
+              <h3 className="px-1.5 text-[13px] font-normal leading-5 text-[#0a0a0a]">Расписание доступности</h3>
+              <CatalogWeeklyScheduleEditor
+                scheduleId={`item-${item.id}`}
+                weeklySchedule={weeklySchedule}
+                onWeeklyScheduleChange={onWeeklyScheduleChange}
+                variant="availability"
+              />
+            </section>
+            <section aria-label="Отображение вне расписания" className="space-y-1.5">
+              <h3 className="px-1.5 text-[13px] font-normal leading-5 text-[#0a0a0a]">Отображение вне расписания</h3>
+              <PositionAvailabilityDisplayGroup
+                ariaLabel="Отображение вне расписания"
+                value={outsideScheduleMode}
+                onChange={onOutsideScheduleModeChange}
+              />
+            </section>
+          </>
         )}
       </div>
     );
@@ -3255,6 +3327,7 @@ export function PositionEditor({
   upsell,
   onUpsellChange,
   onArchiveItem,
+  onRestoreItem,
   onMoveItem,
   onToggleStop,
   onSetAvailabilityMode,
@@ -3908,6 +3981,7 @@ export function PositionEditor({
               <PositionAvailabilityTab
                 item={item}
                 editMode={mode === "edit"}
+                onRestoreItem={onRestoreItem}
                 unavailableDisplayMode={unavailableDisplayMode}
                 outsideScheduleMode={outsideScheduleMode}
                 weeklySchedule={weeklySchedule}

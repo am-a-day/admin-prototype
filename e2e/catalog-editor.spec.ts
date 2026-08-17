@@ -218,9 +218,16 @@ test("uses the availability tab and original price-volume field order in the sid
   await pane.getByRole("button", { name: /Действия с позицией/ }).click();
   await page.getByRole("menuitem", { name: "Архивировать", exact: true }).click();
   await expect(pane).toBeVisible();
+  await expect(pane.getByText("Эти настройки недоступны для архивной позиции", { exact: true })).toBeVisible();
+  const archivedModes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
+  await expect(archivedModes.getByRole("radio", { name: "Доступно", exact: true })).toBeDisabled();
+  await expect(pane.getByRole("button", { name: "Вернуть из архива", exact: true })).toBeVisible();
+  await pane.getByRole("button", { name: "Вернуть из архива", exact: true }).click();
+  await expect(pane.getByText("Эти настройки недоступны для архивной позиции", { exact: true })).toHaveCount(0);
+  await expect(pane.getByRole("radio", { name: "По расписанию", exact: true })).toBeChecked();
 });
 
-test("adapts position availability blocks and applies one day schedule to all days", async ({ page }) => {
+test("adapts position availability blocks and edits an individual day schedule", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
@@ -228,45 +235,69 @@ test("adapts position availability blocks and applies one day schedule to all da
   const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
 
   await modes.getByRole("radio", { name: "Доступно", exact: true }).click();
-  await expect(pane.getByRole("region", { name: "Расписание" })).toHaveCount(0);
-  await expect(pane.getByRole("region", { name: "Когда недоступно" })).toHaveCount(0);
+  await expect(pane.getByRole("region", { name: "Расписание доступности" })).toHaveCount(0);
+  await expect(pane.getByRole("region", { name: "Отображение в меню" })).toHaveCount(0);
 
   await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
-  await expect(pane.getByRole("region", { name: "Расписание" })).toHaveCount(0);
-  await expect(pane.getByRole("region", { name: "Когда недоступно" })).toBeVisible();
+  await expect(pane.getByRole("region", { name: "Расписание доступности" })).toHaveCount(0);
+  const stopDisplay = pane.getByRole("region", { name: "Отображение в меню" });
+  await expect(stopDisplay).toBeVisible();
+  await stopDisplay.getByRole("radio", { name: "Показывать без возможности заказа" }).click();
+  await expect(stopDisplay.getByRole("radio", { name: "Показывать без возможности заказа" })).toBeChecked();
 
   await modes.getByRole("radio", { name: "По расписанию", exact: true }).click();
-  const schedule = pane.getByRole("region", { name: "Расписание" });
+  const schedule = pane.getByRole("region", { name: "Расписание доступности" });
   await expect(schedule).toBeVisible();
-  const unavailableBehavior = pane.getByRole("region", { name: "Когда недоступно" });
+  const unavailableBehavior = pane.getByRole("region", { name: "Отображение вне расписания" });
   await expect(unavailableBehavior).toBeVisible();
-  await expect(unavailableBehavior.getByRole("button", { name: "Скрыть", exact: true })).toBeVisible();
-  await expect(unavailableBehavior.getByRole("button", { name: "Показать «Скоро будет»", exact: true })).toBeVisible();
+  await expect(unavailableBehavior.getByRole("radio", { name: "Скрывать из меню", exact: true })).toBeVisible();
+  await expect(unavailableBehavior.getByRole("radio", { name: "Показывать без возможности заказа", exact: true })).toBeVisible();
   await expect(schedule.getByText("Понедельник", { exact: true })).toBeVisible();
   await expect(schedule.getByText("Воскресенье", { exact: true })).toBeVisible();
-  await expect(schedule.getByText("Среда", { exact: true })).toHaveCSS("color", "rgb(41, 37, 36)");
+  await expect(schedule.getByText("Среда", { exact: true })).toHaveCSS("color", "rgb(166, 160, 155)");
 
   const tuesdayMode = schedule.getByRole("button", { name: "Вторник: режим расписания" });
   await expect(tuesdayMode.locator("svg")).toHaveCount(1);
   await tuesdayMode.click();
   await expect(page.getByRole("menuitemradio", { name: "Весь день", exact: true })).toBeVisible();
-  await expect(page.getByRole("menuitemradio", { name: "Своё время", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "По часам", exact: true })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: "Недоступно", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitemradio", { name: "Весь день", exact: true })).toHaveCount(0);
+  await expect(pane).toBeVisible();
+  await tuesdayMode.click();
   await page.getByRole("menuitemradio", { name: "Весь день", exact: true }).click();
 
   await schedule.getByRole("button", { name: "Среда: режим расписания" }).click();
-  await page.getByRole("menuitemradio", { name: "Своё время", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "По часам", exact: true }).click();
   await schedule.getByLabel("Среда: начало").fill("10:00");
   await schedule.getByLabel("Среда: конец").fill("19:00");
-  await schedule.getByRole("button", { name: "Применить ко всем", exact: true }).click();
-
-  await expect(schedule.getByLabel("Понедельник: начало")).toHaveValue("10:00");
-  await expect(schedule.getByLabel("Воскресенье: конец")).toHaveValue("19:00");
+  await expect(schedule.getByLabel("Среда: начало")).toHaveValue("10:00");
+  await expect(schedule.getByLabel("Среда: конец")).toHaveValue("19:00");
 
   await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
   await expect(schedule).toHaveCount(0);
   await modes.getByRole("radio", { name: "По расписанию", exact: true }).click();
-  await expect(pane.getByRole("region", { name: "Расписание" }).getByLabel("Среда: начало")).toHaveValue("10:00");
+  await expect(pane.getByRole("region", { name: "Расписание доступности" }).getByLabel("Среда: начало")).toHaveValue("10:00");
+});
+
+test("restores the previous stopped availability mode after archiving", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
+  await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
+  const display = pane.getByRole("region", { name: "Отображение в меню" });
+  await display.getByRole("radio", { name: "Показывать без возможности заказа", exact: true }).click();
+
+  await pane.getByRole("button", { name: /Действия с позицией/ }).click();
+  await page.getByRole("menuitem", { name: "Архивировать", exact: true }).click();
+  await expect(pane.getByText("Эти настройки недоступны для архивной позиции", { exact: true })).toBeVisible();
+  await pane.getByRole("button", { name: "Вернуть из архива", exact: true }).click();
+
+  await expect(pane.getByRole("radio", { name: "На стопе", exact: true })).toBeChecked();
+  await expect(pane.getByRole("region", { name: "Отображение в меню" }).getByRole("radio", { name: "Показывать без возможности заказа", exact: true })).toBeChecked();
 });
 
 test("configures card display with an instant mini and live preview", async ({ page }) => {
@@ -665,9 +696,9 @@ test("restores structured promo, options, and availability editor state", async 
   await page.getByRole("button", { name: "Доступность" }).click();
   const schedule = page.getByRole("radio", { name: /По расписанию/ });
   await schedule.click();
-  const availability = page.getByRole("region", { name: "Расписание" });
+  const availability = page.getByRole("region", { name: "Расписание доступности" });
   await availability.getByRole("button", { name: "Понедельник: режим расписания" }).click();
-  await page.getByRole("menuitemradio", { name: "Своё время", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "По часам", exact: true }).click();
   await availability.getByLabel("Понедельник: начало").fill("10:00");
   await availability.getByLabel("Понедельник: конец").fill("19:00");
   await page.waitForTimeout(350);
@@ -684,8 +715,8 @@ test("restores structured promo, options, and availability editor state", async 
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
   await reloadedPane.getByRole("button", { name: "Доступность", exact: true }).click();
   await expect(page.getByRole("radio", { name: /По расписанию/ })).toBeChecked();
-  await expect(page.getByRole("region", { name: "Расписание" }).getByLabel("Понедельник: начало")).toHaveValue("10:00");
-  await expect(page.getByRole("region", { name: "Расписание" }).getByLabel("Понедельник: конец")).toHaveValue("19:00");
+  await expect(page.getByRole("region", { name: "Расписание доступности" }).getByLabel("Понедельник: начало")).toHaveValue("10:00");
+  await expect(page.getByRole("region", { name: "Расписание доступности" }).getByLabel("Понедельник: конец")).toHaveValue("19:00");
 });
 
 test("edits option groups in compact option popovers", async ({ page }) => {

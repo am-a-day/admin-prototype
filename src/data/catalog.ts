@@ -118,6 +118,8 @@ export type CatalogItem = {
   outsideScheduleMode?: "hidden" | "comingSoon";
   weeklySchedule?: CatalogWeeklySchedule;
   availabilityScheduleMode?: CatalogAvailabilityScheduleMode;
+  /** Availability mode to restore after an archived item is returned to the menu. */
+  archivedAvailabilityMode?: "always" | "unavailable" | "schedule";
   upsell?: CatalogItemUpsell;
 };
 

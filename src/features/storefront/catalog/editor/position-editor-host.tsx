@@ -164,6 +164,11 @@ export function PositionEditorHost({
     onClose();
   };
 
+  const getAvailabilityMode = (target: CatalogItem): AvailabilityMode => {
+    if (target.status === "stopped" || target.status === "coming-soon") return "unavailable";
+    return target.scheduled ? "schedule" : "always";
+  };
+
   const setAvailability = (target: CatalogItem, mode: AvailabilityMode) => {
     if (target.status === "archive") return;
     if (mode === "unavailable") setItemStatus(target.id, "stopped");
@@ -182,6 +187,7 @@ export function PositionEditorHost({
       status: "active",
       scheduled: false,
       unavailableDisplayMode: "hidden",
+      archivedAvailabilityMode: undefined,
     };
     addItem(copy);
     setItemOrder(target.sectionId, [
@@ -218,13 +224,19 @@ export function PositionEditorHost({
       }}
       stopBusy={false}
       onArchiveItem={(target) => {
-        setItemStatus(target.id, "archive");
-        scheduleAutosave(target.id);
+        updateAndAutosave(target.id, {
+          status: "archive",
+          archivedAvailabilityMode: getAvailabilityMode(target),
+        });
         onFeedback?.("Позиция перенесена в архив");
       }}
       onRestoreItem={(target) => {
-        setItemStatus(target.id, "active");
-        scheduleAutosave(target.id);
+        const mode = target.archivedAvailabilityMode ?? (target.scheduled ? "schedule" : "always");
+        updateAndAutosave(target.id, {
+          status: mode === "unavailable" ? "stopped" : "active",
+          scheduled: mode === "schedule",
+          archivedAvailabilityMode: undefined,
+        });
         onFeedback?.("Позиция восстановлена");
       }}
       onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}

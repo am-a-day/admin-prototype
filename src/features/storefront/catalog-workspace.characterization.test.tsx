@@ -429,7 +429,9 @@ describe("catalog observable behavior baseline", () => {
     expect(within(availability).getByRole("radio", { name: "Доступно" })).toBeChecked();
     await user.click(within(availability).getByRole("radio", { name: "На стопе" }));
     expect(within(availability).getByRole("radio", { name: "На стопе" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "Показать «Скоро будет»" })).toBeInTheDocument();
+    const stopDisplay = screen.getByRole("radiogroup", { name: "Отображение в меню" });
+    expect(within(stopDisplay).getByRole("radio", { name: "Скрывать из меню" })).toBeChecked();
+    expect(within(stopDisplay).getByRole("radio", { name: "Показывать без возможности заказа" })).toBeInTheDocument();
   });
 
   it("keeps table actions available after collapsing the editor", async () => {
