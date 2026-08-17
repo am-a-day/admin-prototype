@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, MagnifyingGlass, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -22,7 +22,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CatalogSaveStatus } from "@/contexts/catalog-store-context";
-import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import {
@@ -80,107 +79,6 @@ export type DaySchedule = CatalogScheduleDay;
 export type WeeklySchedule = CatalogWeeklySchedule;
 type LocalizedValue = CatalogLocalizedValue;
 
-function PositionSaveStatus({
-  status,
-  onRetry,
-}: {
-  status: CatalogSaveStatus;
-  onRetry?: () => void;
-}) {
-  return (
-    <div
-      data-position-save-status
-      data-save-status={status}
-      role={status === "error" ? "alert" : status === "idle" ? undefined : "status"}
-      aria-live={status === "idle" ? undefined : "polite"}
-      className={cn(
-        "flex h-8 w-[96px] shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[12px] text-[#79716b]",
-        status === "error" && "text-[#c10007]",
-      )}
-    >
-      {status === "saving" && (
-        <>
-          <SpinnerGap size={14} className="shrink-0 animate-spin" aria-hidden="true" />
-          <span>Сохранение…</span>
-        </>
-      )}
-      {status === "saved" && (
-        <>
-          <CheckCircle size={14} weight="fill" className="shrink-0 text-[#56826a]" aria-hidden="true" />
-          <span>Сохранено</span>
-        </>
-      )}
-      {status === "error" && (
-        <Tooltip label="Не удалось сохранить — повторить" side="bottom" delayDuration={250}>
-          <button
-            type="button"
-            onClick={onRetry}
-            aria-label="Не удалось сохранить. Повторить"
-            className="flex h-8 items-center gap-1 rounded-lg px-1.5 font-medium transition hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
-          >
-            <XCircle size={14} weight="fill" aria-hidden="true" />
-            <span>Повторить</span>
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
-}
-
-const EDITOR_TABS: { id: EditorTab; label: string }[] = [
-  { id: "basic", label: "Основное" },
-  { id: "promo", label: "Рекомендации" },
-  { id: "options", label: "Опции" },
-  { id: "availability", label: "Доступность" },
-  { id: "display", label: "Отображение" },
-];
-const editorTabByItem = new Map<string, EditorTab>();
-
-type PositionOptionSelection = "single" | "multiple";
-type PositionOptionPricing = "total" | "surcharge";
-type PositionOptionVariant = CatalogOptionVariant;
-type PositionOptionGroup = CatalogOptionGroup;
-
-const CATALOG_POSITION_OPTIONS_STORAGE_KEY = catalogStorageKey("positionOptionGroups");
-
-function createOptionEntityId(prefix: "group" | "variant") {
-  return `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-}
-
-function createOptionGroup(name = ""): PositionOptionGroup {
-  return {
-    id: createOptionEntityId("group"),
-    name,
-    expanded: true,
-    required: false,
-    selection: "single",
-    pricing: "total",
-    variants: [],
-  };
-}
-
-function seedOptionGroups(count: number): PositionOptionGroup[] {
-  const names = ["Размер", "Добавки", "Соус", "Степень прожарки"];
-  return Array.from({ length: count }, (_, index) => ({
-    ...createOptionGroup(names[index] ?? `Группа ${index + 1}`),
-    expanded: index === 0,
-  }));
-}
-const LOCALIZED_VALUE_PLACEHOLDERS: Record<LanguageCode, string> = {
-  ru: "Например, Хит",
-  kk: "Мысалы, Хит",
-  en: "For example, Hit",
-  sr: "Na primer, Hit",
-};
-
-type MediaKind = "photo" | "video";
-type MediaEntry = {
-  id: string;
-  kind: MediaKind;
-  fileName?: string;
-  previewUrl?: string;
-  coverMode?: "auto" | "custom";
-};
 function getStringField(value: unknown, key: LanguageCode) {
   if (!value || typeof value !== "object") return "";
   const field = (value as Partial<Record<LanguageCode, unknown>>)[key];
@@ -269,8 +167,100 @@ export function getLocalizedValueLabels(values: LocalizedValue[], language: Lang
     .map((value) => getLocalizedValueLabel(value, language))
     .filter((value): value is string => Boolean(value));
 }
+function PositionSaveStatus({
+  status,
+  onRetry,
+}: {
+  status: CatalogSaveStatus;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      data-position-save-status
+      data-save-status={status}
+      role={status === "error" ? "alert" : status === "idle" ? undefined : "status"}
+      aria-live={status === "idle" ? undefined : "polite"}
+      className={cn(
+        "flex h-8 w-[96px] shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[12px] text-[#79716b]",
+        status === "error" && "text-[#c10007]",
+      )}
+    >
+      {status === "saving" && (
+        <>
+          <SpinnerGap size={14} className="shrink-0 animate-spin" aria-hidden="true" />
+          <span>Сохранение…</span>
+        </>
+      )}
+      {status === "saved" && (
+        <>
+          <CheckCircle size={14} weight="fill" className="shrink-0 text-[#56826a]" aria-hidden="true" />
+          <span>Сохранено</span>
+        </>
+      )}
+      {status === "error" && (
+        <Tooltip label="Не удалось сохранить — повторить" side="bottom" delayDuration={250}>
+          <button
+            type="button"
+            onClick={onRetry}
+            aria-label="Не удалось сохранить. Повторить"
+            className="flex h-8 items-center gap-1 rounded-lg px-1.5 font-medium transition hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
+          >
+            <XCircle size={14} weight="fill" aria-hidden="true" />
+            <span>Повторить</span>
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 
+const EDITOR_TABS: { id: EditorTab; label: string }[] = [
+  { id: "basic", label: "Основное" },
+  { id: "promo", label: "Рекомендации" },
+  { id: "options", label: "Опции" },
+  { id: "availability", label: "Доступность" },
+  { id: "display", label: "Отображение" },
+];
+const editorTabByItem = new Map<string, EditorTab>();
 
+type PositionOptionSelection = "single" | "multiple";
+type PositionOptionPricing = "total" | "surcharge";
+type PositionOptionVariant = CatalogOptionVariant;
+type PositionOptionGroup = CatalogOptionGroup;
+
+const CATALOG_POSITION_OPTIONS_STORAGE_KEY = catalogStorageKey("positionOptionGroups");
+
+function createOptionEntityId(prefix: "group" | "variant") {
+  return `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+function createOptionGroup(name = ""): PositionOptionGroup {
+  return {
+    id: createOptionEntityId("group"),
+    name,
+    expanded: true,
+    required: false,
+    selection: "single",
+    pricing: "total",
+    variants: [],
+  };
+}
+
+function seedOptionGroups(count: number): PositionOptionGroup[] {
+  const names = ["Размер", "Добавки", "Соус", "Степень прожарки"];
+  return Array.from({ length: count }, (_, index) => ({
+    ...createOptionGroup(names[index] ?? `Группа ${index + 1}`),
+    expanded: index === 0,
+  }));
+}
+type MediaKind = "photo" | "video";
+type MediaEntry = {
+  id: string;
+  kind: MediaKind;
+  fileName?: string;
+  previewUrl?: string;
+  coverMode?: "auto" | "custom";
+};
 function MediaTile({
   item,
   entry,
@@ -1177,55 +1167,6 @@ export function CatalogThumb({ item, size = 30 }: { item: CatalogItem; size?: nu
   );
 }
 
-function PromoChip({
-  children,
-  onClick,
-  onRemove,
-  removeLabel,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  onRemove?: () => void;
-  removeLabel?: string;
-}) {
-  return (
-    <span className="group/chip inline-flex h-[22px] max-w-[190px] items-center rounded-[6px] bg-[#f5f5f4] pl-2 pr-1 text-[12px] font-medium leading-[22px] text-[#292524]">
-      <button
-        type="button"
-        onClick={onClick}
-        className="min-w-0 truncate rounded-[4px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        {children}
-      </button>
-      {onRemove && (
-        <Tooltip label={removeLabel ?? "Удалить"} side="top">
-          <button
-            type="button"
-            aria-label={removeLabel ?? "Удалить"}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRemove();
-            }}
-            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[#a8a29e] opacity-0 transition hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover/chip:opacity-100"
-          >
-            <XCircle size={13} />
-          </button>
-        </Tooltip>
-      )}
-    </span>
-  );
-}
-
-function PromoLabel({ label, tooltip }: { label: string; tooltip: string }) {
-  return (
-    <Tooltip label={tooltip} side="top">
-      <span className="cursor-default border-b border-dotted border-[#a8a29e] text-[13px] font-medium leading-5 text-[#292524]">
-        {label}
-      </span>
-    </Tooltip>
-  );
-}
-
 function ItemSelectorPopover({
   open,
   currentItem,
@@ -1277,10 +1218,10 @@ function ItemSelectorPopover({
         align="end"
         sideOffset={6}
         collisionPadding={12}
-        className="w-[356px] overflow-hidden rounded-[13px] p-3 shadow-[0_18px_42px_rgba(41,37,36,0.14)]"
+        className="w-[372px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[13px] p-3 shadow-[0_18px_42px_rgba(41,37,36,0.14)]"
       >
-        <div className="flex h-8 items-center justify-between gap-3">
-          <label className="relative block h-8 w-[171px] shrink-0">
+        <div className="flex h-8 items-center justify-between gap-2.5">
+          <label className="relative block h-8 min-w-0 flex-1">
             <MagnifyingGlass size={14} className="pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 text-[#79716b]" />
             <Input
               size="compact"
@@ -1296,7 +1237,7 @@ function ItemSelectorPopover({
                   <button
                     type="button"
                     aria-label="Фильтр по разделу"
-                    className="flex h-8 w-[146px] shrink-0 items-center gap-1.5 rounded-full bg-[#f5f5f4] px-2 text-[12px] text-[#292524] transition hover:bg-[#eceae7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    className="flex h-8 w-[135px] shrink-0 items-center gap-1.5 rounded-full bg-[#f5f5f4] px-2 text-[12px] text-[#292524] transition hover:bg-[#eceae7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
                     <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-white text-[#79716b]">
                       <Asterisk size={13} weight="bold" />
@@ -1350,7 +1291,7 @@ function ItemSelectorPopover({
                   className="size-4 shrink-0 rounded-[5px] border-[#d6d3d1] accent-[#292524]"
                 />
                 <CatalogThumb item={candidate} size={20} />
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#79716b]" title={candidate.title}>
+                <span className="min-w-0 flex-1 truncate text-[13px] leading-4 text-[#79716b]" title={candidate.title}>
                   {candidate.title}
                 </span>
               </label>
@@ -1362,145 +1303,6 @@ function ItemSelectorPopover({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function LocalizedValueInputs({
-  value,
-  onChange,
-  autoFocus = false,
-}: {
-  value: Partial<Record<LanguageCode, string>>;
-  onChange: (next: Partial<Record<LanguageCode, string>>) => void;
-  autoFocus?: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      {LANGUAGES.map((language, index) => (
-        <label key={language.code} className="block">
-          <span className="mb-1 block text-[12px] leading-4 text-[#79716b]">{language.label}</span>
-          <input
-            value={value[language.code] ?? ""}
-            onChange={(event) => onChange({ ...value, [language.code]: event.target.value })}
-            autoFocus={autoFocus && index === 0}
-            placeholder={LOCALIZED_VALUE_PLACEHOLDERS[language.code]}
-            className="h-9 w-full rounded-[9px] border border-[#e7e5e4] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition placeholder:text-[#a8a29e] focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5"
-          />
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function LocalizedValueDialog({
-  title,
-  description,
-  value,
-  deleteLabel,
-  onSave,
-  onDelete,
-  onClose,
-}: {
-  title: string;
-  description: string;
-  value: LocalizedValue | null;
-  deleteLabel?: string;
-  onSave: (value: LocalizedValue | null) => void;
-  onDelete?: () => void;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState<Partial<Record<LanguageCode, string>>>(value ?? { ru: "" });
-
-  usePositionSidePeekOverlay(true, onClose);
-
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
-  };
-
-  const submit = () => {
-    onSave(normalizeLocalizedValue(draft));
-    onClose();
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
-      <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
-        <div className="border-b border-[#eceae7] px-4 py-3">
-          <div className="text-[14px] font-medium text-[#292524]">{title}</div>
-          <div className="mt-0.5 text-[12px] leading-4 text-[#79716b]">{description}</div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <LocalizedValueInputs value={draft} onChange={setDraft} autoFocus />
-        </div>
-        <div className="flex shrink-0 justify-between gap-2 border-t border-[#eceae7] px-4 py-3">
-          {onDelete ? (
-            <button
-              type="button"
-              onClick={() => {
-                onDelete();
-                onClose();
-              }}
-              className="h-8 rounded-[8px] px-3 text-[13px] text-[#dc2626] transition hover:bg-[#fef2f2]"
-            >
-              {deleteLabel ?? "Удалить"}
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#79716b] transition hover:bg-[#f5f5f4]">
-              Отмена
-            </button>
-            <button type="button" onClick={submit} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]">
-              Сохранить
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function PromoCompactCard({
-  label,
-  tooltip,
-  cardName,
-  children,
-}: {
-  label: string;
-  tooltip: string;
-  cardName: "sticker" | "tags" | "keywords";
-  children: ReactNode;
-}) {
-  return (
-    <div
-      data-upsell-card={cardName}
-      className="flex min-h-12 w-full items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-left shadow-sm transition hover:bg-[#fdfdfc] focus-within:ring-2 focus-within:ring-[#292524]/10"
-    >
-      <span className="shrink-0">
-        <PromoLabel label={label} tooltip={tooltip} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-function PromoAddButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <Tooltip label={label} side="top">
-      <button
-        type="button"
-        aria-label={label}
-        onClick={onClick}
-        className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        <PlusCircle size={16} />
-      </button>
-    </Tooltip>
   );
 }
 
@@ -1529,13 +1331,15 @@ function SortableRecommendationRow({
   return (
     <div
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       style={{
         transform: CSS.Transform.toString(transform),
         transition: reducedMotion ? undefined : transition,
         zIndex: isDragging ? 2 : undefined,
       }}
       className={cn(
-        "group relative flex h-[30px] items-center gap-2 rounded-[8px] transition-colors hover:bg-[#f8f7f4]",
+        "group relative flex h-9 items-center gap-2 rounded-[8px] transition-colors hover:bg-[#f8f7f4]",
         isDragging && "cursor-grabbing bg-white opacity-80 shadow-[0_8px_24px_rgba(41,37,36,0.12)]",
       )}
     >
@@ -1639,22 +1443,13 @@ export function PromoRecommendationsCard({
       },
     );
   };
-  const localActionLabel = recommendations.length === 0
-    ? "Подобрать для этой позиции"
-    : "Дополнить автоматически";
-
   return (
     <>
-      <div data-upsell-card="recommendations" className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
-        <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4">
-          <div>
-            <h3 className="text-[13px] font-medium leading-5 text-[#292524]">Рекомендуемые позиции</h3>
-            <p className="text-[13px] leading-5 text-[#79716b]">показываются гостю при открытии позиции</p>
-          </div>
-          <span className="shrink-0 rounded-full bg-[#f5f5f4] px-2 py-1 text-[11px] tabular-nums text-[#79716b]">
-            {recommendations.length} из {CATALOG_RECOMMENDATION_LIMIT}
-          </span>
+      <div data-upsell-card="recommendations" className="w-full">
+        <div className="mb-1.5 px-1">
+          <h3 className="inline-flex border-b border-dashed border-[#a8a29e] px-0.5 pb-0.5 text-[13px] font-normal leading-5 text-[#292524]">Рекомендации</h3>
         </div>
+        <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white">
         {recommendations.length > 0 ? (
           <DndContext
             sensors={recommendationSensors}
@@ -1663,24 +1458,13 @@ export function PromoRecommendationsCard({
             onDragEnd={handleRecommendationDragEnd}
           >
             <SortableContext items={recommendationIds} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2 px-4 pb-3">
+              <div className="space-y-1 border-b border-[#e7e5e4] px-3 py-2">
                 {recommendations.map((recommended) => (
                   <SortableRecommendationRow key={recommended.id} id={recommended.id}>
-                    {({ setActivatorNodeRef, dragProps }) => (
+                    {() => (
                       <>
-                        <Tooltip label="Изменить порядок" side="top">
-                          <button
-                            ref={setActivatorNodeRef}
-                            type="button"
-                            aria-label={`Изменить порядок рекомендации «${recommended.title}»`}
-                            {...dragProps}
-                            className="flex h-[30px] w-5 shrink-0 touch-none cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#57534d] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                          >
-                            <DotsSixVertical size={16} />
-                          </button>
-                        </Tooltip>
-                        <CatalogThumb item={recommended} size={30} />
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-4 text-[#292524]">{recommended.title}</span>
+                        <CatalogThumb item={recommended} size={20} />
+                        <span className="min-w-0 flex-1 truncate text-[13px] leading-4 text-[#292524]">{recommended.title}</span>
                         <span className={cn(
                           "shrink-0 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium",
                           recommendationSources[recommended.id] === "automatic"
@@ -1700,13 +1484,11 @@ export function PromoRecommendationsCard({
                           <button
                             type="button"
                             aria-label={`Удалить рекомендацию «${recommended.title}»`}
+                            data-recommendation-remove-action={showRecommendationRemoveAction ? "true" : undefined}
                             onClick={() => setRecommendationIds(recommendationIds.filter((id) => id !== recommended.id))}
-                            className={cn(
-                              "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100",
-                              showRecommendationRemoveAction ? "opacity-100" : "opacity-0",
-                            )}
+                            className="flex size-6 shrink-0 items-center justify-center rounded-full text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                           >
-                            <XCircle size={18} />
+                            <X size={15} />
                           </button>
                         </Tooltip>
                       </>
@@ -1716,24 +1498,17 @@ export function PromoRecommendationsCard({
               </div>
             </SortableContext>
           </DndContext>
-        ) : (
-          <div className="px-4 pb-4 pt-1">
-            <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5 text-center">
-              <p className="text-[13px] font-medium text-[#57534d]">Рекомендуемые позиции не настроены</p>
-              <p className="mt-1 text-[12px] leading-4 text-[#8a8179]">Добавьте позиции вручную или запустите подбор только для этой позиции.</p>
-            </div>
-          </div>
-        )}
-        <div className="border-t border-[#eceae7]">
+        ) : null}
+        <div>
           <div className="flex items-center">
             <button
               type="button"
               disabled={generationBusy || recommendations.length >= CATALOG_RECOMMENDATION_LIMIT}
               onClick={() => generate("supplement")}
-              className="flex h-10 min-w-0 flex-1 items-center gap-2 px-4 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:text-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+              className="flex h-9 min-w-0 flex-1 items-center gap-2 px-3 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:text-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
             >
-              <Asterisk size={15} weight="bold" className="shrink-0" />
-              <span className="truncate">{generationBusy ? "Подбираем…" : localActionLabel}</span>
+              <ShootingStar size={16} className="shrink-0" />
+              <span className="truncate">{generationBusy ? "Подбираем…" : "Подобрать для этой позиции"}</span>
             </button>
             {automaticCount > 0 && (
               <DropdownMenu.Root>
@@ -1767,12 +1542,14 @@ export function PromoRecommendationsCard({
           >
             <button
               type="button"
-              className="flex h-10 w-full items-center gap-2 border-t border-[#eceae7] px-4 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f8f7f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+              aria-label="Добавить вручную"
+              className="flex h-9 w-full items-center gap-2 border-t border-[#eceae7] px-3 text-[12px] font-medium text-[#79716b] transition hover:bg-[#f8f7f4] hover:text-[#44403b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
             >
-              <PlusCircle size={16} />
-              Добавить рекомендацию вручную
+              <Plus size={16} />
+              Добавить вручную
             </button>
           </ItemSelectorPopover>
+        </div>
         </div>
       </div>
       {regenerateConfirmOpen && createPortal(
@@ -1816,92 +1593,29 @@ export function PromoRecommendationsCard({
   );
 }
 
-type PromoLocalizedDialogState = { kind: "keywords"; index: number | null };
-
 export function PromoTab({
   item,
   allItems,
-  upsell,
-  onChange,
   onItemChange,
   initialLabelCreatingType,
   initialLabelEditingType,
 }: {
   item: CatalogItem;
   allItems: CatalogItem[];
-  upsell: CatalogItemUpsellState;
-  onChange: (next: CatalogItemUpsellState) => void;
   onItemChange: (item: CatalogItem, patch: Partial<CatalogItem>) => void;
   initialLabelCreatingType?: "tag" | "sticker";
   initialLabelEditingType?: "tag" | "sticker";
 }) {
-  const { contentLanguage } = useAppSettings();
-  const [localizedDialog, setLocalizedDialog] = useState<PromoLocalizedDialogState | null>(null);
-  const keywordValues = getLocalizedValuesFromUnknown(upsell.keywords, []);
-
-  const patch = (next: CatalogItemUpsellState) => onChange(next);
-  const updateLocalizedList = (key: "keywords", values: LocalizedValue[]) => {
-    patch({ ...upsell, [key]: normalizeLocalizedValues(values) });
-  };
-  const saveLocalizedDialogValue = (value: LocalizedValue | null) => {
-    if (!localizedDialog) return;
-    const currentValues = keywordValues;
-    const nextValues = localizedDialog.index == null
-      ? value ? [...currentValues, value] : currentValues
-      : value
-        ? currentValues.map((entry, index) => index === localizedDialog.index ? value : entry)
-        : currentValues.filter((_, index) => index !== localizedDialog.index);
-    updateLocalizedList(localizedDialog.kind, nextValues);
-  };
-  const deleteLocalizedDialogValue = () => {
-    if (!localizedDialog) return;
-    if (localizedDialog.index == null) return;
-    updateLocalizedList("keywords", keywordValues.filter((_, index) => index !== localizedDialog.index));
-  };
-  const dialogValue = localizedDialog?.index == null ? null : keywordValues[localizedDialog.index] ?? null;
-
   return (
-    <>
-      <div data-upsell-stack className="flex flex-col gap-2">
-        <CatalogLabelControls
-          item={item}
-          allItems={allItems}
-          onPatchItem={onItemChange}
-          initialCreatingType={initialLabelCreatingType}
-          initialEditingType={initialLabelEditingType}
-        />
-
-        <PromoCompactCard cardName="keywords" label="Ключевые слова" tooltip="Используются для поиска позиции в онлайн-меню">
-          {keywordValues.map((keyword, index) => {
-            const label = getLocalizedValueLabel(keyword, contentLanguage);
-            if (!label) return null;
-            return (
-              <PromoChip
-                key={`${keyword.ru}-${index}`}
-                onClick={() => setLocalizedDialog({ kind: "keywords", index })}
-                onRemove={() => updateLocalizedList("keywords", keywordValues.filter((_, valueIndex) => valueIndex !== index))}
-                removeLabel="Удалить ключевое слово"
-              >
-                {label}
-              </PromoChip>
-            );
-          })}
-          <PromoAddButton label="Добавить ключевое слово" onClick={() => setLocalizedDialog({ kind: "keywords", index: null })} />
-        </PromoCompactCard>
-      </div>
-
-      {localizedDialog && (
-        <LocalizedValueDialog
-          title="Ключевое слово"
-          description="Используется для поиска позиции в онлайн-меню"
-          value={dialogValue}
-          deleteLabel="Удалить ключевое слово"
-          onSave={saveLocalizedDialogValue}
-          onDelete={localizedDialog.index == null ? undefined : deleteLocalizedDialogValue}
-          onClose={() => setLocalizedDialog(null)}
-        />
-      )}
-    </>
+    <div data-upsell-stack className="flex flex-col gap-3">
+      <CatalogLabelControls
+        item={item}
+        allItems={allItems}
+        onPatchItem={onItemChange}
+        initialCreatingType={initialLabelCreatingType}
+        initialEditingType={initialLabelEditingType}
+      />
+    </div>
   );
 }
 
@@ -3820,7 +3534,7 @@ export function PositionEditor({
               />
             )}
             promoContent={(
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <PromoRecommendationsCard
                   item={item}
                   allItems={allItems}
@@ -3832,8 +3546,6 @@ export function PositionEditor({
                 <PromoTab
                   item={item}
                   allItems={allItems}
-                  upsell={upsell}
-                  onChange={onUpsellChange}
                   onItemChange={(target, nextPatch) => onItemChange?.(target, nextPatch)}
                   initialLabelCreatingType={fixture?.promo?.creatingLabelType}
                   initialLabelEditingType={fixture?.promo?.editingLabelType}

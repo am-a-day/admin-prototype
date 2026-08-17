@@ -47,7 +47,7 @@ describe("simple position label controls", () => {
 
     await user.click(screen.getByRole("button", { name: "Добавить тег" }));
     await user.type(screen.getByRole("textbox", { name: "Название нового тега" }), "Халяль");
-    await user.tab();
+    await user.keyboard("{Enter}");
     expect(screen.getByRole("button", { name: "Редактировать тег «Халяль»" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Редактировать тег «Острое»" }));
@@ -80,7 +80,7 @@ describe("simple position label controls", () => {
 
     await user.click(screen.getByRole("button", { name: "Добавить стикер" }));
     await user.type(screen.getByRole("textbox", { name: "Название нового стикера" }), "Хит{Enter}");
-    expect(screen.queryByRole("button", { name: "Добавить стикер" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Добавить стикер" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Редактировать стикер «Хит»" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Редактировать стикер «Хит»" }));

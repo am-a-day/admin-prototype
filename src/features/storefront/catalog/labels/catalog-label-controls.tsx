@@ -1,5 +1,6 @@
-import { startTransition, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { startTransition, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
+  Check,
   DotsThreeVertical,
   MagnifyingGlass,
   PencilSimple,
@@ -17,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CatalogItem, CatalogLanguageCode, CatalogLocalizedValue } from "@/data/catalog";
 import { getLanguage, type LanguageCode } from "@/data/languages";
+import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
@@ -460,36 +462,42 @@ function LocalLabelInlineInput({
   onCancel: () => void;
 }) {
   const [value, setValue] = useState("");
-  const cancelledRef = useRef(false);
   const commit = () => {
-    if (cancelledRef.current) return;
     const next = value.trim().replace(/\s+/g, " ");
     if (next) onCommit(next);
     else onCancel();
   };
 
   return (
-    <Input
-      size="compact"
-      autoFocus
-      data-local-label-input={type}
-      aria-label={type === "tag" ? "Название нового тега" : "Название нового стикера"}
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          event.currentTarget.blur();
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cancelledRef.current = true;
-          onCancel();
-        }
-      }}
-      className="h-7 w-[132px] rounded-[6px] border-stone-300 bg-white px-2 text-[12px] focus:border-stone-500"
-    />
+    <div className="inline-flex h-[26px] max-w-[190px] items-center rounded-full bg-[#f5f5f4] pl-2 pr-1">
+      <Input
+        size="compact"
+        autoFocus
+        data-local-label-input={type}
+        aria-label={type === "tag" ? "Название нового тега" : "Название нового стикера"}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        className="h-[18px] w-[132px] border-0 bg-transparent p-0 text-[12px] text-stone-700 shadow-none focus:border-0 focus:ring-0"
+      />
+      <button
+        type="button"
+        aria-label={type === "tag" ? "Сохранить новый тег" : "Сохранить новый стикер"}
+        onClick={commit}
+        className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#e7e5e4] text-[#57534d] transition hover:bg-[#d6d3d1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/40"
+      >
+        <Check size={10} weight="bold" />
+      </button>
+    </div>
   );
 }
 
@@ -515,13 +523,14 @@ function LocalLabelEditPopover({
 }) {
   const [open, setOpen] = useState(initialOpen);
   const [draft, setDraft] = useState<Partial<CatalogLocalizedValue>>(value);
+  const [editBase, setEditBase] = useState<CatalogLocalizedValue>(value);
   usePositionSidePeekOverlay(open, () => setOpen(false));
   const displayText = getLocalCatalogLabelText(value, displayLanguage, primaryLanguage);
 
   const commitLanguage = (code: LanguageCode) => {
-    const normalized = normalizeLocalCatalogLabelEdit(value, draft, code, primaryLanguage);
+    const normalized = normalizeLocalCatalogLabelEdit(editBase, draft, code, primaryLanguage);
     if (!normalized || (code === primaryLanguage && !draft[code]?.trim())) {
-      setDraft(value);
+      setDraft(editBase);
       return;
     }
     onChange(normalized);
@@ -530,17 +539,23 @@ function LocalLabelEditPopover({
   return (
     <Popover open={open} onOpenChange={(next) => {
       setOpen(next);
-      if (next) setDraft(value);
+      if (next) {
+        setDraft(value);
+        setEditBase(value);
+      } else {
+        setDraft(value);
+        setEditBase(value);
+      }
     }}>
       <span
         data-local-label-chip={type}
-        className="group/chip inline-flex max-w-[190px] items-center rounded-[6px] bg-[#f1f1ea] text-[12px] text-stone-600 transition hover:bg-stone-200"
+        className="inline-flex h-[26px] max-w-[190px] items-center rounded-full bg-[#f5f5f4] pl-2 pr-1 text-[12px] text-stone-600 transition hover:bg-[#eceae7]"
       >
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label={`Редактировать ${type === "tag" ? "тег" : "стикер"} «${displayText}»`}
-            className="min-w-0 truncate py-1 pl-2 pr-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-stone-400/30"
+            className="min-w-0 truncate py-1 pl-0 pr-1 text-left outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-stone-400/30"
           >
             {displayText}
           </button>
@@ -552,7 +567,7 @@ function LocalLabelEditPopover({
             event.stopPropagation();
             onRemove();
           }}
-          className="mr-1 flex size-4 shrink-0 items-center justify-center rounded-[4px] text-stone-500 outline-none transition hover:bg-stone-300 hover:text-stone-800 focus-visible:ring-2 focus-visible:ring-stone-400/30"
+          className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#e7e5e4] text-stone-500 outline-none transition hover:bg-stone-300 hover:text-stone-800 focus-visible:ring-2 focus-visible:ring-stone-400/30"
         >
           <X size={11} weight="bold" />
         </button>
@@ -570,8 +585,16 @@ function LocalLabelEditPopover({
                 <span className="mb-1 block">{language.label}</span>
                 <Input
                   size="compact"
+                  autoFocus={code === primaryLanguage}
                   value={draft[code] ?? ""}
-                  onChange={(event) => setDraft((current) => ({ ...current, [code]: event.target.value }))}
+                  onChange={(event) => {
+                    const nextDraft = { ...draft, [code]: event.target.value };
+                    setDraft(nextDraft);
+                    if (code === primaryLanguage) {
+                      const normalized = normalizeLocalCatalogLabelEdit(editBase, nextDraft, code, primaryLanguage);
+                      if (normalized) onChange(normalized);
+                    }
+                  }}
                   onBlur={() => commitLanguage(code)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -580,11 +603,12 @@ function LocalLabelEditPopover({
                     }
                     if (event.key === "Escape") {
                       event.preventDefault();
-                      setDraft(value);
+                      setDraft(editBase);
+                      onChange(editBase);
                       setOpen(false);
                     }
                   }}
-                  placeholder={code === primaryLanguage ? "Название" : `Если пусто — ${getLanguage(primaryLanguage).label}`}
+                  placeholder={code === primaryLanguage ? undefined : `Если пусто — ${getLanguage(primaryLanguage).label}`}
                   className="h-8 rounded-[7px] border-stone-200 bg-white text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-stone-400"
                 />
               </label>
@@ -635,55 +659,70 @@ function LocalCatalogLabelControls({
 
   const renderCard = (type: CatalogLabelType) => {
     const values = type === "tag" ? labels.tags : labels.sticker ? [labels.sticker] : [];
-    const canAdd = type === "tag" || !labels.sticker;
+    const hasValues = values.length > 0 || creatingType === type;
+    const addDisabled = creatingType === type || (type === "sticker" && values.length > 0);
     return (
-      <div
-        data-local-label-card={type}
-        className="flex min-h-12 w-full items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-left shadow-sm"
-      >
-        <span className="shrink-0 text-[13px] font-medium text-stone-800">{type === "tag" ? "Теги" : "Стикер"}</span>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
-          {values.map((value, index) => (
-            <LocalLabelEditPopover
-              key={`${type}-${index}`}
-              type={type}
-              value={value}
-              languages={enabledLanguages}
-              primaryLanguage={primaryLanguage}
-              displayLanguage={contentLanguage}
-              onChange={(nextValue) => apply(type === "tag"
-                ? { tags: labels.tags.map((tag, tagIndex) => tagIndex === index ? nextValue : tag), sticker: labels.sticker }
-                : { tags: labels.tags, sticker: nextValue })}
-              onRemove={() => apply(type === "tag"
-                ? { tags: labels.tags.filter((_, tagIndex) => tagIndex !== index), sticker: labels.sticker }
-                : { tags: labels.tags, sticker: null })}
-              initialOpen={initialEditingType === type && index === 0}
-            />
-          ))}
-          {creatingType === type && (
-            <LocalLabelInlineInput
-              type={type}
-              onCancel={() => setCreatingType(null)}
-              onCommit={(name) => {
-                const created = createLocalCatalogLabel(name, primaryLanguage);
-                setCreatingType(null);
-                if (!created) return;
-                apply(type === "tag"
-                  ? { tags: [...labels.tags, created], sticker: labels.sticker }
-                  : { tags: labels.tags, sticker: created });
-              }}
-            />
+      <div data-local-label-section={type} className="w-full">
+        <div className="mb-1.5 px-1">
+          <span className="inline-flex border-b border-dashed border-[#a8a29e] px-0.5 pb-0.5 text-[13px] font-normal leading-5 text-[#292524]">
+            {type === "tag" ? "Теги" : "Стикер"}
+          </span>
+        </div>
+        <div
+          data-local-label-card={type}
+          className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white"
+        >
+          {hasValues && (
+            <div className="flex min-h-[41px] flex-wrap items-center gap-1.5 px-3 py-2">
+              {values.map((value, index) => (
+                <LocalLabelEditPopover
+                  key={`${type}-${index}`}
+                  type={type}
+                  value={value}
+                  languages={enabledLanguages}
+                  primaryLanguage={primaryLanguage}
+                  displayLanguage={contentLanguage}
+                  onChange={(nextValue) => apply(type === "tag"
+                    ? { tags: labels.tags.map((tag, tagIndex) => tagIndex === index ? nextValue : tag), sticker: labels.sticker }
+                    : { tags: labels.tags, sticker: nextValue })}
+                  onRemove={() => apply(type === "tag"
+                    ? { tags: labels.tags.filter((_, tagIndex) => tagIndex !== index), sticker: labels.sticker }
+                    : { tags: labels.tags, sticker: null })}
+                  initialOpen={initialEditingType === type && index === 0}
+                />
+              ))}
+              {creatingType === type && (
+                <LocalLabelInlineInput
+                  type={type}
+                  onCancel={() => setCreatingType(null)}
+                  onCommit={(name) => {
+                    const created = createLocalCatalogLabel(name, primaryLanguage);
+                    setCreatingType(null);
+                    if (!created) return;
+                    apply(type === "tag"
+                      ? { tags: [...labels.tags, created], sticker: labels.sticker }
+                      : { tags: labels.tags, sticker: created });
+                  }}
+                />
+              )}
+            </div>
           )}
-          {canAdd && creatingType !== type && (
-            <button
-              type="button"
-              aria-label={type === "tag" ? "Добавить тег" : "Добавить стикер"}
-              onClick={() => setCreatingType(type)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-stone-500 hover:bg-stone-100 hover:text-stone-800"
-            >
-              <PlusCircle size={16} />
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={addDisabled}
+            aria-label={type === "tag" ? "Добавить тег" : "Добавить стикер"}
+            onClick={() => setCreatingType(type)}
+            className={cn(
+              "flex h-9 w-full items-center gap-2 px-3 text-left text-[12px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-400/30",
+              hasValues && "border-t border-[#e7e5e4]",
+              addDisabled
+                ? "cursor-not-allowed text-[#a8a29e]"
+                : "text-[#79716b] hover:bg-[#f8f7f4] hover:text-[#44403b]",
+            )}
+          >
+            <PlusCircle size={16} />
+            <span>{type === "tag" ? "Добавить тег" : "Добавить стикер"}</span>
+          </button>
         </div>
       </div>
     );

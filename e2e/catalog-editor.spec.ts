@@ -317,7 +317,7 @@ test("toggles manual recommendations instantly in an anchored popover", async ({
   const pane = page.locator("[data-position-editor-pane]");
   await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
   const recommendations = pane.locator('[data-upsell-card="recommendations"]');
-  const trigger = recommendations.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true });
+  const trigger = recommendations.getByRole("button", { name: "Добавить вручную", exact: true });
   await trigger.click();
 
   const picker = page.locator("[data-recommendation-picker]");
@@ -359,7 +359,7 @@ test("toggles manual recommendations instantly in an anchored popover", async ({
   await preserveLocalStorageOnReload(page);
   await openItemFromLeaf(page);
   await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
-  await recommendations.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true }).click();
+  await recommendations.getByRole("button", { name: "Добавить вручную", exact: true }).click();
   await expect(page.locator("[data-recommendation-picker]").filter({ visible: true }).getByRole("checkbox", { name: checkboxName! }).first()).toBeChecked();
 });
 
@@ -393,19 +393,19 @@ test("combines recommendation title search and section filtering in a compact sc
 
   const pane = page.locator("[data-position-editor-pane]");
   await pane.getByRole("button", { name: "Рекомендации", exact: true }).click();
-  const trigger = pane.getByRole("button", { name: "Добавить рекомендацию вручную", exact: true });
+  const trigger = pane.getByRole("button", { name: "Добавить вручную", exact: true });
   await trigger.click();
 
   const picker = page.locator("[data-recommendation-picker]").filter({ visible: true });
   const rows = picker.locator("[data-recommendation-picker-row]");
   const list = picker.locator("[data-recommendation-picker-list]");
-  await expect(picker).toHaveCSS("width", "356px");
+  await expect(picker).toHaveCSS("width", "372px");
   await expect(rows.first()).toHaveCSS("height", "38px");
   await expect(rows.first().getByRole("checkbox")).toHaveCSS("width", "16px");
   await expect(rows.first().locator("img")).toHaveCSS("width", "20px");
   await expect(rows.first().locator("img")).toHaveCSS("height", "20px");
   await expect(rows.first().locator("span[title]")).toHaveCSS("font-size", "13px");
-  await expect(rows.first().locator("span[title]")).toHaveCSS("font-weight", "500");
+  await expect(rows.first().locator("span[title]")).toHaveCSS("font-weight", "400");
   await expect(list.evaluate((element) => element.scrollHeight > element.clientHeight)).resolves.toBe(true);
   await expect(picker).toHaveAttribute("data-side", /^(top|bottom)$/);
 
