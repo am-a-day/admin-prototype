@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -62,7 +62,7 @@ import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from ".
 import { WorkspaceLocalTabs } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
-import { usePositionSidePeek } from "./side-peek-context";
+import { usePositionSidePeek, usePositionSidePeekOverlay } from "./side-peek-context";
 import { usePositionEditorFixture } from "./position-editor-fixture-context";
 import { CatalogLabelControls } from "../labels/catalog-label-controls";
 
@@ -1178,6 +1178,7 @@ function ItemSelectorPopover({
 }) {
   const [query, setQuery] = useState("");
   const [sectionFilterId, setSectionFilterId] = useState<string | null>(null);
+  usePositionSidePeekOverlay(open, () => onOpenChange(false));
   const selectedSet = new Set(selectedIds);
   const normalizedQuery = query.trim().toLowerCase();
   const baseItems = items.filter((candidate) =>
@@ -1343,13 +1344,14 @@ function LocalizedValueDialog({
 }) {
   const [draft, setDraft] = useState<Partial<Record<LanguageCode, string>>>(value ?? { ru: "" });
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  usePositionSidePeekOverlay(true, onClose);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  };
 
   const submit = () => {
     onSave(normalizeLocalizedValue(draft));
@@ -1357,7 +1359,7 @@ function LocalizedValueDialog({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
       <div className="flex max-h-[82vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
         <div className="border-b border-[#eceae7] px-4 py-3">
           <div className="text-[14px] font-medium text-[#292524]">{title}</div>
@@ -1505,6 +1507,7 @@ export function PromoRecommendationsCard({
 }) {
   const [selectorOpen, setSelectorOpen] = useState(initialSelectorOpen);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+  usePositionSidePeekOverlay(regenerateConfirmOpen, () => setRegenerateConfirmOpen(false));
   const recommendationSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -1706,7 +1709,18 @@ export function PromoRecommendationsCard({
         </div>
       </div>
       {regenerateConfirmOpen && createPortal(
-        <div className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4" role="dialog" aria-modal="true" aria-label="Подобрать рекомендуемые позиции заново">
+        <div
+          className="fixed inset-0 z-[100004] flex items-center justify-center bg-black/20 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Подобрать рекомендуемые позиции заново"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setRegenerateConfirmOpen(false);
+          }}
+        >
           <div className="w-full max-w-[400px] rounded-[14px] border border-[#e7e5e4] bg-white shadow-[0_24px_64px_rgba(41,37,36,0.18)]">
             <div className="px-4 py-4">
               <h3 className="text-[14px] font-medium text-[#292524]">Подобрать заново?</h3>
@@ -1907,6 +1921,7 @@ export function PositionAvailabilityControl({
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"main" | "schedule" | "behavior">("main");
+  usePositionSidePeekOverlay(open, () => setOpen(false));
   useEffect(() => {
     if (!open) setView("main");
   }, [open]);

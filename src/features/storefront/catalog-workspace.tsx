@@ -3365,32 +3365,6 @@ function PositionEditorDialogShell({
     }
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
-      requestClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [requestClose]);
-
-  useEffect(() => {
-    if (presentation !== "pane") return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target) return;
-      if (target.closest("[data-position-editor-pane]")) return;
-      if (target.closest("[data-catalog-table-row]")) return;
-      if (target.closest('[data-radix-popper-content-wrapper], [role="dialog"], [role="menu"]')) return;
-      requestClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [presentation, requestClose]);
-
   if (!portalTarget) return null;
 
   if (presentation === "pane") {

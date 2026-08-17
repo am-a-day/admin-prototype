@@ -400,14 +400,14 @@ test("combines recommendation title search and section filtering in a compact sc
   await expect(rows.first()).toContainText("Мини-самса");
 });
 
-test("closes the side peek on outside click and Escape", async ({ page }) => {
+test("keeps the side peek open through outside interaction and closes it explicitly", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
   await page.getByText("Предпросмотр", { exact: true }).click();
-  await expect(pane).toHaveCount(0);
+  await expect(pane).toBeVisible();
 
-  await page.locator(`[data-catalog-table-row="${firstItemId}"]`).click();
+  await page.locator(`[data-catalog-table-row="${firstItemId}"]`).click({ position: { x: 12, y: 19 } });
   await expect(pane).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(pane).toHaveCount(0);

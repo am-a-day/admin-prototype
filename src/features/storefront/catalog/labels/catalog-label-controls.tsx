@@ -40,6 +40,7 @@ import {
   getLocalCatalogLabelText,
   normalizeLocalCatalogLabelEdit,
 } from "./local-catalog-labels";
+import { usePositionSidePeekOverlay } from "../editor/side-peek-context";
 
 const NO_STICKER_VALUE = "__none__";
 
@@ -163,6 +164,7 @@ function LabelDeleteDialog({
   onCancel: () => void;
   onDelete: () => void;
 }) {
+  usePositionSidePeekOverlay(Boolean(label), onCancel);
   if (!label) return null;
   const kind = label.type === "tag" ? "тег" : "стикер";
   const visibleItems = usageItems.slice(0, 5);
@@ -237,6 +239,7 @@ function CatalogLabelPicker({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
   const [pendingDelete, setPendingDelete] = useState<CatalogLabel | null>(null);
+  usePositionSidePeekOverlay(open, () => setOpen(false));
   const normalizedQuery = query.trim().replace(/\s+/g, " ");
   const filtered = directory.labels
     .filter((label) => label.type === type && (!normalizedQuery || Object.values(label.translations).some((value) => value.toLocaleLowerCase("ru").includes(normalizedQuery.toLocaleLowerCase("ru")))))
@@ -512,6 +515,7 @@ function LocalLabelEditPopover({
 }) {
   const [open, setOpen] = useState(initialOpen);
   const [draft, setDraft] = useState<Partial<CatalogLocalizedValue>>(value);
+  usePositionSidePeekOverlay(open, () => setOpen(false));
   const displayText = getLocalCatalogLabelText(value, displayLanguage, primaryLanguage);
 
   const commitLanguage = (code: LanguageCode) => {
