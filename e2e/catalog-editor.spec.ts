@@ -360,6 +360,29 @@ test("toggles manual recommendations instantly in an anchored popover", async ({
   await expect(page.locator("[data-recommendation-picker]").filter({ visible: true }).getByRole("checkbox", { name: checkboxName! }).first()).toBeChecked();
 });
 
+test("edits and removes a discount in a compact popover", async ({ page }) => {
+  await openEntityItem(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  const addDiscount = pane.getByRole("button", { name: "Добавить скидку", exact: true });
+  const basePrice = Number((await pane.getByLabel("Цена позиции").inputValue()).replace(/\s/g, ""));
+  await expect(addDiscount).toBeVisible();
+  await addDiscount.click();
+  await expect(page.getByLabel("Размер скидки")).toBeVisible();
+  await expect(page.getByLabel("Цена после скидки")).toBeVisible();
+
+  await page.getByLabel("Размер скидки").fill("10");
+  await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(String(Math.round(basePrice * 0.9)));
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Цена после скидки")).toHaveCount(0);
+  await expect(pane).toBeVisible();
+
+  await pane.locator("[data-discount-trigger]").click();
+  await page.getByRole("button", { name: "Удалить скидку", exact: true }).click();
+  await expect(pane.getByRole("button", { name: "Добавить скидку", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Цена после скидки")).toHaveCount(0);
+});
+
 test("combines recommendation title search and section filtering in a compact scrolling list", async ({ page }) => {
   await openItemFromLeaf(page);
 
@@ -562,12 +585,15 @@ test("persists the complete basic position editor record across reload", async (
 
   await preserveLocalStorageOnReload(page);
   await page.reload();
+  await page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle }).click();
   await expect.poll(async () => (await page.getByLabel("Цена позиции").inputValue()).replace(/\s/g, "")).toBe("2450");
   await expect(page.getByLabel("Объем позиции")).toHaveValue("350");
   await expect(page.getByRole("textbox", { name: "Описание" })).toHaveText("Сохраняемое описание позиции");
   await expect(page.getByRole("button", { name: "Добавить КБЖУ" })).toHaveCount(0);
   await expect(page.getByLabel("Калорийность")).toHaveValue("560");
-  await expect(page.getByRole("button", { name: "Добавить скидку" })).toHaveCount(0);
+  const discountTrigger = page.locator("[data-discount-trigger]");
+  await expect(discountTrigger).toContainText("Скидка");
+  await discountTrigger.click();
   await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(expectedDiscountValue);
   await page.getByRole("button", { name: "Отображение" }).click();
   await expect(page.getByRole("switch", { name: "Показывать кнопку «Добавить»" })).not.toBeChecked();

@@ -646,16 +646,15 @@ function BasicTab({
             <input aria-label="Цена позиции" value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
             <span className="shrink-0 text-[13px] text-[#a6a09b]">₸</span>
           </EditorField>
-          {!discountOpen && (
-            <button
-              type="button"
-              onClick={onAddDiscount}
-              className="mt-2 inline-flex h-5 items-center gap-1 rounded-[6px] px-0.5 text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <PlusCircle size={14} className="text-[#a8a29e]" />
-              Добавить скидку
-            </button>
-          )}
+          <DiscountPopover
+            item={item}
+            basePrice={basePrice}
+            discountOpen={discountOpen}
+            autofocusKey={discountAutofocusKey}
+            onChange={onDiscountChange}
+            onAddDiscount={onAddDiscount}
+            onRemove={onRemoveDiscount}
+          />
         </div>
 
         <div data-weight-editor-anchor>
@@ -694,16 +693,6 @@ function BasicTab({
         </div>
       </div>
 
-      {discountOpen && (
-        <DiscountBlock
-          item={item}
-          basePrice={basePrice}
-          autofocusKey={discountAutofocusKey}
-          onChange={onDiscountChange}
-          onRemove={onRemoveDiscount}
-        />
-      )}
-
       <div data-description-editor-anchor>
         <DescriptionRichTextEditor
           key={`desc-${item.id}`}
@@ -718,7 +707,7 @@ function BasicTab({
   );
 }
 
-// ── Скидка и КБЖУ — опциональные блоки под карточкой (паттерн «Ещё») ──────────
+// ── Скидка и КБЖУ — опциональные настройки формы ─────────────────────────────
 
 function EditorBlockHeader({
   label,
@@ -797,6 +786,88 @@ function DiscountInputField({
         <span className="shrink-0 text-[13px] text-[#a6a09b]">{suffix}</span>
       </div>
     </label>
+  );
+}
+
+function DiscountPopover({
+  item,
+  basePrice,
+  discountOpen,
+  autofocusKey,
+  onChange,
+  onAddDiscount,
+  onRemove,
+}: {
+  item: CatalogItem;
+  basePrice: number | null;
+  discountOpen: boolean;
+  autofocusKey: number;
+  onChange: (priceWithSale: number | null) => void;
+  onAddDiscount: () => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  usePositionSidePeekOverlay(open, () => setOpen(false));
+
+  useEffect(() => {
+    setOpen(false);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (!discountOpen) setOpen(false);
+  }, [discountOpen]);
+
+  const summaryFinalPrice = item.priceWithSale ?? (basePrice && basePrice > 0 ? calculateDiscountedPrice(basePrice, 10) : null);
+  const summaryPercent = basePrice && summaryFinalPrice != null
+    ? calculateDiscountPercent(basePrice, summaryFinalPrice)
+    : 10;
+  const triggerLabel = discountOpen
+    ? `Скидка ${formatDiscountPercent(summaryPercent)}% · итог ${summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}`
+    : "Добавить скидку";
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && !discountOpen) onAddDiscount();
+    setOpen(nextOpen);
+  };
+
+  const handleRemove = () => {
+    onRemove();
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-discount-trigger
+          aria-label={discountOpen ? triggerLabel : "Добавить скидку"}
+          className={cn(
+            "mt-2 inline-flex h-6 max-w-full items-center gap-1 rounded-[6px] px-1 text-left text-[12px] font-medium leading-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            discountOpen
+              ? "text-[#57534d] hover:bg-[#f5f5f4] hover:text-[#292524]"
+              : "text-[#79716b] hover:text-[#292524]",
+          )}
+        >
+          {!discountOpen && <PlusCircle size={14} className="shrink-0 text-[#a8a29e]" />}
+          <span className="truncate">{triggerLabel}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        collisionPadding={12}
+        className="w-[min(340px,calc(100vw-24px))] rounded-[12px] p-3 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
+      >
+        <DiscountBlock
+          item={item}
+          basePrice={basePrice}
+          autofocusKey={autofocusKey}
+          onChange={onChange}
+          onRemove={handleRemove}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -933,47 +1004,44 @@ function DiscountBlock({
   };
 
   return (
-    <div className="relative pt-1.5">
-      <div className="pointer-events-none absolute -top-0.5 left-[24%] hidden h-0 w-0 border-x-[7px] border-b-[7px] border-x-transparent border-b-[#f5f5f4] sm:block" />
-      <div className="rounded-[10px] bg-[#f5f5f4]/90 px-3 pb-3 pt-2">
-        <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px]">
-          <DiscountInputField
-            label="Размер скидки"
-            value={percentText}
-            suffix="%"
-            onChange={handlePercentChange}
-            onBlur={normalizePercentOnBlur}
-            onStep={stepPercent}
-            disabled={baseMissing}
-            autoFocus={autofocusKey > 0}
-          />
-          <DiscountInputField
-            label="Цена после скидки"
-            value={finalPriceText}
-            suffix="₸"
-            onChange={handleFinalPriceChange}
-            onBlur={normalizeFinalPriceOnBlur}
-            onStep={stepFinalPrice}
-            disabled={baseMissing}
-          />
-          <Tooltip label="Убрать скидку" side="top">
-            <button
-              type="button"
-              aria-label="Убрать скидку"
-              onClick={removeDiscount}
-              className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-white hover:text-[#57534d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 sm:mb-0"
-            >
-              <XCircle size={16} />
-            </button>
-          </Tooltip>
-        </div>
-        {baseMissing ? (
-          <div className="mt-2 text-[12px] leading-4 text-[#79716b]">Сначала укажите основную цену</div>
-        ) : finalPriceError ? (
-          <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{finalPriceError}</div>
-        ) : percentError ? (
-          <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{percentError}</div>
-        ) : null}
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DiscountInputField
+          label="Размер скидки"
+          value={percentText}
+          suffix="%"
+          onChange={handlePercentChange}
+          onBlur={normalizePercentOnBlur}
+          onStep={stepPercent}
+          disabled={baseMissing}
+          autoFocus={autofocusKey > 0}
+        />
+        <DiscountInputField
+          label="Цена после скидки"
+          value={finalPriceText}
+          suffix="₸"
+          onChange={handleFinalPriceChange}
+          onBlur={normalizeFinalPriceOnBlur}
+          onStep={stepFinalPrice}
+          disabled={baseMissing}
+        />
+      </div>
+      {baseMissing ? (
+        <div className="text-[12px] leading-4 text-[#79716b]">Сначала укажите основную цену</div>
+      ) : finalPriceError ? (
+        <div className="text-[12px] leading-4 text-[#b42318]">{finalPriceError}</div>
+      ) : percentError ? (
+        <div className="text-[12px] leading-4 text-[#b42318]">{percentError}</div>
+      ) : null}
+      <div className="border-t border-[#eceae7] pt-2">
+        <button
+          type="button"
+          onClick={removeDiscount}
+          className="inline-flex h-7 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#a63d36] transition hover:bg-[#fff5f3] hover:text-[#8f2f28] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a63d36]/20"
+        >
+          <Trash size={14} aria-hidden="true" />
+          Удалить скидку
+        </button>
       </div>
     </div>
   );
