@@ -420,7 +420,7 @@ describe("catalog observable behavior baseline", () => {
     expect(header).not.toBeNull();
     expect(header).toHaveClass("flex");
     expect(document.querySelector("[data-position-title-region]")).toHaveClass("min-w-0", "flex-1");
-    ["Основное", "Рекомендации", "Опции", "Доступность", "Отображение"].forEach((label) => {
+    ["Основное", "Рекомендации", "Опции", "Доступность", "Вид"].forEach((label) => {
       expect(screen.getByRole("button", { name: new RegExp(`^${label}`) })).toBeInTheDocument();
     });
 

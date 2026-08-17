@@ -220,7 +220,7 @@ const EDITOR_TABS: { id: EditorTab; label: string }[] = [
   { id: "promo", label: "Рекомендации" },
   { id: "options", label: "Опции" },
   { id: "availability", label: "Доступность" },
-  { id: "display", label: "Отображение" },
+  { id: "display", label: "Вид" },
 ];
 const editorTabByItem = new Map<string, EditorTab>();
 
@@ -2674,7 +2674,10 @@ function OptionGroupPopoverContent({
                       type="button"
                       aria-label={group.variants.length === 0 ? "Добавить вариант" : "Добавить еще вариант"}
                       onClick={() => setPendingVariantDraft("")}
-                      className="ml-[22px] flex h-9 w-[calc(100%-22px)] min-w-0 items-center rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-left text-[13px] text-[#79716b] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition hover:border-[#a8a29e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                      className={cn(
+                        "flex h-9 min-w-0 items-center rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-left text-[13px] text-[#79716b] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition hover:border-[#a8a29e] focus:border-[#a8a29e] focus:outline-none focus:ring-0",
+                        group.variants.length === 0 ? "w-full" : "ml-[22px] w-[calc(100%-22px)]",
+                      )}
                     >
                       {group.variants.length === 0 ? "Добавить вариант" : "Добавить еще вариант"}
                     </button>
@@ -2689,7 +2692,10 @@ function OptionGroupPopoverContent({
                       onKeyDown={(event) => {
                         if (event.key === "Escape" && !pendingVariantDraft.trim()) setPendingVariantDraft(null);
                       }}
-                      className="ml-[22px] h-9 w-[calc(100%-22px)] rounded-[8px] border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] focus:border-[#a8a29e]"
+                      className={cn(
+                        "h-9 rounded-[8px] border-[#e5e5e5] bg-white px-3 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.08)] focus:border-[#a8a29e] focus:outline-none focus:ring-0",
+                        group.variants.length === 0 ? "w-full" : "ml-[22px] w-[calc(100%-22px)]",
+                      )}
                     />
                   )}
                 </div>
@@ -2966,9 +2972,6 @@ function OptionsTab({
   return (
     <>
       <div data-options-editor className="w-full">
-        <div className="mb-1.5 px-1">
-          <h3 className="inline-flex border-b border-dashed border-[#a8a29e] px-0.5 pb-0.5 text-[13px] font-normal leading-5 text-[#292524]">Опции</h3>
-        </div>
         <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white">
           <DndContext
             sensors={groupSensors}
@@ -3204,7 +3207,6 @@ function PositionAvailabilityTab({
 }
 
 function PositionEditorBody({
-  item,
   activeTab,
   onTabChange,
   basicContent,
@@ -3214,7 +3216,6 @@ function PositionEditorBody({
   availabilityContent,
   basicFooter,
 }: {
-  item: CatalogItem;
   activeTab: EditorTab;
   onTabChange: (tab: EditorTab) => void;
   basicContent: ReactNode;
@@ -3237,10 +3238,7 @@ function PositionEditorBody({
   return (
     <div data-position-editor-body>
       <WorkspaceLocalTabs
-        tabs={EDITOR_TABS.map((tab) => ({
-          ...tab,
-          ...(tab.id === "options" ? { count: item.optionsCount } : {}),
-        }))}
+        tabs={EDITOR_TABS}
         value={activeTab}
         onValueChange={onTabChange}
       />
@@ -3823,7 +3821,6 @@ export function PositionEditor({
           )}
 
           <PositionEditorBody
-            item={item}
             activeTab={activeTab}
             onTabChange={selectEditorTab}
             basicContent={(

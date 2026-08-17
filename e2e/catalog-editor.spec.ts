@@ -273,7 +273,7 @@ test("configures card display with an instant mini and live preview", async ({ p
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: "Отображение", exact: true }).click();
+  await pane.getByRole("button", { name: "Вид", exact: true }).click();
 
   const configurator = pane.locator("[data-position-display-configurator]");
   const miniCard = configurator.locator("[data-position-card-preview]");
@@ -579,7 +579,7 @@ test("persists the complete basic position editor record across reload", async (
   await page.getByLabel("Цена после скидки").blur();
   await page.getByRole("button", { name: "Добавить КБЖУ" }).click();
   await page.getByLabel("Калорийность").fill("560");
-  await page.getByRole("button", { name: "Отображение" }).click();
+  await page.getByRole("button", { name: "Вид" }).click();
   await page.getByRole("switch", { name: "Показывать кнопку «Добавить»" }).click();
   await page.waitForTimeout(700);
   await page.getByRole("button", { name: "Основное" }).click();
@@ -600,7 +600,7 @@ test("persists the complete basic position editor record across reload", async (
   await expect(discountTrigger).toContainText("−");
   await discountTrigger.click();
   await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(expectedDiscountValue);
-  await page.getByRole("button", { name: "Отображение" }).click();
+  await page.getByRole("button", { name: "Вид" }).click();
   await expect(page.getByRole("switch", { name: "Показывать кнопку «Добавить»" })).not.toBeChecked();
 });
 
