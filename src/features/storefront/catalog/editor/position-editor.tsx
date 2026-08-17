@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, Play, Plus, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -527,6 +527,7 @@ function BasicTab({
   discountOpen,
   discountAutofocusKey,
   kbjuOpen,
+  kbjuAutofocusKey,
   onDiscountChange,
   onWeightUnitChange,
   onBasePriceChange,
@@ -543,7 +544,6 @@ function BasicTab({
   onDescriptionChange,
   autoFocusName = false,
   hideName = false,
-  prioritizeName = false,
   nameError,
   namePlaceholder = "Введите перевод…",
   nameResetKey,
@@ -560,6 +560,7 @@ function BasicTab({
   discountOpen: boolean;
   discountAutofocusKey: number;
   kbjuOpen: boolean;
+  kbjuAutofocusKey: number;
   onDiscountChange: (priceWithSale: number | null) => void;
   onWeightUnitChange: (unit: string) => void;
   onBasePriceChange: (value: string) => void;
@@ -576,7 +577,6 @@ function BasicTab({
   onDescriptionChange?: (value: string) => void;
   autoFocusName?: boolean;
   hideName?: boolean;
-  prioritizeName?: boolean;
   nameError?: string;
   namePlaceholder?: string;
   nameResetKey?: string;
@@ -623,8 +623,6 @@ function BasicTab({
 
   return (
     <div className="space-y-3">
-      {prioritizeName && nameField}
-
       <div data-media-editor-anchor>
         <BasicMediaStrip
           item={item}
@@ -636,7 +634,7 @@ function BasicTab({
         />
       </div>
 
-      {!prioritizeName && nameField}
+      {nameField}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
@@ -684,6 +682,20 @@ function BasicTab({
         </div>
       </div>
 
+      <div data-discount-editor-anchor>
+        {discountOpen ? (
+          <DiscountBlock
+            item={item}
+            basePrice={basePrice}
+            autofocusKey={discountAutofocusKey}
+            onChange={onDiscountChange}
+            onRemove={onRemoveDiscount}
+          />
+        ) : (
+          <OptionalPropertyAddBlock label="Скидка" actionLabel="Добавить скидку" onAdd={onAddDiscount} />
+        )}
+      </div>
+
       <div data-description-editor-anchor>
         <DescriptionRichTextEditor
           key={`desc-${item.id}`}
@@ -695,58 +707,18 @@ function BasicTab({
         />
       </div>
 
-      <div className="border-t border-[#e7e5e4] pt-2" data-inline-optional-fields>
-        <div className="space-y-0.5">
-          <div className="flex min-h-8 items-center gap-2 rounded-[8px] px-1">
-            <div className="w-16 shrink-0 text-[13px] leading-5 text-[#303030]">Скидка</div>
-            <div className="min-w-0 flex-1">
-              <DiscountPopover
-                item={item}
-                basePrice={basePrice}
-                discountOpen={discountOpen}
-                autofocusKey={discountAutofocusKey}
-                onChange={onDiscountChange}
-                onAddDiscount={onAddDiscount}
-                onRemove={onRemoveDiscount}
-              />
-            </div>
-            {discountOpen && (
-              <button
-                type="button"
-                title="Убрать скидку"
-                aria-label="Убрать скидку"
-                onClick={onRemoveDiscount}
-                className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <Trash size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-
-          {kbjuOpen ? (
-            <div data-kbju-editor-anchor>
-              <KbjuBlock
-                weightUnit={weightUnit}
-                initialValues={item.nutrition}
-                onChange={onNutritionChange}
-                onRemove={onRemoveKbju}
-              />
-            </div>
-          ) : (
-            <div className="flex min-h-8 items-center gap-2 rounded-[8px] px-1">
-              <div className="w-16 shrink-0 text-[13px] leading-5 text-[#303030]">КБЖУ</div>
-              <button
-                type="button"
-                aria-label="Добавить КБЖУ"
-                onClick={onAddKbju}
-                className="inline-flex h-7 items-center gap-1 rounded-[7px] px-1 text-[12px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <Plus size={14} className="text-[#a8a29e]" aria-hidden="true" />
-                Добавить
-              </button>
-            </div>
-          )}
-        </div>
+      <div data-kbju-editor-anchor>
+        {kbjuOpen ? (
+          <KbjuBlock
+            weightUnit={weightUnit}
+            initialValues={item.nutrition}
+            autofocusKey={kbjuAutofocusKey}
+            onChange={onNutritionChange}
+            onRemove={onRemoveKbju}
+          />
+        ) : (
+          <OptionalPropertyAddBlock label="КБЖУ" actionLabel="Добавить КБЖУ" onAdd={onAddKbju} />
+        )}
       </div>
     </div>
   );
@@ -754,32 +726,26 @@ function BasicTab({
 
 // ── Скидка и КБЖУ — опциональные настройки формы ─────────────────────────────
 
-function EditorBlockHeader({
+function OptionalPropertyAddBlock({
   label,
-  meta,
-  onRemove,
-  removeLabel,
+  actionLabel,
+  onAdd,
 }: {
   label: string;
-  meta?: ReactNode;
-  onRemove: () => void;
-  removeLabel: string;
+  actionLabel: string;
+  onAdd: () => void;
 }) {
   return (
-    <div className="mb-1.5 flex h-7 items-center">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <div className="text-[13px] font-medium leading-[18px] text-[#303030]">{label}</div>
-        {meta && <div className="truncate text-[12px] leading-5 text-[#79716b]">{meta}</div>}
-      </div>
-      <div className="flex-1" />
+    <div className="flex flex-col gap-1.5">
+      <div className="h-5 text-[13px] leading-5 text-[#292524]">{label}</div>
       <button
         type="button"
-        title={removeLabel}
-        aria-label={removeLabel}
-        onClick={onRemove}
-        className="ml-1 flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a8a29e] transition hover:bg-[#fef2f2] hover:text-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        aria-label={actionLabel}
+        onClick={onAdd}
+        className="flex h-9 w-full items-center gap-2 rounded-[8px] border border-[#e7e5e4] px-[13px] py-[9px] text-left text-[12px] leading-[18px] text-[#292524] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
       >
-        <Trash size={15} />
+        <PlusCircle size={16} className="shrink-0" aria-hidden="true" />
+        <span>{actionLabel}</span>
       </button>
     </div>
   );
@@ -808,7 +774,7 @@ function DiscountInputField({
     <label className="min-w-0">
       <div className="mb-1 text-[13px] leading-5 text-[#79716b]">{label}</div>
       <div className={cn(
-        "flex h-[30px] w-full items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-[#c7c2bd]",
+        "flex h-9 w-full items-center justify-between gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-3 py-1 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]",
         disabled && "bg-[#fafaf9] text-[#a8a29e]",
       )}>
         <Input
@@ -831,103 +797,6 @@ function DiscountInputField({
         <span className="shrink-0 text-[13px] text-[#a6a09b]">{suffix}</span>
       </div>
     </label>
-  );
-}
-
-function DiscountPopover({
-  item,
-  basePrice,
-  discountOpen,
-  autofocusKey,
-  onChange,
-  onAddDiscount,
-  onRemove,
-}: {
-  item: CatalogItem;
-  basePrice: number | null;
-  discountOpen: boolean;
-  autofocusKey: number;
-  onChange: (priceWithSale: number | null) => void;
-  onAddDiscount: () => void;
-  onRemove: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  usePositionSidePeekOverlay(open, () => setOpen(false));
-
-  useEffect(() => {
-    setOpen(false);
-  }, [item.id]);
-
-  useEffect(() => {
-    if (!discountOpen) setOpen(false);
-  }, [discountOpen]);
-
-  const summaryFinalPrice = item.priceWithSale ?? (basePrice && basePrice > 0 ? calculateDiscountedPrice(basePrice, 10) : null);
-  const summaryPercent = basePrice && summaryFinalPrice != null
-    ? calculateDiscountPercent(basePrice, summaryFinalPrice)
-    : 10;
-  const triggerLabel = discountOpen
-    ? `−${formatDiscountPercent(summaryPercent)}% · ${summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}`
-    : "Добавить скидку";
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen && !discountOpen) onAddDiscount();
-    setOpen(nextOpen);
-  };
-
-  const handleRemove = () => {
-    onRemove();
-    setOpen(false);
-  };
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          data-discount-trigger
-          aria-label={discountOpen ? triggerLabel : "Добавить скидку"}
-          className={cn(
-            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-[6px] px-1 text-left text-[12px] leading-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            discountOpen ? "text-[#57534d] hover:bg-[#f5f5f4] hover:text-[#292524]" : "text-[#79716b] hover:bg-[#f5f5f4] hover:text-[#292524]",
-          )}
-        >
-          {discountOpen ? (
-            <>
-              <span
-                data-discount-badge
-                className="inline-flex h-5 shrink-0 items-center rounded-[5px] bg-[#f1f1ea] px-1.5 text-[11px] font-medium leading-4 text-[#57534d]"
-              >
-                −{formatDiscountPercent(summaryPercent)}%
-              </span>
-              <span className="truncate text-[12px] text-[#79716b]">
-                · {summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}
-              </span>
-            </>
-          ) : (
-            <>
-              <Plus size={14} className="shrink-0 text-[#a8a29e]" aria-hidden="true" />
-              <span className="truncate">{triggerLabel}</span>
-            </>
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={6}
-        collisionPadding={12}
-        onPointerDownOutside={() => handleOpenChange(false)}
-        className="w-[min(340px,calc(100vw-24px))] rounded-[12px] p-3 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
-      >
-        <DiscountBlock
-          item={item}
-          basePrice={basePrice}
-          autofocusKey={autofocusKey}
-          onChange={onChange}
-          onRemove={handleRemove}
-        />
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -984,6 +853,7 @@ function DiscountBlock({
   const baseMissing = !basePrice || basePrice <= 0;
   const percentValue = parseMoneyInput(percentText);
   const finalPriceValue = parseMoneyInput(finalPriceText);
+  const badgePercent = percentValue ?? 0;
   const percentError = percentText !== "" && percentValue != null && percentValue > 100
     ? "Скидка не может быть больше 100%"
     : "";
@@ -1064,44 +934,57 @@ function DiscountBlock({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DiscountInputField
-          label="Размер скидки"
-          value={percentText}
-          suffix="%"
-          onChange={handlePercentChange}
-          onBlur={normalizePercentOnBlur}
-          onStep={stepPercent}
-          disabled={baseMissing}
-          autoFocus={autofocusKey > 0}
-        />
-        <DiscountInputField
-          label="Цена после скидки"
-          value={finalPriceText}
-          suffix="₸"
-          onChange={handleFinalPriceChange}
-          onBlur={normalizeFinalPriceOnBlur}
-          onStep={stepFinalPrice}
-          disabled={baseMissing}
-        />
-      </div>
-      {baseMissing ? (
-        <div className="text-[12px] leading-4 text-[#79716b]">Сначала укажите основную цену</div>
-      ) : finalPriceError ? (
-        <div className="text-[12px] leading-4 text-[#b42318]">{finalPriceError}</div>
-      ) : percentError ? (
-        <div className="text-[12px] leading-4 text-[#b42318]">{percentError}</div>
-      ) : null}
-      <div className="-mx-3 -mb-3 flex h-[35px] items-center border-t border-[#e7e5e4] px-3">
-        <button
-          type="button"
-          onClick={removeDiscount}
-          className="inline-flex h-full items-center gap-2 text-[12px] font-normal text-[#e7000b] transition hover:text-[#b90008] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e7000b]/20"
+    <div className="flex flex-col gap-1.5" data-discount-editor-block>
+      <div className="flex h-5 items-center gap-1.5">
+        <div className="text-[13px] leading-5 text-[#292524]">Скидка</div>
+        <div
+          data-discount-badge
+          className="inline-flex h-[14px] items-center justify-center rounded-[5px] bg-[#615fff] px-[10px] text-[10px] font-semibold leading-5 text-white"
         >
-          <Trash size={16} aria-hidden="true" />
-          Убрать скидку
-        </button>
+          −{formatDiscountPercent(badgePercent)}%
+        </div>
+      </div>
+      <div className="rounded-[12px] border border-[#e7e5e4] bg-white p-px">
+        <div className="px-3 py-2">
+          <div className="grid grid-cols-2 gap-2">
+            <DiscountInputField
+              label="Размер скидки"
+              value={percentText}
+              suffix="%"
+              onChange={handlePercentChange}
+              onBlur={normalizePercentOnBlur}
+              onStep={stepPercent}
+              disabled={baseMissing}
+              autoFocus={autofocusKey > 0}
+            />
+            <DiscountInputField
+              label="Цена после скидки"
+              value={finalPriceText}
+              suffix="₸"
+              onChange={handleFinalPriceChange}
+              onBlur={normalizeFinalPriceOnBlur}
+              onStep={stepFinalPrice}
+              disabled={baseMissing}
+            />
+          </div>
+          {baseMissing ? (
+            <div className="mt-2 text-[12px] leading-4 text-[#79716b]">Сначала укажите основную цену</div>
+          ) : finalPriceError ? (
+            <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{finalPriceError}</div>
+          ) : percentError ? (
+            <div className="mt-2 text-[12px] leading-4 text-[#b42318]">{percentError}</div>
+          ) : null}
+        </div>
+        <div className="border-t border-[#e7e5e4]">
+          <button
+            type="button"
+            onClick={removeDiscount}
+            className="flex h-[35px] w-full items-center gap-2 px-3 text-[12px] leading-[18px] text-[#57534d] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          >
+            <MinusCircle size={16} aria-hidden="true" />
+            Убрать скидку
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1109,12 +992,6 @@ function DiscountBlock({
 
 type NutritionBase = "100g" | "100ml" | "portion";
 type NutritionKey = keyof CatalogNutrition;
-
-const NUTRITION_BASE_LABELS: Record<NutritionBase, string> = {
-  "100g": "На 100 г",
-  "100ml": "На 100 мл",
-  portion: "На позицию",
-};
 
 const NUTRITION_FIELDS: { key: NutritionKey; label: string; suffix: string }[] = [
   { key: "calories", label: "Калорийность", suffix: "ккал" },
@@ -1140,11 +1017,13 @@ const EMPTY_NUTRITION: CatalogNutrition = {
 function KbjuBlock({
   weightUnit,
   initialValues,
+  autofocusKey,
   onChange,
   onRemove,
 }: {
   weightUnit: string;
   initialValues?: CatalogNutrition;
+  autofocusKey: number;
   onChange: (values: CatalogNutrition) => void;
   onRemove: () => void;
 }) {
@@ -1165,7 +1044,6 @@ function KbjuBlock({
     onChange(EMPTY_NUTRITION);
   };
 
-  const hasValues = Object.values(values).some((value) => value.trim() !== "");
   const base = getAutoNutritionBase(weightUnit);
   const calories = parseMoneyInput(values.calories);
   const protein = parseMoneyInput(values.protein);
@@ -1180,29 +1058,25 @@ function KbjuBlock({
         : "";
 
   const removeNutrition = () => {
-    if (hasValues && !window.confirm("Удалить заполненное КБЖУ?")) return;
     clearValues();
     onRemove();
   };
 
   return (
-    <div className="group">
-      <EditorBlockHeader
-        label="КБЖУ"
-        meta={NUTRITION_BASE_LABELS[base]}
-        removeLabel="Удалить КБЖУ"
-        onRemove={removeNutrition}
-      />
-      <div className="rounded-[13px] border border-[#e7e5e4] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(12,12,13,0.05)]">
-        <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2">
+    <div className="@container flex flex-col gap-1.5" data-kbju-editor-block>
+      <div className="h-5 text-[13px] leading-5 text-[#292524]">КБЖУ</div>
+      <div className="rounded-[12px] border border-[#e7e5e4] bg-white p-px">
+        <div className="px-3 py-2">
+          <div className="grid grid-cols-4 gap-2.5">
           {NUTRITION_FIELDS.map((field) => (
             <label key={field.key} className="min-w-0">
-              <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{field.label}</div>
+              <div className="mb-1.5 whitespace-nowrap text-[11px] leading-5 tracking-[-0.35px] text-[#79716b] @[400px]:break-words @[400px]:text-[13px] @[400px]:tracking-normal">{field.label}</div>
               <div className="flex h-[30px] items-center gap-1 rounded-[8px] border border-[#e5e5e5] bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition focus-within:border-[#c7c2bd]">
                 <Input
                   size="compact"
                   type="text"
                   inputMode="decimal"
+                  autoFocus={autofocusKey > 0 && field.key === "calories"}
                   value={values[field.key]}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -1216,8 +1090,19 @@ function KbjuBlock({
               </div>
             </label>
           ))}
+          </div>
+          {warning && <div className="mt-2 text-[12px] leading-5 text-[#b45309]">{warning}</div>}
         </div>
-        {warning && <div className="mt-2 text-[12px] leading-5 text-[#b45309]">{warning}</div>}
+        <div className="border-t border-[#e7e5e4]">
+          <button
+            type="button"
+            onClick={removeNutrition}
+            className="flex h-[35px] w-full items-center gap-2 px-3 text-[12px] leading-[18px] text-[#57534d] transition hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+          >
+            <MinusCircle size={16} aria-hidden="true" />
+            Убрать КБЖУ
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -3478,6 +3363,7 @@ export function PositionEditor({
   const [discountOpen, setDiscountOpen] = useState(item.hasDiscount);
   const [discountAutofocusKey, setDiscountAutofocusKey] = useState(0);
   const [kbjuOpen, setKbjuOpen] = useState(item.nutritionFilledCount > 0);
+  const [kbjuAutofocusKey, setKbjuAutofocusKey] = useState(0);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -3511,6 +3397,7 @@ export function PositionEditor({
     setDiscountOpen(item.hasDiscount);
     setDiscountAutofocusKey(0);
     setKbjuOpen(item.nutritionFilledCount > 0);
+    setKbjuAutofocusKey(0);
     setTitleEditing(false);
     setTitleDraft(item.title);
     setCreateNameError("");
@@ -3970,6 +3857,7 @@ export function PositionEditor({
                 discountOpen={discountOpen}
                 discountAutofocusKey={discountAutofocusKey}
                 kbjuOpen={kbjuOpen}
+                kbjuAutofocusKey={kbjuAutofocusKey}
                 onDiscountChange={(priceWithSale) => onDraftChange?.({ hasDiscount: true, priceWithSale })}
                 onWeightUnitChange={(unit) => {
                   setWeightUnit(unit);
@@ -3979,12 +3867,17 @@ export function PositionEditor({
                 onBasePriceBlur={formatBasePrice}
                 onAddDiscount={addDiscount}
                 onRemoveDiscount={removeDiscount}
-                onAddKbju={() => { setKbjuOpen(true); onDraftChange?.({}); }}
+                onAddKbju={() => {
+                  setKbjuOpen(true);
+                  setKbjuAutofocusKey((value) => value + 1);
+                  onDraftChange?.({});
+                }}
                 onNutritionChange={(nutrition) => {
                   onDraftChange?.({ nutrition, nutritionFilledCount: Object.values(nutrition).filter((value) => value.trim() !== "").length });
                 }}
                 onRemoveKbju={() => {
                   setKbjuOpen(false);
+                  setKbjuAutofocusKey(0);
                   onDraftChange?.({ nutrition: undefined, nutritionFilledCount: 0 });
                 }}
                 onAddPhotoFile={addPhotoFile}
@@ -3997,7 +3890,6 @@ export function PositionEditor({
                 }}
                 autoFocusName={mode !== "edit"}
                 hideName={false}
-                prioritizeName={mode !== "edit"}
                 nameError={fixture?.nameError ?? (mode !== "edit" ? createNameError : undefined)}
                 namePlaceholder={mode !== "edit" ? "Название позиции" : "Введите перевод…"}
                 nameResetKey={mode === "edit" ? item.id : "active-create-session"}
