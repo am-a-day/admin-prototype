@@ -642,19 +642,23 @@ function BasicTab({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
-          <EditorField label="Цена">
+          <EditorField
+            label="Цена"
+            rightSlot={(
+              <DiscountPopover
+                item={item}
+                basePrice={basePrice}
+                discountOpen={discountOpen}
+                autofocusKey={discountAutofocusKey}
+                onChange={onDiscountChange}
+                onAddDiscount={onAddDiscount}
+                onRemove={onRemoveDiscount}
+              />
+            )}
+          >
             <input aria-label="Цена позиции" value={basePriceText} onChange={(event) => onBasePriceChange(event.target.value)} onBlur={onBasePriceBlur} placeholder="0" className={inlineInputClass} />
             <span className="shrink-0 text-[13px] text-[#a6a09b]">₸</span>
           </EditorField>
-          <DiscountPopover
-            item={item}
-            basePrice={basePrice}
-            discountOpen={discountOpen}
-            autofocusKey={discountAutofocusKey}
-            onChange={onDiscountChange}
-            onAddDiscount={onAddDiscount}
-            onRemove={onRemoveDiscount}
-          />
         </div>
 
         <div data-weight-editor-anchor>
@@ -822,7 +826,7 @@ function DiscountPopover({
     ? calculateDiscountPercent(basePrice, summaryFinalPrice)
     : 10;
   const triggerLabel = discountOpen
-    ? `Скидка ${formatDiscountPercent(summaryPercent)}% · итог ${summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}`
+    ? `−${formatDiscountPercent(summaryPercent)}% · ${summaryFinalPrice == null ? "—" : `${formatMoneyInput(summaryFinalPrice)} ₸`}`
     : "Добавить скидку";
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -842,14 +846,9 @@ function DiscountPopover({
           type="button"
           data-discount-trigger
           aria-label={discountOpen ? triggerLabel : "Добавить скидку"}
-          className={cn(
-            "mt-2 inline-flex h-6 max-w-full items-center gap-1 rounded-[6px] px-1 text-left text-[12px] font-medium leading-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            discountOpen
-              ? "text-[#57534d] hover:bg-[#f5f5f4] hover:text-[#292524]"
-              : "text-[#79716b] hover:text-[#292524]",
-          )}
+          className="inline-flex h-5 max-w-full items-center gap-1 rounded-[6px] px-1 text-left text-[12px] font-medium leading-5 text-[#79716b] transition hover:text-[#292524] hover:underline hover:underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          {!discountOpen && <PlusCircle size={14} className="shrink-0 text-[#a8a29e]" />}
+          {!discountOpen && <Plus size={14} className="shrink-0 text-[#a8a29e]" />}
           <span className="truncate">{triggerLabel}</span>
         </button>
       </PopoverTrigger>
