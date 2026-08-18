@@ -12,6 +12,7 @@ import {
   DownloadSimple,
   FileMagnifyingGlass,
   FilePlus,
+  Flask,
   FolderSimplePlus,
   ForkKnife,
   List,
@@ -130,12 +131,14 @@ function MoreMenu({
   section,
   activeTab,
   onNavigate,
+  onOpenPrototypeTools,
 }: {
   compact: boolean;
   showTooltip?: boolean;
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
+  onOpenPrototypeTools?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -240,6 +243,21 @@ function MoreMenu({
               </button>
             );
           })}
+          <div className="my-1 h-px bg-[#e7e5e4]" />
+          <button
+            type="button"
+            onClick={() => {
+              onOpenPrototypeTools?.();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+          >
+            <Flask size={15} className="shrink-0" />
+            <span className="flex-1">Prototype tools</span>
+            <span className="rounded-md bg-[#f1f1ea] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#79716b]">
+              DEV
+            </span>
+          </button>
         </div>,
         document.body,
       )}
@@ -491,12 +509,14 @@ function NavList({
   onNavigate,
   compact,
   showTooltips = false,
+  onOpenPrototypeTools,
 }: {
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
   showTooltips?: boolean;
+  onOpenPrototypeTools?: () => void;
 }) {
   const { account } = useMockAuth();
   const navigation = getNavGroups(account?.workspace.organizationType ?? "restaurant");
@@ -549,6 +569,7 @@ function NavList({
           section={section}
           activeTab={activeTab}
           onNavigate={onNavigate}
+          onOpenPrototypeTools={onOpenPrototypeTools}
         />
       </div>
     </nav>
@@ -563,6 +584,7 @@ export function NavDrawer({
   section,
   activeTab,
   onNavigate,
+  onOpenPrototypeTools,
   onQuickCreate,
 }: {
   open: boolean;
@@ -570,6 +592,7 @@ export function NavDrawer({
   section: SectionId;
   activeTab: string | null;
   onNavigate: (section: SectionId, tab: string) => void;
+  onOpenPrototypeTools?: () => void;
   onQuickCreate?: (action: QuickCreateAction) => void;
 }) {
   const { account } = useMockAuth();
@@ -622,7 +645,16 @@ export function NavDrawer({
         <div className="px-3 pt-2">
           <QuickCreateMenu compact={false} onAction={(action) => { onQuickCreate?.(action); onClose(); }} />
         </div>
-        <NavList section={section} activeTab={activeTab} onNavigate={handleNavigate} compact={false} />
+        <NavList
+          section={section}
+          activeTab={activeTab}
+          onNavigate={handleNavigate}
+          compact={false}
+          onOpenPrototypeTools={() => {
+            onOpenPrototypeTools?.();
+            onClose();
+          }}
+        />
       </div>
     </>
   );
@@ -639,6 +671,7 @@ type NavProps = {
   onPin?: () => void;
   pinned?: boolean;
   onQuickCreate?: (action: QuickCreateAction) => void;
+  onOpenPrototypeTools?: () => void;
 };
 
 function StartPlanBlock() {
@@ -669,7 +702,7 @@ function StartPlanBlock() {
   );
 }
 
-export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate }: NavProps) {
+export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools }: NavProps) {
   const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
@@ -694,7 +727,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
       <div className="px-3 pb-1">
         <QuickCreateMenu compact={false} onAction={onQuickCreate} />
       </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} />
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} onOpenPrototypeTools={onOpenPrototypeTools} />
       {planId === "Start" ? <StartPlanBlock /> : <PlanWidget onNavigate={onNavigate} compact={false} />}
     </div>
   );
@@ -702,7 +735,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate }: NavProps & { showTooltips?: boolean }) {
+function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate, onOpenPrototypeTools }: NavProps & { showTooltips?: boolean }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
       {/* Header row: mini logo, aligns with app header height */}
@@ -712,7 +745,7 @@ function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQ
       <div className="shrink-0 px-[7px] pb-1">
         <QuickCreateMenu compact onAction={onQuickCreate} />
       </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} />
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} onOpenPrototypeTools={onOpenPrototypeTools} />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
       <div onClick={(e) => e.stopPropagation()}>
         <PlanWidget onNavigate={onNavigate} compact={true} />
@@ -730,7 +763,7 @@ type SidebarProps = NavProps & {
   showTooltips?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false, onQuickCreate }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools }: SidebarProps) {
   const isRail = mode === "rail";
 
   if (mode === "topbar") return null;
@@ -738,9 +771,9 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
   return (
     <TooltipProvider delayDuration={0}>
       {isRail ? (
-        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} onQuickCreate={onQuickCreate} />
+        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} />
       ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} onQuickCreate={onQuickCreate} />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} />
       )}
     </TooltipProvider>
   );
@@ -763,7 +796,7 @@ export function getPageTitle(
   return match?.label ?? "";
 }
 
-export function TopBar({ section, activeTab, onNavigate }: NavProps) {
+export function TopBar({ section, activeTab, onNavigate, onOpenPrototypeTools }: NavProps) {
   const { account } = useMockAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const title = getPageTitle(
@@ -780,6 +813,7 @@ export function TopBar({ section, activeTab, onNavigate }: NavProps) {
         section={section}
         activeTab={activeTab}
         onNavigate={onNavigate}
+        onOpenPrototypeTools={onOpenPrototypeTools}
       />
       <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-white px-3">
         <button

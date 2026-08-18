@@ -79,4 +79,27 @@ describe("shared sidebar", () => {
     expect(onQuickCreate).toHaveBeenCalledWith("sheets");
     expect(screen.queryByRole("menu", { name: "Создать" })).not.toBeInTheDocument();
   });
+
+  it("opens Prototype tools from More and marks the entry as DEV", async () => {
+    const user = userEvent.setup();
+    const onOpenPrototypeTools = vi.fn();
+
+    render(
+      <FullSidebar
+        section="storefront"
+        activeTab="catalog"
+        onNavigate={() => {}}
+        onOpenPrototypeTools={onOpenPrototypeTools}
+      />,
+      { wrapper: Providers },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Больше" }));
+    const prototypeTools = screen.getByRole("button", { name: "Prototype tools DEV" });
+    expect(prototypeTools).toBeInTheDocument();
+
+    await user.click(prototypeTools);
+    expect(onOpenPrototypeTools).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Prototype tools DEV" })).not.toBeInTheDocument();
+  });
 });

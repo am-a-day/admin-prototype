@@ -1,6 +1,5 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,10 +12,8 @@ export const PREVIEW_PANEL_TRANSITION_MS = 225;
 type PreviewPanelContextValue = {
   open: boolean;
   returnControlVisible: boolean;
-  sidePeekOpen: boolean;
   toggle: () => void;
   show: () => void;
-  registerSidePeek: () => () => void;
 };
 
 const PreviewPanelContext = createContext<PreviewPanelContextValue | null>(null);
@@ -31,7 +28,6 @@ export function PreviewPanelProvider({
   children: ReactNode;
 }) {
   const [returnControlVisible, setReturnControlVisible] = useState(false);
-  const [sidePeekCount, setSidePeekCount] = useState(0);
 
   useEffect(() => {
     if (open) {
@@ -48,19 +44,12 @@ export function PreviewPanelProvider({
     return () => window.clearTimeout(timer);
   }, [open]);
 
-  const registerSidePeek = useCallback(() => {
-    setSidePeekCount((count) => count + 1);
-    return () => setSidePeekCount((count) => Math.max(0, count - 1));
-  }, []);
-
   const value = useMemo<PreviewPanelContextValue>(() => ({
     open,
     returnControlVisible,
-    sidePeekOpen: sidePeekCount > 0,
     toggle: () => onOpenChange(!open),
     show: () => onOpenChange(true),
-    registerSidePeek,
-  }), [onOpenChange, open, registerSidePeek, returnControlVisible, sidePeekCount]);
+  }), [onOpenChange, open, returnControlVisible]);
 
   return <PreviewPanelContext.Provider value={value}>{children}</PreviewPanelContext.Provider>;
 }

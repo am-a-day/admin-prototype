@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,8 +10,6 @@ import {
 function SidePeekProbe() {
   const previewPanel = usePreviewPanel();
   const [item, setItem] = useState("Первая позиция");
-
-  useLayoutEffect(() => previewPanel?.registerSidePeek(), [previewPanel?.registerSidePeek]);
 
   if (!previewPanel) return null;
   return (

@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type QuickCreateAction, type SidebarMode } from "@/components/layout/sidebar";
 import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
-import { PreviewToggle } from "@/components/layout/preview-toggle";
+import { PreviewReturnButton, PreviewToggle } from "@/components/layout/preview-toggle";
+import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider, useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
@@ -49,7 +50,7 @@ import { DraftToast } from "@/components/workspace/draft-toast";
 import { PublishToast } from "@/components/workspace/publish-toast";
 import { AuthScreen } from "@/features/auth/auth-screen";
 import { WorkspaceSetupScreen } from "@/features/auth/workspace-setup-screen";
-import { BookOpen, Flask } from "@phosphor-icons/react";
+import { Flask, X } from "@phosphor-icons/react";
 import { Bell } from "lucide-react";
 import {
   banners as seedBanners,
@@ -251,8 +252,13 @@ const HOME_TAB_META: Record<HomeTab, { title?: string; description?: string }> =
   promoted: {},
 };
 
-function PrototypeToolsFloating() {
-  const [open, setOpen] = useState(false);
+function PrototypeToolsPanel({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [catalogDataScenario] = useState(readCatalogDataScenario);
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
   const { stage, forceStage } = useVitrineLaunch();
@@ -260,13 +266,32 @@ function PrototypeToolsFloating() {
   const { emptyVitrine, setEmptyVitrine } = usePreviewDemo();
   const { account, updateWorkspace, confirmStorefrontReview, disableStorefrontReview } = useMockAuth();
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onOpenChange, open]);
+
+  if (!open) return null;
+
   return (
-    <div className="fixed bottom-5 right-5 z-[210] flex flex-col items-end gap-2">
-      {open && (
-        <div className="w-[320px] rounded-2xl border border-border bg-white p-3 shadow-xl shadow-zinc-300/40">
+    <div className="fixed bottom-5 left-1/2 z-[210] max-h-[calc(100dvh-40px)] w-[320px] -translate-x-1/2 overflow-y-auto rounded-2xl border border-border bg-white p-3 shadow-xl shadow-zinc-300/40">
           <div className="mb-2 flex items-center gap-2 px-1">
             <Flask size={17} weight="fill" className="text-zinc-500" />
-            <div className="text-sm font-semibold text-zinc-900">Prototype tools</div>
+            <div className="flex-1 text-sm font-semibold text-zinc-900">Prototype tools</div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => onOpenChange(false)}
+              aria-label="Закрыть Prototype tools"
+              className="h-7 w-7 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <X size={15} />
+            </Button>
           </div>
 
           <div className="space-y-3">
@@ -504,95 +529,6 @@ function PrototypeToolsFloating() {
             )}
           </div>
         </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex h-11 w-11 items-center justify-center rounded-full border border-border bg-white text-zinc-600 shadow-lg shadow-zinc-300/40 transition hover:bg-zinc-50 hover:text-zinc-950",
-          open && "bg-zinc-100 text-zinc-950",
-        )}
-        aria-label="Prototype tools"
-        title="Prototype tools"
-      >
-        <Flask size={20} weight="fill" />
-      </button>
-    </div>
-  );
-}
-
-function DevNotesFloating({ isCatalogPage }: { isCatalogPage: boolean }) {
-  const [open, setOpen] = useState(false);
-  const notes = isCatalogPage
-    ? [
-        {
-          title: "Поведение сайдбара",
-          text: "Состояние сайдбара — настройка пользователя, а не свойство страницы: Каталог больше не переключает навигацию. В свёрнутом (rail) состоянии наведение временно раскрывает сайдбар поверх контента как flyout — layout не сдвигается. Раскрытый вид можно закрепить (pin).",
-        },
-        {
-          title: "Левая панель",
-          text: "Левая панель показывается только когда есть локальная навигация или фильтрация: дерево разделов, фильтры и контекстные списки. Если данных нет, панель скрывается.",
-        },
-        {
-          title: "Пустые состояния",
-          text: "Если в каталоге нет разделов или в срезе “На стопе” нет позиций, показывается empty state в основной области.",
-        },
-        {
-          title: "Ширина контента",
-          text: "Контент не растягивается на всю доступную ширину. Empty states и простые формы ограничены по max-width.",
-        },
-        {
-          title: "Preview",
-          text: "Preview открыт по умолчанию там, где пользователь редактирует структуру или визуальное представление: в разделах и рекомендациях. В обзорных вкладках preview скрыт, чтобы освободить место для списка и фильтров.",
-        },
-        {
-          title: "Стоп-лист",
-          text: "Стоп-лист не является отдельной вкладкой. Это фильтр “На стопе”, потому что стоп — состояние позиции, а не отдельная сущность каталога.",
-        },
-      ]
-    : [];
-
-  return (
-    <div className="fixed bottom-5 right-[78px] z-[210] flex flex-col items-end gap-2">
-      {open && (
-        <div className="w-[360px] rounded-2xl border border-border bg-white p-4 shadow-xl shadow-zinc-300/40">
-          <div className="mb-3 flex items-center gap-2">
-            <BookOpen size={17} weight="fill" className="text-zinc-500" />
-            <div className="text-sm font-semibold text-zinc-900">
-              {isCatalogPage ? "Каталог" : "Решения"}
-            </div>
-          </div>
-          {isCatalogPage ? (
-            <div className="space-y-3">
-              {notes.map((note) => (
-                <div key={note.title}>
-                  <div className="text-[12px] font-semibold text-zinc-900">{note.title}</div>
-                  <p className="mt-1 text-[12px] leading-5 text-zinc-500">{note.text}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[12px] leading-5 text-zinc-500">
-              Для этой страницы пока нет заметок.
-            </p>
-          )}
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          "inline-flex h-11 items-center gap-2 rounded-full border border-border bg-white px-4 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-300/40 transition hover:bg-zinc-50 hover:text-zinc-950",
-          open && "bg-zinc-100 text-zinc-950",
-        )}
-        aria-label="Решения"
-        title="Решения"
-      >
-        <BookOpen size={18} weight="fill" />
-        Решения
-      </button>
-    </div>
   );
 }
 
@@ -681,6 +617,7 @@ function AuthenticatedShell() {
   // Панель превью можно скрыть — чисто пользовательский тумблер, не зависит
   // от вкладки/фильтра/выбранной позиции каталога.
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [prototypeToolsOpen, setPrototypeToolsOpen] = useState(false);
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
     setCatalogStopListActive(false);
     setCatalogViewMode(mode);
@@ -1343,6 +1280,7 @@ function AuthenticatedShell() {
               pinned={inlineSidebarMode === "full"}
               showTooltips={!wide}
               onQuickCreate={handleQuickCreate}
+              onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
             />
           </div>
 
@@ -1364,6 +1302,7 @@ function AuthenticatedShell() {
                   onPin={pinSidebar}
                   pinned={false}
                   onQuickCreate={handleQuickCreate}
+                  onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
                 />
               </div>
             </div>
@@ -1401,6 +1340,7 @@ function AuthenticatedShell() {
             activeTab={activeTab}
             onNavigate={guardedNavigate}
             onQuickCreate={handleQuickCreate}
+            onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
           />
 
           {/* Work area */}
@@ -1529,13 +1469,14 @@ function AuthenticatedShell() {
           </div>
         </div>
 
+        <GlobalPreviewReturnControl />
         </div>
 
       </div>
 
       <DraftToast />
       <PublishToast />
-      <PrototypeFloatingTools isCatalogPage={isCatalogPage} />
+      <PrototypeToolsPanel open={prototypeToolsOpen} onOpenChange={setPrototypeToolsOpen} />
     </div>
     </PreviewPanelProvider>
   );
@@ -1543,18 +1484,17 @@ function AuthenticatedShell() {
 
 function PreviewToolbarToggle() {
   const previewPanel = usePreviewPanel();
-  if (!previewPanel || (!previewPanel.open && previewPanel.sidePeekOpen)) return null;
+  if (!previewPanel?.open) return null;
   return <PreviewToggle open={previewPanel.open} onToggle={previewPanel.toggle} />;
 }
 
-function PrototypeFloatingTools({ isCatalogPage }: { isCatalogPage: boolean }) {
+function GlobalPreviewReturnControl() {
   const previewPanel = usePreviewPanel();
-  if (previewPanel?.sidePeekOpen && previewPanel.returnControlVisible) return null;
+  if (!previewPanel?.returnControlVisible) return null;
   return (
-    <>
-      <DevNotesFloating isCatalogPage={isCatalogPage} />
-      <PrototypeToolsFloating />
-    </>
+    <div data-preview-return-control className="absolute bottom-4 right-4 z-[60]">
+      <PreviewReturnButton onClick={previewPanel.show} />
+    </div>
   );
 }
 
