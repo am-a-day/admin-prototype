@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import type { ColumnDef, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
+import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -98,19 +98,80 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-const TABLE_COL = {
-  position: "w-[clamp(300px,30vw,360px)]",
-  description: "min-w-[180px] flex-1",
-  weight: "w-[90px]",
-  kbju: "w-[88px]",
-  translation: "w-[92px]",
-  section: "w-[160px]",
-  price: "w-[120px]",
-  discount: "w-[78px]",
-  tags: "w-[150px]",
-  stickers: "w-[140px]",
-  upsells: "w-[100px]",
-  kebab: "w-[48px]",
+const TABLE_COLUMN_WIDTHS = {
+  selection: 42,
+  position: 330,
+  description: 280,
+  weight: 90,
+  kbju: 88,
+  translation: 92,
+  section: 160,
+  price: 120,
+  discount: 78,
+  tags: 150,
+  stickers: 140,
+  upsells: 100,
+  actions: 48,
+} as const;
+
+export const DEFAULT_TABLE_COLUMN_SIZING: ColumnSizingState = {
+  position: TABLE_COLUMN_WIDTHS.position,
+  description: TABLE_COLUMN_WIDTHS.description,
+  weight: TABLE_COLUMN_WIDTHS.weight,
+  kbju: TABLE_COLUMN_WIDTHS.kbju,
+  translation: TABLE_COLUMN_WIDTHS.translation,
+  section: TABLE_COLUMN_WIDTHS.section,
+  price: TABLE_COLUMN_WIDTHS.price,
+  discount: TABLE_COLUMN_WIDTHS.discount,
+  tags: TABLE_COLUMN_WIDTHS.tags,
+  stickers: TABLE_COLUMN_WIDTHS.stickers,
+  upsells: TABLE_COLUMN_WIDTHS.upsells,
+};
+
+export const TABLE_COLUMN_MIN_SIZES: ColumnSizingState = {
+  position: 280,
+  description: 180,
+  weight: 80,
+  kbju: 72,
+  translation: 80,
+  section: 120,
+  price: 100,
+  discount: 72,
+  tags: 120,
+  stickers: 120,
+  upsells: 92,
+};
+
+export const TABLE_COLUMN_MAX_SIZES: ColumnSizingState = {
+  position: 720,
+  description: 640,
+  weight: 180,
+  kbju: 180,
+  translation: 200,
+  section: 320,
+  price: 220,
+  discount: 160,
+  tags: 320,
+  stickers: 280,
+  upsells: 220,
+};
+
+function getColumnWidthStyle(width: number) {
+  return { width, minWidth: width, maxWidth: width };
+}
+
+const TABLE_COLUMN_RESIZE_LABELS: Record<string, string> = {
+  position: "Название",
+  description: "Описание",
+  weight: "Вес или объём",
+  kbju: "КБЖУ",
+  translation: "Перевод",
+  section: "Раздел",
+  price: "Базовая цена",
+  discount: "Скидка",
+  tags: "Теги",
+  stickers: "Стикеры",
+  upsells: "Рекомендации",
 };
 export type CatalogInformationColumnId =
   | "section"
@@ -161,20 +222,20 @@ export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
 };
 
 export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
-  { id: "reorder", enableHiding: false },
-  { id: "selection", enableHiding: false },
-  { id: "position", accessorKey: "title", enableHiding: false },
-  { id: "section", accessorKey: "sectionName" },
-  { id: "weight", accessorKey: "weightLabel" },
-  { id: "description", accessorKey: "hasDescription" },
-  { id: "kbju", accessorKey: "nutritionFilledCount" },
-  { id: "translation", accessorKey: "translationFilledCount" },
-  { id: "price", accessorKey: "price" },
-  { id: "discount", accessorFn: (item) => item.hasDiscount && item.priceWithSale != null ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100) : null },
-  { id: "tags", accessorKey: "tags" },
-  { id: "stickers", accessorKey: "guestLabels" },
-  { id: "upsells", accessorKey: "recommendationsCount" },
-  { id: "actions", enableHiding: false },
+  { id: "reorder", enableHiding: false, enableResizing: false, size: 0, minSize: 0, maxSize: 0 },
+  { id: "selection", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.selection, minSize: TABLE_COLUMN_WIDTHS.selection, maxSize: TABLE_COLUMN_WIDTHS.selection },
+  { id: "position", accessorKey: "title", enableHiding: false, size: DEFAULT_TABLE_COLUMN_SIZING.position, minSize: TABLE_COLUMN_MIN_SIZES.position, maxSize: TABLE_COLUMN_MAX_SIZES.position },
+  { id: "section", accessorKey: "sectionName", size: DEFAULT_TABLE_COLUMN_SIZING.section, minSize: TABLE_COLUMN_MIN_SIZES.section, maxSize: TABLE_COLUMN_MAX_SIZES.section },
+  { id: "weight", accessorKey: "weightLabel", size: DEFAULT_TABLE_COLUMN_SIZING.weight, minSize: TABLE_COLUMN_MIN_SIZES.weight, maxSize: TABLE_COLUMN_MAX_SIZES.weight },
+  { id: "description", accessorKey: "hasDescription", size: DEFAULT_TABLE_COLUMN_SIZING.description, minSize: TABLE_COLUMN_MIN_SIZES.description, maxSize: TABLE_COLUMN_MAX_SIZES.description },
+  { id: "kbju", accessorKey: "nutritionFilledCount", size: DEFAULT_TABLE_COLUMN_SIZING.kbju, minSize: TABLE_COLUMN_MIN_SIZES.kbju, maxSize: TABLE_COLUMN_MAX_SIZES.kbju },
+  { id: "translation", accessorKey: "translationFilledCount", size: DEFAULT_TABLE_COLUMN_SIZING.translation, minSize: TABLE_COLUMN_MIN_SIZES.translation, maxSize: TABLE_COLUMN_MAX_SIZES.translation },
+  { id: "price", accessorKey: "price", size: DEFAULT_TABLE_COLUMN_SIZING.price, minSize: TABLE_COLUMN_MIN_SIZES.price, maxSize: TABLE_COLUMN_MAX_SIZES.price },
+  { id: "discount", accessorFn: (item) => item.hasDiscount && item.priceWithSale != null ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100) : null, size: DEFAULT_TABLE_COLUMN_SIZING.discount, minSize: TABLE_COLUMN_MIN_SIZES.discount, maxSize: TABLE_COLUMN_MAX_SIZES.discount },
+  { id: "tags", accessorKey: "tags", size: DEFAULT_TABLE_COLUMN_SIZING.tags, minSize: TABLE_COLUMN_MIN_SIZES.tags, maxSize: TABLE_COLUMN_MAX_SIZES.tags },
+  { id: "stickers", accessorKey: "guestLabels", size: DEFAULT_TABLE_COLUMN_SIZING.stickers, minSize: TABLE_COLUMN_MIN_SIZES.stickers, maxSize: TABLE_COLUMN_MAX_SIZES.stickers },
+  { id: "upsells", accessorKey: "recommendationsCount", size: DEFAULT_TABLE_COLUMN_SIZING.upsells, minSize: TABLE_COLUMN_MIN_SIZES.upsells, maxSize: TABLE_COLUMN_MAX_SIZES.upsells },
+  { id: "actions", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.actions, minSize: TABLE_COLUMN_WIDTHS.actions, maxSize: TABLE_COLUMN_WIDTHS.actions },
 ];
 
 function DropdownContent({ children, align = "end" }: { children: ReactNode; align?: "start" | "center" | "end" }) {
@@ -287,6 +348,28 @@ export function TableCheckbox({
   );
 }
 
+function ColumnResizeHandle({ header }: { header?: Header<CatalogItem, unknown> }) {
+  if (!header || !header.column.getCanResize()) return null;
+  const label = TABLE_COLUMN_RESIZE_LABELS[header.column.id] ?? header.column.id;
+
+  return (
+    <button
+      type="button"
+      data-catalog-column-resize-handle={header.column.id}
+      aria-label={`Изменить ширину колонки «${label}»`}
+      onMouseDown={header.getResizeHandler()}
+      onTouchStart={header.getResizeHandler()}
+      onClick={(event) => event.stopPropagation()}
+      className={cn(
+        "absolute right-[-4px] top-0 z-30 h-full w-2 cursor-col-resize touch-none border-0 bg-transparent p-0 outline-none",
+        "after:absolute after:right-[3px] after:top-0 after:h-full after:w-px after:bg-[#a8a29e] after:opacity-0 after:transition-opacity",
+        "hover:after:opacity-100 focus-visible:after:opacity-100",
+        header.column.getIsResizing() && "after:opacity-100",
+      )}
+    />
+  );
+}
+
 function AuditDot({ state, title }: { state: "filled" | "partial" | "missing"; title: string }) {
   return (
     <span className="flex items-center justify-center" title={title}>
@@ -337,9 +420,10 @@ export function TableHeaderRow({
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
           if (column.id === "reorder") return null;
+          const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
           if (column.id === "selection") {
             return (
-              <span key={column.id} className={cn("flex h-full w-[42px] shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-20 bg-white")}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-20 bg-white")}>
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -351,69 +435,74 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return hideSearch ? (
-              <span key={column.id} className={cn("shrink-0 truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.position, stickyFirstColumn && "sticky left-[42px] z-20 bg-white", stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>Позиция</span>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]", stickyFirstColumn && "sticky left-[42px] z-20 bg-white", stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+                Позиция
+                <ColumnResizeHandle header={header} />
+              </span>
             ) : (
-              <CatalogTableSearch
-                key={column.id}
-                value={query}
-                onValueChange={onQueryChange}
-                ariaLabel="Найти позицию"
-                className={cn(
-                  TABLE_COL.position,
-                  stickyFirstColumn && "sticky left-[42px] z-20",
-                  stickyFirstColumn && firstColumnScrolled && "rounded-r-none border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]",
-                )}
-              />
+              <div key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative h-full shrink-0", stickyFirstColumn && "sticky left-[42px] z-20", stickyFirstColumn && firstColumnScrolled && "rounded-r-none border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+                <CatalogTableSearch
+                  value={query}
+                  onValueChange={onQueryChange}
+                  ariaLabel="Найти позицию"
+                  className="h-7 w-full max-w-full"
+                />
+                <ColumnResizeHandle header={header} />
+              </div>
             );
           }
           if (column.id === "description") {
             return (
-              <span key={column.id} className={cn("flex h-full min-w-[180px] flex-1 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.description)}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
                 {CATALOG_INFORMATION_COLUMN_LABELS.description}
+                <ColumnResizeHandle header={header} />
               </span>
             );
           }
           if (column.id === "discount") {
             return (
-              <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.discount)}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
                 {CATALOG_INFORMATION_COLUMN_LABELS.discount}
+                <ColumnResizeHandle header={header} />
               </span>
             );
           }
           if (column.id === "price") {
             return (
-              <Tooltip key={column.id} label={priceSortTooltip} side="top">
-                <button
-                  type="button"
-                  onClick={onPriceSortChange}
-                  aria-label={priceSortTooltip}
-                  className={cn(
-                    "flex h-[38px] shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                    TABLE_COL.price,
-                    priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
-                  )}
-                >
-                  <span>Базовая цена</span>
-                  <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
-                    {priceSort === "asc" ? (
-                      <CaretUp size={11} weight="bold" />
-                    ) : priceSort === "desc" ? (
-                      <CaretDown size={11} weight="bold" />
-                    ) : (
-                      <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
-                        <CaretUp size={8} weight="bold" />
-                        <CaretDown size={8} weight="bold" className="-mt-1" />
-                      </span>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-[38px] shrink-0">
+                <Tooltip label={priceSortTooltip} side="top">
+                  <button
+                    type="button"
+                    onClick={onPriceSortChange}
+                    aria-label={priceSortTooltip}
+                    className={cn(
+                      "flex h-[38px] w-full items-center justify-end px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                      priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
                     )}
-                  </span>
-                </button>
-              </Tooltip>
+                  >
+                    <span>Базовая цена</span>
+                    <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                      {priceSort === "asc" ? (
+                        <CaretUp size={11} weight="bold" />
+                      ) : priceSort === "desc" ? (
+                        <CaretDown size={11} weight="bold" />
+                      ) : (
+                        <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
+                          <CaretUp size={8} weight="bold" />
+                          <CaretDown size={8} weight="bold" className="-mt-1" />
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </Tooltip>
+                <ColumnResizeHandle header={header} />
+              </span>
             );
           }
           if (column.id === "actions") {
             const informationColumns = table.getAllLeafColumns().filter((candidate) => candidate.getCanHide());
             return (
-              <span key={column.id} className={cn("flex h-[38px] shrink-0 items-center justify-center", TABLE_COL.kebab)}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-[38px] shrink-0 items-center justify-center">
                 <DropdownMenu.Root>
                   <Tooltip label="Настроить колонки" side="top">
                     <DropdownMenu.Trigger asChild>
@@ -425,31 +514,22 @@ export function TableHeaderRow({
                   <DropdownContent align="end">
                     <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
                     {informationColumns.map((candidate) => (
-                      <DropdownMenu.CheckboxItem key={candidate.id} checked={candidate.getIsVisible()} onCheckedChange={(checked) => candidate.toggleVisibility(checked === true)} onSelect={(event) => event.preventDefault()} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]">
+                      <DropdownMenu.CheckboxItem key={candidate.id} checked={candidate.getIsVisible()} onCheckedChange={(checked) => candidate.toggleVisibility(checked === true)} onSelect={(event) => event.preventDefault()} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
                         <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
                         {CATALOG_INFORMATION_COLUMN_LABELS[candidate.id as CatalogInformationColumnId]}
                       </DropdownMenu.CheckboxItem>
                     ))}
                     <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownMenu.Item onSelect={onResetColumns} className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]">Сбросить колонки</DropdownMenu.Item>
+                    <DropdownMenu.Item onSelect={onResetColumns} className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Сбросить колонки</DropdownMenu.Item>
                   </DropdownContent>
                 </DropdownMenu.Root>
               </span>
             );
           }
-          const widths: Record<string, string> = {
-            weight: TABLE_COL.weight,
-            kbju: TABLE_COL.kbju,
-            translation: TABLE_COL.translation,
-            section: TABLE_COL.section,
-            discount: TABLE_COL.discount,
-            tags: TABLE_COL.tags,
-            stickers: TABLE_COL.stickers,
-            upsells: TABLE_COL.upsells,
-          };
           return (
-            <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", widths[column.id])}>
+            <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
               {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
+              <ColumnResizeHandle header={header} />
             </span>
           );
         })}
@@ -644,7 +724,8 @@ function AuditDishRowContent({
               <span
                 key={cell.id}
                 data-no-dnd
-                className={cn("flex h-full w-[42px] shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-10", stickyFirstColumn && stickyRowBackground)}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className={cn("flex h-full shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-10", stickyFirstColumn && stickyRowBackground)}
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
@@ -658,7 +739,7 @@ function AuditDishRowContent({
             );
           case "position":
             return (
-              <div key={cell.id} className={cn("flex shrink-0 items-center gap-[7px] pr-3", TABLE_COL.position, stickyFirstColumn && "sticky left-[42px] z-10", stickyFirstColumn && stickyRowBackground, stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+              <div key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex shrink-0 items-center gap-[7px] pr-3", stickyFirstColumn && "sticky left-[42px] z-10", stickyFirstColumn && stickyRowBackground, stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[3px]" />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
@@ -670,31 +751,31 @@ function AuditDishRowContent({
             );
           case "description":
             return (
-              <span key={cell.id} className={cn("flex min-w-0 items-center px-3 text-[13px] font-normal leading-5 text-[#57534d]", TABLE_COL.description)} title={getDescriptionPreview(item.description) || undefined}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex min-w-0 shrink-0 items-center px-3 text-[13px] font-normal leading-5 text-[#57534d]" title={getDescriptionPreview(item.description) || undefined}>
                 <span className={cn("min-w-0 truncate whitespace-nowrap", !getDescriptionPreview(item.description) && "text-[#a6a09b]")}>{getDescriptionPreview(item.description) || "—"}</span>
               </span>
             );
           case "weight":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]", TABLE_COL.weight)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]" title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
                 {item.weightLabel ? <span className="truncate whitespace-nowrap">{item.weightLabel}</span> : <span className="text-[#a6a09b]">—</span>}
               </span>
             );
           case "kbju":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3", TABLE_COL.kbju)}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-3">
                 <AuditDot state={kbjuState} title={kbjuState === "missing" ? "Нет КБЖУ" : kbjuState === "partial" ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)` : "КБЖУ (на 100 г) заполнено"} />
               </span>
             );
           case "translation":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", TABLE_COL.translation)} title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]" title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
                 {item.translationFilledCount}/{item.translationTotalCount}
               </span>
             );
           case "section":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center px-2", TABLE_COL.section)}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center px-2">
                 <button
                   type="button"
                   data-no-dnd
@@ -712,7 +793,8 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
-                className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.tags)}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className="flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]"
                 title={resolvedTags.length > 0 ? resolvedTags.join(", ") : "Теги не назначены"}
               >
                 {firstTag ? (
@@ -729,7 +811,8 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
-                className={cn("flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", TABLE_COL.stickers)}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className="flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]"
                 title={firstSticker || "Стикеры не назначены"}
               >
                 {firstSticker ? (
@@ -742,7 +825,8 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
-                className={cn("flex shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]", TABLE_COL.upsells)}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className="flex shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]"
                 title={`Настроено рекомендаций: ${item.recommendationsCount}`}
               >
                 {item.recommendationsCount}
@@ -750,19 +834,19 @@ function AuditDishRowContent({
             );
           case "price":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.price)}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]">
                 {item.price === 0 ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(item.price)}</span>}
               </span>
             );
           case "discount":
             return (
-              <span key={cell.id} className={cn("flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.discount)}>
+              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]">
                 {discountPercent == null ? <span className="text-[#a6a09b]">—</span> : <span className="whitespace-nowrap tabular-nums">−{discountPercent}%</span>}
               </span>
             );
           case "actions":
             return (
-              <span key={cell.id} data-no-dnd className={cn("flex shrink-0 items-center justify-center", TABLE_COL.kebab)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+              <span key={cell.id} data-no-dnd style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                 {renderActions?.(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
               </span>
             );

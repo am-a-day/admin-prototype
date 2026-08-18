@@ -5,6 +5,7 @@ import {
   getCoreRowModel,
   useReactTable,
   type Updater,
+  type ColumnSizingState,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -155,7 +156,10 @@ import { SubsectionList } from "./catalog/workspace/subsections";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
   CATALOG_INFORMATION_COLUMN_IDS,
+  DEFAULT_TABLE_COLUMN_SIZING,
   DEFAULT_TABLE_COLUMN_VISIBILITY,
+  TABLE_COLUMN_MAX_SIZES,
+  TABLE_COLUMN_MIN_SIZES,
   CatalogTableFilterBar,
   SelectionToolbar,
   TableCheckbox,
@@ -6351,6 +6355,7 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 }
 
 const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v2");
+const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v1");
 function readTableColumnVisibility(): VisibilityState {
   const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
   const next = { ...DEFAULT_TABLE_COLUMN_VISIBILITY };
@@ -6359,6 +6364,22 @@ function readTableColumnVisibility(): VisibilityState {
   });
   next.position = true;
   return next;
+}
+
+function normalizeTableColumnSizing(input: Partial<ColumnSizingState>): ColumnSizingState {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_TABLE_COLUMN_SIZING).map(([columnId, defaultSize]) => {
+      const storedSize = input[columnId];
+      const minSize = TABLE_COLUMN_MIN_SIZES[columnId] ?? defaultSize;
+      const maxSize = TABLE_COLUMN_MAX_SIZES[columnId] ?? defaultSize;
+      const size = typeof storedSize === "number" && Number.isFinite(storedSize) ? storedSize : defaultSize;
+      return [columnId, Math.min(maxSize, Math.max(minSize, size))];
+    }),
+  ) as ColumnSizingState;
+}
+
+function readTableColumnSizing(): ColumnSizingState {
+  return normalizeTableColumnSizing(readJsonRecord<ColumnSizingState>(CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY, {}));
 }
 
 function ToolbarDivider() {
@@ -7722,6 +7743,7 @@ function OverviewWorkspace({
   const [moveRequest, setMoveRequest] = useState<{ operation: "position" | "bulk"; itemIds: string[]; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(readTableColumnSizing);
   const labelDirectory = useCatalogLabels(USE_SHARED_TAGS_AND_STICKERS);
   useEffect(() => {
     if (USE_SHARED_TAGS_AND_STICKERS) ensureCatalogLabelsFromItems(items);
@@ -7752,6 +7774,9 @@ function OverviewWorkspace({
       return { ...next, position: true };
     });
   }, []);
+  const handleColumnSizingChange = useCallback((updater: Updater<ColumnSizingState>) => {
+    setColumnSizing((current) => normalizeTableColumnSizing(typeof updater === "function" ? updater(current) : updater));
+  }, []);
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
   const suppressActiveItemChangeRef = useRef(false);
@@ -7770,6 +7795,9 @@ function OverviewWorkspace({
   useEffect(() => {
     writeJsonRecord(CATALOG_TABLE_COLUMNS_STORAGE_KEY, columnVisibility);
   }, [columnVisibility]);
+  useEffect(() => {
+    writeJsonRecord(CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY, columnSizing);
+  }, [columnSizing]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [tableScrolledHorizontally, setTableScrolledHorizontally] = useState(false);
   const restoreScrollTopRef = useRef<number | null>(null);
@@ -7923,8 +7951,10 @@ function OverviewWorkspace({
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
-    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder } },
+    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder }, columnSizing },
     onColumnVisibilityChange: handleColumnVisibilityChange,
+    onColumnSizingChange: handleColumnSizingChange,
+    columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item) => item.id,
   });
