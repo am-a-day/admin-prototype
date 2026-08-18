@@ -17,6 +17,7 @@ export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogI
   "quick:no-recommendations": (item) => item.recommendationsCount === 0,
   "display:full": (item) => item.displayMode === "full",
   "display:no-button": (item) => item.displayMode === "no-button",
+  "display:no-price-only": (item) => item.displayMode === "no-price",
   "display:no-price": (item) => item.displayMode === "no-price",
   "status:active": (item) => item.status === "active",
   "status:archived": (item) => item.status === "archive",

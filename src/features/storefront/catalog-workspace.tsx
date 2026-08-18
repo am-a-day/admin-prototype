@@ -545,6 +545,12 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     emptyTitle: "Нет позиций без кнопки",
     emptyText: "Позиции, где скрыта кнопка заказа, появятся здесь.",
   },
+  "display:no-price-only": {
+    label: "Без цены",
+    countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} без цены`,
+    emptyTitle: "Нет позиций без цены",
+    emptyText: "Позиции без отображаемой цены появятся здесь.",
+  },
   "display:no-price": {
     label: "Без кнопки и цены",
     countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} без кнопки и цены`,
@@ -7814,8 +7820,8 @@ function OverviewWorkspace({
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
     const next = id === "quick:all"
       ? []
-      : active
-        ? [...new Set([...activeFilterIds, id])]
+        : active
+        ? [id]
         : activeFilterIds.filter((current) => current !== id);
     setActiveFilterIds(next);
     setWorkspaceFilterId(next.at(-1) ?? "quick:all");

@@ -19,6 +19,7 @@ export type OverviewFilterId =
   | "quick:no-recommendations"
   | "display:full"
   | "display:no-button"
+  | "display:no-price-only"
   | "display:no-price"
   | "status:active"
   | "status:archived"

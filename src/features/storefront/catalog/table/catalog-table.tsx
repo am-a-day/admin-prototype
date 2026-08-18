@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowsOutCardinal,
   CaretDown,
+  CaretRight,
   CaretUp,
   Check,
   Clock,
@@ -24,7 +25,7 @@ import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import type { CatalogPriceSortDirection } from "../navigation/types";
 import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
-import { CATALOG_VIEW_MODE_GROUPS, HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
+import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableSearch } from "../ui/catalog-table-controls";
@@ -1032,8 +1033,6 @@ export function CatalogTableFilterBar({
   headerActionsOnly = false,
   tagCategoryActive = false,
   stickerCategoryActive = false,
-  onTagCategoryChange,
-  onStickerCategoryChange,
 }: {
   activeFilterIds: OverviewFilterId[];
   mandatoryFilterId?: OverviewFilterId;
@@ -1050,9 +1049,19 @@ export function CatalogTableFilterBar({
   onStickerCategoryChange?: (active: boolean) => void;
 }) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [openFilterGroup, setOpenFilterGroup] = useState<string | null>(null);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
   const countByFilter = (id: OverviewFilterId) => countItemsByFilter([id], items, scopeIds, mandatoryFilterId)[id] ?? 0;
-  const filterGroups = CATALOG_VIEW_MODE_GROUPS.map((group) => ({
+  const filterGroups = [
+    { label: "Статус", ids: ["status:active", "status:archived"] },
+    { label: "Доступность", ids: ["status:stop", "status:schedule"] },
+    {
+      label: "Заполненность",
+      ids: ["quick:no-photo", "quick:no-weight", "quick:no-description", "quick:no-kbju", "quick:no-translation", "quick:no-recommendations"],
+    },
+    { label: "Возможности", ids: ["quick:discount", "quick:with-labels", "quick:with-tags"] },
+    { label: "Отображение", ids: ["display:full", "display:no-button", "display:no-price-only", "display:no-price"] },
+  ].map((group) => ({
     ...group,
     ids: group.ids.filter(
       (id): id is OverviewFilterId => id !== "sections" && id !== "quick:all" && id !== mandatoryFilterId,
@@ -1072,8 +1081,19 @@ export function CatalogTableFilterBar({
 
   if (headerActionsOnly) {
     const activeCount = activeFilterIds.length + Number(tagCategoryActive) + Number(stickerCategoryActive);
+    const selectFilter = (id: OverviewFilterId) => {
+      setFilterMenuOpen(false);
+      setOpenFilterGroup(null);
+      onActiveFilterChange(id, true);
+    };
     return (
-      <DropdownMenu.Root>
+      <DropdownMenu.Root
+        open={filterMenuOpen}
+        onOpenChange={(open) => {
+          setFilterMenuOpen(open);
+          if (!open) setOpenFilterGroup(null);
+        }}
+      >
         <DropdownMenu.Trigger asChild>
           <button type="button" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
             <FunnelSimple size={14} />
@@ -1082,50 +1102,43 @@ export function CatalogTableFilterBar({
             <CaretDown size={12} />
           </button>
         </DropdownMenu.Trigger>
-        <DropdownContent align="end">
-          <div className="max-h-[380px] min-w-[280px] overflow-y-auto">
-            {filterGroups.map((group, groupIndex) => (
-              <div key={group.label}>
-                {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-                <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">{group.label}</DropdownMenu.Label>
-                {group.ids.map((id) => (
-                  <DropdownMenu.CheckboxItem
-                    key={id}
-                    checked={activeFilterIds.includes(id)}
-                    onCheckedChange={(checked) => onActiveFilterChange(id, checked === true)}
-                    onSelect={(event) => event.preventDefault()}
-                    className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+        <DropdownContent align="start">
+          <div className="min-w-[176px]">
+            {filterGroups.map((group) => (
+              <DropdownMenu.Sub
+                key={group.label}
+                open={openFilterGroup === group.label}
+                onOpenChange={(open) => setOpenFilterGroup(open ? group.label : null)}
+              >
+                <DropdownMenu.SubTrigger
+                  onClick={() => setOpenFilterGroup(group.label)}
+                  className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                >
+                  <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                  <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
+                </DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent
+                    sideOffset={5}
+                    alignOffset={-5}
+                    collisionPadding={12}
+                    className="z-[100003] min-w-[228px] rounded-[10px] border border-[#e7e5e4] bg-white p-1 shadow-[0_12px_28px_rgba(41,37,36,0.12)] outline-none"
                   >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
-                    <span className="min-w-0 flex-1 truncate">{HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                    <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                  </DropdownMenu.CheckboxItem>
-                ))}
-              </div>
+                    {group.ids.map((id) => (
+                      <DropdownMenu.Item
+                        key={id}
+                        onSelect={() => selectFilter(id)}
+                        className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{id === "quick:with-labels" ? "Со стикером" : HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+                        <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
+                        {activeFilterIds.includes(id) && <Check size={13} weight="bold" className="shrink-0 text-[#57534d]" />}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
             ))}
-            {(onTagCategoryChange || onStickerCategoryChange) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-            {onTagCategoryChange && (
-              <DropdownMenu.CheckboxItem
-                checked={tagCategoryActive}
-                onCheckedChange={(checked) => onTagCategoryChange(checked === true)}
-                onSelect={(event) => event.preventDefault()}
-                className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
-              >
-                <span className="flex size-4 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
-                <span>Теги</span>
-              </DropdownMenu.CheckboxItem>
-            )}
-            {onStickerCategoryChange && (
-              <DropdownMenu.CheckboxItem
-                checked={stickerCategoryActive}
-                onCheckedChange={(checked) => onStickerCategoryChange(checked === true)}
-                onSelect={(event) => event.preventDefault()}
-                className="flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
-              >
-                <span className="flex size-4 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
-                <span>Стикеры</span>
-              </DropdownMenu.CheckboxItem>
-            )}
           </div>
         </DropdownContent>
       </DropdownMenu.Root>
