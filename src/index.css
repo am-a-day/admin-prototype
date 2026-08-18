@@ -123,6 +123,12 @@ body {
   transition: opacity 150ms ease-out;
 }
 
+[data-catalog-compact-sections-target] {
+  flex: 0 0 0;
+  width: 0;
+  transition: flex-basis 200ms ease-out, width 200ms ease-out;
+}
+
 [data-position-editor-header]:hover [data-position-editor-navigation],
 [data-position-editor-header]:focus-within [data-position-editor-navigation] {
   opacity: 1;
@@ -153,8 +159,14 @@ body {
     [data-position-editor-compact-return] {
     visibility: visible;
     pointer-events: auto;
-    transform: translateY(0);
+    transform: translateX(0);
     opacity: 1;
+  }
+
+  [data-position-editor-surface][data-position-editor-pane-visible="true"]
+    [data-catalog-compact-sections-target] {
+    flex-basis: 28px;
+    width: 28px;
   }
 }
 
@@ -162,7 +174,8 @@ body {
   [data-catalog-tree-shell],
   [data-catalog-tree-shell] > aside,
   [data-position-editor-compact-return],
-  [data-position-editor-navigation] {
+  [data-position-editor-navigation],
+  [data-catalog-compact-sections-target] {
     transition-duration: 0.01ms;
   }
 }

@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, List, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SidebarSimple, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -3384,7 +3384,7 @@ export function PositionEditor({
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
   const [createNameError, setCreateNameError] = useState("");
-  const [compactReturnTarget, setCompactReturnTarget] = useState<HTMLElement | null>(null);
+  const [compactSectionsTarget, setCompactSectionsTarget] = useState<HTMLElement | null>(null);
   const sidePeek = usePositionSidePeek();
   const fixture = usePositionEditorFixture();
 
@@ -3399,13 +3399,13 @@ export function PositionEditor({
 
   useEffect(() => {
     if (!detailPane || !sidePeek) {
-      setCompactReturnTarget(null);
+      setCompactSectionsTarget(null);
       return;
     }
-    const target = document.querySelector<HTMLElement>("[data-position-editor-surface]");
-    setCompactReturnTarget(target);
-    return () => setCompactReturnTarget(null);
-  }, [detailPane, sidePeek]);
+    const target = document.querySelector<HTMLElement>("[data-catalog-compact-sections-target]");
+    setCompactSectionsTarget(target);
+    return () => setCompactSectionsTarget(null);
+  }, [detailPane, item.sectionId, item.sectionName, sidePeek]);
 
   useEffect(() => {
     const nextTab = mountedItemRef.current
@@ -3698,21 +3698,19 @@ export function PositionEditor({
     />
   ) : null;
 
-  const compactReturnControl = compactReturnTarget && sidePeek ? createPortal(
+  const compactReturnControl = compactSectionsTarget && sidePeek ? createPortal(
     <Tooltip label="Показать разделы" side="top" delayDuration={250}>
       <button
         type="button"
         data-position-editor-compact-return
         aria-label="Показать разделы"
         onClick={sidePeek.requestClose}
-        className="invisible pointer-events-none absolute bottom-5 left-4 z-[55] inline-flex max-w-[220px] translate-y-1 items-center gap-1.5 rounded-[9px] border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#44403b] opacity-0 shadow-[0_8px_24px_rgba(41,37,36,0.12)] transition-[opacity,transform,visibility] duration-200 ease-out hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        className="invisible pointer-events-none flex size-7 shrink-0 -translate-x-1 items-center justify-center rounded-[8px] text-[#57534d] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
       >
-        <List size={15} weight="bold" className="shrink-0 text-[#57534d]" aria-hidden="true" />
-        <ArrowLeft size={13} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />
-        <span className="truncate">{item.sectionName || "Разделы"}</span>
+        <SidebarSimple size={16} weight="bold" aria-hidden="true" />
       </button>
     </Tooltip>,
-    compactReturnTarget,
+    compactSectionsTarget,
   ) : null;
 
   return (

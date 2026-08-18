@@ -2718,33 +2718,36 @@ function UnifiedSectionTableHeader({
   const status = getSectionStatusMeta(section);
   const statusLabel = getSectionTreeStatusLabel(section);
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          aria-label={`Действия с разделом «${section.name}»`}
-          className="group flex min-w-0 items-center gap-1.5 rounded-[8px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
-            {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={13} />}
-          </span>
-          <span className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">{section.name}</span>
-          <span className="flex h-[17px] min-w-6 shrink-0 items-center justify-center rounded-[5px] bg-[#f3f3ed] px-1 text-[12px] font-medium leading-4 tabular-nums text-[#79716b]">
-            {itemCount}
-          </span>
-          {statusLabel && <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>}
-          <CaretDown size={14} className="shrink-0 text-[#57534d]" />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownContent align="start">
-        <SectionActionMenuContent
-          section={section}
-          allowPositionCreation={allowPositionCreation}
-          allowSubsectionCreation={allowSubsectionCreation}
-          onAction={onAction}
-        />
-      </DropdownContent>
-    </DropdownMenu.Root>
+    <div className="flex min-w-0 items-center gap-1.5">
+      <span data-catalog-compact-sections-target className="relative inline-flex h-7 min-w-0 shrink-0 items-center overflow-visible" />
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Действия с разделом «${section.name}»`}
+            className="group flex min-w-0 items-center gap-1.5 rounded-[8px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
+              {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={13} />}
+            </span>
+            <span className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">{section.name}</span>
+            <span className="flex h-[17px] min-w-6 shrink-0 items-center justify-center rounded-[5px] bg-[#f3f3ed] px-1 text-[12px] font-medium leading-4 tabular-nums text-[#79716b]">
+              {itemCount}
+            </span>
+            {statusLabel && <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>}
+            <CaretDown size={14} className="shrink-0 text-[#57534d]" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent align="start">
+          <SectionActionMenuContent
+            section={section}
+            allowPositionCreation={allowPositionCreation}
+            allowSubsectionCreation={allowSubsectionCreation}
+            onAction={onAction}
+          />
+        </DropdownContent>
+      </DropdownMenu.Root>
+    </div>
   );
 }
 
