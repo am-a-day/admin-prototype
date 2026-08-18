@@ -102,6 +102,33 @@ body {
   transition: transform 200ms ease-out, opacity 180ms ease-out;
 }
 
+[data-position-editor-header] {
+  position: relative;
+}
+
+[data-position-editor-navigation] {
+  position: absolute;
+  top: 50%;
+  right: 48px;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  padding: 0 2px 0 6px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: -12px 0 14px rgb(255 255 255 / 96%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 150ms ease-out;
+}
+
+[data-position-editor-header]:hover [data-position-editor-navigation],
+[data-position-editor-header]:focus-within [data-position-editor-navigation] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /*
  * 1212px = section tree (250) + useful list area (160) + default Side Peek
  * (400) + Preview (390) + the 12px inter-panel gap. The queried shell wraps
@@ -134,7 +161,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   [data-catalog-tree-shell],
   [data-catalog-tree-shell] > aside,
-  [data-position-editor-compact-return] {
+  [data-position-editor-compact-return],
+  [data-position-editor-navigation] {
     transition-duration: 0.01ms;
   }
 }

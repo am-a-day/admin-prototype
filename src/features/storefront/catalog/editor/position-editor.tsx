@@ -1594,16 +1594,24 @@ function PositionAvailabilityStatus({
   const state = item.status === "archive"
     ? "archive"
     : menuProps.manualStopped
-      ? "stopped"
+      ? (item.status === "coming-soon" || menuProps.unavailableDisplayMode === "comingSoon" ? "coming-soon" : "stopped")
       : menuProps.hasSchedule
-        ? "schedule"
+        ? effective.orderable
+          ? "schedule"
+          : effective.badge === "Скоро будет"
+            ? "coming-soon"
+            : "unavailable"
         : effective.orderable
           ? "available"
-          : "unavailable";
+          : effective.badge === "Скоро будет"
+            ? "coming-soon"
+            : "unavailable";
   const label = state === "archive"
     ? "В архиве"
     : state === "stopped"
       ? "На стопе"
+      : state === "coming-soon"
+        ? "Скоро будет"
       : state === "schedule"
         ? "По расписанию"
         : state === "unavailable"
@@ -1620,6 +1628,7 @@ function PositionAvailabilityStatus({
           "inline-flex h-5 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] font-semibold leading-5",
           state === "archive" && "bg-[#f1f5f9] text-[#475569]",
           state === "stopped" && "bg-[#ffedd4] text-[#9a3412]",
+          state === "coming-soon" && "bg-[#dbeafe] text-[#1d4ed8]",
           state === "schedule" && "bg-[#dbeafe] text-[#1d4ed8]",
           state === "unavailable" && "bg-[#fef3c7] text-[#854d0e]",
           state === "available" && "bg-[#eef7f1] text-[#3f6b52]",
@@ -1637,10 +1646,14 @@ function PositionAvailabilityStatus({
       className={cn(
         "flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[#e7e5e4] bg-white px-2.5 text-[13px] font-medium text-[#292524]",
         state === "stopped" && "border-[#fde68a] bg-[#fffbeb]",
+        state === "coming-soon" && "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]",
         state === "archive" && "bg-[#f5f5f4] text-[#57534d]",
       )}
     >
-      <Icon size={16} className={cn("shrink-0", state === "stopped" ? "text-[#a16207]" : "text-[#57534d]")} />
+      <Icon size={16} className={cn(
+        "shrink-0",
+        state === "stopped" ? "text-[#a16207]" : state === "coming-soon" ? "text-[#1d4ed8]" : "text-[#57534d]",
+      )} />
       <span>{label}</span>
     </div>
   );
@@ -3627,7 +3640,6 @@ export function PositionEditor({
   const positionActions = (
     <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
       <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
-      {headerMeta}
       {renderPositionActionsMenu(
         <button
           type="button"
@@ -3655,18 +3667,7 @@ export function PositionEditor({
 
   const closeSidePeek = sidePeek?.requestClose ?? (creationPane ? onBackCreate : onBackEdit);
   const detailPaneControls = (
-    <div
-      data-position-editor-controls
-      className="group/side-peek-controls flex h-8 shrink-0 items-center gap-0"
-    >
-      {headerMeta && autosaveStatus !== "error" && (
-        <div
-          data-position-editor-navigation
-          className="pointer-events-none mr-0 flex h-8 max-w-0 flex-none items-center overflow-hidden opacity-0 transition-[max-width,margin-right,opacity] duration-150 group-hover/side-peek-controls:pointer-events-auto group-hover/side-peek-controls:mr-1 group-hover/side-peek-controls:max-w-[66px] group-hover/side-peek-controls:opacity-100 group-focus-within/side-peek-controls:pointer-events-auto group-focus-within/side-peek-controls:mr-1 group-focus-within/side-peek-controls:max-w-[66px] group-focus-within/side-peek-controls:opacity-100"
-        >
-          {headerMeta}
-        </div>
-      )}
+    <div data-position-editor-controls className="flex h-8 shrink-0 items-center gap-0">
       {closeSidePeek && (
         <Tooltip label="Свернуть редактор" side="bottom" delayDuration={250}>
           <button
@@ -3682,6 +3683,20 @@ export function PositionEditor({
       )}
     </div>
   );
+
+  const positionNavigation = headerMeta ? (
+    <div data-position-editor-navigation>
+      {headerMeta}
+    </div>
+  ) : null;
+
+  const positionHeaderStatus = sidePeekActionsEnabled ? (
+    <PositionAvailabilityStatus
+      item={item}
+      menuProps={positionAvailabilityMenuProps}
+      compact
+    />
+  ) : null;
 
   const compactReturnControl = compactReturnTarget && sidePeek ? createPortal(
     <Tooltip label="Показать разделы" side="top" delayDuration={250}>
@@ -3748,9 +3763,9 @@ export function PositionEditor({
             <div
               data-position-editor-header
               data-position-create-pane-header={creationPane || undefined}
-              className="sticky top-0 z-30 -mx-4 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-4"
+              className="group/side-peek-header relative sticky top-0 z-30 -mx-4 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-4"
             >
-              <div data-position-title-region className="flex min-w-0 flex-1 items-center">
+              <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2">
                 {titleEditing ? (
                   <div className="flex min-w-0 flex-1 items-center rounded-[8px] bg-white px-2 ring-1 ring-[#c7c2bd]">
                     <input
@@ -3777,7 +3792,7 @@ export function PositionEditor({
                       ? `Действия с позицией «${item.title || "Новая позиция"}»`
                       : "Действия станут доступны после создания позиции"}
                     data-position-title-actions-trigger
-                    className="flex min-w-0 max-w-full items-center gap-1 rounded-[7px] px-1.5 py-1 text-left text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-default disabled:hover:bg-transparent"
+                    className="flex min-w-0 flex-1 items-center gap-1 rounded-[7px] px-1.5 py-1 text-left text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-default disabled:hover:bg-transparent"
                   >
                     <span className="min-w-0 truncate text-[14px] font-semibold leading-5" title={item.title || "Новая позиция"}>
                       {item.title || "Новая позиция"}
@@ -3785,15 +3800,18 @@ export function PositionEditor({
                     <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />
                   </button>,
                 )}
+                {positionHeaderStatus}
               </div>
-              <div className="group/side-peek-header flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <div className={cn(
-                  headerMeta && "group-hover/side-peek-header:hidden group-focus-within/side-peek-header:hidden",
+                  "transition-opacity duration-150",
+                  headerMeta && "group-hover/side-peek-header:pointer-events-none group-hover/side-peek-header:opacity-0 group-focus-within/side-peek-header:pointer-events-none group-focus-within/side-peek-header:opacity-0",
                 )}>
                   <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
                 </div>
                 {detailPaneControls}
               </div>
+              {positionNavigation}
             </div>
           ) : creationCanvas ? (
             creationDestination ? <div className="pb-3">{creationDestination}</div> : null
@@ -3843,9 +3861,9 @@ export function PositionEditor({
           ) : (
             <div
               data-position-editor-header
-              className="group/editor-header grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-1 pt-3"
+              className="group/editor-header relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-1 pt-3"
             >
-              <div data-position-title-region className="flex min-w-0 flex-1 items-center text-[14px] font-medium leading-7 text-[#292524]">
+              <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2 text-[14px] font-medium leading-7 text-[#292524]">
                 {titleEditing ? (
                   <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-2 ring-1 ring-[#c7c2bd]">
                     <input
@@ -3865,7 +3883,7 @@ export function PositionEditor({
                     />
                   </div>
                 ) : (
-                  <div className="min-w-0 px-1">
+                  <div className="min-w-0 flex-1 px-1">
                     <h2 className="truncate text-[14px] font-semibold leading-[18px] text-[#292524]" title={item.title || "Новая позиция"}>
                       {item.title || "Новая позиция"}
                     </h2>
@@ -3874,8 +3892,10 @@ export function PositionEditor({
                     </div>
                   </div>
                 )}
+                {positionHeaderStatus}
               </div>
               {positionActions}
+              {positionNavigation}
             </div>
           )}
 

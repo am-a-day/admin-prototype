@@ -420,6 +420,7 @@ describe("catalog observable behavior baseline", () => {
     expect(header).not.toBeNull();
     expect(header).toHaveClass("flex");
     expect(document.querySelector("[data-position-title-region]")).toHaveClass("min-w-0", "flex-1");
+    expect(header?.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно");
     ["Основное", "Рекомендации", "Опции", "Доступность", "Вид"].forEach((label) => {
       expect(screen.getByRole("button", { name: new RegExp(`^${label}`) })).toBeInTheDocument();
     });
@@ -429,6 +430,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(availability).getByRole("radio", { name: "Доступно" })).toBeChecked();
     await user.click(within(availability).getByRole("radio", { name: "На стопе" }));
     expect(within(availability).getByRole("radio", { name: "На стопе" })).toBeChecked();
+    expect(header?.querySelector("[data-position-availability-status]")).toHaveTextContent("На стопе");
     const stopDisplay = screen.getByRole("radiogroup", { name: "Отображение в меню" });
     expect(within(stopDisplay).getByRole("radio", { name: "Скрывать из меню" })).toBeChecked();
     expect(within(stopDisplay).getByRole("radio", { name: "Показывать без возможности заказа" })).toBeInTheDocument();
