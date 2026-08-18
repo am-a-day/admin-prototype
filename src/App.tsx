@@ -1423,6 +1423,7 @@ function AuthenticatedShell() {
               <div className="flex min-h-0 min-w-0 flex-1">
                 <ChangeTracker pageKey={pageKey}>{content}</ChangeTracker>
               </div>
+              <GlobalPreviewReturnControl />
             </div>
 
             {/* Preview card */}
@@ -1469,7 +1470,6 @@ function AuthenticatedShell() {
           </div>
         </div>
 
-        <GlobalPreviewReturnControl />
         </div>
 
       </div>
@@ -1492,7 +1492,7 @@ function GlobalPreviewReturnControl() {
   const previewPanel = usePreviewPanel();
   if (!previewPanel?.returnControlVisible) return null;
   return (
-    <div data-preview-return-control className="absolute bottom-4 right-4 z-[60]">
+    <div data-preview-return-control className="absolute bottom-3 right-3 z-[60]">
       <PreviewReturnButton onClick={previewPanel.show} />
     </div>
   );
