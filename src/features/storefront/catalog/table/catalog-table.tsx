@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, type DragEndEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSortable } from "@dnd-kit/sortable";
+import { arrayMove, sortableKeyboardCoordinates, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowsOutCardinal,
@@ -13,11 +14,16 @@ import {
   Clock,
   Columns,
   Dot,
+  DotsSixVertical,
+  Eye,
+  EyeSlash,
   FunnelSimple,
   Lock,
+  MagnifyingGlass,
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
+import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
@@ -111,6 +117,7 @@ const TABLE_COLUMN_WIDTHS = {
   tags: 150,
   stickers: 140,
   upsells: 100,
+  lastModified: 154,
   actions: 48,
 } as const;
 
@@ -126,6 +133,7 @@ export const DEFAULT_TABLE_COLUMN_SIZING: ColumnSizingState = {
   tags: TABLE_COLUMN_WIDTHS.tags,
   stickers: TABLE_COLUMN_WIDTHS.stickers,
   upsells: TABLE_COLUMN_WIDTHS.upsells,
+  lastModified: TABLE_COLUMN_WIDTHS.lastModified,
 };
 
 export const TABLE_COLUMN_MIN_SIZES: ColumnSizingState = {
@@ -140,6 +148,7 @@ export const TABLE_COLUMN_MIN_SIZES: ColumnSizingState = {
   tags: 120,
   stickers: 120,
   upsells: 92,
+  lastModified: 128,
 };
 
 export const TABLE_COLUMN_MAX_SIZES: ColumnSizingState = {
@@ -154,6 +163,7 @@ export const TABLE_COLUMN_MAX_SIZES: ColumnSizingState = {
   tags: 320,
   stickers: 280,
   upsells: 220,
+  lastModified: 260,
 };
 
 function getColumnWidthStyle(width: number) {
@@ -172,6 +182,7 @@ const TABLE_COLUMN_RESIZE_LABELS: Record<string, string> = {
   tags: "Теги",
   stickers: "Стикеры",
   upsells: "Рекомендации",
+  lastModified: "Последнее изменение",
 };
 export type CatalogInformationColumnId =
   | "section"
@@ -183,7 +194,8 @@ export type CatalogInformationColumnId =
   | "discount"
   | "tags"
   | "stickers"
-  | "upsells";
+  | "upsells"
+  | "lastModified";
 export const CATALOG_INFORMATION_COLUMN_IDS: CatalogInformationColumnId[] = [
   "section",
   "description",
@@ -191,9 +203,11 @@ export const CATALOG_INFORMATION_COLUMN_IDS: CatalogInformationColumnId[] = [
   "kbju",
   "translation",
   "price",
+  "discount",
   "tags",
   "stickers",
   "upsells",
+  "lastModified",
 ];
 const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, string> = {
   section: "Раздел",
@@ -206,7 +220,19 @@ const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, stri
   tags: "Теги",
   stickers: "Стикеры",
   upsells: "Рекомендации",
+  lastModified: "Последнее изменение",
 };
+export const MANAGEABLE_TABLE_COLUMN_IDS = [
+  "position",
+  ...CATALOG_INFORMATION_COLUMN_IDS.filter((id) => id !== "lastModified"),
+  "lastModified",
+] as const;
+export const DEFAULT_TABLE_COLUMN_ORDER = [
+  "reorder",
+  "selection",
+  ...MANAGEABLE_TABLE_COLUMN_IDS,
+  "actions",
+] as string[];
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   position: true,
   description: true,
@@ -219,6 +245,7 @@ export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   tags: false,
   stickers: false,
   upsells: false,
+  lastModified: false,
 };
 
 export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
@@ -235,8 +262,59 @@ export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "tags", accessorKey: "tags", size: DEFAULT_TABLE_COLUMN_SIZING.tags, minSize: TABLE_COLUMN_MIN_SIZES.tags, maxSize: TABLE_COLUMN_MAX_SIZES.tags },
   { id: "stickers", accessorKey: "guestLabels", size: DEFAULT_TABLE_COLUMN_SIZING.stickers, minSize: TABLE_COLUMN_MIN_SIZES.stickers, maxSize: TABLE_COLUMN_MAX_SIZES.stickers },
   { id: "upsells", accessorKey: "recommendationsCount", size: DEFAULT_TABLE_COLUMN_SIZING.upsells, minSize: TABLE_COLUMN_MIN_SIZES.upsells, maxSize: TABLE_COLUMN_MAX_SIZES.upsells },
+  { id: "lastModified", accessorKey: "lastModifiedAt", size: DEFAULT_TABLE_COLUMN_SIZING.lastModified, minSize: TABLE_COLUMN_MIN_SIZES.lastModified, maxSize: TABLE_COLUMN_MAX_SIZES.lastModified },
   { id: "actions", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.actions, minSize: TABLE_COLUMN_WIDTHS.actions, maxSize: TABLE_COLUMN_WIDTHS.actions },
 ];
+
+export type CatalogLastModifiedSortDirection = "none" | "asc" | "desc";
+
+const DEFAULT_CATALOG_LAST_MODIFIED_AT = "2026-07-06T13:03:04.781Z";
+const LAST_MODIFIED_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function getCatalogItemLastModifiedTimestamp(item: CatalogItem) {
+  const timestamp = Date.parse(item.lastModifiedAt ?? DEFAULT_CATALOG_LAST_MODIFIED_AT);
+  return Number.isFinite(timestamp) ? timestamp : Date.parse(DEFAULT_CATALOG_LAST_MODIFIED_AT);
+}
+
+export function formatCatalogItemLastModified(item: CatalogItem) {
+  return LAST_MODIFIED_FORMATTER.format(new Date(getCatalogItemLastModifiedTimestamp(item)));
+}
+
+export function sortCatalogItemsByLastModified(items: CatalogItem[], direction: CatalogLastModifiedSortDirection) {
+  if (direction === "none") return items;
+  return [...items].sort((left, right) => {
+    const difference = getCatalogItemLastModifiedTimestamp(left) - getCatalogItemLastModifiedTimestamp(right);
+    return direction === "asc" ? difference : -difference;
+  });
+}
+
+function getLastModifiedSortTooltip(direction: CatalogLastModifiedSortDirection) {
+  if (direction === "none") return "Сортировать по возрастанию даты изменения";
+  if (direction === "asc") return "Сортировать по убыванию даты изменения";
+  return "Сбросить сортировку по дате изменения";
+}
+
+function getSortIcon(direction: "none" | "asc" | "desc") {
+  if (direction === "asc") return <CaretUp size={11} weight="bold" />;
+  if (direction === "desc") return <CaretDown size={11} weight="bold" />;
+  return (
+    <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
+      <CaretUp size={8} weight="bold" />
+      <CaretDown size={8} weight="bold" className="-mt-1" />
+    </span>
+  );
+}
+
+function getCatalogColumnLabel(columnId: string) {
+  if (columnId === "position") return "Название";
+  return CATALOG_INFORMATION_COLUMN_LABELS[columnId as CatalogInformationColumnId] ?? columnId;
+}
 
 function DropdownContent({ children, align = "end" }: { children: ReactNode; align?: "start" | "center" | "end" }) {
   return (
@@ -297,6 +375,147 @@ function ToolbarDropdown({ label, children }: { label: string; children: ReactNo
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent align="start">{children}</DropdownContent>
+    </DropdownMenu.Root>
+  );
+}
+
+function SortableColumnSetting({
+  id,
+  visible,
+  canHide,
+  onToggle,
+}: {
+  id: string;
+  visible: boolean;
+  canHide: boolean;
+  onToggle: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const label = getCatalogColumnLabel(id);
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-catalog-column-setting={id}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "flex h-8 items-center gap-1 rounded-[8px] px-1 text-[13px] text-[#44403b]",
+        isDragging ? "relative z-10 bg-[#f5f5f4] shadow-[0_5px_14px_rgba(41,37,36,0.12)]" : "",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={`Изменить порядок колонки «${label}»`}
+        className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] outline-none hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <DotsSixVertical size={16} weight="regular" />
+      </button>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <button
+        type="button"
+        disabled={!canHide}
+        aria-label={canHide ? `${visible ? "Скрыть" : "Показать"} колонку «${label}»` : `Колонка «${label}» обязательна`}
+        aria-pressed={visible}
+        onClick={onToggle}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
+      >
+        {canHide ? (visible ? <Eye size={16} weight="regular" /> : <EyeSlash size={16} weight="regular" />) : <Lock size={14} weight="regular" />}
+      </button>
+    </div>
+  );
+}
+
+export function CatalogColumnSettingsMenu({
+  table,
+  onResetColumns,
+}: {
+  table: TanStackTable<CatalogItem>;
+  onResetColumns: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const manageableColumns = table.getAllLeafColumns().filter((column) =>
+    (MANAGEABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id),
+  );
+  const normalizedSearch = search.trim().toLocaleLowerCase("ru");
+  const filteredColumns = normalizedSearch
+    ? manageableColumns.filter((column) => getCatalogColumnLabel(column.id).toLocaleLowerCase("ru").includes(normalizedSearch))
+    : manageableColumns;
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const managedOrder = table.getAllLeafColumns()
+      .map((column) => column.id)
+      .filter((id) => (MANAGEABLE_TABLE_COLUMN_IDS as readonly string[]).includes(id));
+    const activeIndex = managedOrder.indexOf(String(active.id));
+    const overIndex = managedOrder.indexOf(String(over.id));
+    if (activeIndex < 0 || overIndex < 0) return;
+    const nextOrder = arrayMove(managedOrder, activeIndex, overIndex);
+    table.setColumnOrder(["reorder", "selection", ...nextOrder, "actions"]);
+  };
+
+  return (
+    <DropdownMenu.Root onOpenChange={(open) => { if (!open) setSearch(""); }}>
+      <Tooltip label="Настроить колонки" side="top">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Настроить колонки"
+            data-catalog-column-settings-trigger
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <Columns size={17} weight="regular" />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownContent align="end">
+        <div data-catalog-column-settings className="w-[296px] max-w-[calc(100vw-24px)]">
+          <div className="px-1 pb-2 pt-0.5">
+            <label className="flex h-8 items-center gap-1.5 rounded-[7px] bg-[#f7f6f2] px-2 text-[#a8a29e] focus-within:ring-2 focus-within:ring-[#292524]/10">
+              <MagnifyingGlass size={14} className="shrink-0" />
+              <Input
+                size="compact"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") event.stopPropagation();
+                }}
+                placeholder="Поиск по колонкам"
+                aria-label="Поиск по колонкам"
+                className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-[13px] focus:border-0"
+              />
+            </label>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto pr-0.5 [scrollbar-width:thin]">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={filteredColumns.map((column) => column.id)} strategy={verticalListSortingStrategy}>
+                {filteredColumns.map((column) => (
+                  <SortableColumnSetting
+                    key={column.id}
+                    id={column.id}
+                    visible={column.getIsVisible()}
+                    canHide={column.getCanHide()}
+                    onToggle={() => column.toggleVisibility(!column.getIsVisible())}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+            {filteredColumns.length === 0 && <p className="px-2 py-3 text-[12px] text-[#a6a09b]">Колонки не найдены</p>}
+          </div>
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <DropdownMenu.Item
+            onSelect={onResetColumns}
+            className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2 text-[13px] font-medium text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]"
+          >
+            Сбросить колонки
+          </DropdownMenu.Item>
+        </div>
+      </DropdownContent>
     </DropdownMenu.Root>
   );
 }
@@ -389,11 +608,11 @@ export function TableHeaderRow({
   onSelectAll,
   priceSort,
   onPriceSortChange,
+  lastModifiedSort,
+  onLastModifiedSortChange,
   table,
   onResetColumns,
   offsetForLocalHeader = false,
-  stickyFirstColumn = false,
-  firstColumnScrolled = false,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -403,11 +622,11 @@ export function TableHeaderRow({
   onSelectAll: (checked: boolean) => void;
   priceSort: PriceSortDirection;
   onPriceSortChange: () => void;
+  lastModifiedSort: CatalogLastModifiedSortDirection;
+  onLastModifiedSortChange: () => void;
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
   offsetForLocalHeader?: boolean;
-  stickyFirstColumn?: boolean;
-  firstColumnScrolled?: boolean;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
@@ -423,7 +642,7 @@ export function TableHeaderRow({
           const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
           if (column.id === "selection") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-20 bg-white")}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -435,12 +654,12 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return hideSearch ? (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]", stickyFirstColumn && "sticky left-[42px] z-20 bg-white", stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
                 Позиция
                 <ColumnResizeHandle header={header} />
               </span>
             ) : (
-              <div key={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative h-full shrink-0", stickyFirstColumn && "sticky left-[42px] z-20", stickyFirstColumn && firstColumnScrolled && "rounded-r-none border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+              <div key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative h-full shrink-0">
                 <CatalogTableSearch
                   value={query}
                   onValueChange={onQueryChange}
@@ -482,16 +701,31 @@ export function TableHeaderRow({
                   >
                     <span>Базовая цена</span>
                     <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
-                      {priceSort === "asc" ? (
-                        <CaretUp size={11} weight="bold" />
-                      ) : priceSort === "desc" ? (
-                        <CaretDown size={11} weight="bold" />
-                      ) : (
-                        <span className="flex flex-col items-center justify-center leading-none text-[#a8a29e]">
-                          <CaretUp size={8} weight="bold" />
-                          <CaretDown size={8} weight="bold" className="-mt-1" />
-                        </span>
-                      )}
+                      {getSortIcon(priceSort)}
+                    </span>
+                  </button>
+                </Tooltip>
+                <ColumnResizeHandle header={header} />
+              </span>
+            );
+          }
+          if (column.id === "lastModified") {
+            const lastModifiedSortTooltip = getLastModifiedSortTooltip(lastModifiedSort);
+            return (
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-[38px] shrink-0">
+                <Tooltip label={lastModifiedSortTooltip} side="top">
+                  <button
+                    type="button"
+                    onClick={onLastModifiedSortChange}
+                    aria-label={lastModifiedSortTooltip}
+                    className={cn(
+                      "flex h-[38px] w-full items-center justify-end gap-1 px-2 text-right text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                      lastModifiedSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
+                    )}
+                  >
+                    <span className="truncate">Последнее изменение</span>
+                    <span className="flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                      {getSortIcon(lastModifiedSort)}
                     </span>
                   </button>
                 </Tooltip>
@@ -500,29 +734,9 @@ export function TableHeaderRow({
             );
           }
           if (column.id === "actions") {
-            const informationColumns = table.getAllLeafColumns().filter((candidate) => candidate.getCanHide());
             return (
               <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-[38px] shrink-0 items-center justify-center">
-                <DropdownMenu.Root>
-                  <Tooltip label="Настроить колонки" side="top">
-                    <DropdownMenu.Trigger asChild>
-                      <button type="button" aria-label="Настроить колонки" className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                        <Columns size={18} weight="regular" />
-                      </button>
-                    </DropdownMenu.Trigger>
-                  </Tooltip>
-                  <DropdownContent align="end">
-                    <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
-                    {informationColumns.map((candidate) => (
-                      <DropdownMenu.CheckboxItem key={candidate.id} checked={candidate.getIsVisible()} onCheckedChange={(checked) => candidate.toggleVisibility(checked === true)} onSelect={(event) => event.preventDefault()} className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]">
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white"><DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator></span>
-                        {CATALOG_INFORMATION_COLUMN_LABELS[candidate.id as CatalogInformationColumnId]}
-                      </DropdownMenu.CheckboxItem>
-                    ))}
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownMenu.Item onSelect={onResetColumns} className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Сбросить колонки</DropdownMenu.Item>
-                  </DropdownContent>
-                </DropdownMenu.Root>
+                <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
               </span>
             );
           }
@@ -579,8 +793,6 @@ type AuditDishRowProps = {
   highlighted?: boolean;
   active?: boolean;
   reorderEnabled?: boolean;
-  stickyFirstColumn?: boolean;
-  firstColumnScrolled?: boolean;
 };
 
 function SharedAuditDishRow(props: AuditDishRowProps) {
@@ -632,8 +844,6 @@ function AuditDishRowContent({
   highlighted,
   active,
   reorderEnabled = false,
-  stickyFirstColumn = false,
-  firstColumnScrolled = false,
   resolvedTags,
   resolvedSticker,
 }: AuditDishRowProps & { resolvedTags: string[]; resolvedSticker: string }) {
@@ -665,13 +875,6 @@ function AuditDishRowContent({
     ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
     : null;
   const primaryStatusLabel = getPrimaryRowStatusLabel(item);
-  const stickyRowBackground = selected
-    ? "bg-[#f7f6f2] group-hover:bg-[#fafaf9]"
-    : highlighted && !active
-      ? "bg-[#fff7d6] group-hover:bg-[#fff7d6]"
-      : active
-        ? "bg-[#f1f1ea] group-hover:bg-[#ecece6]"
-        : "bg-white group-hover:bg-[#fafaf9]";
 
   return (
     <div
@@ -725,7 +928,7 @@ function AuditDishRowContent({
                 key={cell.id}
                 data-no-dnd
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className={cn("flex h-full shrink-0 items-center justify-center", stickyFirstColumn && "sticky left-0 z-10", stickyFirstColumn && stickyRowBackground)}
+                className="flex h-full shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
@@ -739,7 +942,7 @@ function AuditDishRowContent({
             );
           case "position":
             return (
-              <div key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex shrink-0 items-center gap-[7px] pr-3", stickyFirstColumn && "sticky left-[42px] z-10", stickyFirstColumn && stickyRowBackground, stickyFirstColumn && firstColumnScrolled && "border-r border-[#e7e5e4] shadow-[3px_0_7px_rgba(41,37,36,0.05)]")}>
+              <div key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center gap-[7px] pr-3">
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[3px]" />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
@@ -844,6 +1047,17 @@ function AuditDishRowContent({
                 {discountPercent == null ? <span className="text-[#a6a09b]">—</span> : <span className="whitespace-nowrap tabular-nums">−{discountPercent}%</span>}
               </span>
             );
+          case "lastModified":
+            return (
+              <span
+                key={cell.id}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className="flex shrink-0 items-center justify-end px-2 text-[12px] leading-5 tabular-nums text-[#79716b]"
+                title={`Последнее изменение: ${formatCatalogItemLastModified(item)}`}
+              >
+                <span className="truncate whitespace-nowrap">{formatCatalogItemLastModified(item)}</span>
+              </span>
+            );
           case "actions":
             return (
               <span key={cell.id} data-no-dnd style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
@@ -896,8 +1110,6 @@ export function VirtualizedAuditRows({
   highlightItemId,
   activeItemId,
   reorderEnabled = false,
-  stickyFirstColumn = false,
-  firstColumnScrolled = false,
 }: {
   rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
@@ -910,8 +1122,6 @@ export function VirtualizedAuditRows({
   highlightItemId?: string | null;
   activeItemId?: string | null;
   reorderEnabled?: boolean;
-  stickyFirstColumn?: boolean;
-  firstColumnScrolled?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
@@ -951,8 +1161,6 @@ export function VirtualizedAuditRows({
               highlighted={highlightItemId != null && item.id === highlightItemId}
               active={activeItemId != null && item.id === activeItemId}
               reorderEnabled={reorderEnabled}
-              stickyFirstColumn={stickyFirstColumn}
-              firstColumnScrolled={firstColumnScrolled}
             />
           </div>
         );
@@ -1394,43 +1602,7 @@ export function CatalogTableFilterBar({
             </div>
           </div>
       </div>
-      <DropdownMenu.Root>
-        <Tooltip label="Настроить колонки" side="top">
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Настроить колонки"
-              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <Columns size={15} />
-            </button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownContent align="end">
-          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Информационные колонки</DropdownMenu.Label>
-          {informationColumns.map((column) => (
-            <DropdownMenu.CheckboxItem
-              key={column.id}
-              checked={column.getIsVisible()}
-              onCheckedChange={(checked) => column.toggleVisibility(checked === true)}
-              onSelect={(event) => event.preventDefault()}
-              className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-            >
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
-                <DropdownMenu.ItemIndicator><Check size={12} weight="bold" /></DropdownMenu.ItemIndicator>
-              </span>
-              {CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
-            </DropdownMenu.CheckboxItem>
-          ))}
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownMenu.Item
-            onSelect={onResetColumns}
-            className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-          >
-            Сбросить колонки
-          </DropdownMenu.Item>
-        </DropdownContent>
-      </DropdownMenu.Root>
+      <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
       </>}
     </div>
   );

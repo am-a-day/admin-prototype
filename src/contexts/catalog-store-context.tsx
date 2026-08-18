@@ -246,7 +246,7 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
     if (!item) return state;
     return {
       ...state,
-      itemsById: { ...state.itemsById, [action.id]: { ...item, ...action.patch } },
+      itemsById: { ...state.itemsById, [action.id]: { ...item, ...action.patch, lastModifiedAt: new Date().toISOString() } },
       autosaveByItem: action.autosave
         ? nextAutosave(state.autosaveByItem, action.id, "saving")
         : state.autosaveByItem,
@@ -257,7 +257,10 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
     const currentOrder = state.itemOrderBySection[action.item.sectionId] ?? [];
     return {
       ...state,
-      itemsById: { ...state.itemsById, [action.item.id]: action.item },
+      itemsById: {
+        ...state.itemsById,
+        [action.item.id]: { ...action.item, lastModifiedAt: action.item.lastModifiedAt ?? new Date().toISOString() },
+      },
       itemOrderBySection: {
         ...state.itemOrderBySection,
         [action.item.sectionId]: currentOrder.includes(action.item.id)
@@ -307,7 +310,7 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
       ...state,
       itemsById: {
         ...state.itemsById,
-        [item.id]: { ...item, sectionId: action.sectionId, sectionName: action.sectionName },
+        [item.id]: { ...item, sectionId: action.sectionId, sectionName: action.sectionName, lastModifiedAt: new Date().toISOString() },
       },
       itemOrderBySection: {
         ...state.itemOrderBySection,

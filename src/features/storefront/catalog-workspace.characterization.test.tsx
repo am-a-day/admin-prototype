@@ -253,7 +253,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByRole("button", { name: "Настроить колонки" }));
     const columnMenu = screen.getByRole("menu");
     expect(within(columnMenu).getByText("Описание")).toBeInTheDocument();
-    await user.click(within(columnMenu).getByText("Описание"));
+    expect(within(columnMenu).getByRole("button", { name: /Скрыть колонку «Описание»/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     const rowCheckbox = screen.getAllByRole("checkbox", { name: /Выбрать / })[0];
@@ -263,12 +263,15 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(screen.getByRole("button", { name: /Фильтры/ }));
     const completenessMenu = screen.getByRole("menu");
+    await user.click(within(completenessMenu).getByRole("menuitem", { name: "Заполненность" }));
+    const completenessSubmenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: /Без описания/ }));
+    expect(completenessSubmenu).toBeDefined();
     ["Без описания", "Без фото", "Без веса", "Без КБЖУ", "Без перевода"].forEach((label) => {
-      expect(within(completenessMenu).getByRole("menuitemcheckbox", { name: new RegExp(label) })).toBeInTheDocument();
+      expect(within(completenessSubmenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     });
-    const withoutDescription = screen.getByRole("menuitemcheckbox", { name: /Без описания/ });
+    const withoutDescription = within(completenessSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
     await user.click(withoutDescription);
-    expect(withoutDescription).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: /Фильтры/ })).toHaveTextContent("1");
   });
 
   it("keeps subsection rows dense and supports one, many, and select-all selection", async () => {

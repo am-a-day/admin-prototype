@@ -82,6 +82,8 @@ export function buildSectionTree(sections: CatalogSection[]): CatalogSectionNode
 
 export type CatalogItem = {
   id: string;
+  /** ISO timestamp of the latest catalog change; older fixtures may omit it. */
+  lastModifiedAt?: string;
   title: string;
   sectionId: string;
   sectionName: string;

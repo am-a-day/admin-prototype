@@ -6,6 +6,7 @@ import {
   useReactTable,
   type Updater,
   type ColumnSizingState,
+  type ColumnOrderState,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -156,10 +157,13 @@ import { SubsectionList } from "./catalog/workspace/subsections";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
   CATALOG_INFORMATION_COLUMN_IDS,
+  DEFAULT_TABLE_COLUMN_ORDER,
   DEFAULT_TABLE_COLUMN_SIZING,
   DEFAULT_TABLE_COLUMN_VISIBILITY,
   TABLE_COLUMN_MAX_SIZES,
   TABLE_COLUMN_MIN_SIZES,
+  sortCatalogItemsByLastModified,
+  type CatalogLastModifiedSortDirection,
   CatalogTableFilterBar,
   SelectionToolbar,
   TableCheckbox,
@@ -6355,6 +6359,7 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 }
 
 const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v2");
+const CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnOrder.v1");
 const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v1");
 function readTableColumnVisibility(): VisibilityState {
   const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
@@ -6364,6 +6369,24 @@ function readTableColumnVisibility(): VisibilityState {
   });
   next.position = true;
   return next;
+}
+
+function normalizeTableColumnOrder(input: readonly string[]): ColumnOrderState {
+  const defaultManagedOrder = DEFAULT_TABLE_COLUMN_ORDER.slice(2, -1);
+  const managedIds = new Set(defaultManagedOrder);
+  const nextManagedOrder = input.filter((columnId) => managedIds.has(columnId));
+  return [
+    "reorder",
+    "selection",
+    ...nextManagedOrder,
+    ...defaultManagedOrder.filter((columnId) => !nextManagedOrder.includes(columnId)),
+    "actions",
+  ];
+}
+
+function readTableColumnOrder(): ColumnOrderState {
+  const stored = readJsonRecord<unknown>(CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY, []);
+  return normalizeTableColumnOrder(Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : []);
 }
 
 function normalizeTableColumnSizing(input: Partial<ColumnSizingState>): ColumnSizingState {
@@ -7696,6 +7719,7 @@ function OverviewWorkspace({
   );
   const [editorFirstQuery, setEditorFirstQuery] = useState(initialEditorFirstState.query);
   const [editorFirstPriceSort, setEditorFirstPriceSort] = useState<PriceSortDirection>(initialEditorFirstState.sort);
+  const [editorFirstLastModifiedSort, setEditorFirstLastModifiedSort] = useState<CatalogLastModifiedSortDirection>("none");
   const [editorFirstTableScrollTop, setEditorFirstTableScrollTop] = useState(initialEditorFirstState.tableScrollTop);
   const [editorFirstPanelScrollTop, setEditorFirstPanelScrollTop] = useState(initialEditorFirstState.panelScrollTop);
   const directCreateSession = useCreateSession(
@@ -7734,6 +7758,7 @@ function OverviewWorkspace({
   const pendingHandledRef = useRef(false);
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [priceSort, setPriceSort] = useState<PriceSortDirection>(initialOverviewContext.priceSort);
+  const [lastModifiedSort, setLastModifiedSort] = useState<CatalogLastModifiedSortDirection>("none");
   const [overviewScrollTop, setOverviewScrollTop] = useState(initialOverviewContext.scrollTop);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [itemRenameRequest, setItemRenameRequest] = useState<{ itemId: string; anchor?: MovePopoverAnchor } | null>(null);
@@ -7743,6 +7768,7 @@ function OverviewWorkspace({
   const [moveRequest, setMoveRequest] = useState<{ operation: "position" | "bulk"; itemIds: string[]; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(readTableColumnOrder);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(readTableColumnSizing);
   const labelDirectory = useCatalogLabels(USE_SHARED_TAGS_AND_STICKERS);
   useEffect(() => {
@@ -7774,8 +7800,15 @@ function OverviewWorkspace({
       return { ...next, position: true };
     });
   }, []);
+  const handleColumnOrderChange = useCallback((updater: Updater<ColumnOrderState>) => {
+    setColumnOrder((current) => normalizeTableColumnOrder(typeof updater === "function" ? updater(current) : updater));
+  }, []);
   const handleColumnSizingChange = useCallback((updater: Updater<ColumnSizingState>) => {
     setColumnSizing((current) => normalizeTableColumnSizing(typeof updater === "function" ? updater(current) : updater));
+  }, []);
+  const resetTableColumns = useCallback(() => {
+    setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY });
+    setColumnOrder(normalizeTableColumnOrder(DEFAULT_TABLE_COLUMN_ORDER));
   }, []);
   // Подсветка последней открытой позиции после возврата из редактора к таблице.
   const [tableHighlightId, setTableHighlightId] = useState<string | null>(null);
@@ -7796,10 +7829,38 @@ function OverviewWorkspace({
     writeJsonRecord(CATALOG_TABLE_COLUMNS_STORAGE_KEY, columnVisibility);
   }, [columnVisibility]);
   useEffect(() => {
+    writeJsonRecord(CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY, columnOrder);
+  }, [columnOrder]);
+  useEffect(() => {
     writeJsonRecord(CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY, columnSizing);
   }, [columnSizing]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const [tableScrolledHorizontally, setTableScrolledHorizontally] = useState(false);
+  const tableHorizontalScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableBottomScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const [tableHorizontalScrollbar, setTableHorizontalScrollbar] = useState({ visible: false, width: 0, viewportWidth: 0 });
+  const updateTableHorizontalScrollbar = useCallback(() => {
+    const source = tableHorizontalScrollRef.current;
+    if (!source) return;
+    const width = source.scrollWidth;
+    const viewportWidth = source.clientWidth;
+    const visible = width > viewportWidth + 1;
+    setTableHorizontalScrollbar((current) => current.visible === visible && current.width === width && current.viewportWidth === viewportWidth ? current : { visible, width, viewportWidth });
+    if (tableBottomScrollbarRef.current && Math.abs(tableBottomScrollbarRef.current.scrollLeft - source.scrollLeft) > 1) {
+      tableBottomScrollbarRef.current.scrollLeft = source.scrollLeft;
+    }
+  }, []);
+  useEffect(() => {
+    const source = tableHorizontalScrollRef.current;
+    if (!source) return;
+    const frame = window.requestAnimationFrame(updateTableHorizontalScrollbar);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateTableHorizontalScrollbar);
+    observer?.observe(source);
+    if (source.firstElementChild instanceof HTMLElement) observer?.observe(source.firstElementChild);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [columnOrder, columnSizing, columnVisibility, updateTableHorizontalScrollbar]);
   const restoreScrollTopRef = useRef<number | null>(null);
   useEffect(() => {
     if (!moveUndo) return;
@@ -7817,6 +7878,7 @@ function OverviewWorkspace({
   const workspaceSectionScopeId = editorFirstEnabled ? editorFirstSectionScopeId : sectionScopeId;
   const workspaceQuery = editorFirstEnabled ? editorFirstQuery : query;
   const workspacePriceSort = editorFirstEnabled ? editorFirstPriceSort : priceSort;
+  const workspaceLastModifiedSort = editorFirstEnabled ? editorFirstLastModifiedSort : lastModifiedSort;
   const workspacePanelQuery = editorFirstEnabled ? editorFirstQuery : panelQuery;
   useEffect(() => {
     writeJsonRecord(overviewContextStorageKey, {
@@ -7844,6 +7906,10 @@ function OverviewWorkspace({
   const setWorkspacePriceSort = (value: PriceSortDirection | ((current: PriceSortDirection) => PriceSortDirection)) => {
     if (editorFirstEnabled) setEditorFirstPriceSort(value);
     else setPriceSort(value);
+  };
+  const setWorkspaceLastModifiedSort = (value: CatalogLastModifiedSortDirection | ((current: CatalogLastModifiedSortDirection) => CatalogLastModifiedSortDirection)) => {
+    if (editorFirstEnabled) setEditorFirstLastModifiedSort(value);
+    else setLastModifiedSort(value);
   };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
     const next = id === "quick:all"
@@ -7912,7 +7978,9 @@ function OverviewWorkspace({
     [itemOrderBySection, searched],
   );
   const visible = useMemo(() => {
-    const ordered = sortItemsByPrice(manuallyOrdered, workspacePriceSort);
+    const ordered = workspaceLastModifiedSort !== "none"
+      ? sortCatalogItemsByLastModified(manuallyOrdered, workspaceLastModifiedSort)
+      : sortItemsByPrice(manuallyOrdered, workspacePriceSort);
     const draftIsVisible = Boolean(
       isPendingCreateDraft
       && draftItem
@@ -7925,7 +7993,7 @@ function OverviewWorkspace({
       && stickerFilter == null,
     );
     return draftIsVisible ? [draftItem!, ...ordered] : ordered;
-  }, [activeFilterIds.length, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspacePriceSort]);
+  }, [activeFilterIds.length, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspaceLastModifiedSort, workspacePriceSort]);
   const scopeIsLeafSection = Boolean(
     scopeSection
     && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
@@ -7951,8 +8019,9 @@ function OverviewWorkspace({
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
-    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder }, columnSizing },
+    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder }, columnOrder, columnSizing },
     onColumnVisibilityChange: handleColumnVisibilityChange,
+    onColumnOrderChange: handleColumnOrderChange,
     onColumnSizingChange: handleColumnSizingChange,
     columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
@@ -8005,7 +8074,12 @@ function OverviewWorkspace({
     setWorkspaceQuery("");
   };
   const handlePriceSortChange = () => {
+    setWorkspaceLastModifiedSort("none");
     setWorkspacePriceSort((current) => getNextPriceSort(current));
+  };
+  const handleLastModifiedSortChange = () => {
+    setWorkspacePriceSort("none");
+    setWorkspaceLastModifiedSort((current) => current === "none" ? "asc" : current === "asc" ? "desc" : "none");
   };
   const emptyTitle = activeFilterIds.length > 0
     ? statusMeta.emptyTitle
@@ -8948,7 +9022,7 @@ function OverviewWorkspace({
 
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">
         {!embedded && <UnifiedFlatCatalogPanel
           filterId={workspaceFilterId}
           scopeSectionId={workspaceSectionScopeId}
@@ -8974,6 +9048,7 @@ function OverviewWorkspace({
             }}
           />
         )}
+        <div className="relative min-h-0 min-w-0 flex-1">
         <div
           ref={scrollContainerRef}
           data-catalog-results-scroll
@@ -8982,7 +9057,7 @@ function OverviewWorkspace({
             else setOverviewScrollTop(event.currentTarget.scrollTop);
           }}
           className={cn(
-            "min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-10",
+            "h-full min-w-0 overflow-y-auto overflow-x-hidden pb-10",
             "px-6",
           )}
         >
@@ -8997,7 +9072,7 @@ function OverviewWorkspace({
                 sectionScopeId={workspaceSectionScopeId}
                 items={items}
                 table={catalogTable}
-                onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                onResetColumns={resetTableColumns}
                 onActiveFilterChange={setWorkspaceActiveFilter}
                 headerActionsOnly
                 tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
@@ -9072,8 +9147,14 @@ function OverviewWorkspace({
                 </div>
               )}
               <div
-                onScroll={(event) => setTableScrolledHorizontally(event.currentTarget.scrollLeft > 0)}
-                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:thin]"
+                ref={tableHorizontalScrollRef}
+                onScroll={(event) => {
+                  const source = event.currentTarget;
+                  if (tableBottomScrollbarRef.current && Math.abs(tableBottomScrollbarRef.current.scrollLeft - source.scrollLeft) > 1) {
+                    tableBottomScrollbarRef.current.scrollLeft = source.scrollLeft;
+                  }
+                }}
+                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 data-catalog-table-horizontal-scroll
               >
                 <div className="min-w-full">
@@ -9088,10 +9169,10 @@ function OverviewWorkspace({
                     priceSort={workspacePriceSort}
                     onPriceSortChange={handlePriceSortChange}
                     table={catalogTable}
-                    onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                    onResetColumns={resetTableColumns}
+                    lastModifiedSort={workspaceLastModifiedSort}
+                    onLastModifiedSortChange={handleLastModifiedSortChange}
                     offsetForLocalHeader={embedded && selectedIds.size > 0}
-                    stickyFirstColumn
-                    firstColumnScrolled={tableScrolledHorizontally}
                   />
                   {visible.length === 0 ? (
                 <div className="border-b border-[#e7e5e4] px-6 py-12">
@@ -9202,8 +9283,6 @@ function OverviewWorkspace({
                             highlightItemId={tableHighlightId}
                             activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
-                            stickyFirstColumn
-                            firstColumnScrolled={tableScrolledHorizontally}
                           />
                         </SortableContext>
                       </DndContext>
@@ -9286,7 +9365,24 @@ function OverviewWorkspace({
             </div>
           </div>
         </div>
+        {tableHorizontalScrollbar.visible && (
+          <div
+            ref={tableBottomScrollbarRef}
+            data-catalog-table-horizontal-scrollbar
+            onScroll={(event) => {
+              const source = event.currentTarget;
+              if (tableHorizontalScrollRef.current && Math.abs(tableHorizontalScrollRef.current.scrollLeft - source.scrollLeft) > 1) {
+                tableHorizontalScrollRef.current.scrollLeft = source.scrollLeft;
+              }
+            }}
+            style={{ width: tableHorizontalScrollbar.viewportWidth }}
+            className="absolute bottom-0 left-0 z-30 h-4 overflow-x-auto border-t border-[#e7e5e4] bg-[#fbfbf9] [scrollbar-width:thin]"
+          >
+            <div style={{ width: tableHorizontalScrollbar.width }} className="h-px" />
+          </div>
+        )}
         </div>
+      </div>
       </div>
       {embedded && queueIsCreating && queueCurrentItem?.sectionId === "no-section" && (
         <PositionDestinationDialog
