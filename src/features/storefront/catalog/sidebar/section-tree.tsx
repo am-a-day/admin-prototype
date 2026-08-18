@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretRight, DotsThreeVertical, MagnifyingGlass, PlusCircle, SidebarSimple, X } from "@phosphor-icons/react";
+import { Asterisk, CaretDoubleLeft, CaretRight, DotsThreeVertical, MagnifyingGlass, PlusCircle, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -532,7 +532,19 @@ export function UnifiedCatalogTreePanel({
   return (
     <aside className="relative flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white pt-3">
       <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3">
-        <div className="min-w-0">{menuSwitcher ?? <span className="inline-flex h-8 items-center px-2 text-[14px] text-[#292524]">Основное меню</span>}</div>
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1">{menuSwitcher ?? <span className="inline-flex h-8 items-center px-2 text-[14px] text-[#292524]">Основное меню</span>}</div>
+          <Tooltip label="Свернуть разделы" side="top" delayDuration={250}>
+            <button
+              type="button"
+              aria-label="Свернуть разделы"
+              onClick={onCollapseSections}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f3f3ed] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <CaretDoubleLeft size={16} weight="bold" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
         <button
           type="button"
           data-catalog-tree-root
@@ -551,16 +563,6 @@ export function UnifiedCatalogTreePanel({
         <div ref={searchControlRef}>
           <div className="flex h-8 items-center gap-1">
             <span className="min-w-0 flex-1 px-2 text-[13px] font-medium leading-[18px] text-[#79716b]">Разделы</span>
-            <Tooltip label="Свернуть разделы" side="top" delayDuration={250}>
-              <button
-                type="button"
-                aria-label="Свернуть разделы"
-                onClick={onCollapseSections}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f3f3ed] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <SidebarSimple size={16} weight="bold" aria-hidden="true" />
-              </button>
-            </Tooltip>
             <Tooltip label={searchOpen ? "Закрыть поиск по разделам" : "Поиск по разделам"} side="top" delayDuration={250}>
               <button
                 type="button"

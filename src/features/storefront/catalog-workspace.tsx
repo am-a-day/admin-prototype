@@ -35,6 +35,7 @@ import {
   ArrowsOut,
   ArrowsOutCardinal,
   ArrowCounterClockwise,
+  CaretDoubleRight,
   ArrowLeft,
   CaretDown,
   CaretRight,
@@ -53,7 +54,6 @@ import {
   PencilSimple,
   PlusCircle,
   Prohibit,
-  SidebarSimple,
   Sparkle,
   StopCircle,
   TextTSlash,
@@ -2725,7 +2725,7 @@ function UnifiedSectionTableHeader({
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <span
-        data-catalog-compact-sections-target
+        data-catalog-tree-toggle-target
         data-catalog-tree-hidden={treeHidden ? "true" : undefined}
         className="relative inline-flex h-7 min-w-0 shrink-0 items-center overflow-visible"
       >
@@ -2737,7 +2737,7 @@ function UnifiedSectionTableHeader({
             onClick={onShowSections}
             className="invisible pointer-events-none flex size-7 shrink-0 -translate-x-1 items-center justify-center rounded-[8px] text-[#57534d] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <SidebarSimple size={16} weight="bold" aria-hidden="true" />
+            <CaretDoubleRight size={16} weight="bold" aria-hidden="true" />
           </button>
         </Tooltip>
       </span>
