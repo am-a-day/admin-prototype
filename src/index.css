@@ -83,3 +83,46 @@ body {
 .scrollbar-none {
   scrollbar-width: none;
 }
+
+[data-catalog-adaptive-shell] {
+  container-name: catalog-edit-layout;
+  container-type: inline-size;
+}
+
+/*
+ * 1212px = section tree (250) + useful list area (160) + default Side Peek
+ * (400) + Preview (390) + the 12px inter-panel gap. The queried shell wraps
+ * both editor and Preview slots, so hiding Preview does not change this mode.
+ */
+@container catalog-edit-layout (max-width: 1211px) {
+  [data-catalog-workspace-layout]:has(> [data-position-editor-surface][data-position-editor-pane-open="true"])
+    > [data-catalog-tree-shell] {
+    display: none;
+  }
+
+  [data-catalog-workspace-layout]:has(> [data-position-editor-surface][data-position-editor-pane-open="true"])
+    > [data-catalog-tree-shell][data-compact-open="true"] {
+    position: absolute;
+    top: 54px;
+    left: 12px;
+    z-index: 60;
+    display: flex;
+    width: 300px;
+    max-width: calc(100% - 24px);
+    height: min(640px, calc(100% - 66px));
+    overflow: hidden;
+    border: 1px solid #e7e5e4;
+    border-radius: 14px;
+    background: white;
+    box-shadow: 0 18px 42px rgb(41 37 36 / 14%);
+  }
+
+  [data-catalog-tree-shell][data-compact-open="true"] > aside {
+    border-right: 0;
+  }
+
+  [data-position-editor-surface][data-position-editor-pane-open="true"]
+    [data-catalog-compact-section-trigger] {
+    display: inline-flex;
+  }
+}

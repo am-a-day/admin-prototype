@@ -528,7 +528,7 @@ export function UnifiedCatalogTreePanel({
   };
 
   return (
-    <aside className="relative flex w-[250px] max-w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white pt-3">
+    <aside className="relative flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white pt-3">
       <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="min-w-0">{menuSwitcher ?? <span className="inline-flex h-8 items-center px-2 text-[14px] text-[#292524]">Основное меню</span>}</div>
         <button

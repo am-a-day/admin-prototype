@@ -1403,7 +1403,10 @@ function AuthenticatedShell() {
             )}
 
           {/* Editor card + preview card side by side */}
-          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div
+            data-catalog-adaptive-shell={isCatalogPage || undefined}
+            className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+          >
             {previewVisible && !isPublicDisplayPage && (
               <div className="absolute right-4 top-4 z-20">
                 <PreviewToolbarToggle />
