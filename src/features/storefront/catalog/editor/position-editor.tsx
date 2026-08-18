@@ -181,7 +181,8 @@ function PositionSaveStatus({
       role={status === "error" ? "alert" : status === "idle" ? undefined : "status"}
       aria-live={status === "idle" ? undefined : "polite"}
       className={cn(
-        "flex h-8 w-[96px] shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[12px] text-[#79716b]",
+        "flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[#79716b]",
+        status === "idle" && "hidden",
         status === "error" && "text-[#c10007]",
       )}
     >
@@ -3645,12 +3646,12 @@ export function PositionEditor({
   const detailPaneControls = (
     <div
       data-position-editor-controls
-      className="group/side-peek-controls relative h-8 w-[104px] shrink-0"
+      className="group/side-peek-controls flex h-8 shrink-0 items-center gap-0"
     >
       {headerMeta && autosaveStatus !== "error" && (
         <div
           data-position-editor-navigation
-          className="pointer-events-none invisible absolute right-9 top-0 flex h-8 items-center opacity-0 transition-opacity duration-150 group-hover/side-peek-controls:pointer-events-auto group-hover/side-peek-controls:visible group-hover/side-peek-controls:opacity-100 group-focus-within/side-peek-controls:pointer-events-auto group-focus-within/side-peek-controls:visible group-focus-within/side-peek-controls:opacity-100"
+          className="pointer-events-none mr-0 flex h-8 max-w-0 flex-none items-center overflow-hidden opacity-0 transition-[max-width,margin-right,opacity] duration-150 group-hover/side-peek-controls:pointer-events-auto group-hover/side-peek-controls:mr-1 group-hover/side-peek-controls:max-w-[66px] group-hover/side-peek-controls:opacity-100 group-focus-within/side-peek-controls:pointer-events-auto group-focus-within/side-peek-controls:mr-1 group-focus-within/side-peek-controls:max-w-[66px] group-focus-within/side-peek-controls:opacity-100"
         >
           {headerMeta}
         </div>
@@ -3662,7 +3663,7 @@ export function PositionEditor({
             onClick={closeSidePeek}
             aria-label="Свернуть редактор"
             data-position-editor-collapse
-            className="absolute right-0 top-0 flex size-8 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
             <CaretDoubleRight size={16} weight="bold" aria-hidden="true" />
           </button>
@@ -3755,8 +3756,12 @@ export function PositionEditor({
                   </button>,
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
+              <div className="group/side-peek-header flex shrink-0 items-center gap-1">
+                <div className={cn(
+                  headerMeta && "group-hover/side-peek-header:hidden group-focus-within/side-peek-header:hidden",
+                )}>
+                  <PositionSaveStatus status={autosaveStatus} onRetry={onRetrySave} />
+                </div>
                 {detailPaneControls}
               </div>
             </div>
