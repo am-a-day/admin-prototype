@@ -14,6 +14,11 @@ import { PlanProvider, usePlan } from "@/contexts/plan-context";
 import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
 import { PreviewDemoProvider, usePreviewDemo } from "@/contexts/preview-demo-context";
 import {
+  PREVIEW_PANEL_TRANSITION_MS,
+  PreviewPanelProvider,
+  usePreviewPanel,
+} from "@/contexts/preview-panel-context";
+import {
   MockAuthProvider,
   useMockAuth,
   type AuthResolution,
@@ -1312,6 +1317,10 @@ function AuthenticatedShell() {
   const pageMeta = PAGE_META[metaKey] ?? { title: "" };
 
   return (
+    <PreviewPanelProvider
+      open={!previewCollapsed}
+      onOpenChange={(open) => setPreviewCollapsed(!open)}
+    >
     <div className="flex h-screen overflow-hidden bg-stone-100 text-zinc-950">
 
       {/* ── Left: full-height sidebar (+ desktop hover flyout) ────────────────── */}
@@ -1457,10 +1466,7 @@ function AuthenticatedShell() {
           <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {previewVisible && !isPublicDisplayPage && (
               <div className="absolute right-4 top-4 z-20">
-                <PreviewToggle
-                  open={!previewCollapsed}
-                  onToggle={() => setPreviewCollapsed((collapsed) => !collapsed)}
-                />
+                <PreviewToolbarToggle />
               </div>
             )}
 
@@ -1481,30 +1487,43 @@ function AuthenticatedShell() {
 
             {/* Preview card */}
             {previewVisible && (
-              <div className={cn(
-                "shrink-0 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm transition-[width,margin,opacity] duration-300 ease-out",
-                previewCollapsed
-                  ? "ml-0 w-0 border-transparent opacity-0 shadow-none"
-                  : "ml-3 w-[390px] opacity-100",
-              )}>
-                <PhonePreview
-                  section={section}
-                  activeTab={effectiveActiveTab}
-                  selectedDishId={selectedDishId}
-                  previewBanner={previewBanner}
-                  scenario={effectiveScenario}
-                  recommendationTexts={recommendationTexts}
-                  upsellSurface={upsellSurface}
-                  highlightUpsell={upsellFocused}
-                  onNavHomeHero={navHomeHero}
-                  onNavHomeSections={navHomeSections}
-                  onNavUpsell={navUpsellPage}
-                  onNavAbout={navAbout}
-                  onNavCatalogDish={navCatalogDish}
-                  seoTitle={seoTitle}
-                  seoDescription={seoDescription}
-                  catalogItem={activeEditorItemId ? itemsById[activeEditorItemId] ?? null : null}
-                />
+              <div
+                data-preview-panel-slot
+                className={cn(
+                  "min-h-0 shrink-0 overflow-hidden transition-[width,margin] ease-out motion-reduce:transition-none",
+                  previewCollapsed ? "ml-0 w-0" : "ml-3 w-[390px]",
+                )}
+                style={{ transitionDuration: `${PREVIEW_PANEL_TRANSITION_MS}ms` }}
+              >
+                <div
+                  data-preview-panel
+                  className={cn(
+                    "h-full w-[390px] overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white shadow-sm transition-[transform,opacity] ease-out motion-reduce:transition-none",
+                    previewCollapsed
+                      ? "pointer-events-none translate-x-full opacity-0"
+                      : "translate-x-0 opacity-100",
+                  )}
+                  style={{ transitionDuration: `${PREVIEW_PANEL_TRANSITION_MS}ms` }}
+                >
+                  <PhonePreview
+                    section={section}
+                    activeTab={effectiveActiveTab}
+                    selectedDishId={selectedDishId}
+                    previewBanner={previewBanner}
+                    scenario={effectiveScenario}
+                    recommendationTexts={recommendationTexts}
+                    upsellSurface={upsellSurface}
+                    highlightUpsell={upsellFocused}
+                    onNavHomeHero={navHomeHero}
+                    onNavHomeSections={navHomeSections}
+                    onNavUpsell={navUpsellPage}
+                    onNavAbout={navAbout}
+                    onNavCatalogDish={navCatalogDish}
+                    seoTitle={seoTitle}
+                    seoDescription={seoDescription}
+                    catalogItem={activeEditorItemId ? itemsById[activeEditorItemId] ?? null : null}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1516,9 +1535,26 @@ function AuthenticatedShell() {
 
       <DraftToast />
       <PublishToast />
+      <PrototypeFloatingTools isCatalogPage={isCatalogPage} />
+    </div>
+    </PreviewPanelProvider>
+  );
+}
+
+function PreviewToolbarToggle() {
+  const previewPanel = usePreviewPanel();
+  if (!previewPanel || (!previewPanel.open && previewPanel.sidePeekOpen)) return null;
+  return <PreviewToggle open={previewPanel.open} onToggle={previewPanel.toggle} />;
+}
+
+function PrototypeFloatingTools({ isCatalogPage }: { isCatalogPage: boolean }) {
+  const previewPanel = usePreviewPanel();
+  if (previewPanel?.sidePeekOpen && previewPanel.returnControlVisible) return null;
+  return (
+    <>
       <DevNotesFloating isCatalogPage={isCatalogPage} />
       <PrototypeToolsFloating />
-    </div>
+    </>
   );
 }
 

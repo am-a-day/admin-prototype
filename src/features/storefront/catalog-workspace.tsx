@@ -61,11 +61,13 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { PreviewReturnButton } from "@/components/layout/preview-toggle";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
+import { usePreviewPanel } from "@/contexts/preview-panel-context";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode, CatalogTranslations } from "@/data/catalog";
 import { LANGUAGES, type LanguageCode } from "@/data/languages";
@@ -3240,7 +3242,14 @@ function PositionEditorDialogShell({
   const closingRef = useRef(false);
   const closeTimerRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
+  const previewPanel = usePreviewPanel();
+  const registerPreviewSidePeek = previewPanel?.registerSidePeek;
   onCloseRef.current = onClose;
+
+  useLayoutEffect(() => {
+    if (presentation !== "pane" || !registerPreviewSidePeek) return;
+    return registerPreviewSidePeek();
+  }, [presentation, registerPreviewSidePeek]);
 
   const requestClose = useCallback(() => {
     if (presentation !== "pane") {
@@ -3425,6 +3434,14 @@ function PositionEditorDialogShell({
         <PositionSidePeekProvider requestClose={requestClose}>
           {children}
         </PositionSidePeekProvider>
+        {previewPanel?.returnControlVisible && (
+          <div
+            data-preview-return-control
+            className="absolute bottom-4 right-4 z-[60]"
+          >
+            <PreviewReturnButton onClick={previewPanel.show} />
+          </div>
+        )}
       </aside>,
       portalTarget,
     );
