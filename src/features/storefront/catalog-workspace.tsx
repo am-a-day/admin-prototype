@@ -53,6 +53,7 @@ import {
   PencilSimple,
   PlusCircle,
   Prohibit,
+  SidebarSimple,
   Sparkle,
   StopCircle,
   TextTSlash,
@@ -2708,18 +2709,38 @@ function UnifiedSectionTableHeader({
   onAction,
   allowPositionCreation = true,
   allowSubsectionCreation = true,
+  treeHidden,
+  onShowSections,
 }: {
   section: TreeSection;
   itemCount: number;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
   allowPositionCreation?: boolean;
   allowSubsectionCreation?: boolean;
+  treeHidden: boolean;
+  onShowSections: () => void;
 }) {
   const status = getSectionStatusMeta(section);
   const statusLabel = getSectionTreeStatusLabel(section);
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      <span data-catalog-compact-sections-target className="relative inline-flex h-7 min-w-0 shrink-0 items-center overflow-visible" />
+      <span
+        data-catalog-compact-sections-target
+        data-catalog-tree-hidden={treeHidden ? "true" : undefined}
+        className="relative inline-flex h-7 min-w-0 shrink-0 items-center overflow-visible"
+      >
+        <Tooltip label="Показать разделы" side="top" delayDuration={250}>
+          <button
+            type="button"
+            data-catalog-show-sections
+            aria-label="Показать разделы"
+            onClick={onShowSections}
+            className="invisible pointer-events-none flex size-7 shrink-0 -translate-x-1 items-center justify-center rounded-[8px] text-[#57534d] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <SidebarSimple size={16} weight="bold" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      </span>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
@@ -3160,6 +3181,7 @@ const POSITION_SIDE_PEEK_WIDTH_KEY = catalogStorageKey("positionSidePeek.width.v
 const POSITION_SIDE_PEEK_MIN_WIDTH = 380;
 const POSITION_SIDE_PEEK_MAX_WIDTH = 600;
 const POSITION_SIDE_PEEK_VISIBLE_TABLE_WIDTH = 160;
+const CATALOG_COMPACT_BREAKPOINT = 1212;
 
 function getDefaultPositionSidePeekWidth() {
   return typeof window !== "undefined" && window.innerWidth >= 1400 ? 470 : 400;
@@ -3227,12 +3249,14 @@ function PositionEditorDialogShell({
   children,
   presentation = "dialog",
   creation = false,
+  onRegisterRequestClose,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   presentation?: "dialog" | "pane";
   creation?: boolean;
+  onRegisterRequestClose?: (requestClose: () => void) => () => void;
 }) {
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [overlayLeft, setOverlayLeft] = useState(0);
@@ -3369,6 +3393,11 @@ function PositionEditorDialogShell({
     window.addEventListener("resize", updateResponsiveWidth);
     return () => window.removeEventListener("resize", updateResponsiveWidth);
   }, [clampPaneWidth, paneSize.userSized, presentation]);
+
+  useEffect(() => {
+    if (presentation !== "pane" || !onRegisterRequestClose) return;
+    return onRegisterRequestClose(requestClose);
+  }, [onRegisterRequestClose, presentation, requestClose]);
 
   useEffect(() => () => {
     if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
@@ -4140,6 +4169,42 @@ function PopulatedWorkspace({
   const selectedItem = selectedItemId
     ? allItems.find((item) => item.id === selectedItemId) ?? null
     : null;
+  const [userCollapsedSections, setUserCollapsedSections] = useState(false);
+  const [catalogContainerWidth, setCatalogContainerWidth] = useState<number | null>(null);
+  const [sidePeekOpen, setSidePeekOpen] = useState(false);
+  const sidePeekCloseRef = useRef<(() => void) | null>(null);
+  const registerSidePeekClose = useCallback((requestClose: () => void) => {
+    sidePeekCloseRef.current = requestClose;
+    return () => {
+      if (sidePeekCloseRef.current === requestClose) sidePeekCloseRef.current = null;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const shell = document.querySelector<HTMLElement>("[data-catalog-adaptive-shell]");
+    if (!shell) return;
+    const updateWidth = () => setCatalogContainerWidth(shell.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const surface = document.querySelector<HTMLElement>("[data-position-editor-surface]");
+    if (!surface) return;
+    const updatePaneState = () => setSidePeekOpen(surface.dataset.positionEditorPaneOpen === "true");
+    updatePaneState();
+    const observer = new MutationObserver(updatePaneState);
+    observer.observe(surface, { attributes: true, attributeFilter: ["data-position-editor-pane-open"] });
+    return () => observer.disconnect();
+  }, []);
+  const compactEditing = sidePeekOpen
+    && catalogContainerWidth !== null
+    && catalogContainerWidth < CATALOG_COMPACT_BREAKPOINT;
+  const treeHidden = userCollapsedSections || compactEditing;
+  const showSections = useCallback(() => {
+    setUserCollapsedSections(false);
+    sidePeekCloseRef.current?.();
+  }, []);
   const sectionTableBaseItems = selectedSectionId
     ? allItems.filter((item) => item.sectionId === selectedSectionId)
     : [];
@@ -5787,7 +5852,12 @@ function PopulatedWorkspace({
       if (editorNavMode === "entity") navigation.replacePosition(id);
     };
     return (
-      <PositionEditorDialogShell label={item.title || "Позиция"} onClose={closeEditor} presentation="pane">
+      <PositionEditorDialogShell
+        label={item.title || "Позиция"}
+        onClose={closeEditor}
+        presentation="pane"
+        onRegisterRequestClose={registerSidePeekClose}
+      >
         <PositionEditorHost
           intent={structureIntent}
           onCurrentIdChange={navigateToSibling}
@@ -5847,6 +5917,8 @@ function PopulatedWorkspace({
       onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
       allowSubsectionCreation={!subsectionDisabledReason && sectionTableBaseItems.length === 0}
+      treeHidden={treeHidden}
+      onShowSections={showSections}
     />
   ) : null;
   const unifiedOverviewScopeCandidate = selectedSectionId ?? globalTableScopeId;
@@ -5872,6 +5944,7 @@ function PopulatedWorkspace({
         setHighlightItemId(highlightedItemId);
       }}
       onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
+      onRegisterRequestClose={registerSidePeekClose}
       pendingOpen={pendingOpen}
       onPendingOpenHandled={onPendingOpenHandled}
       onCreateClosed={onCreateClosed}
@@ -5957,7 +6030,12 @@ function PopulatedWorkspace({
 
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
-      <div data-catalog-workspace-layout className="relative flex min-h-0 flex-1">
+      <div
+        data-catalog-workspace-layout
+        data-catalog-tree-hidden={treeHidden ? "true" : undefined}
+        data-catalog-tree-hidden-reason={treeHidden ? (compactEditing ? "compact" : "manual") : undefined}
+        className="relative flex min-h-0 flex-1"
+      >
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <div
             data-catalog-tree-shell
@@ -5999,6 +6077,7 @@ function PopulatedWorkspace({
               getSectionPath={(sectionId) => getCatalogSectionPathFromSections(sectionId, allSections).map((crumb) => crumb.name).join(" / ")}
               positionCreationEnabled={allowPositionCreation}
               menuSwitcher={menuSwitcher}
+              onCollapseSections={() => setUserCollapsedSections(true)}
               onReorderSections={reorderTreeSectionsWithinParent}
             />
           </div>
@@ -7471,6 +7550,7 @@ function OverviewWorkspace({
   onRestoreStructureContext,
   onOpenSectionInSections,
   onRegisterCreateNavigationGuard,
+  onRegisterRequestClose,
   onCreateClosed,
   pendingOpen,
   onPendingOpenHandled,
@@ -7504,6 +7584,7 @@ function OverviewWorkspace({
   onRestoreStructureContext: (context: StructureReturnContext, openItemId: string | null) => void;
   onOpenSectionInSections: (sectionId: string | null, highlightedItemId?: string | null) => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
+  onRegisterRequestClose?: (requestClose: () => void) => () => void;
   onCreateClosed?: () => void;
   pendingOpen?: PendingOpen | null;
   onPendingOpenHandled?: () => void;
@@ -8689,6 +8770,7 @@ function OverviewWorkspace({
               onClose={cancelCreateDraft}
               presentation="pane"
               creation
+              onRegisterRequestClose={onRegisterRequestClose}
             >
               <PositionEditor
                 item={currentItem}
@@ -8759,7 +8841,12 @@ function OverviewWorkspace({
               />
             </PositionEditorDialogShell>
           ) : editorIntent ? (
-            <PositionEditorDialogShell label={currentItem?.title || "Позиция"} onClose={returnToOrigin} presentation="pane">
+            <PositionEditorDialogShell
+              label={currentItem?.title || "Позиция"}
+              onClose={returnToOrigin}
+              presentation="pane"
+              onRegisterRequestClose={onRegisterRequestClose}
+            >
               <PositionEditorHost
                 intent={editorIntent}
                 onCurrentIdChange={selectQueueItem}
@@ -9175,6 +9262,7 @@ function OverviewWorkspace({
           onClose={queueIsCreating ? cancelCreateDraft : returnToOrigin}
           presentation="pane"
           creation={queueIsCreating}
+          onRegisterRequestClose={onRegisterRequestClose}
         >
           {queueIsCreating ? (
             <PositionEditor

@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretRight, DotsThreeVertical, MagnifyingGlass, PlusCircle, X } from "@phosphor-icons/react";
+import { Asterisk, CaretRight, DotsThreeVertical, MagnifyingGlass, PlusCircle, SidebarSimple, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -86,6 +86,7 @@ type UnifiedCatalogTreePanelProps = {
   getSectionPath: (id: string) => string;
   positionCreationEnabled?: boolean;
   menuSwitcher?: ReactNode;
+  onCollapseSections: () => void;
   onReorderSections: (parentId: string | null, activeId: string, overId: string) => void;
 };
 
@@ -180,6 +181,7 @@ export function UnifiedCatalogTreePanel({
   getSectionPath,
   positionCreationEnabled = true,
   menuSwitcher,
+  onCollapseSections,
   onReorderSections,
 }: UnifiedCatalogTreePanelProps) {
   const [query, setQuery] = useState("");
@@ -549,6 +551,16 @@ export function UnifiedCatalogTreePanel({
         <div ref={searchControlRef}>
           <div className="flex h-8 items-center gap-1">
             <span className="min-w-0 flex-1 px-2 text-[13px] font-medium leading-[18px] text-[#79716b]">Разделы</span>
+            <Tooltip label="Свернуть разделы" side="top" delayDuration={250}>
+              <button
+                type="button"
+                aria-label="Свернуть разделы"
+                onClick={onCollapseSections}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f3f3ed] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <SidebarSimple size={16} weight="bold" aria-hidden="true" />
+              </button>
+            </Tooltip>
             <Tooltip label={searchOpen ? "Закрыть поиск по разделам" : "Поиск по разделам"} side="top" delayDuration={250}>
               <button
                 type="button"

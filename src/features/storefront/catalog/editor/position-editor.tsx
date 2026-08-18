@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SidebarSimple, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -3384,7 +3384,6 @@ export function PositionEditor({
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
   const [createNameError, setCreateNameError] = useState("");
-  const [compactSectionsTarget, setCompactSectionsTarget] = useState<HTMLElement | null>(null);
   const sidePeek = usePositionSidePeek();
   const fixture = usePositionEditorFixture();
 
@@ -3396,16 +3395,6 @@ export function PositionEditor({
   const nextForcedTab = recommendationsDesignFixture
     ? "promo"
     : forcedEditorTab ?? (mode !== "edit" || forceBasicTabOnItemChange ? "basic" : undefined);
-
-  useEffect(() => {
-    if (!detailPane || !sidePeek) {
-      setCompactSectionsTarget(null);
-      return;
-    }
-    const target = document.querySelector<HTMLElement>("[data-catalog-compact-sections-target]");
-    setCompactSectionsTarget(target);
-    return () => setCompactSectionsTarget(null);
-  }, [detailPane, item.sectionId, item.sectionName, sidePeek]);
 
   useEffect(() => {
     const nextTab = mountedItemRef.current
@@ -3698,24 +3687,8 @@ export function PositionEditor({
     />
   ) : null;
 
-  const compactReturnControl = compactSectionsTarget && sidePeek ? createPortal(
-    <Tooltip label="Показать разделы" side="top" delayDuration={250}>
-      <button
-        type="button"
-        data-position-editor-compact-return
-        aria-label="Показать разделы"
-        onClick={sidePeek.requestClose}
-        className="invisible pointer-events-none flex size-7 shrink-0 -translate-x-1 items-center justify-center rounded-[8px] text-[#57534d] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        <SidebarSimple size={16} weight="bold" aria-hidden="true" />
-      </button>
-    </Tooltip>,
-    compactSectionsTarget,
-  ) : null;
-
   return (
     <>
-      {compactReturnControl}
       <div
         data-position-create-canvas={creationCanvas || undefined}
         data-position-detail-pane={detailPane || undefined}
