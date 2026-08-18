@@ -105,6 +105,7 @@ const TABLE_COL = {
   translation: "w-[92px]",
   section: "w-[160px]",
   price: "w-[120px]",
+  discount: "w-[78px]",
   tags: "w-[150px]",
   stickers: "w-[140px]",
   upsells: "w-[100px]",
@@ -117,6 +118,7 @@ export type CatalogInformationColumnId =
   | "kbju"
   | "translation"
   | "price"
+  | "discount"
   | "tags"
   | "stickers"
   | "upsells";
@@ -137,7 +139,8 @@ const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, stri
   weight: "Вес или объём",
   kbju: "КБЖУ",
   translation: "Перевод",
-  price: "Цена",
+  price: "Базовая цена",
+  discount: "Скидка",
   tags: "Теги",
   stickers: "Стикеры",
   upsells: "Рекомендации",
@@ -150,6 +153,7 @@ export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   translation: false,
   section: false,
   price: true,
+  discount: true,
   tags: false,
   stickers: false,
   upsells: false,
@@ -165,6 +169,7 @@ export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "kbju", accessorKey: "nutritionFilledCount" },
   { id: "translation", accessorKey: "translationFilledCount" },
   { id: "price", accessorKey: "price" },
+  { id: "discount", accessorFn: (item) => item.hasDiscount && item.priceWithSale != null ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100) : null },
   { id: "tags", accessorKey: "tags" },
   { id: "stickers", accessorKey: "guestLabels" },
   { id: "upsells", accessorKey: "recommendationsCount" },
@@ -367,6 +372,13 @@ export function TableHeaderRow({
               </span>
             );
           }
+          if (column.id === "discount") {
+            return (
+              <span key={column.id} className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", TABLE_COL.discount)}>
+                {CATALOG_INFORMATION_COLUMN_LABELS.discount}
+              </span>
+            );
+          }
           if (column.id === "price") {
             return (
               <Tooltip key={column.id} label={priceSortTooltip} side="top">
@@ -380,7 +392,7 @@ export function TableHeaderRow({
                     priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
                   )}
                 >
-                  <span>Цена</span>
+                  <span>Базовая цена</span>
                   <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
                     {priceSort === "asc" ? (
                       <CaretUp size={11} weight="bold" />
@@ -429,6 +441,7 @@ export function TableHeaderRow({
             kbju: TABLE_COL.kbju,
             translation: TABLE_COL.translation,
             section: TABLE_COL.section,
+            discount: TABLE_COL.discount,
             tags: TABLE_COL.tags,
             stickers: TABLE_COL.stickers,
             upsells: TABLE_COL.upsells,
@@ -567,7 +580,9 @@ function AuditDishRowContent({
   };
   const kbjuState =
     item.nutritionFilledCount === 4 ? "filled" : item.nutritionFilledCount > 0 ? "partial" : "missing";
-  const salePrice = item.hasDiscount && item.priceWithSale != null ? item.priceWithSale : null;
+  const discountPercent = item.hasDiscount && item.priceWithSale != null
+    ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
+    : null;
   const primaryStatusLabel = getPrimaryRowStatusLabel(item);
   const stickyRowBackground = selected
     ? "bg-[#f7f6f2] group-hover:bg-[#fafaf9]"
@@ -734,9 +749,14 @@ function AuditDishRowContent({
             );
           case "price":
             return (
-              <span key={cell.id} className={cn("relative flex shrink-0 items-center justify-end gap-1 px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.price)} title={salePrice != null ? `Цена без скидки: ${formatPrice(item.price)}` : undefined}>
-                {item.price === 0 && salePrice == null ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(salePrice ?? item.price)}</span>}
-                {salePrice != null && <span className="absolute left-1 top-1/2 flex h-3 min-w-[27px] -translate-y-1/2 items-center justify-center rounded-[26px] bg-[#79716b] px-0.5 text-[9px] font-bold leading-3 text-white">-{Math.round((1 - salePrice / Math.max(item.price, 1)) * 100)}%</span>}
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.price)}>
+                {item.price === 0 ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(item.price)}</span>}
+              </span>
+            );
+          case "discount":
+            return (
+              <span key={cell.id} className={cn("flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", TABLE_COL.discount)}>
+                {discountPercent == null ? <span className="text-[#a6a09b]">—</span> : <span className="whitespace-nowrap tabular-nums">−{discountPercent}%</span>}
               </span>
             );
           case "actions":
