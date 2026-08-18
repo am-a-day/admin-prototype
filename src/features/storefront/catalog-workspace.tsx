@@ -9041,19 +9041,45 @@ function OverviewWorkspace({
                   />
                 </div>
               )}
-              {visible.length === 0 ? (
-                <div className="p-6">
+              <div
+                onScroll={(event) => setTableScrolledHorizontally(event.currentTarget.scrollLeft > 0)}
+                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:thin]"
+                data-catalog-table-horizontal-scroll
+              >
+                <div className="min-w-full">
+                <div>
+                  <TableHeaderRow
+                    query={workspaceQuery}
+                    onQueryChange={handleQueryChange}
+                    hideSearch={editorFirstEnabled}
+                    checked={allVisibleSelected}
+                    indeterminate={!allVisibleSelected && someVisibleSelected}
+                    onSelectAll={setVisibleSelected}
+                    priceSort={workspacePriceSort}
+                    onPriceSortChange={handlePriceSortChange}
+                    table={catalogTable}
+                    onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
+                    offsetForLocalHeader={embedded && selectedIds.size > 0}
+                    stickyFirstColumn
+                    firstColumnScrolled={tableScrolledHorizontally}
+                  />
+                  {visible.length === 0 ? (
+                <div className="border-b border-[#e7e5e4] px-6 py-12">
                   <div className="flex flex-col gap-4">
                     <div>
                       <p className="text-[16px] font-medium leading-[1.4] text-[#44403b]">
-                        {selectedSectionIsCompletelyEmpty
+                        {workspaceQuery.trim()
+                          ? "Ничего не найдено"
+                          : selectedSectionIsCompletelyEmpty
                           ? "В разделе пока нет позиций"
                           : activeFilterIds.length > 0 && !workspaceQuery.trim()
                             ? "По текущим фильтрам ничего не найдено"
                             : emptyTitle}
                       </p>
                       <p className="mt-2 text-[14px] leading-[1.4] text-[#79716b]">
-                        {selectedSectionIsCompletelyEmpty
+                        {workspaceQuery.trim()
+                          ? "Измените поисковый запрос или очистите поиск."
+                          : selectedSectionIsCompletelyEmpty
                           ? "Добавьте первую позицию или создайте подраздел."
                           : activeFilterIds.length > 0 && !workspaceQuery.trim()
                             ? "Измените условия фильтрации или сбросьте фильтры."
@@ -9061,13 +9087,24 @@ function OverviewWorkspace({
                       </p>
                     </div>
                     {workspaceQuery.trim() ? (
-                      <button
-                        type="button"
-                        onClick={clearSearch}
-                        className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
-                      >
-                        Очистить поиск
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={clearSearch}
+                          className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
+                        >
+                          Очистить поиск
+                        </button>
+                        {activeFilterIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={resetFilter}
+                            className="inline-flex h-[32px] items-center justify-center self-start rounded-[10px] border border-[#e7e5e4] bg-white px-[10px] text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9]"
+                          >
+                            Сбросить всё
+                          </button>
+                        )}
+                      </div>
                     ) : activeFilterIds.length > 0 ? (
                       <button
                         type="button"
@@ -9116,28 +9153,6 @@ function OverviewWorkspace({
                   </div>
                 </div>
               ) : (
-                <div
-                  onScroll={(event) => setTableScrolledHorizontally(event.currentTarget.scrollLeft > 0)}
-                  className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:thin]"
-                  data-catalog-table-horizontal-scroll
-                >
-                  <div className="min-w-full">
-                  <div>
-                    <TableHeaderRow
-                      query={workspaceQuery}
-                      onQueryChange={handleQueryChange}
-                      hideSearch={editorFirstEnabled}
-                      checked={allVisibleSelected}
-                      indeterminate={!allVisibleSelected && someVisibleSelected}
-                      onSelectAll={setVisibleSelected}
-                      priceSort={workspacePriceSort}
-                      onPriceSortChange={handlePriceSortChange}
-                      table={catalogTable}
-                      onResetColumns={() => setColumnVisibility({ ...DEFAULT_TABLE_COLUMN_VISIBILITY })}
-                      offsetForLocalHeader={embedded && selectedIds.size > 0}
-                      stickyFirstColumn
-                      firstColumnScrolled={tableScrolledHorizontally}
-                    />
                     <div>
                       <DndContext
                         sensors={tableReorderSensors}
@@ -9163,7 +9178,7 @@ function OverviewWorkspace({
                         </SortableContext>
                       </DndContext>
                     </div>
-                  </div>
+                  )}
                   {bulkDialog && (
                     <BulkDialogModal
                       dialog={bulkDialog}
@@ -9235,9 +9250,9 @@ function OverviewWorkspace({
                       onClose={() => setItemRenameRequest(null)}
                     />
                   )}
-                  </div>
                 </div>
-              )}
+              </div>
+            </div>
             </div>
           </div>
         </div>
