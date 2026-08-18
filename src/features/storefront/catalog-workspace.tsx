@@ -3249,13 +3249,14 @@ function PositionEditorDialogShell({
     }
     if (closingRef.current) return;
     closingRef.current = true;
+    if (portalTarget) delete portalTarget.dataset.positionEditorPaneVisible;
     setPaneVisible(false);
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     closeTimerRef.current = window.setTimeout(() => {
       closeTimerRef.current = null;
       onCloseRef.current();
     }, prefersReducedMotion ? 0 : 200);
-  }, [presentation]);
+  }, [portalTarget, presentation]);
 
   const clampPaneWidth = useCallback((width: number) => {
     const availableMax = portalTarget
@@ -3325,6 +3326,15 @@ function PositionEditorDialogShell({
       window.removeEventListener("resize", updateOverlayLeft);
     };
   }, [presentation]);
+
+  useLayoutEffect(() => {
+    if (presentation !== "pane" || !portalTarget) return;
+    if (paneVisible) portalTarget.dataset.positionEditorPaneVisible = "true";
+    else delete portalTarget.dataset.positionEditorPaneVisible;
+    return () => {
+      delete portalTarget.dataset.positionEditorPaneVisible;
+    };
+  }, [paneVisible, portalTarget, presentation]);
 
   useEffect(() => {
     paneWidthRef.current = paneSize.width;
@@ -3960,9 +3970,6 @@ function PopulatedWorkspace({
     firstSectionId === null ? scopeSectionId : null,
   );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(firstItemId);
-  const [compactTreeOpen, setCompactTreeOpen] = useState(false);
-  const compactTreeShellRef = useRef<HTMLDivElement | null>(null);
-  const compactTreeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [editorSource, setEditorSource] = useState<"tree" | "table" | "breadcrumb" | null>(null);
   const [unifiedTableOpenSignal, setUnifiedTableOpenSignal] = useState(0);
   const [treeContentMode] = useState<CatalogTreeContentMode>(() => readCatalogTreeContentMode());
@@ -4229,7 +4236,6 @@ function PopulatedWorkspace({
   };
 
   const handleTreeSelectSection = (id: string) => {
-    setCompactTreeOpen(false);
     openSectionEditor(id);
   };
 
@@ -4279,32 +4285,6 @@ function PopulatedWorkspace({
   useEffect(() => {
     writeJsonRecord(CATALOG_SECTION_EDITOR_SCROLL_STORAGE_KEY, sectionEditorScrollTop);
   }, [sectionEditorScrollTop]);
-
-  useEffect(() => {
-    setCompactTreeOpen(false);
-  }, [selectedItemId]);
-
-  useEffect(() => {
-    if (!compactTreeOpen) return;
-    const closeOnPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && (compactTreeShellRef.current?.contains(target) || compactTreeTriggerRef.current?.contains(target))) return;
-      setCompactTreeOpen(false);
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setCompactTreeOpen(false);
-      compactTreeTriggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOnPointerDown, true);
-    window.addEventListener("keydown", closeOnEscape, true);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnPointerDown, true);
-      window.removeEventListener("keydown", closeOnEscape, true);
-    };
-  }, [compactTreeOpen]);
 
   useEffect(() => {
     if (previousResetSignalRef.current === resetSignal) return;
@@ -4377,7 +4357,6 @@ function PopulatedWorkspace({
   };
 
   const selectAllPositions = () => {
-    setCompactTreeOpen(false);
     setSelectedSectionId(null);
     setGlobalTableScopeId(null);
     setUnifiedTableOpenSignal((signal) => signal + 1);
@@ -5872,25 +5851,6 @@ function PopulatedWorkspace({
     && allSections.some((candidate) => candidate.id === unifiedOverviewScopeCandidate)
     ? unifiedOverviewScopeCandidate
     : null;
-  const compactSectionLabel = selectedSectionId
-    ? allSections.find((candidate) => candidate.id === selectedSectionId)?.name ?? "Текущий раздел"
-    : "Все позиции";
-  const compactSectionTrigger = (
-    <button
-      ref={compactTreeTriggerRef}
-      type="button"
-      data-catalog-compact-section-trigger
-      aria-haspopup="dialog"
-      aria-expanded={compactTreeOpen}
-      aria-controls="catalog-compact-section-tree"
-      aria-label={`Текущий раздел: ${compactSectionLabel}`}
-      onClick={() => setCompactTreeOpen((open) => !open)}
-      className="hidden h-8 min-w-0 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[9px] border border-[#d6d3d1] bg-white px-2.5 text-[13px] font-medium text-[#44403b] shadow-sm transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-    >
-      <span className="truncate">{compactSectionLabel}</span>
-      <CaretDown size={13} className="shrink-0" />
-    </button>
-  );
 
   const unifiedOverviewWorkspace = (
     <OverviewWorkspace
@@ -5915,7 +5875,6 @@ function PopulatedWorkspace({
       tableOpenSignal={tableOpenSignal + unifiedTableOpenSignal}
       positionsWorkspaceMode="legacy"
       embedded
-      compactSectionTrigger={compactSectionTrigger}
       tableHeader={tableHeader}
       onAddPosition={section ? () => addPositionToSection(section.id) : undefined}
       onAddSubsection={section && directChildSections.length === 0
@@ -5998,12 +5957,7 @@ function PopulatedWorkspace({
       <div data-catalog-workspace-layout className="relative flex min-h-0 flex-1">
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <div
-            ref={compactTreeShellRef}
-            id="catalog-compact-section-tree"
-            role={compactTreeOpen ? "dialog" : undefined}
-            aria-label={compactTreeOpen ? "Выбор текущего раздела" : undefined}
             data-catalog-tree-shell
-            data-compact-open={compactTreeOpen || undefined}
             className="relative flex w-[250px] max-w-[250px] shrink-0 overflow-hidden"
           >
             <UnifiedCatalogTreePanel
@@ -7520,7 +7474,6 @@ function OverviewWorkspace({
   tableOpenSignal,
   positionsWorkspaceMode,
   embedded = false,
-  compactSectionTrigger,
   tableHeader,
   onAddPosition,
   onAddSubsection,
@@ -7554,7 +7507,6 @@ function OverviewWorkspace({
   tableOpenSignal: number;
   positionsWorkspaceMode: PositionsWorkspaceMode;
   embedded?: boolean;
-  compactSectionTrigger?: ReactNode;
   tableHeader?: ReactNode;
   onAddPosition?: () => void;
   onAddSubsection?: () => void;
@@ -8910,7 +8862,6 @@ function OverviewWorkspace({
         >
           <div className="w-full min-w-0">
             <div className="flex w-full items-center gap-3 pt-[18px]">
-              {compactSectionTrigger}
               <div className="min-w-0 flex-1">
                 {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
               </div>
