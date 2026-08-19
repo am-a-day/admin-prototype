@@ -282,7 +282,13 @@ export function CatalogPositionAvailabilityMenu({
     setView("stop");
   };
 
-  const enterSchedule = () => setView("schedule");
+  const enterSchedule = () => {
+    // Opening the editor is itself the availability transition. Persist the
+    // current (or default) schedule before rendering the nested screen so a
+    // close without edits cannot leave the item in its previous mode.
+    onScheduleChange(weeklySchedule, outsideScheduleMode);
+    setView("schedule");
+  };
 
   const renderAction = (label: string, onSelect: () => void, icon?: ReactNode) => (
     <DropdownMenu.Item
@@ -319,6 +325,7 @@ export function CatalogPositionAvailabilityMenu({
           closeMenu();
           onActionComplete?.();
         }}
+        onBack={() => setView("status")}
       />
     </DropdownMenu.SubContent>
   );
