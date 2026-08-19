@@ -7945,7 +7945,7 @@ function OverviewWorkspace({
       ? []
         : active
         ? [id]
-        : activeFilterIds.filter((current) => current !== id);
+        : [];
     setActiveFilterIds(next);
     setWorkspaceFilterId(next.at(-1) ?? "quick:all");
     setSelectedIds(new Set());

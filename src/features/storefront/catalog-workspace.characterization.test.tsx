@@ -286,7 +286,25 @@ describe("catalog observable behavior baseline", () => {
     });
     const withoutDescription = within(completenessSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
     await user.click(withoutDescription);
-    expect(screen.getByRole("button", { name: /Фильтры/ })).toHaveTextContent("1");
+    const filterTrigger = screen.getByRole("button", { name: /Фильтры/ });
+    expect(filterTrigger).toHaveTextContent("Без описания");
+    expect(filterTrigger).not.toHaveTextContent("Фильтры");
+
+    await user.click(filterTrigger);
+    const statusMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Статус" });
+    expect(statusMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeNull();
+    const completenessMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Заполненность" });
+    expect(completenessMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
+    await user.click(statusMenuItem);
+    await user.click(await screen.findByRole("menuitem", { name: /В архиве/ }));
+    expect(filterTrigger).toHaveTextContent("В архиве");
+
+    await user.click(filterTrigger);
+    const openFilterMenu = screen.getByRole("menu");
+    expect(within(openFilterMenu).getByRole("menuitem", { name: "Статус" }).querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
+    expect(within(openFilterMenu).getByRole("menuitem", { name: "Заполненность" }).querySelector("[data-catalog-active-filter-dot]")).toBeNull();
+    await user.click(within(openFilterMenu).getByRole("menuitem", { name: "Все позиции" }));
+    expect(filterTrigger).toHaveTextContent("Все");
   });
 
   it("opens bulk availability directly and keeps secondary actions under more", async () => {
