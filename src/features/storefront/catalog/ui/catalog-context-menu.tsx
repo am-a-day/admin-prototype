@@ -134,12 +134,14 @@ function StopDisplayOptions({
   value,
   manualStopped,
   keepOpenOnChange = false,
+  optionsDisabled = false,
   onChange,
   onResume,
 }: {
   value?: CatalogStopDisplayMode;
   manualStopped: boolean;
   keepOpenOnChange?: boolean;
+  optionsDisabled?: boolean;
   onChange: (mode: CatalogStopDisplayMode) => void;
   onResume?: () => void;
 }) {
@@ -153,6 +155,7 @@ function StopDisplayOptions({
           <DropdownMenu.RadioItem
             key={option.value}
             value={option.value}
+            disabled={optionsDisabled}
             onSelect={(event) => {
               if (keepOpenOnChange) event.preventDefault();
             }}
@@ -441,6 +444,8 @@ export function CatalogPositionAvailabilityCascadeMenu({
   const [open, setOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState(weeklySchedule);
+  const [outsideScheduleDraft, setOutsideScheduleDraft] = useState(outsideScheduleMode);
   const availability: CatalogMenuAvailability = manualStopped ? "stopped" : hasSchedule ? "scheduled" : "available";
 
   const selectStopDisplayMode = (mode: CatalogStopDisplayMode) => {
@@ -448,9 +453,9 @@ export function CatalogPositionAvailabilityCascadeMenu({
     if (!manualStopped) onManualStopChange(true);
   };
 
-  const openSchedule = () => {
-    // Entering the schedule level also activates the schedule mode immediately.
-    onScheduleChange(weeklySchedule, outsideScheduleMode);
+  const enableSchedule = (event: Event) => {
+    event.preventDefault();
+    onScheduleChange(scheduleDraft, outsideScheduleDraft);
   };
 
   return (
@@ -495,11 +500,27 @@ export function CatalogPositionAvailabilityCascadeMenu({
                   collisionPadding={12}
                   className={cn("z-[100005] min-w-[252px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
                 >
+                  {!manualStopped && (
+                    <>
+                      <DropdownActionItem
+                        icon={Prohibit}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          onStopDisplayModeChange("hidden");
+                          onManualStopChange(true);
+                        }}
+                      >
+                        Поставить на стоп
+                      </DropdownActionItem>
+                      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+                    </>
+                  )}
                   <StopDisplayOptions
-                    value={stopDisplayMode}
+                    value={manualStopped ? stopDisplayMode : undefined}
                     manualStopped={false}
+                    optionsDisabled={!manualStopped}
                     keepOpenOnChange
-                    onChange={selectStopDisplayMode}
+                    onChange={manualStopped ? selectStopDisplayMode : () => undefined}
                   />
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
@@ -509,7 +530,6 @@ export function CatalogPositionAvailabilityCascadeMenu({
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "scheduled"}
-                onClick={openSchedule}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
                 <CascadeAvailabilitySubTrigger checked={availability === "scheduled"} label="Расписание" />
@@ -521,12 +541,24 @@ export function CatalogPositionAvailabilityCascadeMenu({
                   collisionPadding={12}
                   className="z-[100005] bg-transparent outline-none"
                 >
+                  {availability !== "scheduled" && (
+                    <>
+                      <DropdownActionItem icon={CalendarBlank} onSelect={enableSchedule}>
+                        Включить расписание
+                      </DropdownActionItem>
+                      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+                    </>
+                  )}
                   <CatalogSchedulePopover
                     scheduleId={scheduleId}
-                    hasSchedule={hasSchedule}
-                    initialSchedule={weeklySchedule}
-                    initialOutsideScheduleMode={outsideScheduleMode}
-                    onChange={onScheduleChange}
+                    hasSchedule={availability === "scheduled"}
+                    initialSchedule={scheduleDraft}
+                    initialOutsideScheduleMode={outsideScheduleDraft}
+                    onChange={(schedule, outsideMode) => {
+                      setScheduleDraft(schedule);
+                      setOutsideScheduleDraft(outsideMode);
+                      if (availability === "scheduled") onScheduleChange(schedule, outsideMode);
+                    }}
                     showDelete={false}
                   />
                 </DropdownMenu.SubContent>

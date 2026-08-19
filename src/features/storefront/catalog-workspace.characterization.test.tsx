@@ -593,6 +593,12 @@ describe("catalog observable behavior baseline", () => {
 
     await user.hover(screen.getByRole("menuitemradio", { name: "Стоп" }));
     await waitFor(() => expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument());
+    expect(screen.getByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).not.toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).not.toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
+    expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" }));
     expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).toHaveAttribute("aria-checked", "true");
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Скоро будет");
@@ -612,9 +618,11 @@ describe("catalog observable behavior baseline", () => {
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument());
     expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Назад к Доступности" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Включить расписание" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("menuitemradio", { name: "Расписание" }));
+    await user.click(screen.getByRole("menuitem", { name: "Включить расписание" }));
     expect(screen.getByRole("menuitemradio", { name: "Расписание" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("menuitem", { name: "Включить расписание" })).not.toBeInTheDocument();
   });
 
   it("switches availability modes directly from the shared mode list", async () => {
