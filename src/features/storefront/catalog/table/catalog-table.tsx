@@ -7,6 +7,7 @@ import { arrayMove, sortableKeyboardCoordinates, SortableContext, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowElbowUpRight,
+  Archive,
   CaretDown,
   CaretUpDown,
   CaretRight,
@@ -23,6 +24,8 @@ import {
   MagnifyingGlass,
   Minus,
   SquareSplitHorizontal,
+  SealPercent,
+  Trash,
   X,
   XCircle,
   type Icon as PhosphorIcon,
@@ -374,7 +377,7 @@ function DropdownActionItem({
         tone === "danger" ? "text-[#9f1239]" : "text-[#44403b]",
       )}
     >
-      {Icon && <Icon size={15} weight="regular" className="shrink-0" />}
+      {Icon && <Icon size={16} weight="regular" className="shrink-0" />}
       {children}
     </DropdownMenu.Item>
   );
@@ -1262,7 +1265,6 @@ export function SelectionToolbar({
   onStopDisplayModeChange,
   onRemoveStop,
   onScheduleChange,
-  onClearDiscount,
   onOpenDiscount,
   onMove,
   onOpenDelete,
@@ -1286,7 +1288,6 @@ export function SelectionToolbar({
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onRemoveStop: () => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onClearDiscount: () => void;
   onOpenDiscount: () => void;
   onMove: (anchor: MovePopoverAnchor) => void;
   onOpenDelete: () => void;
@@ -1366,9 +1367,7 @@ export function SelectionToolbar({
               </button>
             </DropdownMenu.Trigger>
             <DropdownContent align="start">
-              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
-              <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-              <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
+              <DropdownActionItem icon={SealPercent} onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
               {labelActions && (
                 <>
                   <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
@@ -1376,9 +1375,9 @@ export function SelectionToolbar({
                 </>
               )}
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              {hasNonArchivedItems && <DropdownActionItem onSelect={onArchive}>Архивировать</DropdownActionItem>}
+              {hasNonArchivedItems && <DropdownActionItem icon={Archive} onSelect={onArchive}>Архивировать</DropdownActionItem>}
               {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
-              <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
+              <DropdownActionItem icon={Trash} onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
             </DropdownContent>
           </DropdownMenu.Root>
         </span>

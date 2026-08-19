@@ -302,9 +302,21 @@ describe("catalog observable behavior baseline", () => {
     fireEvent.click(document.body);
 
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));
-    expect(screen.getByRole("menuitem", { name: "Задать скидку" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Архивировать" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Удалить" })).toBeInTheDocument();
+    const moreMenu = screen.getByRole("menu");
+    const setDiscountItem = within(moreMenu).getByRole("menuitem", { name: "Задать скидку" });
+    expect(setDiscountItem.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(within(moreMenu).queryByText("Скидка", { exact: true })).not.toBeInTheDocument();
+    expect(within(moreMenu).queryByRole("menuitem", { name: "Убрать скидку" })).not.toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "Архивировать" }).querySelector("svg")).toHaveAttribute("width", "16");
+    expect(within(moreMenu).getByRole("menuitem", { name: "Удалить" }).querySelector("svg")).toHaveAttribute("width", "16");
+
+    await user.click(setDiscountItem);
+    const discountInput = screen.getByDisplayValue("10");
+    await user.clear(discountInput);
+    await user.type(discountInput, "0");
+    await user.click(screen.getByRole("button", { name: "Применить" }));
+    expect(screen.getByText("Скидка убрана", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-selection-toolbar]")).not.toBeInTheDocument();
   });
 
   it("opens the shared cascade schedule editor for a bulk selection", async () => {

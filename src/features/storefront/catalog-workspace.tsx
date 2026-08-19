@@ -8294,9 +8294,6 @@ function OverviewWorkspace({
     }), clamped > 0 ? "Скидка применена" : "Скидка убрана");
     setBulkDialog(null);
   };
-  const clearSelectedDiscount = () => {
-    updateSelectedItems((item) => ({ ...item, hasDiscount: false, priceWithSale: null }), "Скидка убрана");
-  };
   const deleteSelectedItems = () => {
     const selectedCreatedIds = new Set(readCreatedCatalogItems().filter((item) => selectedIds.has(item.id)).map((item) => item.id));
     if (selectedCreatedIds.size > 0) {
@@ -9226,7 +9223,6 @@ function OverviewWorkspace({
                     onStopDisplayModeChange={setSelectedStopDisplayMode}
                     onRemoveStop={removeSelectedStop}
                     onScheduleChange={setSelectedSchedule}
-                    onClearDiscount={clearSelectedDiscount}
                     onOpenDiscount={() => setBulkDialog({ type: "discount" })}
                     onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
                     onOpenDelete={() => setBulkDialog({ type: "delete" })}
