@@ -307,6 +307,27 @@ describe("catalog observable behavior baseline", () => {
     expect(filterTrigger).toHaveTextContent("Все");
   });
 
+  it("matches the idle and focused table search header states", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const search = screen.getByRole("textbox", { name: "Найти позицию" });
+    const control = document.querySelector("[data-catalog-table-search-control]");
+    expect(control).toHaveClass("border-transparent");
+    expect(control?.querySelector("[data-catalog-table-search-divider]")).not.toBeInTheDocument();
+    expect(search).toHaveAttribute("placeholder", "Поиск по названию");
+
+    await user.click(search);
+    expect(control).toHaveClass("border-[#4f39f6]");
+    expect(control?.querySelector("[data-catalog-table-search-divider]")).toBeInTheDocument();
+    expect(search).toHaveAttribute("placeholder", "");
+
+    await user.type(search, "Омлет");
+    await user.click(screen.getByText("Название", { exact: true }));
+    expect(search).toHaveValue("Омлет");
+    expect(control).toHaveClass("border-transparent");
+  });
+
   it("opens bulk availability directly and keeps secondary actions under more", async () => {
     const user = userEvent.setup();
     renderCatalog();
@@ -446,7 +467,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(toolbar as HTMLElement).getByText("Все", { exact: true })).toBeInTheDocument();
     expect(within(toolbar as HTMLElement).getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     const tableHeader = document.querySelector("[data-catalog-table-header]");
-    expect(tableHeader).toHaveClass("sticky", "top-[39px]", "bg-[#fafaf9]");
+    expect(tableHeader).toHaveClass("sticky", "top-[43px]", "bg-[#fafaf9]");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-table-horizontal-scroll]")).not.toBeNull();

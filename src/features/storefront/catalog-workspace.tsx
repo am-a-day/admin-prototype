@@ -9207,7 +9207,7 @@ function OverviewWorkspace({
               {selectedIds.size > 0 ? (
                 <div
                   data-catalog-local-header
-                  className="sticky top-[39px] z-20 min-w-0 bg-white"
+                  className="sticky top-[43px] z-20 min-w-0 bg-white"
                 >
                   <SelectionToolbar
                     checked={allVisibleSelected}

@@ -1,6 +1,6 @@
 import { CaretDown, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import type { ReactNode, RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 
 export const CATALOG_TABLE_SEARCH_WIDTH = "w-[clamp(300px,30vw,360px)] max-w-full";
 
@@ -65,11 +65,25 @@ export function CatalogTableSearchControl({
   onBlur?: () => void;
   className?: string;
 }) {
+  const [focused, setFocused] = useState(false);
+  const showSearchHint = !focused;
+
+  const handleFocus = () => {
+    setFocused(true);
+    onFocus?.();
+  };
+
+  const handleBlur = () => {
+    setFocused(false);
+    onBlur?.();
+  };
+
   return (
     <div
       data-catalog-table-search-control
       className={cn(
-        "flex h-7 min-w-0 max-w-full items-center overflow-hidden rounded-[8px] border border-[#e7e5e4] bg-white text-[#a6a09b] transition focus-within:border-[#d6d3d1] focus-within:ring-2 focus-within:ring-[#4f39f6]/10",
+        "box-border flex min-w-0 max-w-full flex-1 items-center gap-3 overflow-hidden rounded-[7px] border px-2 py-[2px] text-[#a6a09b]",
+        focused ? "border-[#4f39f6]" : "border-transparent",
         className,
       )}
     >
@@ -83,18 +97,18 @@ export function CatalogTableSearchControl({
           <CaretDown size={12} weight="regular" />
         </button>
       )}
-      <span className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
-      <label className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-[#a6a09b]">
-        <MagnifyingGlass size={14} className="shrink-0" />
+      {focused && <span data-catalog-table-search-divider className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />}
+      <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[#a6a09b]">
+        {showSearchHint && <MagnifyingGlass size={14} className="shrink-0" />}
         <input
           ref={inputRef}
           value={value}
           onChange={(event) => onValueChange(event.target.value)}
-          onFocus={onFocus}
-          onBlur={onBlur}
-          placeholder={placeholder}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={showSearchHint ? placeholder : ""}
           aria-label={ariaLabel}
-          className="min-w-0 flex-1 bg-transparent text-[13px] font-normal leading-4 text-[#57534d] outline-none placeholder:text-[#a6a09b]"
+          className="min-w-0 flex-1 bg-transparent text-[13px] font-normal leading-5 text-[#1c1917] outline-none placeholder:text-[#a6a09b]"
         />
       </label>
       {value.length > 0 && (

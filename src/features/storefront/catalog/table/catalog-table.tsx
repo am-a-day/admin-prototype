@@ -509,7 +509,7 @@ export function CatalogColumnSettingsMenu({
             data-catalog-column-settings-trigger
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <SquareSplitHorizontal size={17} weight="regular" />
+            <SquareSplitHorizontal size={18} weight="regular" />
           </button>
         </DropdownMenu.Trigger>
       </Tooltip>
@@ -668,7 +668,7 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn("sticky z-10 bg-[#fafaf9]", offsetForLocalHeader ? "top-[83px]" : "top-[39px]")}
+      className={cn("sticky z-10 bg-[#fafaf9]", offsetForLocalHeader ? "top-[87px]" : "top-[43px]")}
       data-catalog-table-header
     >
       <div className="flex h-[38px] min-w-0 items-center overflow-hidden border-b border-[#e7e5e4]">
@@ -812,14 +812,14 @@ export function CatalogTableToolbar({
   return (
     <div
       data-catalog-table-toolbar
-      className="sticky top-0 z-20 flex h-[39px] min-w-0 items-center justify-between gap-3 border-b border-[#e7e5e4] bg-white px-3"
+      className="sticky top-0 z-20 flex h-[43px] min-w-0 items-center justify-between border-b border-[#e7e5e4] bg-white pl-1 pr-4 py-[6px]"
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <CatalogTableSearchControl
           value={query}
           onValueChange={onQueryChange}
           ariaLabel="Найти позицию"
-          className="w-[clamp(300px,30vw,360px)]"
+          className="w-full"
           filter={(
             <CatalogTableFilterBar
               activeFilterIds={activeFilterIds}
@@ -839,6 +839,7 @@ export function CatalogTableToolbar({
           )}
         />
       </div>
+      <span className="mx-3 h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
       <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
     </div>
   );
@@ -1675,13 +1676,13 @@ export function CatalogTableFilterBar({
             data-catalog-table-filter-trigger
             className={cn(
               compactTrigger
-                ? "inline-flex h-full max-w-[180px] shrink-0 items-center gap-1 rounded-l-[7px] px-2 text-[12px] font-normal leading-4 text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"
+                ? "inline-flex shrink-0 items-center gap-1 rounded-[7px] py-1 text-[13px] font-normal leading-4 text-[#1c1917] transition hover:text-[#1c1917] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"
                 : "inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
             )}
           >
             {!compactTrigger && <FunnelSimple size={14} />}
             <span className="min-w-0 truncate">{activeFilterLabel}</span>
-            <CaretDown size={12} />
+            {compactTrigger ? <CaretUpDown size={13} weight="regular" /> : <CaretDown size={12} />}
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="start">{filterMenu}</DropdownContent>
