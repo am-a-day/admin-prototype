@@ -18,6 +18,7 @@ import {
   Prohibit,
   Trash,
 } from "@phosphor-icons/react";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   CatalogSchedulePopover,
@@ -50,6 +51,7 @@ export type CatalogPositionAvailabilityMenuProps = {
   onActionComplete?: () => void;
   onMenuClose?: () => void;
   onScheduleEditorPinnedChange?: (pinned: boolean) => void;
+  onStopEditorPinnedChange?: (pinned: boolean) => void;
 };
 
 type MenuItemProps = {
@@ -296,6 +298,7 @@ export function CatalogPositionAvailabilityMenu({
   onScheduleChange,
   onStopDisplayModeChange,
   onScheduleEditorPinnedChange,
+  onStopEditorPinnedChange,
 }: CatalogPositionAvailabilityMenuProps) {
   const [open, setOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
@@ -334,6 +337,11 @@ export function CatalogPositionAvailabilityMenu({
     if (!manualStopped) onManualStopChange(true);
   };
 
+  const setStopEditorOpen = (nextOpen: boolean) => {
+    setStopOpen(nextOpen);
+    onStopEditorPinnedChange?.(nextOpen);
+  };
+
   const setScheduleEditorOpen = (nextOpen: boolean) => {
     setScheduleOpen(nextOpen);
     onScheduleEditorPinnedChange?.(nextOpen);
@@ -345,7 +353,7 @@ export function CatalogPositionAvailabilityMenu({
               value="available"
               onSelect={(event) => {
                 event.preventDefault();
-                setStopOpen(false);
+                setStopEditorOpen(false);
                 setScheduleEditorOpen(false);
                 onManualStopChange(false);
               }}
@@ -360,68 +368,51 @@ export function CatalogPositionAvailabilityMenu({
               <span className="min-w-0 flex-1">Доступно</span>
             </DropdownMenu.RadioItem>
 
-            <DropdownMenu.Sub
+            <Popover
               open={stopOpen}
-              onOpenChange={(nextOpen) => {
-                if (scheduleOpen) return;
-                setStopOpen(nextOpen);
-              }}
+              modal={false}
+              onOpenChange={setStopEditorOpen}
             >
-              <DropdownMenu.SubTrigger
-                role="menuitemradio"
-                aria-checked={availability === "stopped"}
-                onPointerMove={() => {
-                  if (!scheduleOpen) setStopOpen(true);
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setScheduleEditorOpen(false);
-                  setStopOpen(true);
-                }}
-                className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
-              >
-                <CascadeAvailabilitySubTrigger
-                  checked={availability === "stopped"}
-                  icon={<LockLaminated size={14} aria-hidden="true" />}
-                  label="На стопе"
-                />
-              </DropdownMenu.SubTrigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.SubContent
-                  sideOffset={6}
-                  alignOffset={-5}
-                  collisionPadding={12}
-                  className={cn("z-[100005] min-w-[176px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+              <PopoverAnchor asChild>
+                <DropdownMenu.Item
+                  role="menuitemradio"
+                  aria-checked={availability === "stopped"}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setScheduleEditorOpen(false);
+                    onManualStopChange(true);
+                    setStopEditorOpen(true);
+                  }}
+                  className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
                 >
-                  {!manualStopped && (
-                    <>
-                      <DropdownActionItem
-                        icon={Prohibit}
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          onStopDisplayModeChange("hidden");
-                          onManualStopChange(true);
-                        }}
-                      >
-                        Поставить на стоп
-                      </DropdownActionItem>
-                      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-                    </>
-                  )}
-                  <div className="flex h-5 items-center px-2 text-[11px] leading-4 text-[#79716b]">
-                    Отображение в меню
-                  </div>
-                  <StopDisplayOptions
-                    value={mixed ? undefined : manualStopped ? stopDisplayMode : undefined}
-                    manualStopped={false}
-                    optionsDisabled={!manualStopped && !mixed}
-                    keepOpenOnChange
-                    comingSoonLabel="Как «скоро будет»"
-                    onChange={manualStopped || mixed ? selectStopDisplayMode : () => undefined}
+                  <CascadeAvailabilitySubTrigger
+                    checked={availability === "stopped"}
+                    icon={<LockLaminated size={14} aria-hidden="true" />}
+                    label="На стопе"
                   />
-                </DropdownMenu.SubContent>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Sub>
+                </DropdownMenu.Item>
+              </PopoverAnchor>
+              <PopoverContent
+                data-catalog-stop-popover
+                side="right"
+                align="start"
+                sideOffset={6}
+                collisionPadding={12}
+                onFocusOutside={(event) => event.preventDefault()}
+                className={cn("z-[100005] min-w-[176px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+              >
+                <div className="flex h-5 items-center px-2 text-[11px] leading-4 text-[#79716b]">
+                  Отображение в меню
+                </div>
+                <StopDisplayOptions
+                  value={mixed ? undefined : manualStopped ? stopDisplayMode : undefined}
+                  manualStopped={false}
+                  keepOpenOnChange
+                  comingSoonLabel="Как «скоро будет»"
+                  onChange={selectStopDisplayMode}
+                />
+              </PopoverContent>
+            </Popover>
 
             <DropdownMenu.Sub
               open={scheduleOpen}
@@ -432,7 +423,7 @@ export function CatalogPositionAvailabilityMenu({
                 aria-checked={availability === "scheduled"}
                 onClick={(event) => {
                   event.preventDefault();
-                  setStopOpen(false);
+                  setStopEditorOpen(false);
                   if (availability !== "scheduled") {
                     onScheduleChange(scheduleDraft, outsideScheduleDraft);
                   }
@@ -489,7 +480,7 @@ export function CatalogPositionAvailabilityMenu({
         if (!nextOpen && scheduleOpen) return;
         setOpen(nextOpen);
         if (!nextOpen) {
-          setStopOpen(false);
+          setStopEditorOpen(false);
           setScheduleEditorOpen(false);
         }
       }}

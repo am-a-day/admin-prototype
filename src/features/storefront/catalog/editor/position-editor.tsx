@@ -3390,6 +3390,7 @@ export function PositionEditor({
   const [titleDraft, setTitleDraft] = useState(item.title);
   const [positionActionsOpen, setPositionActionsOpen] = useState(false);
   const [positionScheduleEditorPinned, setPositionScheduleEditorPinned] = useState(false);
+  const [positionStopEditorPinned, setPositionStopEditorPinned] = useState(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
@@ -3570,6 +3571,7 @@ export function PositionEditor({
       else onUnavailableDisplayModeChange(displayMode);
     },
     onScheduleEditorPinnedChange: setPositionScheduleEditorPinned,
+    onStopEditorPinnedChange: setPositionStopEditorPinned,
     onMenuClose: () => setPositionActionsOpen(false),
   };
 
@@ -3600,11 +3602,22 @@ export function PositionEditor({
         open={fixture?.positionActionsOpen ? true : positionActionsOpen}
         onOpenChange={(nextOpen) => {
           setPositionActionsOpen(nextOpen);
-          if (!nextOpen) setPositionScheduleEditorPinned(false);
+          if (!nextOpen) {
+            setPositionScheduleEditorPinned(false);
+            setPositionStopEditorPinned(false);
+          }
         }}
       >
         <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
-        <DropdownContent align="start" preventOutsideDismiss={positionScheduleEditorPinned}>
+        <DropdownContent
+          align="start"
+          preventOutsideDismiss={(event) => (
+            positionScheduleEditorPinned
+            || (positionStopEditorPinned
+              && event.target instanceof Element
+              && Boolean(event.target.closest("[data-catalog-stop-popover]")))
+          )}
+        >
           <CatalogContextMenuContent
             entity="item"
             showAvailability

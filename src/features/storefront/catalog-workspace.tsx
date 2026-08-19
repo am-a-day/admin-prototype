@@ -6515,6 +6515,7 @@ function AuditRowActionsMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
+  const [stopEditorPinned, setStopEditorPinned] = useState(false);
   const availability: CatalogMenuAvailability = item.status === "stopped" || item.status === "coming-soon"
     ? "stopped"
     : item.scheduled
@@ -6526,7 +6527,10 @@ function AuditRowActionsMenu({
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) setScheduleEditorPinned(false);
+        if (!nextOpen) {
+          setScheduleEditorPinned(false);
+          setStopEditorPinned(false);
+        }
       }}
     >
       <DropdownMenu.Trigger asChild>
@@ -6539,7 +6543,12 @@ function AuditRowActionsMenu({
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent
-        preventOutsideDismiss={scheduleEditorPinned}
+        preventOutsideDismiss={(event) => (
+          scheduleEditorPinned
+          || (stopEditorPinned
+            && event.target instanceof Element
+            && Boolean(event.target.closest("[data-catalog-stop-popover]")))
+        )}
         className="min-w-[208px] rounded-[6px] border-[#e2e8f0] shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
       >
         <CatalogContextMenuContent
@@ -6575,6 +6584,7 @@ function AuditRowActionsMenu({
             onScheduleDelete: () => onAction("availability:schedule-delete"),
             onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
             onScheduleEditorPinnedChange: setScheduleEditorPinned,
+            onStopEditorPinnedChange: setStopEditorPinned,
             onMenuClose: () => setOpen(false),
           }}
         />
@@ -8255,10 +8265,20 @@ function OverviewWorkspace({
     updateItems(ids, update, clear);
     showFeedback(message);
   };
-  const setSelectedStopDisplayMode = (mode: CatalogStopDisplayMode) => {
+  const setSelectedStopDisplayMode = (mode: CatalogStopDisplayMode, clear = true) => {
     updateSelectedAvailabilityItems(
       (item) => ({ ...item, status: "stopped", scheduled: false, unavailableDisplayMode: mode }),
       "Позиции поставлены на стоп",
+      (item) => item.status !== "archive",
+      clear,
+    );
+  };
+  const activateSelectedStop = () => {
+    updateSelectedAvailabilityItems(
+      (item) => ({ ...item, status: "stopped", scheduled: false }),
+      "Позиции поставлены на стоп",
+      (item) => item.status !== "archive",
+      false,
     );
   };
   const removeSelectedStop = () => {
@@ -9231,6 +9251,7 @@ function OverviewWorkspace({
                     stopDisplayMode={selectedStopDisplayMode}
                     outsideScheduleMode={selectedOutsideScheduleMode}
                     onStopDisplayModeChange={setSelectedStopDisplayMode}
+                    onStopActivate={activateSelectedStop}
                     onRemoveStop={removeSelectedStop}
                     onScheduleChange={setSelectedSchedule}
                     onOpenDiscount={() => setBulkDialog({ type: "discount" })}

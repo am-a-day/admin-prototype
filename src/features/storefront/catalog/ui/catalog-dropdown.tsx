@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,9 @@ export const CATALOG_DROPDOWN_ITEM_CLASS =
   "flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4]";
 export const CATALOG_DROPDOWN_SEPARATOR_CLASS = "my-1 h-px bg-[#e2e8f0]";
 
+export type CatalogDropdownOutsideEvent = Parameters<NonNullable<ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onInteractOutside"]>>[0];
+export type CatalogDropdownOutsideDismiss = boolean | ((event: CatalogDropdownOutsideEvent) => boolean);
+
 export function DropdownContent({
   children,
   align = "end",
@@ -19,9 +22,13 @@ export function DropdownContent({
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
-  preventOutsideDismiss?: boolean;
+  preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
+  const shouldPreventOutsideDismiss = (event: CatalogDropdownOutsideEvent) => (
+    (typeof preventOutsideDismiss === "function" ? preventOutsideDismiss(event) : preventOutsideDismiss)
+    || shouldPreventOverlayDismissal(event)
+  );
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
@@ -29,18 +36,14 @@ export function DropdownContent({
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS, className)}
         onPointerDownOutside={(event) => {
-          if (preventOutsideDismiss) {
+          if (shouldPreventOutsideDismiss(event)) {
             event.preventDefault();
-            return;
           }
-          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
         onInteractOutside={(event) => {
-          if (preventOutsideDismiss) {
+          if (shouldPreventOutsideDismiss(event)) {
             event.preventDefault();
-            return;
           }
-          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
       >
         {marker}

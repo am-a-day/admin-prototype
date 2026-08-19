@@ -321,12 +321,19 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.queryByRole("menuitem", { name: "Архивировать" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Удалить" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("menuitemradio", { name: "На стопе" }));
-    expect(screen.getByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument();
+    const bulkStop = screen.getByRole("menuitemradio", { name: "На стопе" });
+    await user.hover(bulkStop);
+    expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument();
+    await user.click(bulkStop);
+    expect(bulkStop).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector("[data-catalog-stop-popover]")).toBeInTheDocument());
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
+    await waitFor(() => expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument());
+    expect(document.querySelector("[data-catalog-selection-toolbar]")).toHaveTextContent("1 выбрано");
 
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));
     const moreMenu = screen.getByRole("menu");
@@ -593,7 +600,7 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("keeps stop activation separate from stop display settings", async () => {
+  it("applies stop on click and opens stop display settings", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
@@ -607,22 +614,26 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "На стопе" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "false");
 
-    await user.hover(screen.getByRole("menuitemradio", { name: "На стопе" }));
-    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument());
-    expect(screen.getByText("Отображение в меню", { exact: true })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).not.toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).not.toHaveAttribute("aria-checked", "true");
+    const stop = screen.getByRole("menuitemradio", { name: "На стопе" });
+    await user.hover(stop);
+    expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument();
+    expect(stop).toHaveAttribute("aria-checked", "false");
 
-    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
+    await user.click(stop);
+    expect(stop).toHaveAttribute("aria-checked", "true");
+    expect(document.querySelector("[data-catalog-stop-popover]")).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitemradio", { name: "На стопе" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitem", { name: "На стопе" })).toBeInTheDocument();
+    expect(screen.getByText("Отображение в меню", { exact: true })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" }));
     expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitem", { name: "На стопе" })).toBeInTheDocument();
+    expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Скоро будет");
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    await waitFor(() => expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument());
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Скоро будет");
   });
 
@@ -663,9 +674,13 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(actions());
     await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
-    await user.hover(screen.getByRole("menuitemradio", { name: "На стопе" }));
-    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
-    expect(screen.getByRole("menuitem", { name: "На стопе" })).toBeInTheDocument();
+    const stop = screen.getByRole("menuitemradio", { name: "На стопе" });
+    await user.hover(stop);
+    expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument();
+    await user.click(stop);
+    await waitFor(() => expect(document.querySelector("[data-catalog-stop-popover]")).toBeInTheDocument());
+    expect(stop).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
 
     await user.hover(screen.getByRole("menuitemradio", { name: "По расписанию" }));
     expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument();
@@ -760,8 +775,13 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "На стопе" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "Скрывать из меню" })).not.toBeInTheDocument();
-    await user.hover(screen.getByRole("menuitemradio", { name: "На стопе" }));
-    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
+    const stop = screen.getByRole("menuitemradio", { name: "На стопе" });
+    await user.hover(stop);
+    expect(document.querySelector("[data-catalog-stop-popover]")).not.toBeInTheDocument();
+    await user.click(stop);
+    expect(stop).toHaveAttribute("aria-checked", "true");
+    expect(document.querySelector("[data-catalog-stop-popover]")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).toBeInTheDocument();
   });

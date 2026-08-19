@@ -45,7 +45,7 @@ import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableSearchControl } from "../ui/catalog-table-controls";
-import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
+import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS, type CatalogDropdownOutsideDismiss, type CatalogDropdownOutsideEvent } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
@@ -335,9 +335,13 @@ export function DropdownContent({
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
-  preventOutsideDismiss?: boolean;
+  preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
+  const shouldPreventOutsideDismiss = (event: CatalogDropdownOutsideEvent) => (
+    (typeof preventOutsideDismiss === "function" ? preventOutsideDismiss(event) : preventOutsideDismiss)
+    || shouldPreventOverlayDismissal(event)
+  );
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
@@ -345,10 +349,10 @@ export function DropdownContent({
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
         onPointerDownOutside={(event) => {
-          if (preventOutsideDismiss || shouldPreventOverlayDismissal(event)) event.preventDefault();
+          if (shouldPreventOutsideDismiss(event)) event.preventDefault();
         }}
         onInteractOutside={(event) => {
-          if (preventOutsideDismiss || shouldPreventOverlayDismissal(event)) event.preventDefault();
+          if (shouldPreventOutsideDismiss(event)) event.preventDefault();
         }}
       >
         {marker}
@@ -394,7 +398,7 @@ function ToolbarDropdown({
 }: {
   label: string;
   children: ReactNode;
-  preventOutsideDismiss?: boolean;
+  preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
   onOpenChange?: (open: boolean) => void;
 }) {
   return (
@@ -1269,6 +1273,7 @@ export function SelectionToolbar({
   stopDisplayMode,
   outsideScheduleMode,
   onStopDisplayModeChange,
+  onStopActivate,
   onRemoveStop,
   onScheduleChange,
   onOpenDiscount,
@@ -1292,6 +1297,7 @@ export function SelectionToolbar({
   stopDisplayMode: CatalogStopDisplayMode;
   outsideScheduleMode: CatalogStopDisplayMode;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+  onStopActivate: () => void;
   onRemoveStop: () => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onOpenDiscount: () => void;
@@ -1304,6 +1310,7 @@ export function SelectionToolbar({
   labelActions?: ReactNode;
 }) {
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
+  const [stopEditorPinned, setStopEditorPinned] = useState(false);
 
   return (
     <CatalogSelectionToolbar
@@ -1324,9 +1331,17 @@ export function SelectionToolbar({
           </button>
           <ToolbarDropdown
             label="Доступность"
-            preventOutsideDismiss={scheduleEditorPinned}
+            preventOutsideDismiss={(event) => (
+              scheduleEditorPinned
+              || (stopEditorPinned
+                && event.target instanceof Element
+                && Boolean(event.target.closest("[data-catalog-stop-popover]")))
+            )}
             onOpenChange={(open) => {
-              if (!open) setScheduleEditorPinned(false);
+              if (!open) {
+                setScheduleEditorPinned(false);
+                setStopEditorPinned(false);
+              }
             }}
           >
             <CatalogPositionAvailabilityMenu
@@ -1339,11 +1354,13 @@ export function SelectionToolbar({
               stopDisplayMode={stopDisplayMode}
               outsideScheduleMode={outsideScheduleMode}
               onManualStopChange={(stopped) => {
-                if (!stopped) onRemoveStop();
+                if (stopped) onStopActivate();
+                else onRemoveStop();
               }}
               onScheduleChange={onScheduleChange}
               onStopDisplayModeChange={onStopDisplayModeChange}
               onScheduleEditorPinnedChange={setScheduleEditorPinned}
+              onStopEditorPinnedChange={setStopEditorPinned}
             />
           </ToolbarDropdown>
           <DropdownMenu.Root>
