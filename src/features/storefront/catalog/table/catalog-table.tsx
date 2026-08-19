@@ -35,6 +35,7 @@ import {
 } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
@@ -47,6 +48,7 @@ import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableSearchControl } from "../ui/catalog-table-controls";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS, type CatalogDropdownOutsideDismiss, type CatalogDropdownOutsideEvent } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
+import { DiscountBlock, calculateDiscountPercent } from "../editor/position-editor";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import { StructureDragHandle } from "../workspace/dnd";
@@ -1276,7 +1278,8 @@ export function SelectionToolbar({
   onStopActivate,
   onRemoveStop,
   onScheduleChange,
-  onOpenDiscount,
+  discountItem,
+  onApplyDiscount,
   onMove,
   onOpenDelete,
   onArchive,
@@ -1300,7 +1303,8 @@ export function SelectionToolbar({
   onStopActivate: () => void;
   onRemoveStop: () => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onOpenDiscount: () => void;
+  discountItem: CatalogItem | null;
+  onApplyDiscount: (percent: number) => void;
   onMove: (anchor: MovePopoverAnchor) => void;
   onOpenDelete: () => void;
   onArchive: () => void;
@@ -1311,6 +1315,7 @@ export function SelectionToolbar({
 }) {
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const [stopEditorPinned, setStopEditorPinned] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
 
   return (
     <CatalogSelectionToolbar
@@ -1363,32 +1368,125 @@ export function SelectionToolbar({
               onStopEditorPinnedChange={setStopEditorPinned}
             />
           </ToolbarDropdown>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Ещё действия"
-                className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
-              >
-                <DotsThree size={16} weight="regular" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownContent align="start">
-              <DropdownActionItem icon={SealPercent} onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-              {labelActions && (
-                <>
-                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                  <div className="flex h-8 items-center">{labelActions}</div>
-                </>
-              )}
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              {hasNonArchivedItems && <DropdownActionItem icon={Archive} onSelect={onArchive}>Архивировать</DropdownActionItem>}
-              {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
-              <DropdownActionItem icon={Trash} onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
-            </DropdownContent>
-          </DropdownMenu.Root>
+          <Popover
+            open={discountOpen}
+            onOpenChange={setDiscountOpen}
+            modal={false}
+          >
+            <PopoverAnchor asChild>
+              <span className="inline-flex shrink-0">
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Ещё действия"
+                      className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+                    >
+                      <DotsThree size={16} weight="regular" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownContent align="start">
+                    <DropdownActionItem
+                      icon={SealPercent}
+                      onSelect={() => window.setTimeout(() => setDiscountOpen(true), 50)}
+                    >
+                      Задать скидку
+                    </DropdownActionItem>
+                    {labelActions && (
+                      <>
+                        <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                        <div className="flex h-8 items-center">{labelActions}</div>
+                      </>
+                    )}
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                    {hasNonArchivedItems && <DropdownActionItem icon={Archive} onSelect={onArchive}>Архивировать</DropdownActionItem>}
+                    {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
+                    <DropdownActionItem icon={Trash} onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
+                  </DropdownContent>
+                </DropdownMenu.Root>
+              </span>
+            </PopoverAnchor>
+            {discountItem && (
+              <BulkDiscountPopover
+                item={discountItem}
+                count={count}
+                onClose={() => setDiscountOpen(false)}
+                onApply={onApplyDiscount}
+              />
+            )}
+          </Popover>
       </span>
     </CatalogSelectionToolbar>
+  );
+}
+
+function BulkDiscountPopover({
+  item,
+  count,
+  onClose,
+  onApply,
+}: {
+  item: CatalogItem;
+  count: number;
+  onClose: () => void;
+  onApply: (percent: number) => void;
+}) {
+  const initialPercent = item.hasDiscount && item.price > 0 && item.priceWithSale != null
+    ? calculateDiscountPercent(item.price, item.priceWithSale)
+    : 10;
+  const [percent, setPercent] = useState(initialPercent);
+
+  useEffect(() => {
+    setPercent(item.hasDiscount && item.price > 0 && item.priceWithSale != null
+      ? calculateDiscountPercent(item.price, item.priceWithSale)
+      : 10);
+  }, [item.id, item.hasDiscount, item.price, item.priceWithSale]);
+
+  return (
+    <PopoverContent
+      data-catalog-discount-popover
+      side="bottom"
+      align="end"
+      sideOffset={8}
+      collisionPadding={12}
+      className="z-[100005] w-[360px] p-3"
+    >
+      <div className="mb-2 text-[12px] leading-4 text-[#79716b]">
+        Для {count} {count === 1 ? "позиции" : "позиций"}
+      </div>
+      <DiscountBlock
+        item={item}
+        basePrice={item.price}
+        autofocusKey={1}
+        onChange={(priceWithSale) => {
+          if (item.price <= 0 || priceWithSale == null) {
+            setPercent(0);
+            return;
+          }
+          setPercent(Math.max(0, Math.min(99, calculateDiscountPercent(item.price, priceWithSale))));
+        }}
+        onRemove={() => setPercent(0)}
+      />
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-8 rounded-[8px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onApply(percent);
+            onClose();
+          }}
+          className="h-8 rounded-[8px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
+        >
+          Применить
+        </button>
+      </div>
+    </PopoverContent>
   );
 }
 

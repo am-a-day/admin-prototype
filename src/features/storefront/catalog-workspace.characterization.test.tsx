@@ -346,7 +346,9 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(setDiscountItem);
     expect(screen.queryByRole("menuitem", { name: "Задать скидку" })).not.toBeInTheDocument();
-    const discountInput = screen.getByDisplayValue("10");
+    await waitFor(() => expect(document.querySelector("[data-catalog-discount-popover]")).toBeInTheDocument());
+    expect(document.querySelector("[data-catalog-bulk-modal]")).not.toBeInTheDocument();
+    const discountInput = await screen.findByDisplayValue("10");
     await user.clear(discountInput);
     await user.type(discountInput, "0");
     await user.click(screen.getByRole("button", { name: "Применить" }));

@@ -504,7 +504,7 @@ function calculateDiscountedPrice(basePrice: number, percent: number): number {
   return Math.round(basePrice * (1 - percent / 100));
 }
 
-function calculateDiscountPercent(basePrice: number, discountedPrice: number): number {
+export function calculateDiscountPercent(basePrice: number, discountedPrice: number): number {
   if (basePrice <= 0) return 0;
   return ((basePrice - discountedPrice) / basePrice) * 100;
 }
@@ -801,7 +801,7 @@ function DiscountInputField({
   );
 }
 
-function DiscountBlock({
+export function DiscountBlock({
   item,
   basePrice,
   autofocusKey,

@@ -6782,7 +6782,6 @@ function SectionCompositionList({
 
 type BulkDialog =
   | { type: "schedule" }
-  | { type: "discount" }
   | { type: "placeholder"; title: string; text: string }
   | { type: "delete" };
 
@@ -6790,17 +6789,13 @@ function BulkDialogModal({
   dialog,
   count,
   onClose,
-  onApplyDiscount,
   onConfirmDelete,
 }: {
   dialog: BulkDialog;
   count: number;
   onClose: () => void;
-  onApplyDiscount: (percent: number) => void;
   onConfirmDelete: () => void;
 }) {
-  const [discount, setDiscount] = useState("10");
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -6812,22 +6807,18 @@ function BulkDialogModal({
   const title =
     dialog.type === "schedule"
       ? "Расписание доступности"
-      : dialog.type === "discount"
-        ? "Задать скидку"
-        : dialog.type === "delete"
-          ? `Удалить ${count} ${plural(count, "позицию", "позиции", "позиций")}?`
-          : dialog.title;
+      : dialog.type === "delete"
+        ? `Удалить ${count} ${plural(count, "позицию", "позиции", "позиций")}?`
+        : dialog.title;
   const text =
     dialog.type === "schedule"
       ? "Здесь должен быть виджет расписания"
-      : dialog.type === "discount"
-        ? `Для ${count} ${plural(count, "позиции", "позиций", "позиций")}`
-        : dialog.type === "delete"
-          ? "Для прототипа это действие можно отменить только перезагрузкой данных."
-          : dialog.text;
+      : dialog.type === "delete"
+        ? "Для прототипа это действие можно отменить только перезагрузкой данных."
+        : dialog.text;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
+    <div data-catalog-bulk-modal className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
       <div className="w-[360px] rounded-[16px] border border-[#e7e5e4] bg-white p-4 shadow-[0_24px_64px_rgba(41,37,36,0.22)]">
         <h2 className="text-[15px] font-medium text-[#292524]">{title}</h2>
         <p className="mt-2 text-[13px] leading-5 text-[#79716b]">{text}</p>
@@ -6835,17 +6826,6 @@ function BulkDialogModal({
           <p className="mt-1 text-[12px] leading-4 text-[#a8a29e]">
             Позже используем тот же виджет, что в окне позиции.
           </p>
-        )}
-        {dialog.type === "discount" && (
-          <label className="mt-4 block">
-            <span className="text-[12px] font-medium text-[#79716b]">Процент скидки</span>
-            <input
-              value={discount}
-              onChange={(event) => setDiscount(event.target.value.replace(/[^\d]/g, "").slice(0, 2))}
-              autoFocus
-              className="mt-1 h-9 w-full rounded-[10px] border border-[#e7e5e4] px-3 text-[14px] text-[#292524] outline-none focus:ring-2 focus:ring-[#292524]/10"
-            />
-          </label>
         )}
         <div className="mt-5 flex justify-end gap-2">
           <button
@@ -6855,15 +6835,6 @@ function BulkDialogModal({
           >
             {dialog.type === "schedule" || dialog.type === "placeholder" ? "Закрыть" : "Отмена"}
           </button>
-          {dialog.type === "discount" && (
-            <button
-              type="button"
-              onClick={() => onApplyDiscount(Number(discount) || 0)}
-              className="h-8 rounded-[10px] bg-[#292524] px-3 text-[13px] font-medium text-white transition hover:bg-[#44403b]"
-            >
-              Применить
-            </button>
-          )}
           {dialog.type === "delete" && (
             <button
               type="button"
@@ -9254,7 +9225,8 @@ function OverviewWorkspace({
                     onStopActivate={activateSelectedStop}
                     onRemoveStop={removeSelectedStop}
                     onScheduleChange={setSelectedSchedule}
-                    onOpenDiscount={() => setBulkDialog({ type: "discount" })}
+                    discountItem={selectedItems[0] ?? null}
+                    onApplyDiscount={applySelectedDiscount}
                     onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
                     onOpenDelete={() => setBulkDialog({ type: "delete" })}
                     onArchive={archiveSelectedItems}
@@ -9424,7 +9396,6 @@ function OverviewWorkspace({
                       dialog={bulkDialog}
                       count={selectedIds.size}
                       onClose={() => setBulkDialog(null)}
-                      onApplyDiscount={applySelectedDiscount}
                       onConfirmDelete={deleteSelectedItems}
                     />
                   )}
