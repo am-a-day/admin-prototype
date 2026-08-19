@@ -44,8 +44,15 @@ import type { CatalogPriceSortDirection } from "../navigation/types";
 import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
 import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
-import { CatalogThumbnail } from "../ui/catalog-thumbnail";
-import { CatalogTableSearchControl } from "../ui/catalog-table-controls";
+import { CATALOG_TABLE_ROW_THUMBNAIL_CLASS, CatalogThumbnail } from "../ui/catalog-thumbnail";
+import { CatalogTableFilterTrigger, CatalogTableToolbarShell } from "../ui/catalog-table-controls";
+import {
+  CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
+  CATALOG_TABLE_HEADER_STICKY_CLASS,
+  CATALOG_TABLE_HEADER_SURFACE_CLASS,
+  CATALOG_TABLE_ROW_HEIGHT_CLASS,
+  CATALOG_TABLE_SELECTION_COLUMN_WIDTH,
+} from "../ui/catalog-layout";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS, type CatalogDropdownOutsideDismiss, type CatalogDropdownOutsideEvent } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { DiscountBlock, calculateDiscountPercent } from "../editor/position-editor";
@@ -119,7 +126,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 const TABLE_COLUMN_WIDTHS = {
-  selection: 42,
+  selection: CATALOG_TABLE_SELECTION_COLUMN_WIDTH,
   position: 330,
   description: 280,
   weight: 90,
@@ -132,7 +139,7 @@ const TABLE_COLUMN_WIDTHS = {
   stickers: 140,
   upsells: 100,
   lastModified: 154,
-  actions: 48,
+  actions: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
 } as const;
 
 export const DEFAULT_TABLE_COLUMN_SIZING: ColumnSizingState = {
@@ -668,10 +675,10 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn("sticky z-10 bg-[#fafaf9]", offsetForLocalHeader ? "top-[87px]" : "top-[43px]")}
+      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[87px]")}
       data-catalog-table-header
     >
-      <div className="flex h-[38px] min-w-0 items-center overflow-hidden border-b border-[#e7e5e4]">
+      <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
         <div
           className="flex h-full min-w-full shrink-0 items-center"
           style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
@@ -810,38 +817,28 @@ export function CatalogTableToolbar({
   onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
 }) {
   return (
-    <div
-      data-catalog-table-toolbar
-      className="sticky top-0 z-20 flex h-[43px] min-w-0 items-center justify-between border-b border-[#e7e5e4] bg-white pl-1 pr-4 py-[6px]"
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <CatalogTableSearchControl
-          value={query}
-          onValueChange={onQueryChange}
-          ariaLabel="Найти позицию"
-          className="w-full"
-          filter={(
-            <CatalogTableFilterBar
-              activeFilterIds={activeFilterIds}
-              mandatoryFilterId={mandatoryFilterId}
-              sectionScopeId={sectionScopeId}
-              items={items}
-              table={table}
-              onResetColumns={onResetColumns}
-              onActiveFilterChange={onActiveFilterChange}
-              headerActionsOnly
-              compactTrigger
-              tagCategoryActive={tagCategoryActive}
-              stickerCategoryActive={stickerCategoryActive}
-              onTagCategoryChange={onTagCategoryChange}
-              onStickerCategoryChange={onStickerCategoryChange}
-            />
-          )}
+    <CatalogTableToolbarShell
+      value={query}
+      onValueChange={onQueryChange}
+      ariaLabel="Найти позицию"
+      filter={(
+        <CatalogTableFilterBar
+          activeFilterIds={activeFilterIds}
+          mandatoryFilterId={mandatoryFilterId}
+          sectionScopeId={sectionScopeId}
+          items={items}
+          table={table}
+          onResetColumns={onResetColumns}
+          onActiveFilterChange={onActiveFilterChange}
+          headerActionsOnly
+          tagCategoryActive={tagCategoryActive}
+          stickerCategoryActive={stickerCategoryActive}
+          onTagCategoryChange={onTagCategoryChange}
+          onStickerCategoryChange={onStickerCategoryChange}
         />
-      </div>
-      <span className="mx-3 h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />
-      <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
-    </div>
+      )}
+      endContent={<CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />}
+    />
   );
 }
 
@@ -995,7 +992,8 @@ function AuditDishRowContent({
         }
       }}
       className={cn(
-        "group relative flex h-[38px] cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+        "group relative flex cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+        CATALOG_TABLE_ROW_HEIGHT_CLASS,
         selected ? "bg-[#f1f4ff] hover:bg-[#f1f4ff]" : "bg-white hover:bg-[#fafaf9]",
         highlighted && !active && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
         active && "bg-[#f1f1ea] shadow-[inset_3px_0_0_#57534d] hover:bg-[#ecece6]",
@@ -1037,7 +1035,7 @@ function AuditDishRowContent({
           case "position":
             return (
               <div key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center gap-[7px] pr-3">
-                <CatalogThumbnail src={item.thumbnailUrl} kind="item" className="h-5 w-5 rounded-[3px]" />
+                <CatalogThumbnail src={item.thumbnailUrl} kind="item" className={CATALOG_TABLE_ROW_THUMBNAIL_CLASS} />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
                     {itemTitle}
@@ -1551,7 +1549,6 @@ export function CatalogTableFilterBar({
   onResetColumns,
   simple = false,
   headerActionsOnly = false,
-  compactTrigger = false,
 }: {
   activeFilterIds: OverviewFilterId[];
   mandatoryFilterId?: OverviewFilterId;
@@ -1562,7 +1559,6 @@ export function CatalogTableFilterBar({
   onResetColumns: () => void;
   simple?: boolean;
   headerActionsOnly?: boolean;
-  compactTrigger?: boolean;
   tagCategoryActive?: boolean;
   stickerCategoryActive?: boolean;
   onTagCategoryChange?: (active: boolean) => void;
@@ -1670,20 +1666,7 @@ export function CatalogTableFilterBar({
         }}
       >
         <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Фильтры"
-            data-catalog-table-filter-trigger
-            className={cn(
-              compactTrigger
-                ? "inline-flex shrink-0 items-center gap-1 rounded-[7px] py-1 text-[13px] font-normal leading-4 text-[#1c1917] transition hover:text-[#1c1917] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"
-                : "inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            )}
-          >
-            {!compactTrigger && <FunnelSimple size={14} />}
-            <span className="min-w-0 truncate">{activeFilterLabel}</span>
-            {compactTrigger ? <CaretUpDown size={13} weight="regular" /> : <CaretDown size={12} />}
-          </button>
+          <CatalogTableFilterTrigger label={activeFilterLabel} ariaLabel="Фильтры" />
         </DropdownMenu.Trigger>
         <DropdownContent align="start">{filterMenu}</DropdownContent>
       </DropdownMenu.Root>

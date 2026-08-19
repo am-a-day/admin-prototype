@@ -138,7 +138,10 @@ import {
 } from "./catalog/sidebar/section-tree";
 import { CatalogMenuSwitcher } from "./catalog/sidebar/catalog-menu-switcher";
 import { CatalogActionButton } from "./catalog/ui/catalog-action-button";
-import { CatalogThumbnail } from "./catalog/ui/catalog-thumbnail";
+import {
+  CATALOG_SECTION_HEADER_THUMBNAIL_CLASS,
+  CatalogThumbnail,
+} from "./catalog/ui/catalog-thumbnail";
 import {
   CatalogDndRow,
   catalogDndId,
@@ -154,7 +157,10 @@ import {
   usePrefersReducedMotion,
 } from "./catalog/workspace/dnd";
 import { SubsectionList } from "./catalog/workspace/subsections";
-import { CATALOG_SECTION_TO_TABLE_GAP_CLASS } from "./catalog/ui/catalog-layout";
+import {
+  CATALOG_PAGE_HEADER_CLASS,
+  CATALOG_SECTION_TO_TABLE_GAP_CLASS,
+} from "./catalog/ui/catalog-layout";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
   CATALOG_INFORMATION_COLUMN_IDS,
@@ -2419,14 +2425,17 @@ function SectionEditor({
         className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
       >
         <div className="w-full min-w-0">
-          <div className="flex items-center gap-2 pb-2 pt-3">
+          <div className={CATALOG_PAGE_HEADER_CLASS}>
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
                 <button
                   type="button"
                   aria-label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"}
                   onClick={() => imageInputRef.current?.click()}
-                  className="group/section-icon relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[#e6e6db] text-[#a8a29e] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/15 focus-visible:ring-offset-1"
+                  className={cn(
+                    "group/section-icon relative flex shrink-0 items-center justify-center overflow-hidden bg-[#e6e6db] text-[#a8a29e] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/15 focus-visible:ring-offset-1",
+                    CATALOG_SECTION_HEADER_THUMBNAIL_CLASS,
+                  )}
                 >
                   {section.imageUrl ? (
                     <img src={section.imageUrl} alt="" className="h-full w-full object-cover" />
@@ -2772,7 +2781,7 @@ function UnifiedSectionTableHeader({
             aria-label={`Действия с разделом «${section.name}»`}
             className="group flex min-w-0 items-center gap-1.5 rounded-[8px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-[#e6e6db] text-[#a8a29e]">
+            <span className={cn("flex shrink-0 items-center justify-center overflow-hidden bg-[#e6e6db] text-[#a8a29e]", CATALOG_SECTION_HEADER_THUMBNAIL_CLASS)}>
               {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={13} />}
             </span>
             <span className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">{section.name}</span>
@@ -9153,7 +9162,7 @@ function OverviewWorkspace({
           )}
         >
           <div className="w-full min-w-0">
-            <div className="flex w-full items-center gap-3 pt-[18px]">
+            <div className={CATALOG_PAGE_HEADER_CLASS}>
               <div className="min-w-0 flex-1">
                 {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
               </div>

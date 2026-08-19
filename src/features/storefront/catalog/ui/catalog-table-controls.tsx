@@ -1,8 +1,42 @@
-import { CaretDown, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { CaretUpDown, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { useState, type ReactNode, type RefObject } from "react";
+import { forwardRef, useState, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
+import {
+  CATALOG_TABLE_TOOLBAR_CLASS,
+  CATALOG_TABLE_TOOLBAR_DIVIDER_CLASS,
+  CATALOG_TABLE_TOOLBAR_GROUP_CLASS,
+} from "./catalog-layout";
 
 export const CATALOG_TABLE_SEARCH_WIDTH = "w-[clamp(300px,30vw,360px)] max-w-full";
+
+type CatalogTableFilterTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  label: string;
+  ariaLabel?: string;
+};
+
+export const CatalogTableFilterTrigger = forwardRef<HTMLButtonElement, CatalogTableFilterTriggerProps>(function CatalogTableFilterTrigger({
+  label,
+  ariaLabel = "Фильтры",
+  className,
+  ...buttonProps
+}, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      {...buttonProps}
+      aria-label={ariaLabel}
+      data-catalog-table-filter-trigger
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-[7px] py-1 text-[13px] font-normal leading-4 text-[#1c1917] transition hover:text-[#1c1917] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20",
+        className,
+      )}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <CaretUpDown size={13} weight="regular" />
+    </button>
+  );
+});
 
 export function CatalogTableSearch({
   value,
@@ -87,16 +121,7 @@ export function CatalogTableSearchControl({
         className,
       )}
     >
-      {filter ?? (
-        <button
-          type="button"
-          aria-label="Фильтр таблицы"
-          className="inline-flex h-full shrink-0 items-center gap-1 rounded-l-[7px] px-2 text-[12px] font-normal leading-4 text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"
-        >
-          Все
-          <CaretDown size={12} weight="regular" />
-        </button>
-      )}
+      {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
       {focused && <span data-catalog-table-search-divider className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />}
       <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[#a6a09b]">
         {showSearchHint && <MagnifyingGlass size={14} className="shrink-0" />}
@@ -124,6 +149,54 @@ export function CatalogTableSearchControl({
         >
           <X size={13} weight="regular" />
         </button>
+      )}
+    </div>
+  );
+}
+
+export function CatalogTableToolbarShell({
+  value,
+  onValueChange,
+  filter,
+  placeholder = "Поиск по названию",
+  ariaLabel,
+  inputRef,
+  onFocus,
+  onBlur,
+  endContent,
+  className,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  filter?: ReactNode;
+  placeholder?: string;
+  ariaLabel: string;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  endContent?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div data-catalog-table-toolbar className={cn(CATALOG_TABLE_TOOLBAR_CLASS, className)}>
+      <div className={CATALOG_TABLE_TOOLBAR_GROUP_CLASS}>
+        <CatalogTableSearchControl
+          value={value}
+          onValueChange={onValueChange}
+          filter={filter}
+          placeholder={placeholder}
+          ariaLabel={ariaLabel}
+          inputRef={inputRef}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          className="w-full"
+        />
+      </div>
+      {endContent != null && (
+        <>
+          <span className={CATALOG_TABLE_TOOLBAR_DIVIDER_CLASS} aria-hidden="true" />
+          {endContent}
+        </>
       )}
     </div>
   );
