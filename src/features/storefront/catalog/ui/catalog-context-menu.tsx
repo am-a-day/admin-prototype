@@ -76,6 +76,7 @@ type AvailabilityScheduleSubmenuProps = {
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onScheduleDelete: () => void;
   onActionComplete?: () => void;
+  label?: string;
 };
 
 function AvailabilityScheduleSubmenu({
@@ -86,6 +87,7 @@ function AvailabilityScheduleSubmenu({
   onScheduleChange,
   onScheduleDelete,
   onActionComplete,
+  label,
 }: AvailabilityScheduleSubmenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -96,7 +98,7 @@ function AvailabilityScheduleSubmenu({
     >
       <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
         <CalendarBlank size={15} className="shrink-0 text-[#57534d]" />
-        <span className="min-w-0 flex-1 truncate">{hasSchedule ? "Расписание" : "Добавить расписание"}</span>
+        <span className="min-w-0 flex-1 truncate">{label ?? (hasSchedule ? "Расписание" : "Добавить расписание")}</span>
         <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
@@ -132,7 +134,7 @@ function StopDisplaySubmenu({
   onChange,
   onResume,
 }: {
-  value: CatalogStopDisplayMode;
+  value?: CatalogStopDisplayMode;
   manualStopped: boolean;
   onChange: (mode: CatalogStopDisplayMode) => void;
   onResume: () => void;
@@ -180,11 +182,15 @@ function StopAvailabilitySubmenu({
   stopDisplayMode,
   onManualStopChange,
   onStopDisplayModeChange,
+  onResume,
+  label,
 }: {
   manualStopped: boolean;
-  stopDisplayMode: CatalogStopDisplayMode;
-  onManualStopChange: (stopped: boolean) => void;
+  stopDisplayMode?: CatalogStopDisplayMode;
+  onManualStopChange?: (stopped: boolean) => void;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+  onResume?: () => void;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -192,7 +198,7 @@ function StopAvailabilitySubmenu({
     <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
       <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
         <Prohibit size={15} className="shrink-0 text-[#57534d]" />
-        <span className="min-w-0 flex-1 truncate">{manualStopped ? "Позиция на стопе" : "Поставить на стоп"}</span>
+        <span className="min-w-0 flex-1 truncate">{label ?? (manualStopped ? "Позиция на стопе" : "Поставить на стоп")}</span>
         <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
@@ -201,11 +207,12 @@ function StopAvailabilitySubmenu({
           manualStopped={manualStopped}
           onChange={(mode) => {
             onStopDisplayModeChange(mode);
-            if (!manualStopped) onManualStopChange(true);
+            if (!manualStopped) onManualStopChange?.(true);
             setOpen(false);
           }}
           onResume={() => {
-            onManualStopChange(false);
+            onResume?.();
+            onManualStopChange?.(false);
             setOpen(false);
           }}
         />
@@ -245,6 +252,50 @@ export function CatalogPositionAvailabilityMenu({
         onActionComplete={onActionComplete}
       />
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+    </>
+  );
+}
+
+export type CatalogBulkAvailabilityMenuProps = {
+  scheduleId: string;
+  hasStopped: boolean;
+  hasSchedule: boolean;
+  weeklySchedule: WeeklySchedule;
+  outsideScheduleMode: CatalogStopDisplayMode;
+  onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+  onRemoveStop: () => void;
+  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
+  onScheduleDelete: () => void;
+};
+
+export function CatalogBulkAvailabilityMenu({
+  scheduleId,
+  hasStopped,
+  hasSchedule,
+  weeklySchedule,
+  outsideScheduleMode,
+  onStopDisplayModeChange,
+  onRemoveStop,
+  onScheduleChange,
+  onScheduleDelete,
+}: CatalogBulkAvailabilityMenuProps) {
+  return (
+    <>
+      <StopAvailabilitySubmenu
+        label="Поставить на стоп"
+        manualStopped={hasStopped}
+        onStopDisplayModeChange={onStopDisplayModeChange}
+        onResume={onRemoveStop}
+      />
+      <AvailabilityScheduleSubmenu
+        label={hasSchedule ? "Изменить расписание" : "Добавить расписание"}
+        scheduleId={scheduleId}
+        hasSchedule={hasSchedule}
+        weeklySchedule={weeklySchedule}
+        outsideScheduleMode={outsideScheduleMode}
+        onScheduleChange={onScheduleChange}
+        onScheduleDelete={onScheduleDelete}
+      />
     </>
   );
 }

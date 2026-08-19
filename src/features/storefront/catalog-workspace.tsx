@@ -7843,6 +7843,7 @@ function OverviewWorkspace({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const tableHorizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const tableBottomScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const [tableHorizontalScrollLeft, setTableHorizontalScrollLeft] = useState(0);
   const [tableHorizontalScrollbar, setTableHorizontalScrollbar] = useState({ visible: false, width: 0, viewportWidth: 0 });
   const updateTableHorizontalScrollbar = useCallback(() => {
     const source = tableHorizontalScrollRef.current;
@@ -8047,6 +8048,18 @@ function OverviewWorkspace({
   const statusMeta = OVERVIEW_FILTER_META[activeDisplayFilterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
   const visibleIdKey = useMemo(() => visibleIds.join("|"), [visibleIds]);
+  const selectedItems = useMemo(() => items.filter((item) => selectedIds.has(item.id)), [items, selectedIds]);
+  const selectedAvailabilityItems = useMemo(
+    () => selectedItems.filter((item) => item.status !== "archive"),
+    [selectedItems],
+  );
+  const selectedScheduleSource = selectedItems.find((item) => item.scheduled) ?? selectedItems[0];
+  const selectedHasStopped = selectedItems.some((item) => item.status === "stopped" || item.status === "coming-soon");
+  const selectedHasSchedule = selectedItems.some((item) => item.scheduled);
+  const selectedHasArchivedItems = selectedItems.some((item) => item.status === "archive");
+  const selectedHasNonArchivedItems = selectedItems.some((item) => item.status !== "archive");
+  const selectedWeeklySchedule = selectedScheduleSource?.weeklySchedule ?? createDefaultWeeklySchedule();
+  const selectedOutsideScheduleMode = selectedScheduleSource?.outsideScheduleMode ?? "hidden";
   const allVisibleSelected = useMemo(
     () => visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id)),
     [selectedIds, visibleIds],
@@ -8180,20 +8193,68 @@ function OverviewWorkspace({
     updateItems(selectedIds, update, true);
     showFeedback(message);
   };
-  const setSelectedStatus = (status: CatalogItem["status"]) => {
-    const label = status === "archive" ? "Позиции перенесены в архив" : status === "stopped" ? "Позиции поставлены на стоп" : status === "coming-soon" ? "Позиции отмечены как скоро доступные" : "Позиции возвращены в меню";
-    updateSelectedItems((item) => ({ ...item, status }), label);
+  const updateSelectedAvailabilityItems = (
+    update: (item: CatalogItem) => CatalogItem,
+    message: string,
+    predicate: (item: CatalogItem) => boolean = (item) => item.status !== "archive",
+    clear = true,
+  ) => {
+    const ids = new Set(selectedAvailabilityItems.filter(predicate).map((item) => item.id));
+    if (ids.size === 0) return;
+    updateItems(ids, update, clear);
+    showFeedback(message);
   };
-  const setSelectedAvailability = (selection: "available" | "stop-soon" | "stop-hidden") => {
-    if (selection === "available") {
-      updateSelectedItems((item) => ({ ...item, status: "active", scheduled: false }), "Позиции всегда доступны");
-      return;
-    }
-    if (selection === "stop-soon") {
-      updateSelectedItems((item) => ({ ...item, status: "stopped", unavailableDisplayMode: "comingSoon" }), "Позиции отмечены как скоро доступные");
-      return;
-    }
-    updateSelectedItems((item) => ({ ...item, status: "stopped", unavailableDisplayMode: "hidden" }), "Позиции поставлены на стоп");
+  const setSelectedStopDisplayMode = (mode: CatalogStopDisplayMode) => {
+    updateSelectedAvailabilityItems(
+      (item) => ({ ...item, status: "stopped", unavailableDisplayMode: mode }),
+      "Позиции поставлены на стоп",
+    );
+  };
+  const removeSelectedStop = () => {
+    updateSelectedAvailabilityItems(
+      (item) => ({ ...item, status: "active" }),
+      "Позиции сняты со стопа",
+      (item) => item.status === "stopped" || item.status === "coming-soon",
+    );
+  };
+  const setSelectedSchedule = (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => {
+    updateSelectedAvailabilityItems(
+      (item) => ({
+        ...item,
+        scheduled: true,
+        weeklySchedule: schedule,
+        availabilityScheduleMode: "available",
+        outsideScheduleMode,
+      }),
+      "Расписание применено к выбранным позициям",
+      (item) => item.status !== "archive",
+      false,
+    );
+  };
+  const removeSelectedSchedule = () => {
+    updateSelectedAvailabilityItems(
+      (item) => ({
+        ...item,
+        scheduled: false,
+        weeklySchedule: undefined,
+        availabilityScheduleMode: undefined,
+      }),
+      "Расписание убрано у выбранных позиций",
+      (item) => item.scheduled,
+      false,
+    );
+  };
+  const archiveSelectedItems = () => {
+    updateSelectedAvailabilityItems(
+      (item) => ({ ...item, status: "archive" }),
+      "Позиции перенесены в архив",
+    );
+  };
+  const restoreSelectedItems = () => {
+    const ids = new Set(selectedItems.filter((item) => item.status === "archive").map((item) => item.id));
+    if (ids.size === 0) return;
+    updateItems(ids, (item) => ({ ...item, status: "active" }), true);
+    showFeedback("Позиции возвращены из архива");
   };
   const applySelectedDiscount = (percent: number) => {
     const clamped = Math.max(0, Math.min(99, percent));
@@ -9120,63 +9181,76 @@ function OverviewWorkspace({
                 onTagCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setTagFilter(active ? "all" : null) : undefined}
                 onStickerCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setStickerFilter(active ? "all" : null) : undefined}
               />
-              {embedded && selectedIds.size > 0 && (
+              {selectedIds.size > 0 ? (
                 <div
                   data-catalog-local-header
-                  className="sticky top-[39px] z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white"
+                  className="sticky top-[39px] z-20 min-w-0 bg-white"
                 >
                   <SelectionToolbar
+                    checked={allVisibleSelected}
+                    indeterminate={!allVisibleSelected && someVisibleSelected}
+                    onSelectAll={setVisibleSelected}
                     count={selectedIds.size}
-                    onClear={clearSelection}
-                    onSetStatus={setSelectedStatus}
-                    onSetAvailability={setSelectedAvailability}
+                    hasStopped={selectedHasStopped}
+                    hasSchedule={selectedHasSchedule}
+                    weeklySchedule={selectedWeeklySchedule}
+                    outsideScheduleMode={selectedOutsideScheduleMode}
+                    onStopDisplayModeChange={setSelectedStopDisplayMode}
+                    onRemoveStop={removeSelectedStop}
+                    onScheduleChange={setSelectedSchedule}
+                    onScheduleDelete={removeSelectedSchedule}
                     onClearDiscount={clearSelectedDiscount}
-                    onOpenSchedule={() => setBulkDialog({ type: "schedule" })}
                     onOpenDiscount={() => setBulkDialog({ type: "discount" })}
                     onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
-                    onOpenPlaceholder={(title, text) => setBulkDialog({ type: "placeholder", title, text })}
                     onOpenDelete={() => setBulkDialog({ type: "delete" })}
+                    onArchive={archiveSelectedItems}
+                    onRestoreArchive={restoreSelectedItems}
+                    hasArchivedItems={selectedHasArchivedItems}
+                    hasNonArchivedItems={selectedHasNonArchivedItems}
                     labelActions={USE_SHARED_TAGS_AND_STICKERS ? (
                       <div className="flex h-full items-center">
                         <CatalogBulkLabelPicker
                           type="tag"
-                          items={items.filter((item) => selectedIds.has(item.id))}
+                          items={selectedItems}
                           onPatchItem={(target, patch) => updateItem(target.id, patch)}
                         />
                         <CatalogBulkLabelPicker
                           type="sticker"
-                          items={items.filter((item) => selectedIds.has(item.id))}
+                          items={selectedItems}
                           onPatchItem={(target, patch) => updateItem(target.id, patch)}
                         />
                       </div>
                     ) : undefined}
                   />
                 </div>
+              ) : (
+                <TableHeaderRow
+                  checked={allVisibleSelected}
+                  indeterminate={!allVisibleSelected && someVisibleSelected}
+                  onSelectAll={setVisibleSelected}
+                  priceSort={workspacePriceSort}
+                  onPriceSortChange={handlePriceSortChange}
+                  table={catalogTable}
+                  lastModifiedSort={workspaceLastModifiedSort}
+                  onLastModifiedSortChange={handleLastModifiedSortChange}
+                  offsetForLocalHeader={false}
+                  horizontalScrollLeft={tableHorizontalScrollLeft}
+                />
               )}
               <div
                 ref={tableHorizontalScrollRef}
                 onScroll={(event) => {
                   const source = event.currentTarget;
+                  setTableHorizontalScrollLeft(source.scrollLeft);
                   if (tableBottomScrollbarRef.current && Math.abs(tableBottomScrollbarRef.current.scrollLeft - source.scrollLeft) > 1) {
                     tableBottomScrollbarRef.current.scrollLeft = source.scrollLeft;
                   }
                 }}
-                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto pl-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto overflow-y-clip pl-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 data-catalog-table-horizontal-scroll
               >
                 <div className="min-w-full">
                 <div>
-                  <TableHeaderRow
-                    checked={allVisibleSelected}
-                    indeterminate={!allVisibleSelected && someVisibleSelected}
-                    onSelectAll={setVisibleSelected}
-                    priceSort={workspacePriceSort}
-                    onPriceSortChange={handlePriceSortChange}
-                    table={catalogTable}
-                    lastModifiedSort={workspaceLastModifiedSort}
-                    onLastModifiedSortChange={handleLastModifiedSortChange}
-                    offsetForLocalHeader={embedded && selectedIds.size > 0}
-                  />
                   {visible.length === 0 ? (
                 <div className="border-b border-[#e7e5e4] px-6 py-12">
                   <div className="flex flex-col gap-4">
@@ -9376,6 +9450,7 @@ function OverviewWorkspace({
               const source = event.currentTarget;
               if (tableHorizontalScrollRef.current && Math.abs(tableHorizontalScrollRef.current.scrollLeft - source.scrollLeft) > 1) {
                 tableHorizontalScrollRef.current.scrollLeft = source.scrollLeft;
+                setTableHorizontalScrollLeft(source.scrollLeft);
               }
             }}
             style={{ width: tableHorizontalScrollbar.viewportWidth }}

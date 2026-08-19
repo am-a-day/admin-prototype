@@ -1121,14 +1121,14 @@ test("keeps bulk selection commands in the sticky local header without shifting 
   const firstRow = page.locator("[data-catalog-table-row]").first();
   const firstCheckbox = firstRow.getByRole("checkbox");
   const normalGeometry = await Promise.all([
-    localHeader.boundingBox(),
     tableHeader.boundingBox(),
     firstRow.boundingBox(),
   ]);
 
   await firstCheckbox.check();
   const toolbar = page.locator("[data-catalog-selection-toolbar]");
-  await expect(toolbar).toContainText("Выбрано: 1");
+  await expect(toolbar).toContainText("1 выбрано");
+  await expect(tableHeader).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Доступность" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Витрина" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Для заказа" })).toHaveCount(0);
@@ -1137,16 +1137,15 @@ test("keeps bulk selection commands in the sticky local header without shifting 
 
   const selectionGeometry = await Promise.all([
     localHeader.boundingBox(),
-    tableHeader.boundingBox(),
     firstRow.boundingBox(),
   ]);
   expect(normalGeometry.every(Boolean)).toBe(true);
   expect(selectionGeometry.every(Boolean)).toBe(true);
-  for (let index = 0; index < normalGeometry.length; index += 1) {
-    expect(Math.abs(normalGeometry[index]!.y - selectionGeometry[index]!.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(normalGeometry[index]!.height - selectionGeometry[index]!.height)).toBeLessThanOrEqual(1);
-  }
-  expect(selectionGeometry[2]!.y).toBeGreaterThanOrEqual(selectionGeometry[1]!.y + selectionGeometry[1]!.height - 1);
+  expect(Math.abs(normalGeometry[0]!.y - selectionGeometry[0]!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(normalGeometry[0]!.height - selectionGeometry[0]!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(normalGeometry[1]!.y - selectionGeometry[1]!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(normalGeometry[1]!.height - selectionGeometry[1]!.height)).toBeLessThanOrEqual(1);
+  expect(selectionGeometry[1]!.y).toBeGreaterThanOrEqual(selectionGeometry[0]!.y + selectionGeometry[0]!.height - 1);
 
   await page.getByRole("button", { name: "Переместить", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toBeVisible();
@@ -1156,26 +1155,27 @@ test("keeps bulk selection commands in the sticky local header without shifting 
 
   await firstCheckbox.check();
   await page.getByRole("button", { name: "Доступность" }).click();
-  await page.getByRole("menuitem", { name: "Доступно" }).click();
-  await expect(page.getByText("Позиции всегда доступны", { exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Поставить на стоп" }).click();
+  await page.getByRole("menuitemradio", { name: "Скрывать из меню" }).click();
+  await expect(page.getByText("Позиции поставлены на стоп", { exact: true })).toBeVisible();
   await expect(toolbar).not.toBeVisible();
 
   await firstCheckbox.check();
   await scrollContainer.evaluate((element) => { element.scrollTop = 500; });
   await expect.poll(async () => scrollContainer.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  await expect(toolbar).toContainText("Выбрано: 1");
-  const [scrollBox, stickyLocalBox, stickyTableBox] = await Promise.all([
+  await expect(toolbar).toContainText("1 выбрано");
+  const [scrollBox, stickyLocalBox] = await Promise.all([
     scrollContainer.boundingBox(),
     localHeader.boundingBox(),
-    tableHeader.boundingBox(),
   ]);
-  expect(scrollBox && stickyLocalBox && stickyTableBox).toBeTruthy();
-  expect(Math.abs(stickyLocalBox!.y - scrollBox!.y)).toBeLessThanOrEqual(1);
-  expect(stickyTableBox!.y).toBeGreaterThanOrEqual(stickyLocalBox!.y + stickyLocalBox!.height - 1);
+  expect(scrollBox && stickyLocalBox).toBeTruthy();
+  expect(Math.abs(stickyLocalBox!.y - (scrollBox!.y + 39))).toBeLessThanOrEqual(1);
+  await expect(tableHeader).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Снять выбор" }).click();
+  await page.keyboard.press("Escape");
   await expect(toolbar).not.toBeVisible();
-  await expect(localHeader.getByText("Новая позиция", { exact: true })).toBeVisible();
+  await expect(localHeader).toHaveCount(0);
+  await expect(page.locator("[data-catalog-table-header]")).toBeVisible();
 
   await scrollContainer.evaluate((element) => { element.scrollTop = 0; });
   await firstCheckbox.check();
@@ -1190,7 +1190,7 @@ test("keeps the bulk toolbar compact at a narrow workspace width", async ({ page
   await page.locator("[data-catalog-table-row]").first().getByRole("checkbox").check();
   const localHeader = page.locator("[data-catalog-local-header]");
   const toolbar = page.locator("[data-catalog-selection-toolbar]");
-  await expect(toolbar).toContainText("Выбрано: 1");
+  await expect(toolbar).toContainText("1 выбрано");
   await expect(page.getByRole("button", { name: "Ещё действия" })).toBeVisible();
 
   const metrics = await toolbar.evaluate((element) => ({
@@ -1200,8 +1200,8 @@ test("keeps the bulk toolbar compact at a narrow workspace width", async ({ page
     localHeaderHeight: element.parentElement?.getBoundingClientRect().height ?? 0,
   }));
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
-  expect(metrics.height).toBe(32);
-  expect(metrics.localHeaderHeight).toBe(44);
+  expect(metrics.height).toBe(38);
+  expect(metrics.localHeaderHeight).toBe(38);
   await expect(localHeader).toHaveCSS("position", "sticky");
 });
 

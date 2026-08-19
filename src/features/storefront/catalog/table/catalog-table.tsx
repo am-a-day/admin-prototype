@@ -14,6 +14,7 @@ import {
   Clock,
   Dot,
   DotsSixVertical,
+  DotsThree,
   Eye,
   EyeSlash,
   FunnelSimple,
@@ -36,6 +37,7 @@ import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableSearch } from "../ui/catalog-table-controls";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
+import { CatalogBulkAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import { StructureDragHandle } from "../workspace/dnd";
@@ -371,13 +373,13 @@ function ToolbarDivider() {
   return <span className="h-full w-px shrink-0 bg-[#dedbd6]" />;
 }
 
-function ToolbarDropdown({ label, children }: { label: string; children: ReactNode }) {
+function ToolbarDropdown({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex h-full items-center gap-1 px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className={cn("flex h-full items-center gap-1 px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", className)}
         >
           <span>{label}</span>
           <CaretDown size={12} weight="bold" className="text-[#a6a09b]" />
@@ -618,6 +620,7 @@ export function TableHeaderRow({
   onLastModifiedSortChange,
   table,
   offsetForLocalHeader = false,
+  horizontalScrollLeft = 0,
 }: {
   checked: boolean;
   indeterminate: boolean;
@@ -628,18 +631,24 @@ export function TableHeaderRow({
   onLastModifiedSortChange: () => void;
   table: TanStackTable<CatalogItem>;
   offsetForLocalHeader?: boolean;
+  horizontalScrollLeft?: number;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
+  const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
+  const tableWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
 
   return (
     <div
       className={cn("sticky z-10 bg-[#fafaf9]", offsetForLocalHeader ? "top-[83px]" : "top-[39px]")}
       data-catalog-table-header
     >
-      <div className="flex h-[38px] items-center border-b border-[#e7e5e4]">
-        {table.getVisibleLeafColumns().map((column) => {
+      <div className="flex h-[38px] min-w-0 items-center overflow-hidden border-b border-[#e7e5e4]">
+        <div
+          className="flex h-full min-w-full shrink-0 items-center"
+          style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
+        >
+        {visibleColumns.map((column) => {
           if (!column.getIsVisible()) return null;
-          if (column.id === "reorder") return null;
           const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
           if (column.id === "selection") {
             return (
@@ -736,6 +745,7 @@ export function TableHeaderRow({
             </span>
           );
         })}
+        </div>
       </div>
     </div>
   );
@@ -1221,146 +1231,117 @@ export function VirtualizedAuditRows({
 }
 
 export function SelectionToolbar({
+  checked,
+  indeterminate,
+  onSelectAll,
   count,
-  onClear,
-  onSetStatus,
-  onSetAvailability,
+  hasStopped,
+  hasSchedule,
+  weeklySchedule,
+  outsideScheduleMode,
+  onStopDisplayModeChange,
+  onRemoveStop,
+  onScheduleChange,
+  onScheduleDelete,
   onClearDiscount,
-  onOpenSchedule,
   onOpenDiscount,
   onMove,
-  onOpenPlaceholder,
   onOpenDelete,
+  onArchive,
+  onRestoreArchive,
+  hasArchivedItems,
+  hasNonArchivedItems,
   labelActions,
 }: {
+  checked: boolean;
+  indeterminate: boolean;
+  onSelectAll: (checked: boolean) => void;
   count: number;
-  onClear: () => void;
-  onSetStatus: (status: CatalogItem["status"]) => void;
-  onSetAvailability: (selection: "available" | "stop-soon" | "stop-hidden") => void;
+  hasStopped: boolean;
+  hasSchedule: boolean;
+  weeklySchedule: WeeklySchedule;
+  outsideScheduleMode: CatalogStopDisplayMode;
+  onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+  onRemoveStop: () => void;
+  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
+  onScheduleDelete: () => void;
   onClearDiscount: () => void;
-  onOpenSchedule: () => void;
   onOpenDiscount: () => void;
   onMove: (anchor: MovePopoverAnchor) => void;
-  onOpenPlaceholder: (title: string, text: string) => void;
   onOpenDelete: () => void;
+  onArchive: () => void;
+  onRestoreArchive: () => void;
+  hasArchivedItems: boolean;
+  hasNonArchivedItems: boolean;
   labelActions?: ReactNode;
 }) {
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const [layout, setLayout] = useState<"full" | "medium" | "compact" | "minimal">("full");
-
-  useEffect(() => {
-    const toolbar = toolbarRef.current;
-    if (!toolbar || typeof ResizeObserver === "undefined") return;
-    const updateLayout = (width: number) => {
-      setLayout(width >= 600 ? "full" : width >= 500 ? "medium" : width >= 330 ? "compact" : "minimal");
-    };
-    updateLayout(toolbar.getBoundingClientRect().width);
-    const observer = new ResizeObserver(([entry]) => updateLayout(entry.contentRect.width));
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, []);
-
-  const showAvailability = layout === "full" || layout === "medium";
-  const showMove = layout !== "minimal";
-  const showDiscount = layout === "full";
-
   return (
     <div
-      ref={toolbarRef}
       data-catalog-selection-toolbar
-      data-toolbar-layout={layout}
-      className="flex h-8 w-full min-w-0 items-center overflow-hidden rounded-[8px] bg-[#f7f6f2]"
+      className="flex h-[38px] w-full min-w-[320px] items-center overflow-hidden border-b border-[#e7e5e4] bg-white"
     >
-      <span className="shrink-0 px-2.5 text-[13px] font-medium tabular-nums text-[#292524]">
-        Выбрано: <span className="font-semibold">{count}</span>
-      </span>
-      {showAvailability && (
-        <>
-          <ToolbarDivider />
-          <ToolbarDropdown label="Доступность">
-            <DropdownActionItem onSelect={() => onSetAvailability("available")}>Доступно</DropdownActionItem>
-            <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">На стопе</DropdownMenu.Label>
-            <DropdownActionItem onSelect={() => onSetAvailability("stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
-            <DropdownActionItem onSelect={() => onSetAvailability("stop-hidden")}>Скрыть</DropdownActionItem>
-            <DropdownActionItem onSelect={onOpenSchedule}>По расписанию…</DropdownActionItem>
-          </ToolbarDropdown>
-        </>
-      )}
-      {showMove && (
-        <>
-          <ToolbarDivider />
-          <button
-            type="button"
-            onClick={(event) => onMove(getMovePopoverAnchor(event))}
-            className="flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <ArrowsOutCardinal size={14} />
-            Переместить
-          </button>
-        </>
-      )}
-      {showDiscount && (
-        <>
-          <ToolbarDivider />
-          <ToolbarDropdown label="Скидка">
-            <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-            <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
-          </ToolbarDropdown>
-        </>
-      )}
-      {labelActions && <><ToolbarDivider />{labelActions}</>}
-      <span className="min-w-0 flex-1" />
-      <ToolbarDivider />
+      <div className="flex h-full min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <span className="flex h-full w-[38px] shrink-0 items-center justify-center">
+          <TableCheckbox
+            ariaLabel="Выбрать все видимые позиции"
+            checked={checked}
+            indeterminate={indeterminate}
+            onChange={onSelectAll}
+          />
+        </span>
+        <span className="shrink-0 px-2 text-[13px] font-medium tabular-nums text-[#292524]">
+          <span className="font-semibold">{count}</span> выбрано
+        </span>
+        <ToolbarDivider />
+        <button
+          type="button"
+          onClick={(event) => onMove(getMovePopoverAnchor(event))}
+          className="flex h-full shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+        >
+          <ArrowsOutCardinal size={14} />
+          Переместить
+        </button>
+        <ToolbarDivider />
+        <ToolbarDropdown label="Доступность" className="gap-0.5 px-1.5">
+          <CatalogBulkAvailabilityMenu
+            scheduleId="bulk-items"
+            hasStopped={hasStopped}
+            hasSchedule={hasSchedule}
+            weeklySchedule={weeklySchedule}
+            outsideScheduleMode={outsideScheduleMode}
+            onStopDisplayModeChange={onStopDisplayModeChange}
+            onRemoveStop={onRemoveStop}
+            onScheduleChange={onScheduleChange}
+            onScheduleDelete={onScheduleDelete}
+          />
+        </ToolbarDropdown>
+      </div>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             aria-label="Ещё действия"
-            className="flex h-full w-8 shrink-0 items-center justify-center text-[18px] leading-none text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="flex h-full w-8 shrink-0 items-center justify-center bg-white text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
           >
-            ⋯
+            <DotsThree size={18} weight="bold" />
           </button>
         </DropdownMenu.Trigger>
-        <DropdownContent align="end">
-          {!showAvailability && (
+        <DropdownContent align="start">
+          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
+          <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
+          <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
+          {labelActions && (
             <>
-              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Доступность</DropdownMenu.Label>
-              <DropdownActionItem onSelect={() => onSetAvailability("available")}>Доступно</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSetAvailability("stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
-              <DropdownActionItem onSelect={() => onSetAvailability("stop-hidden")}>Скрыть</DropdownActionItem>
-              <DropdownActionItem onSelect={onOpenSchedule}>По расписанию…</DropdownActionItem>
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <div className="flex h-8 items-center">{labelActions}</div>
             </>
           )}
-          {!showMove && (
-            <>
-              <DropdownActionItem onSelect={(event) => onMove(getMovePopoverAnchor(event))}>Переместить</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            </>
-          )}
-          {!showDiscount && (
-            <>
-              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
-              <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-              <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-            </>
-          )}
-          <DropdownActionItem onSelect={() => onOpenPlaceholder("Дублировать", "Дублирование будет добавлено позже")}>Дублировать</DropdownActionItem>
           <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownActionItem onSelect={() => onSetStatus("archive")} tone="danger">Архивировать</DropdownActionItem>
+          {hasNonArchivedItems && <DropdownActionItem onSelect={onArchive}>Архивировать</DropdownActionItem>}
+          {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
           <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
         </DropdownContent>
       </DropdownMenu.Root>
-      <ToolbarDivider />
-      <button
-        type="button"
-        onClick={onClear}
-        aria-label="Снять выбор"
-        className="flex h-full w-8 shrink-0 items-center justify-center text-[17px] leading-none text-[#79716b] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        ×
-      </button>
     </div>
   );
 }
