@@ -542,9 +542,13 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "Доступно" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitemradio", { name: "На стопе" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("menuitemradio", { name: "Доступно" }).querySelector("svg")).toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "На стопе" }).querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "По расписанию" }).querySelector("svg")).not.toBeNull();
 
     await user.click(screen.getByRole("menuitemradio", { name: "На стопе" }));
     expect(screen.getByRole("button", { name: "Назад к Доступности" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Назад к Доступности" })).toHaveTextContent("Отображение в меню");
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("menuitemradio", { name: "Доступно" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Переключить на расписание" })).not.toBeInTheDocument();
@@ -558,6 +562,10 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).toHaveAttribute("aria-checked", "false");
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("На стопе");
+
+    await user.click(screen.getByRole("button", { name: "Назад к Доступности" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "На стопе" }));
+    expect(screen.getByRole("button", { name: "Назад к Доступности" })).toHaveTextContent("Отображение в меню");
 
     await user.keyboard("{Escape}");
     await user.click(actions());

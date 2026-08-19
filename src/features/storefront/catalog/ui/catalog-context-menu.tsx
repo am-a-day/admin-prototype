@@ -326,6 +326,9 @@ export function CatalogPositionAvailabilityMenu({
               </DropdownMenu.ItemIndicator>
             </span>
             <span className="min-w-0 flex-1">{option.label}</span>
+            {option.value !== "available" && (
+              <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+            )}
           </DropdownMenu.RadioItem>
         ))}
       </DropdownMenu.RadioGroup>
@@ -374,7 +377,7 @@ export function CatalogPositionAvailabilityMenu({
         className="flex h-9 w-full items-center gap-1.5 border-b border-[#e7e5e4] px-3 text-left text-[13px] font-medium leading-5 text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
       >
         <CaretLeft size={16} weight="bold" aria-hidden="true" />
-        <span>Доступность</span>
+        <span>Отображение в меню</span>
       </button>
       <StopDisplayOptions
         value={stopDisplayMode}
