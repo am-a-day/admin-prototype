@@ -6,6 +6,7 @@ import {
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
+  CalendarPlus,
   CalendarDots,
   CaretRight,
   Check,
@@ -134,13 +135,15 @@ function AvailabilityScheduleSubmenu({
 function StopDisplayOptions({
   value,
   manualStopped,
+  keepOpenOnChange = false,
   onChange,
   onResume,
 }: {
   value?: CatalogStopDisplayMode;
   manualStopped: boolean;
+  keepOpenOnChange?: boolean;
   onChange: (mode: CatalogStopDisplayMode) => void;
-  onResume: () => void;
+  onResume?: () => void;
 }) {
   return (
     <>
@@ -152,6 +155,9 @@ function StopDisplayOptions({
           <DropdownMenu.RadioItem
             key={option.value}
             value={option.value}
+            onSelect={(event) => {
+              if (keepOpenOnChange) event.preventDefault();
+            }}
             className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
           >
             <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", value === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
@@ -163,7 +169,7 @@ function StopDisplayOptions({
           </DropdownMenu.RadioItem>
         ))}
       </DropdownMenu.RadioGroup>
-      {manualStopped && (
+      {manualStopped && onResume && (
         <>
           <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
           <DropdownActionItem icon={ArrowUUpLeft} onSelect={onResume}>
@@ -341,20 +347,26 @@ export function CatalogPositionAvailabilityMenu({
       }}
       className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
     >
-      {renderAction(hasSchedule ? "Изменить расписание" : "Добавить расписание", enterSchedule, <CalendarBlank size={15} className="text-[#57534d]" />)}
-      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
       <StopDisplayOptions
         value={stopDisplayMode}
-        manualStopped
+        manualStopped={false}
+        keepOpenOnChange
         onChange={(mode) => {
           onStopDisplayModeChange(mode);
-          closeMenu();
         }}
-        onResume={() => {
+      />
+      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+      {renderAction("Переключить на расписание", enterSchedule, <CalendarPlus size={15} className="text-[#57534d]" />)}
+      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+      <DropdownActionItem
+        icon={ArrowUUpLeft}
+        onSelect={() => {
           onManualStopChange(false);
           closeMenu();
         }}
-      />
+      >
+        Убрать со стопа
+      </DropdownActionItem>
     </DropdownMenu.SubContent>
   );
 
