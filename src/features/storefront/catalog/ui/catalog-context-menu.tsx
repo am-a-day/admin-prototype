@@ -6,8 +6,10 @@ import {
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
+  CalendarDots,
   CaretRight,
   Check,
+  CheckCircle,
   Copy,
   NotePencil,
   PlusCircle,
@@ -42,6 +44,7 @@ export type CatalogPositionAvailabilityMenuProps = {
   onScheduleDelete: () => void;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onActionComplete?: () => void;
+  onMenuClose?: () => void;
 };
 
 type MenuItemProps = {
@@ -128,7 +131,7 @@ function AvailabilityScheduleSubmenu({
   );
 }
 
-function StopDisplaySubmenu({
+function StopDisplayOptions({
   value,
   manualStopped,
   onChange,
@@ -140,12 +143,7 @@ function StopDisplaySubmenu({
   onResume: () => void;
 }) {
   return (
-    <DropdownMenu.SubContent
-      sideOffset={6}
-      alignOffset={-5}
-      collisionPadding={12}
-      className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-    >
+    <>
       <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as CatalogStopDisplayMode)}>
         {([
           { value: "hidden", label: "Скрывать из меню" },
@@ -173,6 +171,34 @@ function StopDisplaySubmenu({
           </DropdownActionItem>
         </>
       )}
+    </>
+  );
+}
+
+function StopDisplaySubmenu({
+  value,
+  manualStopped,
+  onChange,
+  onResume,
+}: {
+  value?: CatalogStopDisplayMode;
+  manualStopped: boolean;
+  onChange: (mode: CatalogStopDisplayMode) => void;
+  onResume: () => void;
+}) {
+  return (
+    <DropdownMenu.SubContent
+      sideOffset={6}
+      alignOffset={-5}
+      collisionPadding={12}
+      className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+    >
+      <StopDisplayOptions
+        value={value}
+        manualStopped={manualStopped}
+        onChange={onChange}
+        onResume={onResume}
+      />
     </DropdownMenu.SubContent>
   );
 }
@@ -233,26 +259,160 @@ export function CatalogPositionAvailabilityMenu({
   onScheduleDelete,
   onStopDisplayModeChange,
   onActionComplete,
+  onMenuClose,
 }: CatalogPositionAvailabilityMenuProps) {
-  return (
-    <>
-      <StopAvailabilitySubmenu
-        manualStopped={manualStopped}
-        stopDisplayMode={stopDisplayMode}
-        onManualStopChange={onManualStopChange}
-        onStopDisplayModeChange={onStopDisplayModeChange}
-      />
-      <AvailabilityScheduleSubmenu
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"status" | "stop" | "schedule">("status");
+  const availability: CatalogMenuAvailability = manualStopped ? "stopped" : hasSchedule ? "scheduled" : "available";
+  const statusCopy = availability === "stopped"
+    ? { label: "На стопе", icon: <Prohibit size={16} weight="bold" className="text-[#d97706]" /> }
+    : availability === "scheduled"
+      ? { label: "По расписанию", icon: <CalendarDots size={16} weight="bold" className="text-[#2563eb]" /> }
+      : { label: "Доступно", icon: <CheckCircle size={16} weight="bold" className="text-[#16a34a]" /> };
+
+  const closeMenu = () => {
+    setView("status");
+    setOpen(false);
+    onMenuClose?.();
+  };
+
+  const enterStop = () => {
+    onStopDisplayModeChange("hidden");
+    onManualStopChange(true);
+    setView("stop");
+  };
+
+  const enterSchedule = () => setView("schedule");
+
+  const renderAction = (label: string, onSelect: () => void, icon?: ReactNode) => (
+    <DropdownMenu.Item
+      onSelect={(event) => {
+        event.preventDefault();
+        onSelect();
+      }}
+      className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+    >
+      {icon && <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </DropdownMenu.Item>
+  );
+
+  const renderScheduleEditor = () => (
+    <DropdownMenu.SubContent
+      sideOffset={6}
+      alignOffset={-5}
+      collisionPadding={12}
+      onEscapeKeyDown={(event) => {
+        event.preventDefault();
+        closeMenu();
+      }}
+      className="z-[100004] bg-transparent outline-none"
+    >
+      <CatalogSchedulePopover
         scheduleId={scheduleId}
         hasSchedule={hasSchedule}
-        weeklySchedule={weeklySchedule}
-        outsideScheduleMode={outsideScheduleMode}
-        onScheduleChange={onScheduleChange}
-        onScheduleDelete={onScheduleDelete}
-        onActionComplete={onActionComplete}
+        initialSchedule={weeklySchedule}
+        initialOutsideScheduleMode={outsideScheduleMode}
+        onChange={onScheduleChange}
+        onDelete={() => {
+          onScheduleDelete();
+          closeMenu();
+          onActionComplete?.();
+        }}
       />
+    </DropdownMenu.SubContent>
+  );
+
+  const renderStopContent = () => (
+    <DropdownMenu.SubContent
+      sideOffset={6}
+      alignOffset={-5}
+      collisionPadding={12}
+      onEscapeKeyDown={(event) => {
+        event.preventDefault();
+        closeMenu();
+      }}
+      className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+    >
+      {renderAction(hasSchedule ? "Изменить расписание" : "Добавить расписание", enterSchedule, <CalendarBlank size={15} className="text-[#57534d]" />)}
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-    </>
+      <StopDisplayOptions
+        value={stopDisplayMode}
+        manualStopped
+        onChange={(mode) => {
+          onStopDisplayModeChange(mode);
+          closeMenu();
+        }}
+        onResume={() => {
+          onManualStopChange(false);
+          closeMenu();
+        }}
+      />
+    </DropdownMenu.SubContent>
+  );
+
+  const renderStatusContent = () => {
+    if (availability === "available") {
+      return (
+        <DropdownMenu.SubContent
+          sideOffset={6}
+          alignOffset={-5}
+          collisionPadding={12}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            closeMenu();
+          }}
+          className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+        >
+          {renderAction("Поставить на стоп", enterStop)}
+          {renderAction("Добавить расписание", enterSchedule)}
+        </DropdownMenu.SubContent>
+      );
+    }
+
+    if (availability === "scheduled") {
+      return (
+        <DropdownMenu.SubContent
+          sideOffset={6}
+          alignOffset={-5}
+          collisionPadding={12}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            closeMenu();
+          }}
+          className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+        >
+          {renderAction("Изменить расписание", enterSchedule, <CalendarBlank size={15} className="text-[#57534d]" />)}
+          <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+          {renderAction("Поставить на стоп", enterStop, <Prohibit size={15} className="text-[#57534d]" />)}
+        </DropdownMenu.SubContent>
+      );
+    }
+
+    return renderStopContent();
+  };
+
+  return (
+    <DropdownMenu.Sub
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setView("status");
+      }}
+    >
+      <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}>
+        <span className="flex size-4 shrink-0 items-center justify-center">{statusCopy.icon}</span>
+        <span className="min-w-0 flex-1 truncate">{statusCopy.label}</span>
+        <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        {view === "schedule"
+          ? renderScheduleEditor()
+          : view === "stop"
+            ? renderStopContent()
+            : renderStatusContent()}
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
   );
 }
 
@@ -456,8 +616,16 @@ export function CatalogContextMenuContent({
   positionAvailability,
   sectionAvailability,
 }: EntityMenuProps) {
+  const itemAvailability = entity === "item" && showAvailability ? positionAvailability : undefined;
+
   return (
     <>
+      {itemAvailability && (
+        <>
+          <CatalogPositionAvailabilityMenu {...itemAvailability} />
+          <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+        </>
+      )}
       {entity === "section" && onChangeIcon && (
         <MenuItem
           onSelect={onChangeIcon}
@@ -474,7 +642,7 @@ export function CatalogContextMenuContent({
       <DropdownActionItem icon={ArrowElbowUpRight} onSelect={onMove}>Переместить</DropdownActionItem>
       {entity === "item" && onDuplicate && <DropdownActionItem icon={Copy} onSelect={onDuplicate}>Создать копию</DropdownActionItem>}
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-      {showAvailability && (
+      {showAvailability && !itemAvailability && (
         <>
           {entity === "item" && positionAvailability ? (
             <CatalogPositionAvailabilityMenu {...positionAvailability} />

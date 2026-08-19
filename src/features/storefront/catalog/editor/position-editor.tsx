@@ -3390,6 +3390,7 @@ export function PositionEditor({
   const [kbjuAutofocusKey, setKbjuAutofocusKey] = useState(0);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title);
+  const [positionActionsOpen, setPositionActionsOpen] = useState(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
@@ -3538,6 +3539,7 @@ export function PositionEditor({
     },
     onScheduleChange: (schedule, nextOutsideScheduleMode) => {
       const patch = {
+        status: "active",
         weeklySchedule: schedule,
         scheduled: true,
         availabilityScheduleMode: "available",
@@ -3552,9 +3554,11 @@ export function PositionEditor({
     },
     onScheduleDelete: () => {
       const patch = {
+        status: "active",
         scheduled: false,
         weeklySchedule: undefined,
         availabilityScheduleMode: undefined,
+        outsideScheduleMode: undefined,
       } satisfies Partial<CatalogItem>;
       if (onItemChange) onItemChange(item, patch);
       else if (onDraftChange) onDraftChange(patch);
@@ -3566,6 +3570,7 @@ export function PositionEditor({
       else if (onDraftChange) onDraftChange(patch);
       else onUnavailableDisplayModeChange(displayMode);
     },
+    onMenuClose: () => setPositionActionsOpen(false),
   };
 
   const startTitleEditing = () => {
@@ -3591,7 +3596,10 @@ export function PositionEditor({
         : "available";
     const stopDisplayMode: CatalogStopDisplayMode = unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
     return (
-      <DropdownMenu.Root open={fixture?.positionActionsOpen ? true : undefined}>
+      <DropdownMenu.Root
+        open={fixture?.positionActionsOpen ? true : positionActionsOpen}
+        onOpenChange={setPositionActionsOpen}
+      >
         <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
         <DropdownContent align="start">
           <CatalogContextMenuContent

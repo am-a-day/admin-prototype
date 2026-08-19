@@ -242,7 +242,8 @@ export function PositionEditorHost({
       onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
       onToggleStop={(target) => {
         const stopped = target.status === "stopped" || target.status === "coming-soon";
-        setItemStatus(target.id, stopped ? "active" : "stopped");
+        if (stopped) updateItem(target.id, { status: "active", scheduled: false });
+        else setItemStatus(target.id, "stopped");
         scheduleAutosave(target.id);
       }}
       onSetAvailabilityMode={setAvailability}

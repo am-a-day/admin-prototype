@@ -466,6 +466,7 @@ describe("catalog observable behavior baseline", () => {
     const sidePeek = getPositionSidePeek(firstItemTitle);
 
     await user.click(within(sidePeek).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` }));
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
     await user.click(screen.getByRole("menuitem", { name: "Добавить расписание" }));
     expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument();
 
@@ -485,6 +486,7 @@ describe("catalog observable behavior baseline", () => {
     const actions = () => within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
 
     await user.click(actions());
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
     await user.click(screen.getByRole("menuitem", { name: "Добавить расписание" }));
     const schedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
     await user.click(within(schedulePopover).getByRole("button", { name: "Режим вне расписания" }));
@@ -502,16 +504,20 @@ describe("catalog observable behavior baseline", () => {
     await waitFor(() => expect(screen.queryByRole("complementary", { name: firstItemTitle })).not.toBeInTheDocument());
     await user.click(screen.getByText(firstItemTitle, { exact: true }));
     await user.click(actions());
-    expect(screen.getByRole("menuitem", { name: "Расписание" })).toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: "Расписание" }));
+    expect(screen.getByRole("menuitem", { name: "По расписанию" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "По расписанию" }));
+    await user.click(screen.getByRole("menuitem", { name: "Изменить расписание" }));
     const reopenedSchedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
     expect(within(reopenedSchedulePopover).getByText("Показывать", { exact: true })).toBeInTheDocument();
     await user.click(within(reopenedSchedulePopover).getByRole("button", { name: "Убрать расписание" }));
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
+    await user.click(actions());
+    expect(screen.getByRole("menuitem", { name: "Доступно" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
     expect(screen.getByRole("menuitem", { name: "Добавить расписание" })).toBeInTheDocument();
   });
 
-  it("keeps manual stop behavior independent and exposes the current choice", async () => {
+  it("shows the current stop behavior and returns to availability", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
@@ -520,20 +526,47 @@ describe("catalog observable behavior baseline", () => {
     const actions = () => within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
 
     await user.click(actions());
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
     await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
     await user.click(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" }));
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Скоро будет");
 
     await user.click(actions());
-    await user.click(screen.getByRole("menuitem", { name: "Позиция на стопе" }));
+    await user.click(screen.getByRole("menuitem", { name: "На стопе" }));
     expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("menuitemradio", { name: "Скрывать из меню" }));
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("На стопе");
 
     await user.click(actions());
-    await user.click(screen.getByRole("menuitem", { name: "Позиция на стопе" }));
+    await user.click(screen.getByRole("menuitem", { name: "На стопе" }));
     await user.click(screen.getByRole("menuitem", { name: "Убрать со стопа" }));
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно");
+  });
+
+  it("switches from a manual stop to a schedule without an intermediate reset", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    await user.type(screen.getByPlaceholderText("Поиск по названию"), "Омлет");
+    await user.click(screen.getByText(firstItemTitle, { exact: true }));
+    const actions = () => within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
+
+    await user.click(actions());
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
+    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
+    await user.click(screen.getByRole("menuitem", { name: "Добавить расписание" }));
+
+    const schedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
+    await user.click(within(schedulePopover).getByRole("button", { name: "Режим вне расписания" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Показывать как “скоро будет”$/ }));
+
+    await user.keyboard("{Escape}");
+    await user.click(actions());
+    expect(screen.getByRole("menuitem", { name: "По расписанию" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "По расписанию" }));
+    await user.click(screen.getByRole("menuitem", { name: "Изменить расписание" }));
+    await user.click(within(document.querySelector("[data-catalog-schedule-popover]") as HTMLElement).getByRole("button", { name: "Убрать расписание" }));
+    await waitFor(() => expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно"));
   });
 
   it("exposes sibling navigation controls inside the focused editor", async () => {
@@ -599,10 +632,14 @@ describe("catalog observable behavior baseline", () => {
     await waitFor(() => expect(screen.queryByRole("complementary", { name: firstItemTitle })).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: `Действия для ${firstItemTitle}` }));
     const tableMenu = screen.getByRole("menu");
-    expect(within(tableMenu).getByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument();
-    expect(within(tableMenu).getByRole("menuitem", { name: "Добавить расписание" })).toBeInTheDocument();
+    expect(within(tableMenu).getByRole("menuitem", { name: "Доступно" })).toBeInTheDocument();
+    expect(within(tableMenu).queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
+    expect(within(tableMenu).queryByRole("menuitem", { name: "Добавить расписание" })).not.toBeInTheDocument();
     expect(within(tableMenu).queryByRole("menuitem", { name: "Когда недоступно" })).not.toBeInTheDocument();
-    await user.click(within(tableMenu).getByRole("menuitem", { name: "Поставить на стоп" }));
+    await user.click(within(tableMenu).getByRole("menuitem", { name: "Доступно" }));
+    expect(screen.queryByRole("menuitemradio", { name: "Скрывать из меню" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Добавить расписание" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).toBeInTheDocument();
   });

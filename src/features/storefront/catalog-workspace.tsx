@@ -6504,6 +6504,7 @@ function AuditRowActionsMenu({
   item: CatalogItem;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const availability: CatalogMenuAvailability = item.status === "stopped" || item.status === "coming-soon"
     ? "stopped"
     : item.scheduled
@@ -6511,7 +6512,7 @@ function AuditRowActionsMenu({
       : "available";
   const stopDisplayMode: CatalogStopDisplayMode = item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
@@ -6554,6 +6555,7 @@ function AuditRowActionsMenu({
             onScheduleChange: (nextSchedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, nextSchedule),
             onScheduleDelete: () => onAction("availability:schedule-delete"),
             onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
+            onMenuClose: () => setOpen(false),
           }}
         />
       </DropdownContent>
@@ -8420,16 +8422,16 @@ function OverviewWorkspace({
         return;
       }
       if (selection === "manual-resume") {
-        updateItem(item.id, { status: "active" });
+        updateItem(item.id, { status: "active", scheduled: false });
         return;
       }
       if (selection.startsWith("schedule-save:") && schedule) {
         const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
-        updateItem(item.id, { scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: "available", outsideScheduleMode });
+        updateItem(item.id, { status: "active", scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: "available", outsideScheduleMode });
         return;
       }
       if (selection === "schedule-delete") {
-        updateItem(item.id, { scheduled: false, weeklySchedule: undefined, availabilityScheduleMode: undefined });
+        updateItem(item.id, { status: "active", scheduled: false, weeklySchedule: undefined, availabilityScheduleMode: undefined, outsideScheduleMode: undefined });
         return;
       }
       if (selection === "behavior:hidden" || selection === "behavior:comingSoon") {
