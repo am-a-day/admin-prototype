@@ -12,7 +12,6 @@ import {
   CaretUp,
   Check,
   Clock,
-  Columns,
   Dot,
   DotsSixVertical,
   Eye,
@@ -20,6 +19,7 @@ import {
   FunnelSimple,
   Lock,
   MagnifyingGlass,
+  SquareSplitHorizontal,
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
@@ -478,7 +478,7 @@ export function CatalogColumnSettingsMenu({
             data-catalog-column-settings-trigger
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <Columns size={17} weight="regular" />
+            <SquareSplitHorizontal size={17} weight="regular" />
           </button>
         </DropdownMenu.Trigger>
       </Tooltip>
@@ -609,9 +609,6 @@ function AuditDot({ state, title }: { state: "filled" | "partial" | "missing"; t
 }
 
 export function TableHeaderRow({
-  query,
-  onQueryChange,
-  hideSearch = false,
   checked,
   indeterminate,
   onSelectAll,
@@ -620,12 +617,8 @@ export function TableHeaderRow({
   lastModifiedSort,
   onLastModifiedSortChange,
   table,
-  onResetColumns,
   offsetForLocalHeader = false,
 }: {
-  query: string;
-  onQueryChange: (value: string) => void;
-  hideSearch?: boolean;
   checked: boolean;
   indeterminate: boolean;
   onSelectAll: (checked: boolean) => void;
@@ -634,17 +627,16 @@ export function TableHeaderRow({
   lastModifiedSort: CatalogLastModifiedSortDirection;
   onLastModifiedSortChange: () => void;
   table: TanStackTable<CatalogItem>;
-  onResetColumns: () => void;
   offsetForLocalHeader?: boolean;
 }) {
   const priceSortTooltip = getPriceSortTooltip(priceSort);
 
   return (
     <div
-      className={cn("sticky z-10 bg-white", offsetForLocalHeader ? "top-11" : "top-0")}
+      className={cn("sticky z-10 bg-[#fafaf9]", offsetForLocalHeader ? "top-[83px]" : "top-[39px]")}
       data-catalog-table-header
     >
-      <div className="flex h-[38px] items-center">
+      <div className="flex h-[38px] items-center border-b border-[#e7e5e4]">
         {table.getVisibleLeafColumns().map((column) => {
           if (!column.getIsVisible()) return null;
           if (column.id === "reorder") return null;
@@ -662,21 +654,11 @@ export function TableHeaderRow({
             );
           }
           if (column.id === "position") {
-            return hideSearch ? (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center truncate pr-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
-                Позиция
+            return (
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center truncate px-3 text-[12px] font-medium leading-5 text-[#79716b]">
+                Название
                 <ColumnResizeHandle header={header} />
               </span>
-            ) : (
-              <div key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative h-full shrink-0">
-                <CatalogTableSearch
-                  value={query}
-                  onValueChange={onQueryChange}
-                  ariaLabel="Найти позицию"
-                  className="h-7 w-full max-w-full"
-                />
-                <ColumnResizeHandle header={header} />
-              </div>
             );
           }
           if (column.id === "description") {
@@ -744,9 +726,7 @@ export function TableHeaderRow({
           }
           if (column.id === "actions") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-[38px] shrink-0 items-center justify-center">
-                <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
-              </span>
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-[38px] shrink-0 items-center justify-center" />
             );
           }
           return (
@@ -760,6 +740,68 @@ export function TableHeaderRow({
     </div>
   );
 }
+
+export function CatalogTableToolbar({
+  query,
+  onQueryChange,
+  activeFilterIds,
+  mandatoryFilterId,
+  sectionScopeId,
+  items,
+  table,
+  onResetColumns,
+  tagCategoryActive = false,
+  stickerCategoryActive = false,
+  onTagCategoryChange,
+  onStickerCategoryChange,
+  onActiveFilterChange,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  activeFilterIds: OverviewFilterId[];
+  mandatoryFilterId?: OverviewFilterId;
+  sectionScopeId: string | null;
+  items: CatalogItem[];
+  table: TanStackTable<CatalogItem>;
+  onResetColumns: () => void;
+  tagCategoryActive?: boolean;
+  stickerCategoryActive?: boolean;
+  onTagCategoryChange?: (active: boolean) => void;
+  onStickerCategoryChange?: (active: boolean) => void;
+  onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
+}) {
+  return (
+    <div
+      data-catalog-table-toolbar
+      className="sticky top-0 z-20 flex h-[39px] min-w-0 items-center justify-between gap-3 border-b border-[#e7e5e4] bg-white px-3"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <CatalogTableFilterBar
+          activeFilterIds={activeFilterIds}
+          mandatoryFilterId={mandatoryFilterId}
+          sectionScopeId={sectionScopeId}
+          items={items}
+          table={table}
+          onResetColumns={onResetColumns}
+          onActiveFilterChange={onActiveFilterChange}
+          headerActionsOnly
+          tagCategoryActive={tagCategoryActive}
+          stickerCategoryActive={stickerCategoryActive}
+          onTagCategoryChange={onTagCategoryChange}
+          onStickerCategoryChange={onStickerCategoryChange}
+        />
+        <CatalogTableSearch
+          value={query}
+          onValueChange={onQueryChange}
+          ariaLabel="Найти позицию"
+          variant="toolbar"
+        />
+      </div>
+      <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
+    </div>
+  );
+}
+
 function StatusBadge({ label }: { label: string }) {
   const isStop = label === "На стопе";
   const isBlue = label === "С расписанием" || label === "По расписанию" || label === "Скоро будет";
@@ -1379,9 +1421,10 @@ export function CatalogTableFilterBar({
     return ordered.filter((id) => id !== mandatoryFilterId && !activeFilterIds.includes(id));
   }, [activeFilterIds, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+  const activeCount = activeFilterIds.length + Number(tagCategoryActive) + Number(stickerCategoryActive);
+  const activeFilterLabel = activeCount === 0 ? "Все" : "Фильтры";
 
   if (headerActionsOnly) {
-    const activeCount = activeFilterIds.length + Number(tagCategoryActive) + Number(stickerCategoryActive);
     const selectFilter = (id: OverviewFilterId) => {
       setFilterMenuOpen(false);
       setOpenFilterGroup(null);
@@ -1396,9 +1439,14 @@ export function CatalogTableFilterBar({
         }}
       >
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2 text-[12px] font-medium leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+          <button
+            type="button"
+            aria-label="Фильтры"
+            data-catalog-table-filter-trigger
+            className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
             <FunnelSimple size={14} />
-            <span>Фильтры</span>
+            <span className="min-w-0 truncate">{activeFilterLabel}</span>
             {activeCount > 0 && <span className="rounded-[4px] bg-[#efefea] px-1 text-[11px] tabular-nums text-[#57534d]">{activeCount}</span>}
             <CaretDown size={12} />
           </button>
@@ -1455,7 +1503,7 @@ export function CatalogTableFilterBar({
               aria-label="Настроить колонки"
               className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f1f1ea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
-              <Columns size={16} weight="regular" />
+              <SquareSplitHorizontal size={16} weight="regular" />
               <span>Колонки</span>
             </button>
           </DropdownMenu.Trigger>

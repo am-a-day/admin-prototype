@@ -164,7 +164,7 @@ import {
   TABLE_COLUMN_MIN_SIZES,
   sortCatalogItemsByLastModified,
   type CatalogLastModifiedSortDirection,
-  CatalogTableFilterBar,
+  CatalogTableToolbar,
   SelectionToolbar,
   TableCheckbox,
   TableHeaderRow,
@@ -769,7 +769,7 @@ function CatalogSidePanel({
   onCreateAction?: (action: string) => void;
 }) {
   return (
-    <aside className="w-[250px] shrink-0 overflow-y-auto border-r border-[#e7e5e4] bg-[#fbfbf9] px-2 pt-4">
+    <aside className="w-[250px] shrink-0 overflow-y-auto border-r border-[#e7e5e4] bg-white px-2 pt-4">
       <div className="mb-4 flex items-center px-2">
         <h2 className="min-w-0 flex-1 text-[14px] font-normal leading-[1.4] text-[#292524]">{title}</h2>
         {actionLabel && onCreateAction && (
@@ -3015,7 +3015,7 @@ function SectionPositionNav({
   };
 
   return (
-    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+    <aside className="flex w-[250px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white">
       <div className="shrink-0 border-b border-[#e7e5e4] px-4 pb-4 pt-4">
         <button
           type="button"
@@ -7297,7 +7297,7 @@ function UnifiedFlatCatalogPanel({
   })).filter((group) => group.ids.length > 0);
 
   return (
-    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9] pt-3">
+    <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white pt-3">
       <div className="shrink-0 px-2 pb-5">
         <CatalogScopeSelect value={scopeSectionId} onChange={onSectionScopeChange} onReset={() => onSectionScopeChange(null)} />
         <div className="mt-3 flex flex-col gap-0.5">
@@ -7495,7 +7495,7 @@ function PositionsWorkspaceViewSwitcher({
   onChange: (view: EditorFirstPositionsView) => void;
 }) {
   return (
-    <div className="flex h-11 shrink-0 items-center border-b border-[#e7e5e4] bg-[#fbfbf9] px-5">
+    <div className="flex h-11 shrink-0 items-center border-b border-[#e7e5e4] bg-white px-5">
       <div
         role="group"
         aria-label="Представление позиций"
@@ -8849,7 +8849,7 @@ function OverviewWorkspace({
     const editorContext = queueEditorContext!;
     const editorIntent = queueEditorIntent;
     return (
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
         <div className="flex min-h-0 flex-1">
           {!embedded && <UnifiedFlatCatalogPanel
             filterId={editorFirstEnabled ? workspaceFilterId : queue.snapshot.filterId}
@@ -9000,7 +9000,7 @@ function OverviewWorkspace({
 
   if (editorFirstEnabled && editorFirstView === "editor") {
     return (
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
         <div className="flex min-h-0 flex-1">
           {!embedded && <UnifiedFlatCatalogPanel
             filterId={workspaceFilterId}
@@ -9027,7 +9027,7 @@ function OverviewWorkspace({
   }
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfbf9]">
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 min-w-0 flex-1">
         {!embedded && <UnifiedFlatCatalogPanel
           filterId={workspaceFilterId}
@@ -9072,20 +9072,6 @@ function OverviewWorkspace({
               <div className="min-w-0 flex-1">
                 {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
               </div>
-              <CatalogTableFilterBar
-                activeFilterIds={activeFilterIds}
-                mandatoryFilterId={mandatoryFilterId}
-                sectionScopeId={workspaceSectionScopeId}
-                items={items}
-                table={catalogTable}
-                onResetColumns={resetTableColumns}
-                onActiveFilterChange={setWorkspaceActiveFilter}
-                headerActionsOnly
-                tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
-                stickerCategoryActive={USE_SHARED_TAGS_AND_STICKERS && stickerFilter != null}
-                onTagCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setTagFilter(active ? "all" : null) : undefined}
-                onStickerCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setStickerFilter(active ? "all" : null) : undefined}
-              />
               {!tableHeader && (
                 <CatalogScopeSelect
                   value={workspaceSectionScopeId}
@@ -9119,10 +9105,25 @@ function OverviewWorkspace({
               )}
             </div>
             <div className="min-w-0" data-catalog-items-card>
+              <CatalogTableToolbar
+                query={workspaceQuery}
+                onQueryChange={handleQueryChange}
+                activeFilterIds={activeFilterIds}
+                mandatoryFilterId={mandatoryFilterId}
+                sectionScopeId={workspaceSectionScopeId}
+                items={items}
+                table={catalogTable}
+                onResetColumns={resetTableColumns}
+                onActiveFilterChange={setWorkspaceActiveFilter}
+                tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
+                stickerCategoryActive={USE_SHARED_TAGS_AND_STICKERS && stickerFilter != null}
+                onTagCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setTagFilter(active ? "all" : null) : undefined}
+                onStickerCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setStickerFilter(active ? "all" : null) : undefined}
+              />
               {embedded && selectedIds.size > 0 && (
                 <div
                   data-catalog-local-header
-                  className="sticky top-0 z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-[#fbfbf9]"
+                  className="sticky top-[39px] z-20 flex h-11 min-w-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white"
                 >
                   <SelectionToolbar
                     count={selectedIds.size}
@@ -9166,16 +9167,12 @@ function OverviewWorkspace({
                 <div className="min-w-full">
                 <div>
                   <TableHeaderRow
-                    query={workspaceQuery}
-                    onQueryChange={handleQueryChange}
-                    hideSearch={editorFirstEnabled}
                     checked={allVisibleSelected}
                     indeterminate={!allVisibleSelected && someVisibleSelected}
                     onSelectAll={setVisibleSelected}
                     priceSort={workspacePriceSort}
                     onPriceSortChange={handlePriceSortChange}
                     table={catalogTable}
-                    onResetColumns={resetTableColumns}
                     lastModifiedSort={workspaceLastModifiedSort}
                     onLastModifiedSortChange={handleLastModifiedSortChange}
                     offsetForLocalHeader={embedded && selectedIds.size > 0}
@@ -9382,7 +9379,7 @@ function OverviewWorkspace({
               }
             }}
             style={{ width: tableHorizontalScrollbar.viewportWidth }}
-            className="absolute bottom-0 left-0 z-30 h-4 overflow-x-auto border-t border-[#e7e5e4] bg-[#fbfbf9] [scrollbar-width:thin]"
+            className="absolute bottom-0 left-0 z-30 h-4 overflow-x-auto border-t border-[#e7e5e4] bg-white [scrollbar-width:thin]"
           >
             <div style={{ width: tableHorizontalScrollbar.width }} className="h-px" />
           </div>
@@ -9788,7 +9785,7 @@ export function RecommendationsContextWorkspace({
     <TooltipProvider>
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-[#fbfbf9]">
+        <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white">
           <div className="border-b border-[#e7e5e4] px-3 pb-3 pt-4">
             <h2 className="px-1 text-[14px] font-medium leading-5 text-[#292524]">Рекомендации</h2>
             <div className="mt-3">
@@ -9843,7 +9840,7 @@ export function RecommendationsContextWorkspace({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 overflow-y-auto bg-[#fbfbf9] px-6 pb-10 pt-4">
+        <section className="min-w-0 flex-1 overflow-y-auto bg-white px-6 pb-10 pt-4">
           <div className="mx-auto w-full max-w-[680px]">
             {selectedItem ? (
               <>
@@ -10207,7 +10204,7 @@ export function CatalogWorkspace({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]">
+      <div className="flex min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-white">
         {workspace}
       </div>
       {sectionDialogOpen && (

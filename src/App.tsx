@@ -1407,7 +1407,7 @@ function AuthenticatedShell() {
             data-catalog-adaptive-shell={isCatalogPage || undefined}
             className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
           >
-            {previewVisible && !isPublicDisplayPage && (
+            {previewVisible && !isPublicDisplayPage && viewportWidth >= 1200 && (
               <div className="absolute right-4 top-4 z-20">
                 <PreviewToolbarToggle />
               </div>
@@ -1416,7 +1416,10 @@ function AuthenticatedShell() {
             {/* Editor card */}
             <div
               data-workspace-editor-card
-              className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4] bg-[#fbfbf9]"
+              className={cn(
+                "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4]",
+                isCatalogPage ? "bg-white" : "bg-[#fbfbf9]",
+              )}
             >
               <ContentHeader
                 title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
@@ -1435,6 +1438,7 @@ function AuthenticatedShell() {
                 data-preview-panel-slot
                 className={cn(
                   "min-h-0 shrink-0 overflow-hidden transition-[width,margin] ease-out motion-reduce:transition-none",
+                  isCatalogPage && "max-[1199px]:ml-0 max-[1199px]:w-0",
                   previewCollapsed ? "ml-0 w-0" : "ml-3 w-[390px]",
                 )}
                 style={{ transitionDuration: `${PREVIEW_PANEL_TRANSITION_MS}ms` }}

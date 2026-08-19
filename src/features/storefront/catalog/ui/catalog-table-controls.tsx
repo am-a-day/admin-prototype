@@ -8,20 +8,26 @@ export function CatalogTableSearch({
   onValueChange,
   placeholder = "Поиск по названию",
   ariaLabel,
+  variant = "field",
   className,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
   ariaLabel: string;
+  variant?: "field" | "toolbar";
   className?: string;
 }) {
+  const isToolbar = variant === "toolbar";
   return (
     <label
       data-catalog-table-search
       className={cn(
-        "flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-[7px] text-[#a6a09b] transition focus-within:ring-2 focus-within:ring-[#292524]/5",
-        CATALOG_TABLE_SEARCH_WIDTH,
+        "flex items-center gap-1.5 text-[#a6a09b] transition focus-within:ring-2 focus-within:ring-[#292524]/5",
+        isToolbar
+          ? "h-6 min-w-0 w-[clamp(140px,22vw,280px)] rounded-[7px] px-1"
+          : "h-7 shrink-0 rounded-[8px] bg-[#f5f5f4] px-[7px]",
+        !isToolbar && CATALOG_TABLE_SEARCH_WIDTH,
         className,
       )}
     >

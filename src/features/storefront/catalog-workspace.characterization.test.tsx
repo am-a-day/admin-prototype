@@ -312,8 +312,15 @@ describe("catalog observable behavior baseline", () => {
     expect(card).not.toBeNull();
     const localHeader = document.querySelector("[data-catalog-local-header]");
     expect(localHeader).toBeNull();
+    const toolbar = document.querySelector("[data-catalog-table-toolbar]");
+    expect(toolbar).not.toBeNull();
+    expect(toolbar).toHaveClass("sticky", "top-0", "bg-white");
+    expect(within(toolbar as HTMLElement).getByText("Все", { exact: true })).toBeInTheDocument();
+    expect(within(toolbar as HTMLElement).getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     const tableHeader = document.querySelector("[data-catalog-table-header]");
-    expect(tableHeader).toHaveClass("sticky", "top-0", "bg-white");
+    expect(tableHeader).toHaveClass("sticky", "top-[39px]", "bg-[#fafaf9]");
+    expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
+    expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-table-horizontal-scroll]")).not.toBeNull();
 
     const reorderableRow = document.querySelector("[data-row-reorder-enabled=true]");
