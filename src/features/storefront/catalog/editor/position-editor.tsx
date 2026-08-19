@@ -1791,7 +1791,7 @@ export function PositionAvailabilityControl({
               menuProps.onScheduleChange(schedule, outsideScheduleMode);
             }}
             onDelete={() => {
-              menuProps.onScheduleDelete();
+              menuProps.onScheduleDelete?.();
               setOpen(false);
             }}
           />

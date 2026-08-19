@@ -40,7 +40,7 @@ import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableSearch } from "../ui/catalog-table-controls";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
-import { CatalogBulkAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
+import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import { StructureDragHandle } from "../workspace/dnd";
@@ -322,7 +322,15 @@ function getCatalogColumnLabel(columnId: string) {
   return CATALOG_INFORMATION_COLUMN_LABELS[columnId as CatalogInformationColumnId] ?? columnId;
 }
 
-function DropdownContent({ children, align = "end" }: { children: ReactNode; align?: "start" | "center" | "end" }) {
+function DropdownContent({
+  children,
+  align = "end",
+  preventOutsideDismiss = false,
+}: {
+  children: ReactNode;
+  align?: "start" | "center" | "end";
+  preventOutsideDismiss?: boolean;
+}) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <DropdownMenu.Portal>
@@ -331,10 +339,10 @@ function DropdownContent({ children, align = "end" }: { children: ReactNode; ali
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
         onPointerDownOutside={(event) => {
-          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+          if (preventOutsideDismiss || shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
         onInteractOutside={(event) => {
-          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+          if (preventOutsideDismiss || shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
       >
         {marker}
@@ -372,9 +380,19 @@ function DropdownActionItem({
   );
 }
 
-function ToolbarDropdown({ label, children }: { label: string; children: ReactNode }) {
+function ToolbarDropdown({
+  label,
+  children,
+  preventOutsideDismiss = false,
+  onOpenChange,
+}: {
+  label: string;
+  children: ReactNode;
+  preventOutsideDismiss?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
@@ -384,7 +402,7 @@ function ToolbarDropdown({ label, children }: { label: string; children: ReactNo
           <CaretUpDown size={13} weight="regular" className="text-[#79716b]" />
         </button>
       </DropdownMenu.Trigger>
-      <DropdownContent align="start">{children}</DropdownContent>
+      <DropdownContent align="start" preventOutsideDismiss={preventOutsideDismiss}>{children}</DropdownContent>
     </DropdownMenu.Root>
   );
 }
@@ -1237,12 +1255,13 @@ export function SelectionToolbar({
   onClearSelection,
   hasStopped,
   hasSchedule,
+  availabilityMixed,
   weeklySchedule,
+  stopDisplayMode,
   outsideScheduleMode,
   onStopDisplayModeChange,
   onRemoveStop,
   onScheduleChange,
-  onScheduleDelete,
   onClearDiscount,
   onOpenDiscount,
   onMove,
@@ -1260,12 +1279,13 @@ export function SelectionToolbar({
   onClearSelection: () => void;
   hasStopped: boolean;
   hasSchedule: boolean;
+  availabilityMixed: boolean;
   weeklySchedule: WeeklySchedule;
+  stopDisplayMode: CatalogStopDisplayMode;
   outsideScheduleMode: CatalogStopDisplayMode;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onRemoveStop: () => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onScheduleDelete: () => void;
   onClearDiscount: () => void;
   onOpenDiscount: () => void;
   onMove: (anchor: MovePopoverAnchor) => void;
@@ -1276,6 +1296,8 @@ export function SelectionToolbar({
   hasNonArchivedItems: boolean;
   labelActions?: ReactNode;
 }) {
+  const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
+
   return (
     <div
       data-catalog-selection-toolbar
@@ -1310,18 +1332,28 @@ export function SelectionToolbar({
             <ArrowElbowUpRight size={16} weight="regular" className="-scale-y-100 rotate-180" />
             Переместить
           </button>
-          <ToolbarDropdown label="Доступность">
-          <CatalogBulkAvailabilityMenu
-            scheduleId="bulk-items"
-            hasStopped={hasStopped}
-            hasSchedule={hasSchedule}
-            weeklySchedule={weeklySchedule}
-            outsideScheduleMode={outsideScheduleMode}
-            onStopDisplayModeChange={onStopDisplayModeChange}
-            onRemoveStop={onRemoveStop}
-            onScheduleChange={onScheduleChange}
-            onScheduleDelete={onScheduleDelete}
-          />
+          <ToolbarDropdown
+            label="Доступность"
+            preventOutsideDismiss={scheduleEditorPinned}
+            onOpenChange={(open) => {
+              if (!open) setScheduleEditorPinned(false);
+            }}
+          >
+            <CatalogPositionAvailabilityMenu
+              scheduleId="bulk-items"
+              manualStopped={hasStopped}
+              hasSchedule={hasSchedule}
+              mixed={availabilityMixed}
+              weeklySchedule={weeklySchedule}
+              stopDisplayMode={stopDisplayMode}
+              outsideScheduleMode={outsideScheduleMode}
+              onManualStopChange={(stopped) => {
+                if (!stopped) onRemoveStop();
+              }}
+              onScheduleChange={onScheduleChange}
+              onStopDisplayModeChange={onStopDisplayModeChange}
+              onScheduleEditorPinnedChange={setScheduleEditorPinned}
+            />
           </ToolbarDropdown>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

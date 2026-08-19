@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle,
   Copy,
+  DotsThree,
   LockLaminated,
   NotePencil,
   PlusCircle,
@@ -37,12 +38,13 @@ export type CatalogPositionAvailabilityMenuProps = {
   scheduleId: string;
   manualStopped: boolean;
   hasSchedule: boolean;
+  mixed?: boolean;
   weeklySchedule: WeeklySchedule;
   stopDisplayMode: CatalogStopDisplayMode;
   outsideScheduleMode: CatalogStopDisplayMode;
   onManualStopChange: (stopped: boolean) => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onScheduleDelete: () => void;
+  onScheduleDelete?: () => void;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onActionComplete?: () => void;
   onMenuClose?: () => void;
@@ -284,6 +286,7 @@ export function CatalogPositionAvailabilityMenu({
   scheduleId,
   manualStopped,
   hasSchedule,
+  mixed = false,
   weeklySchedule,
   stopDisplayMode,
   outsideScheduleMode,
@@ -297,21 +300,32 @@ export function CatalogPositionAvailabilityMenu({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState(weeklySchedule);
   const [outsideScheduleDraft, setOutsideScheduleDraft] = useState(outsideScheduleMode);
-  const availability: CatalogMenuAvailability = manualStopped ? "stopped" : hasSchedule ? "scheduled" : "available";
-  const availabilityMeta = {
-    available: {
-      label: "Доступно",
-      icon: <CheckCircle size={16} weight="fill" className="text-[#56826a]" aria-hidden="true" />,
-    },
-    stopped: {
-      label: "На стопе",
-      icon: <LockLaminated size={16} className="text-[#b45309]" aria-hidden="true" />,
-    },
-    scheduled: {
-      label: "По расписанию",
-      icon: <CalendarDots size={16} className="text-[#2563eb]" aria-hidden="true" />,
-    },
-  }[availability];
+  const availability: CatalogMenuAvailability | null = mixed
+    ? null
+    : manualStopped
+      ? "stopped"
+      : hasSchedule
+        ? "scheduled"
+        : "available";
+  const availabilityMeta = mixed
+    ? {
+        label: "Смешанное состояние",
+        icon: <DotsThree size={16} weight="bold" className="text-[#79716b]" aria-hidden="true" />,
+      }
+    : {
+        available: {
+          label: "Доступно",
+          icon: <CheckCircle size={16} weight="fill" className="text-[#56826a]" aria-hidden="true" />,
+        },
+        stopped: {
+          label: "На стопе",
+          icon: <LockLaminated size={16} className="text-[#b45309]" aria-hidden="true" />,
+        },
+        scheduled: {
+          label: "По расписанию",
+          icon: <CalendarDots size={16} className="text-[#2563eb]" aria-hidden="true" />,
+        },
+    }[availability as CatalogMenuAvailability];
 
   const selectStopDisplayMode = (mode: CatalogStopDisplayMode) => {
     onStopDisplayModeChange(mode);
@@ -354,7 +368,7 @@ export function CatalogPositionAvailabilityMenu({
           collisionPadding={12}
           className={cn("z-[100004] min-w-[190px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
         >
-          <DropdownMenu.RadioGroup value={availability}>
+          <DropdownMenu.RadioGroup value={availability ?? undefined}>
             <DropdownMenu.RadioItem
               value="available"
               onSelect={(event) => {
@@ -426,12 +440,12 @@ export function CatalogPositionAvailabilityMenu({
                     Отображение в меню
                   </div>
                   <StopDisplayOptions
-                    value={manualStopped ? stopDisplayMode : undefined}
+                    value={mixed ? undefined : manualStopped ? stopDisplayMode : undefined}
                     manualStopped={false}
-                    optionsDisabled={!manualStopped}
+                    optionsDisabled={!manualStopped && !mixed}
                     keepOpenOnChange
                     comingSoonLabel="Как «скоро будет»"
-                    onChange={manualStopped ? selectStopDisplayMode : () => undefined}
+                    onChange={manualStopped || mixed ? selectStopDisplayMode : () => undefined}
                   />
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
@@ -495,50 +509,6 @@ export function CatalogPositionAvailabilityMenu({
         </DropdownMenu.SubContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Sub>
-  );
-}
-
-export type CatalogBulkAvailabilityMenuProps = {
-  scheduleId: string;
-  hasStopped: boolean;
-  hasSchedule: boolean;
-  weeklySchedule: WeeklySchedule;
-  outsideScheduleMode: CatalogStopDisplayMode;
-  onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
-  onRemoveStop: () => void;
-  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onScheduleDelete: () => void;
-};
-
-export function CatalogBulkAvailabilityMenu({
-  scheduleId,
-  hasStopped,
-  hasSchedule,
-  weeklySchedule,
-  outsideScheduleMode,
-  onStopDisplayModeChange,
-  onRemoveStop,
-  onScheduleChange,
-  onScheduleDelete,
-}: CatalogBulkAvailabilityMenuProps) {
-  return (
-    <>
-      <StopAvailabilitySubmenu
-        label="Поставить на стоп"
-        manualStopped={hasStopped}
-        onStopDisplayModeChange={onStopDisplayModeChange}
-        onResume={onRemoveStop}
-      />
-      <AvailabilityScheduleSubmenu
-        label={hasSchedule ? "Изменить расписание" : "Добавить расписание"}
-        scheduleId={scheduleId}
-        hasSchedule={hasSchedule}
-        weeklySchedule={weeklySchedule}
-        outsideScheduleMode={outsideScheduleMode}
-        onScheduleChange={onScheduleChange}
-        onScheduleDelete={onScheduleDelete}
-      />
-    </>
   );
 }
 

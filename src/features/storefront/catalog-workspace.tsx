@@ -8066,13 +8066,42 @@ function OverviewWorkspace({
     () => selectedItems.filter((item) => item.status !== "archive"),
     [selectedItems],
   );
-  const selectedScheduleSource = selectedItems.find((item) => item.scheduled) ?? selectedItems[0];
-  const selectedHasStopped = selectedItems.some((item) => item.status === "stopped" || item.status === "coming-soon");
-  const selectedHasSchedule = selectedItems.some((item) => item.scheduled);
+  const selectedScheduleSource = selectedAvailabilityItems.find((item) => item.scheduled)
+    ?? selectedAvailabilityItems[0]
+    ?? selectedItems[0];
+  const selectedHasStopped = selectedAvailabilityItems.some((item) => item.status === "stopped" || item.status === "coming-soon");
+  const selectedHasSchedule = selectedAvailabilityItems.some((item) => item.scheduled);
   const selectedHasArchivedItems = selectedItems.some((item) => item.status === "archive");
   const selectedHasNonArchivedItems = selectedItems.some((item) => item.status !== "archive");
   const selectedWeeklySchedule = selectedScheduleSource?.weeklySchedule ?? createDefaultWeeklySchedule();
   const selectedOutsideScheduleMode = selectedScheduleSource?.outsideScheduleMode ?? "hidden";
+  const selectedStopSource = selectedAvailabilityItems.find(
+    (item) => item.status === "stopped" || item.status === "coming-soon",
+  ) ?? selectedAvailabilityItems[0] ?? selectedItems[0];
+  const selectedStopDisplayMode: CatalogStopDisplayMode = selectedStopSource?.unavailableDisplayMode
+    ?? (selectedStopSource?.status === "coming-soon" ? "comingSoon" : "hidden");
+  const selectedAvailabilityMixed = useMemo(() => {
+    const signatures = selectedAvailabilityItems.map((item) => {
+      const availability = item.status === "stopped" || item.status === "coming-soon"
+        ? "stopped"
+        : item.scheduled
+          ? "scheduled"
+          : "available";
+      return JSON.stringify({
+        availability,
+        stopDisplayMode: availability === "stopped"
+          ? item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")
+          : null,
+        schedule: availability === "scheduled"
+          ? {
+              weeklySchedule: item.weeklySchedule ?? createDefaultWeeklySchedule(),
+              outsideScheduleMode: item.outsideScheduleMode ?? "hidden",
+            }
+          : null,
+      });
+    });
+    return new Set(signatures).size > 1;
+  }, [selectedAvailabilityItems]);
   const allVisibleSelected = useMemo(
     () => visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id)),
     [selectedIds, visibleIds],
@@ -8241,19 +8270,6 @@ function OverviewWorkspace({
       }),
       "Расписание применено к выбранным позициям",
       (item) => item.status !== "archive",
-      false,
-    );
-  };
-  const removeSelectedSchedule = () => {
-    updateSelectedAvailabilityItems(
-      (item) => ({
-        ...item,
-        scheduled: false,
-        weeklySchedule: undefined,
-        availabilityScheduleMode: undefined,
-      }),
-      "Расписание убрано у выбранных позиций",
-      (item) => item.scheduled,
       false,
     );
   };
@@ -9203,12 +9219,13 @@ function OverviewWorkspace({
                     onClearSelection={clearSelection}
                     hasStopped={selectedHasStopped}
                     hasSchedule={selectedHasSchedule}
+                    availabilityMixed={selectedAvailabilityMixed}
                     weeklySchedule={selectedWeeklySchedule}
+                    stopDisplayMode={selectedStopDisplayMode}
                     outsideScheduleMode={selectedOutsideScheduleMode}
                     onStopDisplayModeChange={setSelectedStopDisplayMode}
                     onRemoveStop={removeSelectedStop}
                     onScheduleChange={setSelectedSchedule}
-                    onScheduleDelete={removeSelectedSchedule}
                     onClearDiscount={clearSelectedDiscount}
                     onOpenDiscount={() => setBulkDialog({ type: "discount" })}
                     onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
