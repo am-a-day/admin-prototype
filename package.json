@@ -54,5 +54,8 @@
     "tailwindcss": "^4.1.8",
     "typescript": "^5.8.3",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@radix-ui/react-dismissable-layer": "1.1.19"
   }
 }

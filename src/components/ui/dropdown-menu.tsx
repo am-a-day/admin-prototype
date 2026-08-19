@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
+import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -9,19 +10,29 @@ const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 6, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-[100012] min-w-[196px] overflow-hidden rounded-[10px] border border-stone-200 bg-white p-1 text-stone-800 shadow-[0_8px_24px_rgba(41,37,36,0.14)] outline-none",
-        className,
-      )}
-      {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
-));
+>(({ className, sideOffset = 6, onPointerDownOutside, children, ...props }, ref) => {
+  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        className={cn(
+          "z-[100012] min-w-[196px] overflow-hidden rounded-[10px] border border-stone-200 bg-white p-1 text-stone-800 shadow-[0_8px_24px_rgba(41,37,36,0.14)] outline-none",
+          className,
+        )}
+        onPointerDownOutside={(event) => {
+          consumeOverlayInteraction(event);
+          onPointerDownOutside?.(event);
+        }}
+        {...props}
+      >
+        <PositionSidePeekOverlayMarker />
+        {children}
+      </DropdownMenuPrimitive.Content>
+    </DropdownMenuPrimitive.Portal>
+  );
+});
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
 const DropdownMenuItem = React.forwardRef<

@@ -1,6 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 
-const SIDE_PEEK_SCOPE_SELECTOR = "[data-position-side-peek-scope]";
+type PositionSidePeekPointerDownOutsideEvent = Parameters<NonNullable<ComponentProps<typeof DismissableLayer>["onPointerDownOutside"]>>[0];
+
 const SIDE_PEEK_INTERACTIVE_SELECTOR = [
   "a[href]",
   "button",
@@ -26,22 +28,6 @@ const SIDE_PEEK_INTERACTIVE_SELECTOR = [
   "[data-catalog-dnd-handle]",
   "[data-catalog-column-resize-handle]",
   "[data-position-editor-resize-handle]",
-].join(", ");
-const SIDE_PEEK_OVERLAY_SELECTOR = [
-  "[data-radix-popper-content-wrapper]",
-  "[data-radix-menu-content]",
-  "[data-radix-popover-content]",
-  "[data-radix-select-content]",
-  "[data-radix-dialog-content]",
-  "[data-radix-tooltip-content]",
-  "[data-catalog-column-settings]",
-  "[data-catalog-schedule-popover]",
-  "[data-move-to-section-popover]",
-  "[data-option-popover]",
-  "[data-recommendation-picker]",
-  "[role=\"dialog\"]",
-  "[role=\"menu\"]",
-  "[role=\"tooltip\"]",
 ].join(", ");
 
 function getEventPath(event: Event) {
@@ -72,10 +58,9 @@ function isScrollbarInteraction(event: MouseEvent, path: EventTarget[]) {
   });
 }
 
-function isNeutralOutsideClick(event: MouseEvent, path: EventTarget[]) {
-  if (pathHasElement(path, SIDE_PEEK_SCOPE_SELECTOR)) return false;
+function isNeutralOutsideInteraction(event: PointerEvent) {
+  const path = getEventPath(event);
   if (pathHasElement(path, SIDE_PEEK_INTERACTIVE_SELECTOR)) return false;
-  if (pathHasElement(path, SIDE_PEEK_OVERLAY_SELECTOR)) return false;
   if (isScrollbarInteraction(event, path)) return false;
   const selection = window.getSelection();
   if (selection && !selection.isCollapsed && selection.toString()) return false;
@@ -85,6 +70,8 @@ function isNeutralOutsideClick(event: MouseEvent, path: EventTarget[]) {
 type PositionSidePeekContextValue = {
   requestClose: () => void;
   registerOverlay: (overlayId: symbol, onEscape?: () => void) => () => void;
+  consumePointerInteraction: (event: PointerEvent) => void;
+  isPointerInteractionConsumed: (event: PointerEvent) => boolean;
 };
 
 const PositionSidePeekContext = createContext<PositionSidePeekContextValue | null>(null);
@@ -97,49 +84,76 @@ export function PositionSidePeekProvider({
   requestClose: () => void;
 }) {
   const openOverlayHandlersRef = useRef(new Map<symbol, () => void>());
+  const consumedPointerInteractionsRef = useRef(new WeakSet<PointerEvent>());
   const registerOverlay = useCallback((overlayId: symbol, onEscape?: () => void) => {
     openOverlayHandlersRef.current.set(overlayId, onEscape ?? (() => {}));
     return () => {
       openOverlayHandlersRef.current.delete(overlayId);
     };
   }, []);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      const handlers = [...openOverlayHandlersRef.current.values()];
-      const closeTopOverlay = handlers[handlers.length - 1];
-      if (closeTopOverlay) {
-        event.preventDefault();
-        closeTopOverlay();
-        return;
-      }
-      requestClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [requestClose]);
+  const consumePointerInteraction = useCallback((event: PointerEvent) => {
+    consumedPointerInteractionsRef.current.add(event);
+  }, []);
+  const isPointerInteractionConsumed = useCallback((event: PointerEvent) => {
+    return consumedPointerInteractionsRef.current.has(event);
+  }, []);
 
-  useEffect(() => {
-    const onDocumentClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || openOverlayHandlersRef.current.size > 0) return;
-      const path = getEventPath(event);
-      if (isNeutralOutsideClick(event, path)) requestClose();
-    };
-    document.addEventListener("click", onDocumentClick, true);
-    return () => document.removeEventListener("click", onDocumentClick, true);
-  }, [requestClose]);
+  const handlePointerDownOutside = useCallback((event: PositionSidePeekPointerDownOutsideEvent) => {
+    const originalEvent = event.detail.originalEvent;
+    if (
+      openOverlayHandlersRef.current.size > 0
+      || isPointerInteractionConsumed(originalEvent)
+      || !isNeutralOutsideInteraction(originalEvent)
+    ) {
+      event.preventDefault();
+    }
+  }, [isPointerInteractionConsumed]);
+
+  const handleEscapeKeyDown = useCallback((event: KeyboardEvent) => {
+    const handlers = [...openOverlayHandlersRef.current.values()];
+    const closeTopOverlay = handlers[handlers.length - 1];
+    if (!closeTopOverlay) return;
+    event.preventDefault();
+    closeTopOverlay();
+  }, []);
 
   return (
-    <PositionSidePeekContext.Provider value={{ requestClose, registerOverlay }}>
-      <div data-position-side-peek-scope className="contents">
-        {children}
-      </div>
+    <PositionSidePeekContext.Provider value={{ requestClose, registerOverlay, consumePointerInteraction, isPointerInteractionConsumed }}>
+      <DismissableLayer
+        asChild
+        onPointerDownOutside={handlePointerDownOutside}
+        onEscapeKeyDown={handleEscapeKeyDown}
+        onDismiss={requestClose}
+      >
+        <div data-position-side-peek-scope className="contents">
+          {children}
+        </div>
+      </DismissableLayer>
     </PositionSidePeekContext.Provider>
   );
 }
 
 export function usePositionSidePeek() {
   return useContext(PositionSidePeekContext);
+}
+
+export function usePositionSidePeekOverlayInteraction() {
+  const sidePeek = usePositionSidePeek();
+  return useCallback((event: { detail: { originalEvent: PointerEvent } }) => {
+    sidePeek?.consumePointerInteraction(event.detail.originalEvent);
+  }, [sidePeek]);
+}
+
+export function PositionSidePeekOverlayMarker({ onEscape }: { onEscape?: () => void }) {
+  const sidePeek = usePositionSidePeek();
+  const overlayIdRef = useRef(Symbol("position-side-peek-overlay-marker"));
+
+  useEffect(() => {
+    if (!sidePeek) return;
+    return sidePeek.registerOverlay(overlayIdRef.current, onEscape);
+  }, [onEscape, sidePeek]);
+
+  return null;
 }
 
 export function usePositionSidePeekOverlay(open: boolean, onEscape?: () => void) {

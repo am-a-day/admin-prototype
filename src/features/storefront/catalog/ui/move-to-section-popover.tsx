@@ -10,6 +10,7 @@ import {
   MAX_CATALOG_SECTION_DEPTH,
   type CatalogTreeSection,
 } from "../model/tree";
+import { usePositionSidePeekOverlay } from "../editor/side-peek-context";
 import type { MovePopoverAnchor } from "./move-anchor";
 
 type TreeSection = CatalogTreeSection;
@@ -45,6 +46,7 @@ export function MoveToSectionPopover({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
   const [loadingTarget, setLoadingTarget] = useState<string | null | undefined>(undefined);
+  usePositionSidePeekOverlay(true, onClose);
   const flatSections = useMemo(() => flattenSections(buildLocalSectionTree(sections)), [sections]);
   const sectionById = useMemo(() => new Map(flatSections.map((section) => [section.id, section])), [flatSections]);
   const childIdsByParent = useMemo(() => {
