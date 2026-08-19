@@ -9200,6 +9200,7 @@ function OverviewWorkspace({
                     indeterminate={!allVisibleSelected && someVisibleSelected}
                     onSelectAll={setVisibleSelected}
                     count={selectedIds.size}
+                    onClearSelection={clearSelection}
                     hasStopped={selectedHasStopped}
                     hasSchedule={selectedHasSchedule}
                     weeklySchedule={selectedWeeklySchedule}

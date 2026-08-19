@@ -6,8 +6,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { arrayMove, sortableKeyboardCoordinates, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ArrowsOutCardinal,
+  ArrowElbowUpRight,
   CaretDown,
+  CaretUpDown,
   CaretRight,
   CaretUp,
   Check,
@@ -20,7 +21,9 @@ import {
   FunnelSimple,
   Lock,
   MagnifyingGlass,
+  Minus,
   SquareSplitHorizontal,
+  X,
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
@@ -369,20 +372,16 @@ function DropdownActionItem({
   );
 }
 
-function ToolbarDivider() {
-  return <span className="h-full w-px shrink-0 bg-[#dedbd6]" />;
-}
-
-function ToolbarDropdown({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+function ToolbarDropdown({ label, children }: { label: string; children: ReactNode }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className={cn("flex h-full items-center gap-1 px-2.5 text-[13px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", className)}
+          className="inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[12px] font-normal leading-4 text-[#292524] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
         >
           <span>{label}</span>
-          <CaretDown size={12} weight="bold" className="text-[#a6a09b]" />
+          <CaretUpDown size={13} weight="regular" className="text-[#79716b]" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent align="start">{children}</DropdownContent>
@@ -562,8 +561,8 @@ export function TableCheckbox({
         onChange={(event) => onChange?.(event.target.checked)}
         aria-label={ariaLabel}
         className={cn(
-          "absolute inset-0 h-4 w-4 cursor-pointer appearance-none rounded-[4.8px] border-[0.8px] border-stone-300 bg-white transition duration-150 ease-out checked:border-[#79716b] checked:bg-[#79716b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-          indeterminate && "border-[#79716b] bg-[#79716b]",
+          "absolute inset-0 h-4 w-4 cursor-pointer appearance-none rounded-[4.8px] border-[0.8px] border-[#d6d3d1] bg-white transition duration-150 ease-out checked:border-[#4f39f6] checked:bg-[#4f39f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
+          indeterminate && "border-[#4f39f6] bg-[#4f39f6]",
           quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
           quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
           (!quiet || checked || indeterminate || forceVisible) && "opacity-100",
@@ -571,7 +570,7 @@ export function TableCheckbox({
       />
       {(checked || indeterminate) && (
         <span className="pointer-events-none relative z-[1] flex items-center justify-center text-white" aria-hidden="true">
-          {indeterminate ? <span className="h-px w-2 rounded-full bg-current" /> : <Check size={11} weight="bold" />}
+          {indeterminate ? <Minus size={13} weight="bold" /> : <Check size={13} weight="bold" />}
         </span>
       )}
     </span>
@@ -962,8 +961,8 @@ function AuditDishRowContent({
         }
       }}
       className={cn(
-        "group relative flex h-[38px] cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
-        selected ? "bg-[#f7f6f2]" : "bg-white",
+        "group relative flex h-[38px] cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+        selected ? "bg-[#f1f4ff] hover:bg-[#f1f4ff]" : "bg-white hover:bg-[#fafaf9]",
         highlighted && !active && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
         active && "bg-[#f1f1ea] shadow-[inset_3px_0_0_#57534d] hover:bg-[#ecece6]",
         isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
@@ -1235,6 +1234,7 @@ export function SelectionToolbar({
   indeterminate,
   onSelectAll,
   count,
+  onClearSelection,
   hasStopped,
   hasSchedule,
   weeklySchedule,
@@ -1257,6 +1257,7 @@ export function SelectionToolbar({
   indeterminate: boolean;
   onSelectAll: (checked: boolean) => void;
   count: number;
+  onClearSelection: () => void;
   hasStopped: boolean;
   hasSchedule: boolean;
   weeklySchedule: WeeklySchedule;
@@ -1278,31 +1279,38 @@ export function SelectionToolbar({
   return (
     <div
       data-catalog-selection-toolbar
-      className="flex h-[38px] w-full min-w-[320px] items-center overflow-hidden border-b border-[#e7e5e4] bg-white"
+      className="flex h-[38px] w-full min-w-[320px] items-center overflow-x-auto overflow-y-hidden border-b border-[#e7e5e4] bg-[#fafaf9] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex h-full min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <span className="flex h-full w-[38px] shrink-0 items-center justify-center">
+      <span className="flex h-full w-[42px] shrink-0 items-center justify-center border-b border-[#e7e5e4] bg-[#fafaf9]">
           <TableCheckbox
             ariaLabel="Выбрать все видимые позиции"
             checked={checked}
             indeterminate={indeterminate}
             onChange={onSelectAll}
           />
+      </span>
+      <div className="flex h-full min-w-max shrink-0 items-center gap-3 border-b border-[#e7e5e4] bg-[#fafaf9] px-[3px]">
+        <span className="flex shrink-0 items-center gap-[6px] text-[13px] font-normal leading-5 text-[#292524]">
+          <span>{count} выбрано</span>
+          <button
+            type="button"
+            aria-label="Снять выделение"
+            onClick={onClearSelection}
+            className="inline-flex size-[13px] items-center justify-center rounded-[3px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <X size={13} weight="regular" />
+          </button>
         </span>
-        <span className="shrink-0 px-2 text-[13px] font-medium tabular-nums text-[#292524]">
-          <span className="font-semibold">{count}</span> выбрано
-        </span>
-        <ToolbarDivider />
-        <button
-          type="button"
-          onClick={(event) => onMove(getMovePopoverAnchor(event))}
-          className="flex h-full shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-[13px] font-medium text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-        >
-          <ArrowsOutCardinal size={14} />
-          Переместить
-        </button>
-        <ToolbarDivider />
-        <ToolbarDropdown label="Доступность" className="gap-0.5 px-1.5">
+        <span className="flex shrink-0 items-center gap-[6px]">
+          <button
+            type="button"
+            onClick={(event) => onMove(getMovePopoverAnchor(event))}
+            className="inline-flex h-[26px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[8px] border border-[#e7e5e4] bg-white pl-[6px] pr-2 text-[12px] font-normal leading-4 text-[#292524] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <ArrowElbowUpRight size={16} weight="regular" className="-scale-y-100 rotate-180" />
+            Переместить
+          </button>
+          <ToolbarDropdown label="Доступность">
           <CatalogBulkAvailabilityMenu
             scheduleId="bulk-items"
             hasStopped={hasStopped}
@@ -1314,34 +1322,35 @@ export function SelectionToolbar({
             onScheduleChange={onScheduleChange}
             onScheduleDelete={onScheduleDelete}
           />
-        </ToolbarDropdown>
-      </div>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Ещё действия"
-            className="flex h-full w-8 shrink-0 items-center justify-center bg-white text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-          >
-            <DotsThree size={18} weight="bold" />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownContent align="start">
-          <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
-          <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
-          <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
-          {labelActions && (
-            <>
+          </ToolbarDropdown>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Ещё действия"
+                className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+              >
+                <DotsThree size={16} weight="regular" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownContent align="start">
+              <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-[#a6a09b]">Скидка</DropdownMenu.Label>
+              <DropdownActionItem onSelect={onOpenDiscount}>Задать скидку</DropdownActionItem>
+              <DropdownActionItem onSelect={onClearDiscount}>Убрать скидку</DropdownActionItem>
+              {labelActions && (
+                <>
+                  <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+                  <div className="flex h-8 items-center">{labelActions}</div>
+                </>
+              )}
               <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-              <div className="flex h-8 items-center">{labelActions}</div>
-            </>
-          )}
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          {hasNonArchivedItems && <DropdownActionItem onSelect={onArchive}>Архивировать</DropdownActionItem>}
-          {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
-          <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
-        </DropdownContent>
-      </DropdownMenu.Root>
+              {hasNonArchivedItems && <DropdownActionItem onSelect={onArchive}>Архивировать</DropdownActionItem>}
+              {hasArchivedItems && <DropdownActionItem onSelect={onRestoreArchive}>Вернуть из архива</DropdownActionItem>}
+              <DropdownActionItem onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
+            </DropdownContent>
+          </DropdownMenu.Root>
+        </span>
+      </div>
     </div>
   );
 }
