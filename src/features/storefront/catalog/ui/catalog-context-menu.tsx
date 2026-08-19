@@ -46,6 +46,7 @@ export type CatalogPositionAvailabilityMenuProps = {
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onActionComplete?: () => void;
   onMenuClose?: () => void;
+  onScheduleEditorPinnedChange?: (pinned: boolean) => void;
 };
 
 type MenuItemProps = {
@@ -289,6 +290,7 @@ export function CatalogPositionAvailabilityMenu({
   onManualStopChange,
   onScheduleChange,
   onStopDisplayModeChange,
+  onScheduleEditorPinnedChange,
 }: CatalogPositionAvailabilityMenuProps) {
   const [open, setOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
@@ -316,13 +318,23 @@ export function CatalogPositionAvailabilityMenu({
     if (!manualStopped) onManualStopChange(true);
   };
 
-  const enableSchedule = (event: Event) => {
-    event.preventDefault();
-    onScheduleChange(scheduleDraft, outsideScheduleDraft);
+  const setScheduleEditorOpen = (nextOpen: boolean) => {
+    setScheduleOpen(nextOpen);
+    onScheduleEditorPinnedChange?.(nextOpen);
   };
 
   return (
-    <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
+    <DropdownMenu.Sub
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && scheduleOpen) return;
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setStopOpen(false);
+          setScheduleEditorOpen(false);
+        }
+      }}
+    >
       <DropdownMenu.SubTrigger
         onPointerMove={() => setOpen(true)}
         onClick={(event) => {
@@ -345,14 +357,10 @@ export function CatalogPositionAvailabilityMenu({
           <DropdownMenu.RadioGroup value={availability}>
             <DropdownMenu.RadioItem
               value="available"
-              onPointerMove={() => {
-                setStopOpen(false);
-                setScheduleOpen(false);
-              }}
               onSelect={(event) => {
                 event.preventDefault();
                 setStopOpen(false);
-                setScheduleOpen(false);
+                setScheduleEditorOpen(false);
                 onManualStopChange(false);
               }}
               className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
@@ -366,17 +374,22 @@ export function CatalogPositionAvailabilityMenu({
               <span className="min-w-0 flex-1">Доступно</span>
             </DropdownMenu.RadioItem>
 
-            <DropdownMenu.Sub open={stopOpen} onOpenChange={setStopOpen}>
+            <DropdownMenu.Sub
+              open={stopOpen}
+              onOpenChange={(nextOpen) => {
+                if (scheduleOpen) return;
+                setStopOpen(nextOpen);
+              }}
+            >
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "stopped"}
                 onPointerMove={() => {
-                  setScheduleOpen(false);
-                  setStopOpen(true);
+                  if (!scheduleOpen) setStopOpen(true);
                 }}
                 onClick={(event) => {
                   event.preventDefault();
-                  setScheduleOpen(false);
+                  setScheduleEditorOpen(false);
                   setStopOpen(true);
                 }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
@@ -426,21 +439,18 @@ export function CatalogPositionAvailabilityMenu({
 
             <DropdownMenu.Sub
               open={scheduleOpen}
-              onOpenChange={(nextOpen) => {
-                if (nextOpen) setScheduleOpen(true);
-              }}
+              onOpenChange={() => undefined}
             >
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "scheduled"}
-                onPointerMove={() => {
-                  setStopOpen(false);
-                  setScheduleOpen(true);
-                }}
                 onClick={(event) => {
                   event.preventDefault();
                   setStopOpen(false);
-                  setScheduleOpen(true);
+                  if (availability !== "scheduled") {
+                    onScheduleChange(scheduleDraft, outsideScheduleDraft);
+                  }
+                  setScheduleEditorOpen(true);
                 }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
@@ -455,9 +465,12 @@ export function CatalogPositionAvailabilityMenu({
                   sideOffset={6}
                   alignOffset={-5}
                   collisionPadding={12}
+                  onPointerDownOutside={(event) => event.preventDefault()}
+                  onInteractOutside={(event) => event.preventDefault()}
+                  onFocusOutside={(event) => event.preventDefault()}
                   onEscapeKeyDown={(event) => {
                     event.preventDefault();
-                    setScheduleOpen(false);
+                    setScheduleEditorOpen(false);
                   }}
                   className="z-[100005] bg-transparent outline-none"
                 >
@@ -467,13 +480,11 @@ export function CatalogPositionAvailabilityMenu({
                     initialSchedule={scheduleDraft}
                     initialOutsideScheduleMode={outsideScheduleDraft}
                     layout="cascade"
-                    scheduleEnabled={availability === "scheduled"}
-                    onEnableSchedule={enableSchedule}
-                    onClose={() => setScheduleOpen(false)}
+                    onClose={() => setScheduleEditorOpen(false)}
                     onChange={(schedule, outsideMode) => {
                       setScheduleDraft(schedule);
                       setOutsideScheduleDraft(outsideMode);
-                      if (availability === "scheduled") onScheduleChange(schedule, outsideMode);
+                      onScheduleChange(schedule, outsideMode);
                     }}
                     showDelete={false}
                   />

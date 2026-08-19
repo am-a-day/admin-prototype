@@ -6505,6 +6505,7 @@ function AuditRowActionsMenu({
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const availability: CatalogMenuAvailability = item.status === "stopped" || item.status === "coming-soon"
     ? "stopped"
     : item.scheduled
@@ -6512,7 +6513,13 @@ function AuditRowActionsMenu({
       : "available";
   const stopDisplayMode: CatalogStopDisplayMode = item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
   return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+    <DropdownMenu.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setScheduleEditorPinned(false);
+      }}
+    >
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
@@ -6522,7 +6529,10 @@ function AuditRowActionsMenu({
           <DotsThreeVertical size={18} weight="bold" />
         </button>
       </DropdownMenu.Trigger>
-      <DropdownContent className="min-w-[208px] rounded-[6px] border-[#e2e8f0] shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <DropdownContent
+        preventOutsideDismiss={scheduleEditorPinned}
+        className="min-w-[208px] rounded-[6px] border-[#e2e8f0] shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
+      >
         <CatalogContextMenuContent
           entity="item"
           scheduleId={`item-${item.id}`}
@@ -6555,6 +6565,7 @@ function AuditRowActionsMenu({
             onScheduleChange: (nextSchedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, nextSchedule),
             onScheduleDelete: () => onAction("availability:schedule-delete"),
             onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
+            onScheduleEditorPinnedChange: setScheduleEditorPinned,
             onMenuClose: () => setOpen(false),
           }}
         />

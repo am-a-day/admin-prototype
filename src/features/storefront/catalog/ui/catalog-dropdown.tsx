@@ -10,7 +10,17 @@ export const CATALOG_DROPDOWN_ITEM_CLASS =
   "flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4]";
 export const CATALOG_DROPDOWN_SEPARATOR_CLASS = "my-1 h-px bg-[#e2e8f0]";
 
-export function DropdownContent({ children, align = "end", className }: { children: ReactNode; align?: "start" | "center" | "end"; className?: string }) {
+export function DropdownContent({
+  children,
+  align = "end",
+  className,
+  preventOutsideDismiss = false,
+}: {
+  children: ReactNode;
+  align?: "start" | "center" | "end";
+  className?: string;
+  preventOutsideDismiss?: boolean;
+}) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <DropdownMenu.Portal>
@@ -19,9 +29,17 @@ export function DropdownContent({ children, align = "end", className }: { childr
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS, className)}
         onPointerDownOutside={(event) => {
+          if (preventOutsideDismiss) {
+            event.preventDefault();
+            return;
+          }
           if (shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
         onInteractOutside={(event) => {
+          if (preventOutsideDismiss) {
+            event.preventDefault();
+            return;
+          }
           if (shouldPreventOverlayDismissal(event)) event.preventDefault();
         }}
       >

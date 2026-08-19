@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, CaretRight, CaretUpDown, Clock, Copy, Eye, MinusCircle, ToggleLeft, XCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle, XCircle } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -530,8 +530,6 @@ export function CatalogSchedulePopover({
   showDelete = true,
   onClose,
   layout = "default",
-  scheduleEnabled = true,
-  onEnableSchedule,
 }: {
   scheduleId: string;
   hasSchedule: boolean;
@@ -542,15 +540,11 @@ export function CatalogSchedulePopover({
   showDelete?: boolean;
   onClose?: () => void;
   layout?: "default" | "cascade";
-  scheduleEnabled?: boolean;
-  onEnableSchedule?: (event: Event) => void;
 }) {
   const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(initialSchedule));
   const [outsideScheduleMode, setOutsideScheduleMode] = useState<ScheduleOutsideDisplayMode>(initialOutsideScheduleMode);
   const [outsideMenuOpen, setOutsideMenuOpen] = useState(false);
   const cascadeLayout = layout === "cascade";
-  const canEditSchedule = !cascadeLayout || scheduleEnabled;
-  const outsideScheduleMenuOpen = canEditSchedule && outsideMenuOpen;
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(outsideMenuOpen, () => setOutsideMenuOpen(false));
 
@@ -567,37 +561,30 @@ export function CatalogSchedulePopover({
 
   const outsideScheduleControl = (
     <DropdownMenu.Root
-      open={outsideScheduleMenuOpen}
-      onOpenChange={(nextOpen) => {
-        if (canEditSchedule) setOutsideMenuOpen(nextOpen);
-      }}
+      open={outsideMenuOpen}
+      onOpenChange={setOutsideMenuOpen}
     >
-      <div className={cn("flex h-[42px] items-center bg-white px-3", cascadeLayout ? "gap-2" : "gap-3", !canEditSchedule && "text-[#a6a09b]")}>
+      <div className={cn("flex h-[42px] items-center bg-white px-3", cascadeLayout ? "gap-2" : "gap-3")}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className={cn("flex shrink-0 items-center justify-center", cascadeLayout ? "size-[18px]" : "size-4")}>
-            <Eye size={cascadeLayout ? 18 : 16} className={cn(canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")} />
+            <Eye size={cascadeLayout ? 18 : 16} className="text-[#1c1917]" />
           </span>
-          <span className={cn("truncate text-[13px] leading-5", canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")}>Вне расписания</span>
+          <span className="truncate text-[13px] leading-5 text-[#1c1917]">Вне расписания</span>
         </div>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            disabled={!canEditSchedule}
             aria-label="Режим вне расписания"
             className={cn(
               "flex h-8 shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
               cascadeLayout ? "w-[144px]" : "w-[120px]",
-              canEditSchedule
-                ? "text-[#57534d] hover:bg-[#f5f5f4]"
-                : "cursor-not-allowed text-[#a6a09b] opacity-70",
+              "text-[#57534d] hover:bg-[#f5f5f4]",
             )}
           >
             <span>
-              {canEditSchedule
-                ? outsideScheduleMode === "comingSoon"
-                  ? cascadeLayout ? "Как «скоро будет»" : "Показывать"
-                  : "Скрывать"
-                : "Не настроено"}
+              {outsideScheduleMode === "comingSoon"
+                ? cascadeLayout ? "Как «скоро будет»" : "Показывать"
+                : "Скрывать"}
             </span>
             <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
           </button>
@@ -623,7 +610,7 @@ export function CatalogSchedulePopover({
             onValueChange={(value) => handleOutsideScheduleModeChange(value as ScheduleOutsideDisplayMode)}
           >
             {([
-              { value: "hidden", label: "Скрывать из меню" },
+              { value: "hidden", label: cascadeLayout ? "Скрывать" : "Скрывать из меню" },
               {
                 value: "comingSoon",
                 label: cascadeLayout ? "Показывать как «скоро будет»" : "Показывать как “скоро будет”",
@@ -674,21 +661,6 @@ export function CatalogSchedulePopover({
           </button>
         </div>
       )}
-      {cascadeLayout && !scheduleEnabled && onEnableSchedule && (
-        <DropdownMenu.Item
-          onSelect={onEnableSchedule}
-          className={cn(
-            "flex h-[42px] cursor-pointer select-none items-center gap-2 bg-white px-3 text-[13px] font-medium text-[#1c1917] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
-          )}
-        >
-          <span className="flex size-[18px] shrink-0 items-center justify-center">
-            <ToggleLeft size={18} />
-          </span>
-          <span className="min-w-0 flex-1 truncate">Включить расписание</span>
-          <CaretRight size={16} className="shrink-0 text-[#79716b]" aria-hidden="true" />
-        </DropdownMenu.Item>
-      )}
-
       {cascadeLayout ? (
         <>
           {outsideScheduleControl}
@@ -697,7 +669,6 @@ export function CatalogSchedulePopover({
             scheduleId={scheduleId}
             weeklySchedule={schedule}
             onWeeklyScheduleChange={handleScheduleChange}
-            disabled={!canEditSchedule}
             embedded
           />
         </>

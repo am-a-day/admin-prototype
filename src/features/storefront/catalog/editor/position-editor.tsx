@@ -3389,6 +3389,7 @@ export function PositionEditor({
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title);
   const [positionActionsOpen, setPositionActionsOpen] = useState(false);
+  const [positionScheduleEditorPinned, setPositionScheduleEditorPinned] = useState(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const activeTabRef = useRef(activeTab);
   const mountedItemRef = useRef(false);
@@ -3568,6 +3569,7 @@ export function PositionEditor({
       else if (onDraftChange) onDraftChange(patch);
       else onUnavailableDisplayModeChange(displayMode);
     },
+    onScheduleEditorPinnedChange: setPositionScheduleEditorPinned,
     onMenuClose: () => setPositionActionsOpen(false),
   };
 
@@ -3596,10 +3598,13 @@ export function PositionEditor({
     return (
       <DropdownMenu.Root
         open={fixture?.positionActionsOpen ? true : positionActionsOpen}
-        onOpenChange={setPositionActionsOpen}
+        onOpenChange={(nextOpen) => {
+          setPositionActionsOpen(nextOpen);
+          if (!nextOpen) setPositionScheduleEditorPinned(false);
+        }}
       >
         <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
-        <DropdownContent align="start">
+        <DropdownContent align="start" preventOutsideDismiss={positionScheduleEditorPinned}>
           <CatalogContextMenuContent
             entity="item"
             showAvailability
