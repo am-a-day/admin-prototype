@@ -240,12 +240,6 @@ export function PositionEditorHost({
         onFeedback?.("Позиция восстановлена");
       }}
       onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
-      onToggleStop={(target) => {
-        const stopped = target.status === "stopped" || target.status === "coming-soon";
-        if (stopped) updateItem(target.id, { status: "active", scheduled: false });
-        else setItemStatus(target.id, "stopped");
-        scheduleAutosave(target.id);
-      }}
       onSetAvailabilityMode={setAvailability}
       unavailableDisplayMode={item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")}
       outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}

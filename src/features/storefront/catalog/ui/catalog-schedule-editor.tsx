@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ArrowLeft, CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -514,7 +514,6 @@ export function CatalogSchedulePopover({
   initialOutsideScheduleMode,
   onChange,
   onDelete,
-  onBack,
 }: {
   scheduleId: string;
   hasSchedule: boolean;
@@ -522,7 +521,6 @@ export function CatalogSchedulePopover({
   initialOutsideScheduleMode: ScheduleOutsideDisplayMode;
   onChange: (schedule: WeeklySchedule, outsideScheduleMode: ScheduleOutsideDisplayMode) => void;
   onDelete: () => void;
-  onBack?: () => void;
 }) {
   const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(initialSchedule));
   const [outsideScheduleMode, setOutsideScheduleMode] = useState<ScheduleOutsideDisplayMode>(initialOutsideScheduleMode);
@@ -543,17 +541,6 @@ export function CatalogSchedulePopover({
 
   return (
     <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
-      {onBack && (
-        <button
-          type="button"
-          aria-label="Назад: Расписание"
-          onClick={onBack}
-          className="flex h-9 w-full items-center gap-2 border-b border-[#e7e5e4] px-3 text-left text-[13px] font-medium leading-5 text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-        >
-          <ArrowLeft size={15} weight="bold" className="shrink-0 text-[#57534d]" />
-          <span>Расписание</span>
-        </button>
-      )}
       <WeeklyScheduleRows
         scheduleId={scheduleId}
         weeklySchedule={schedule}

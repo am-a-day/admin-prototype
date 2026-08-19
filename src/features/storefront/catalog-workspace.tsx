@@ -8755,9 +8755,6 @@ function OverviewWorkspace({
   const setCreateAvailabilityMode = (_item: CatalogItem, mode: AvailabilityMode) => {
     updateCreationItem(mode === "unavailable" ? { status: "stopped" } : { status: "active", scheduled: mode === "schedule" });
   };
-  const toggleCreateStop = () => {
-    updateCreationItem({ status: draftItem?.status === "stopped" ? "active" : "stopped" });
-  };
   const archiveQueueItem = (item: CatalogItem) => {
     setItemStatus(item.id, "archive");
     showFeedback("Позиция перенесена в архив");
@@ -8966,7 +8963,6 @@ function OverviewWorkspace({
                 onMoveItem={(target, anchor) => {
                   if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
                 }}
-                onToggleStop={toggleCreateStop}
                 onSetAvailabilityMode={setCreateAvailabilityMode}
                 unavailableDisplayMode={currentItem.unavailableDisplayMode ?? (currentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
                 outsideScheduleMode={currentItem.outsideScheduleMode ?? "hidden"}
@@ -9507,7 +9503,6 @@ function OverviewWorkspace({
             onMoveItem={(target, anchor) => {
               if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
             }}
-            onToggleStop={toggleCreateStop}
             onSetAvailabilityMode={setCreateAvailabilityMode}
             unavailableDisplayMode={queueCurrentItem.unavailableDisplayMode ?? (queueCurrentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
             outsideScheduleMode={queueCurrentItem.outsideScheduleMode ?? "hidden"}

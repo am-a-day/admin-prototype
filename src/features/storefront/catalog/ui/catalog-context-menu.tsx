@@ -6,11 +6,8 @@ import {
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
-  CalendarPlus,
-  CalendarDots,
   CaretRight,
   Check,
-  CheckCircle,
   Copy,
   NotePencil,
   PlusCircle,
@@ -268,45 +265,72 @@ export function CatalogPositionAvailabilityMenu({
   onMenuClose,
 }: CatalogPositionAvailabilityMenuProps) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"status" | "stop" | "schedule">("status");
+  const [view, setView] = useState<"modes" | "stop" | "schedule">("modes");
   const availability: CatalogMenuAvailability = manualStopped ? "stopped" : hasSchedule ? "scheduled" : "available";
-  const statusCopy = availability === "stopped"
-    ? { label: "На стопе", icon: <Prohibit size={16} weight="bold" className="text-[#d97706]" /> }
-    : availability === "scheduled"
-      ? { label: "По расписанию", icon: <CalendarDots size={16} weight="bold" className="text-[#2563eb]" /> }
-      : { label: "Доступно", icon: <CheckCircle size={16} weight="bold" className="text-[#16a34a]" /> };
 
   const closeMenu = () => {
-    setView("status");
+    setView("modes");
     setOpen(false);
     onMenuClose?.();
   };
 
-  const enterStop = () => {
-    onStopDisplayModeChange("hidden");
-    onManualStopChange(true);
-    setView("stop");
-  };
+  const selectAvailability = (nextAvailability: CatalogMenuAvailability) => {
+    if (nextAvailability === "available") {
+      onManualStopChange(false);
+      closeMenu();
+      return;
+    }
 
-  const enterSchedule = () => {
-    // Opening the editor is itself the availability transition. Persist the
-    // current (or default) schedule before rendering the nested screen so a
-    // close without edits cannot leave the item in its previous mode.
+    if (nextAvailability === "stopped") {
+      if (!manualStopped) {
+        onStopDisplayModeChange("hidden");
+        onManualStopChange(true);
+      }
+      setView("stop");
+      return;
+    }
+
+    // Choosing the mode also creates/persists the default schedule when needed.
     onScheduleChange(weeklySchedule, outsideScheduleMode);
     setView("schedule");
   };
 
-  const renderAction = (label: string, onSelect: () => void, icon?: ReactNode) => (
-    <DropdownMenu.Item
-      onSelect={(event) => {
+  const renderAvailabilityModes = () => (
+    <DropdownMenu.SubContent
+      sideOffset={6}
+      alignOffset={-5}
+      collisionPadding={12}
+      onEscapeKeyDown={(event) => {
         event.preventDefault();
-        onSelect();
+        closeMenu();
       }}
-      className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+      className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
     >
-      {icon && <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </DropdownMenu.Item>
+      <DropdownMenu.RadioGroup value={availability}>
+        {([
+          { value: "available", label: "Доступно" },
+          { value: "stopped", label: "На стопе" },
+          { value: "scheduled", label: "По расписанию" },
+        ] as const).map((option) => (
+          <DropdownMenu.RadioItem
+            key={option.value}
+            value={option.value}
+            onSelect={(event) => {
+              event.preventDefault();
+              selectAvailability(option.value);
+            }}
+            className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <span className="flex size-4 shrink-0 items-center justify-center rounded-full border border-[#d6d3d1] bg-white">
+              <DropdownMenu.ItemIndicator>
+                <span className="block size-2 rounded-full bg-[#292524]" />
+              </DropdownMenu.ItemIndicator>
+            </span>
+            <span className="min-w-0 flex-1">{option.label}</span>
+          </DropdownMenu.RadioItem>
+        ))}
+      </DropdownMenu.RadioGroup>
+    </DropdownMenu.SubContent>
   );
 
   const renderScheduleEditor = () => (
@@ -331,7 +355,6 @@ export function CatalogPositionAvailabilityMenu({
           closeMenu();
           onActionComplete?.();
         }}
-        onBack={() => setView("status")}
       />
     </DropdownMenu.SubContent>
   );
@@ -351,85 +374,28 @@ export function CatalogPositionAvailabilityMenu({
         value={stopDisplayMode}
         manualStopped={false}
         keepOpenOnChange
-        onChange={(mode) => {
-          onStopDisplayModeChange(mode);
-        }}
+        onChange={onStopDisplayModeChange}
       />
-      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-      {renderAction("Переключить на расписание", enterSchedule, <CalendarPlus size={15} className="text-[#57534d]" />)}
-      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-      <DropdownActionItem
-        icon={ArrowUUpLeft}
-        onSelect={() => {
-          onManualStopChange(false);
-          closeMenu();
-        }}
-      >
-        Убрать со стопа
-      </DropdownActionItem>
     </DropdownMenu.SubContent>
   );
-
-  const renderStatusContent = () => {
-    if (availability === "available") {
-      return (
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-5}
-          collisionPadding={12}
-          onEscapeKeyDown={(event) => {
-            event.preventDefault();
-            closeMenu();
-          }}
-          className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-        >
-          {renderAction("Поставить на стоп", enterStop)}
-          {renderAction("Добавить расписание", enterSchedule)}
-        </DropdownMenu.SubContent>
-      );
-    }
-
-    if (availability === "scheduled") {
-      return (
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-5}
-          collisionPadding={12}
-          onEscapeKeyDown={(event) => {
-            event.preventDefault();
-            closeMenu();
-          }}
-          className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-        >
-          {renderAction("Изменить расписание", enterSchedule, <CalendarBlank size={15} className="text-[#57534d]" />)}
-          <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-          {renderAction("Поставить на стоп", enterStop, <Prohibit size={15} className="text-[#57534d]" />)}
-        </DropdownMenu.SubContent>
-      );
-    }
-
-    return renderStopContent();
-  };
 
   return (
     <DropdownMenu.Sub
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) setView("status");
+        if (!nextOpen) setView("modes");
       }}
     >
-      <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}>
-        <span className="flex size-4 shrink-0 items-center justify-center">{statusCopy.icon}</span>
-        <span className="min-w-0 flex-1 truncate">{statusCopy.label}</span>
+      <DropdownMenu.SubTrigger
+        onPointerMove={(event) => event.preventDefault()}
+        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}
+      >
+        <span className="min-w-0 flex-1 truncate">Доступность</span>
         <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
-        {view === "schedule"
-          ? renderScheduleEditor()
-          : view === "stop"
-            ? renderStopContent()
-            : renderStatusContent()}
+        {view === "schedule" ? renderScheduleEditor() : view === "stop" ? renderStopContent() : renderAvailabilityModes()}
       </DropdownMenu.Portal>
     </DropdownMenu.Sub>
   );

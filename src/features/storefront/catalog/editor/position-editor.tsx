@@ -3305,7 +3305,6 @@ export function PositionEditor({
   onArchiveItem,
   onRestoreItem,
   onMoveItem,
-  onToggleStop,
   onSetAvailabilityMode,
   unavailableDisplayMode,
   outsideScheduleMode,
@@ -3346,7 +3345,6 @@ export function PositionEditor({
   onArchiveItem: (item: CatalogItem) => void;
   onRestoreItem: (item: CatalogItem) => void;
   onMoveItem: (item: CatalogItem, anchor: MovePopoverAnchor) => void;
-  onToggleStop: (item: CatalogItem) => void;
   onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
   unavailableDisplayMode: UnavailableDisplayMode;
   outsideScheduleMode: OutsideScheduleMode;
@@ -3535,7 +3533,7 @@ export function PositionEditor({
     stopDisplayMode: unavailableDisplayMode,
     outsideScheduleMode,
     onManualStopChange: (stopped) => {
-      if (stopped !== manualStopped) onToggleStop(item);
+      onSetAvailabilityMode(item, stopped ? "unavailable" : "always");
     },
     onScheduleChange: (schedule, nextOutsideScheduleMode) => {
       const patch = {
