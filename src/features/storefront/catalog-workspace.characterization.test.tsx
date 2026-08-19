@@ -574,6 +574,49 @@ describe("catalog observable behavior baseline", () => {
     expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно");
   });
 
+  it("keeps the current availability flow beside the cascade comparison", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    await user.type(screen.getByPlaceholderText("Поиск по названию"), "Омлет");
+    await user.click(screen.getByText(firstItemTitle, { exact: true }));
+    const actions = () => within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
+
+    await user.click(actions());
+    expect(screen.getByRole("menuitem", { name: "Доступность" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Режим позиции" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Режим позиции" }));
+
+    expect(screen.getByRole("menuitemradio", { name: "Доступна" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "Стоп" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("menuitemradio", { name: "Расписание" })).toHaveAttribute("aria-checked", "false");
+
+    await user.hover(screen.getByRole("menuitemradio", { name: "Стоп" }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument());
+    await user.click(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" }));
+    expect(screen.getByRole("menuitemradio", { name: "Показывать как “скоро будет”" })).toHaveAttribute("aria-checked", "true");
+    expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Скоро будет");
+    expect(screen.getByRole("menuitemradio", { name: "Стоп" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("opens the existing schedule editor as the third cascade level", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    await user.type(screen.getByPlaceholderText("Поиск по названию"), "Омлет");
+    await user.click(screen.getByText(firstItemTitle, { exact: true }));
+    await user.click(within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` }));
+    await user.click(screen.getByRole("menuitem", { name: "Режим позиции" }));
+
+    await user.hover(screen.getByRole("menuitemradio", { name: "Расписание" }));
+    await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument());
+    expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Назад к Доступности" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("menuitemradio", { name: "Расписание" }));
+    expect(screen.getByRole("menuitemradio", { name: "Расписание" })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("switches availability modes directly from the shared mode list", async () => {
     const user = userEvent.setup();
     renderCatalog();
