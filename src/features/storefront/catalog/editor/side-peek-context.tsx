@@ -25,6 +25,8 @@ const SIDE_PEEK_INTERACTIVE_SELECTOR = [
   "[role=\"spinbutton\"]",
   "[role=\"switch\"]",
   "[role=\"tab\"]",
+  "[role=\"menuitemradio\"]",
+  "[role=\"menuitemcheckbox\"]",
   "[data-catalog-dnd-handle]",
   "[data-catalog-column-resize-handle]",
   "[data-position-editor-resize-handle]",

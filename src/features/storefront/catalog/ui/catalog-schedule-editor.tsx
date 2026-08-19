@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CalendarBlank, CaretDown, CaretLeft, CaretUpDown, Clock, Copy, Eye, MinusCircle, X } from "@phosphor-icons/react";
+import { CalendarBlank, CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle, X } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -12,7 +12,6 @@ import {
   CATALOG_DROPDOWN_CONTENT_CLASS,
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
-  DropdownActionItem,
 } from "./catalog-dropdown";
 import { usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 
@@ -526,7 +525,6 @@ export function CatalogSchedulePopover({
   onChange,
   onDelete,
   showDelete = true,
-  onBack,
   onClose,
   layout = "default",
   scheduleEnabled = true,
@@ -539,7 +537,6 @@ export function CatalogSchedulePopover({
   onChange: (schedule: WeeklySchedule, outsideScheduleMode: ScheduleOutsideDisplayMode) => void;
   onDelete?: () => void;
   showDelete?: boolean;
-  onBack?: () => void;
   onClose?: () => void;
   layout?: "default" | "cascade";
   scheduleEnabled?: boolean;
@@ -638,33 +635,30 @@ export function CatalogSchedulePopover({
 
   return (
     <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
-      {(onBack || onClose) && (
-        <div className="flex h-9 items-center justify-between border-b border-[#e7e5e4] bg-white px-2">
+      {onClose && (
+        <div className="flex h-9 items-center justify-end border-b border-[#e7e5e4] bg-white px-2">
           <button
             type="button"
-            aria-label="Назад к Доступности"
-            onClick={onBack}
-            className="flex h-7 items-center gap-1 rounded-[7px] px-1 text-[13px] font-medium leading-5 text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            aria-label="Закрыть меню"
+            onClick={onClose}
+            className="flex size-7 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <CaretLeft size={16} weight="bold" aria-hidden="true" />
-            <span>Доступность</span>
+            <X size={16} weight="bold" aria-hidden="true" />
           </button>
-          {onClose && (
-            <button
-              type="button"
-              aria-label="Закрыть меню"
-              onClick={onClose}
-              className="flex size-7 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <X size={16} weight="bold" aria-hidden="true" />
-            </button>
-          )}
         </div>
       )}
       {cascadeLayout && !scheduleEnabled && onEnableSchedule && (
-        <DropdownActionItem icon={CalendarBlank} onSelect={onEnableSchedule}>
-          Включить расписание
-        </DropdownActionItem>
+        <DropdownMenu.Item
+          onSelect={onEnableSchedule}
+          className={cn(
+            "flex h-[42px] cursor-pointer select-none items-center gap-2 rounded-[8px] px-3 text-[13px] font-medium text-[#1c1917] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+          )}
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            <CalendarBlank size={16} />
+          </span>
+          <span className="min-w-0 flex-1 truncate">Включить расписание</span>
+        </DropdownMenu.Item>
       )}
 
       {cascadeLayout ? (
