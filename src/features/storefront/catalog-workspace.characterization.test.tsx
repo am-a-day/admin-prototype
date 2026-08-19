@@ -489,6 +489,11 @@ describe("catalog observable behavior baseline", () => {
     const actions = () => within(getPositionSidePeek(firstItemTitle)).getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
 
     await user.click(actions());
+    const availabilityTrigger = screen.getByRole("menuitem", { name: "Доступность" });
+    await user.hover(availabilityTrigger);
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: "Доступно" })).toBeInTheDocument());
+    await user.keyboard("{Escape}");
+    await user.click(actions());
     await user.click(screen.getByRole("menuitem", { name: "Доступность" }));
     await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
     const schedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
@@ -497,6 +502,12 @@ describe("catalog observable behavior baseline", () => {
     expect(within(schedulePopover).getByText("Показывать", { exact: true })).toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Отмена" })).not.toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Сохранить" })).not.toBeInTheDocument();
+
+    await user.click(within(schedulePopover).getByRole("button", { name: "Назад к Доступности" }));
+    expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
+    const scheduleAfterBack = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
+    expect(within(scheduleAfterBack).getByText("Показывать", { exact: true })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
@@ -510,11 +521,12 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
     const reopenedSchedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
     expect(within(reopenedSchedulePopover).getByText("Показывать", { exact: true })).toBeInTheDocument();
-    await user.click(within(reopenedSchedulePopover).getByRole("button", { name: "Убрать расписание" }));
-    await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
-    await user.click(actions());
-    await user.click(screen.getByRole("menuitem", { name: "Доступность" }));
-    expect(screen.getByRole("menuitemradio", { name: "Доступно" })).toHaveAttribute("aria-checked", "true");
+    expect(within(reopenedSchedulePopover).getByRole("button", { name: "Назад к Доступности" })).toBeInTheDocument();
+    expect(within(reopenedSchedulePopover).getByRole("button", { name: "Закрыть меню" })).toBeInTheDocument();
+    expect(within(reopenedSchedulePopover).queryByRole("button", { name: "Убрать расписание" })).not.toBeInTheDocument();
+    await user.click(within(reopenedSchedulePopover).getByRole("button", { name: "Назад к Доступности" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Доступно" }));
+    expect(document.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно");
   });
 
   it("shows all availability modes and keeps stop settings open", async () => {
@@ -532,6 +544,7 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "false");
 
     await user.click(screen.getByRole("menuitemradio", { name: "На стопе" }));
+    expect(screen.getByRole("button", { name: "Назад к Доступности" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("menuitemradio", { name: "Доступно" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Переключить на расписание" })).not.toBeInTheDocument();
@@ -572,7 +585,9 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
 
     const schedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
-    expect(within(schedulePopover).queryByRole("button", { name: "Назад: Расписание" })).not.toBeInTheDocument();
+    expect(within(schedulePopover).getByRole("button", { name: "Назад к Доступности" })).toBeInTheDocument();
+    expect(within(schedulePopover).getByRole("button", { name: "Закрыть меню" })).toBeInTheDocument();
+    expect(within(schedulePopover).queryByRole("button", { name: "Убрать расписание" })).not.toBeInTheDocument();
     await user.click(within(schedulePopover).getByRole("button", { name: "Режим вне расписания" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Показывать как “скоро будет”$/ }));
 

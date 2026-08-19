@@ -6,6 +6,7 @@ import {
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
+  CaretLeft,
   CaretRight,
   Check,
   Copy,
@@ -259,9 +260,7 @@ export function CatalogPositionAvailabilityMenu({
   outsideScheduleMode,
   onManualStopChange,
   onScheduleChange,
-  onScheduleDelete,
   onStopDisplayModeChange,
-  onActionComplete,
   onMenuClose,
 }: CatalogPositionAvailabilityMenuProps) {
   const [open, setOpen] = useState(false);
@@ -350,11 +349,9 @@ export function CatalogPositionAvailabilityMenu({
         initialSchedule={weeklySchedule}
         initialOutsideScheduleMode={outsideScheduleMode}
         onChange={onScheduleChange}
-        onDelete={() => {
-          onScheduleDelete();
-          closeMenu();
-          onActionComplete?.();
-        }}
+        showDelete={false}
+        onBack={() => setView("modes")}
+        onClose={closeMenu}
       />
     </DropdownMenu.SubContent>
   );
@@ -370,6 +367,15 @@ export function CatalogPositionAvailabilityMenu({
       }}
       className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
     >
+      <button
+        type="button"
+        aria-label="Назад к Доступности"
+        onClick={() => setView("modes")}
+        className="flex h-9 w-full items-center gap-1.5 border-b border-[#e7e5e4] px-3 text-left text-[13px] font-medium leading-5 text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+      >
+        <CaretLeft size={16} weight="bold" aria-hidden="true" />
+        <span>Доступность</span>
+      </button>
       <StopDisplayOptions
         value={stopDisplayMode}
         manualStopped={false}
@@ -388,7 +394,6 @@ export function CatalogPositionAvailabilityMenu({
       }}
     >
       <DropdownMenu.SubTrigger
-        onPointerMove={(event) => event.preventDefault()}
         className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}
       >
         <span className="min-w-0 flex-1 truncate">Доступность</span>
