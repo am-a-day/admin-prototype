@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CalendarBlank, CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle, X } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, CaretUpDown, Clock, Copy, Eye, MinusCircle, ToggleLeft, XCircle } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -139,12 +139,14 @@ function WeeklyScheduleRows({
   onWeeklyScheduleChange,
   variant = "default",
   disabled = false,
+  embedded = false,
 }: {
   scheduleId: string;
   weeklySchedule: WeeklySchedule;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   variant?: "default" | "availability";
   disabled?: boolean;
+  embedded?: boolean;
 }) {
   const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
   const schedule = normalizeWeeklySchedule(weeklySchedule);
@@ -169,9 +171,10 @@ function WeeklyScheduleRows({
       data-weekly-schedule-id={scheduleId}
       aria-disabled={disabled || undefined}
       className={cn(
-        "overflow-hidden border border-[#e7e5e4] bg-white",
-        compactAvailability ? "rounded-[15px]" : "rounded-[11px]",
-        disabled && "pointer-events-none opacity-50",
+        "overflow-hidden bg-white",
+        embedded ? "border-0" : "border border-[#e7e5e4]",
+        !embedded && (compactAvailability ? "rounded-[15px]" : "rounded-[11px]"),
+        disabled && (embedded ? "pointer-events-none opacity-30" : "pointer-events-none opacity-50"),
       )}
     >
       {DAY_LABELS.map(({ key, label }) => {
@@ -569,9 +572,11 @@ export function CatalogSchedulePopover({
         if (canEditSchedule) setOutsideMenuOpen(nextOpen);
       }}
     >
-      <div className={cn("flex h-[42px] items-center gap-3 px-3", !canEditSchedule && "text-[#a6a09b]")}>
+      <div className={cn("flex h-[42px] items-center bg-white px-3", cascadeLayout ? "gap-2" : "gap-3", !canEditSchedule && "text-[#a6a09b]")}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Eye size={16} className={cn("shrink-0", canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")} />
+          <span className={cn("flex shrink-0 items-center justify-center", cascadeLayout ? "size-[18px]" : "size-4")}>
+            <Eye size={cascadeLayout ? 18 : 16} className={cn(canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")} />
+          </span>
           <span className={cn("truncate text-[13px] leading-5", canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")}>Вне расписания</span>
         </div>
         <DropdownMenu.Trigger asChild>
@@ -580,13 +585,20 @@ export function CatalogSchedulePopover({
             disabled={!canEditSchedule}
             aria-label="Режим вне расписания"
             className={cn(
-              "flex h-8 w-[120px] shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              "flex h-8 shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              cascadeLayout ? "w-[144px]" : "w-[120px]",
               canEditSchedule
                 ? "text-[#57534d] hover:bg-[#f5f5f4]"
                 : "cursor-not-allowed text-[#a6a09b] opacity-70",
             )}
           >
-            <span>{canEditSchedule ? (outsideScheduleMode === "comingSoon" ? "Показывать" : "Скрывать") : "Не настроено"}</span>
+            <span>
+              {canEditSchedule
+                ? outsideScheduleMode === "comingSoon"
+                  ? cascadeLayout ? "Как «скоро будет»" : "Показывать"
+                  : "Скрывать"
+                : "Не настроено"}
+            </span>
             <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
           </button>
         </DropdownMenu.Trigger>
@@ -612,7 +624,10 @@ export function CatalogSchedulePopover({
           >
             {([
               { value: "hidden", label: "Скрывать из меню" },
-              { value: "comingSoon", label: "Показывать как “скоро будет”" },
+              {
+                value: "comingSoon",
+                label: cascadeLayout ? "Показывать как «скоро будет»" : "Показывать как “скоро будет”",
+              },
             ] as const).map((option) => (
               <DropdownMenu.RadioItem
                 key={option.value}
@@ -634,16 +649,28 @@ export function CatalogSchedulePopover({
   );
 
   return (
-    <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
+    <div
+      data-catalog-schedule-popover
+      className={cn(
+        CATALOG_DROPDOWN_CONTENT_CLASS,
+        "max-w-[calc(100vw-24px)] overflow-hidden border-[#e7e5e4] p-0",
+        cascadeLayout ? "w-[328px] rounded-[12px] bg-[#f5f5f4]" : "w-[314px] rounded-[11px]",
+      )}
+    >
       {onClose && (
-        <div className="flex h-9 items-center justify-end border-b border-[#e7e5e4] bg-white px-2">
+        <div className="flex h-[42px] items-center border-b border-[#e7e5e4] bg-white px-3">
+          {cascadeLayout && (
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5 text-[#1c1917]">
+              Расписание доступности
+            </span>
+          )}
           <button
             type="button"
-            aria-label="Закрыть меню"
+            aria-label={cascadeLayout ? "Закрыть расписание" : "Закрыть меню"}
             onClick={onClose}
             className="flex size-7 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <X size={16} weight="bold" aria-hidden="true" />
+            <XCircle size={16} weight="bold" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -651,25 +678,27 @@ export function CatalogSchedulePopover({
         <DropdownMenu.Item
           onSelect={onEnableSchedule}
           className={cn(
-            "flex h-[42px] cursor-pointer select-none items-center gap-2 rounded-[8px] px-3 text-[13px] font-medium text-[#1c1917] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
+            "flex h-[42px] cursor-pointer select-none items-center gap-2 bg-white px-3 text-[13px] font-medium text-[#1c1917] outline-none transition data-[highlighted]:bg-[#f5f5f4]",
           )}
         >
-          <span className="flex size-4 shrink-0 items-center justify-center">
-            <CalendarBlank size={16} />
+          <span className="flex size-[18px] shrink-0 items-center justify-center">
+            <ToggleLeft size={18} />
           </span>
           <span className="min-w-0 flex-1 truncate">Включить расписание</span>
+          <CaretRight size={16} className="shrink-0 text-[#79716b]" aria-hidden="true" />
         </DropdownMenu.Item>
       )}
 
       {cascadeLayout ? (
         <>
           {outsideScheduleControl}
-          <div className="mx-3 h-px bg-[#e7e5e4]" />
+          <div className="h-2 bg-[#f5f5f4]" />
           <WeeklyScheduleRows
             scheduleId={scheduleId}
             weeklySchedule={schedule}
             onWeeklyScheduleChange={handleScheduleChange}
             disabled={!canEditSchedule}
+            embedded
           />
         </>
       ) : (

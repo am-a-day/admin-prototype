@@ -6,9 +6,12 @@ import {
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
+  CalendarDots,
   CaretRight,
   Check,
+  CheckCircle,
   Copy,
+  LockLaminated,
   NotePencil,
   PlusCircle,
   Prohibit,
@@ -134,6 +137,7 @@ function StopDisplayOptions({
   manualStopped,
   keepOpenOnChange = false,
   optionsDisabled = false,
+  comingSoonLabel = "Показывать как “скоро будет”",
   onChange,
   onResume,
 }: {
@@ -141,6 +145,7 @@ function StopDisplayOptions({
   manualStopped: boolean;
   keepOpenOnChange?: boolean;
   optionsDisabled?: boolean;
+  comingSoonLabel?: string;
   onChange: (mode: CatalogStopDisplayMode) => void;
   onResume?: () => void;
 }) {
@@ -149,7 +154,7 @@ function StopDisplayOptions({
       <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as CatalogStopDisplayMode)}>
         {([
           { value: "hidden", label: "Скрывать из меню" },
-          { value: "comingSoon", label: "Показывать как “скоро будет”" },
+          { value: "comingSoon", label: comingSoonLabel },
         ] as const).map((option) => (
           <DropdownMenu.RadioItem
             key={option.value}
@@ -255,9 +260,11 @@ function StopAvailabilitySubmenu({
 
 function CascadeAvailabilitySubTrigger({
   checked,
+  icon,
   label,
 }: {
   checked: boolean;
+  icon: ReactNode;
   label: string;
 }) {
   return (
@@ -265,6 +272,7 @@ function CascadeAvailabilitySubTrigger({
       <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", checked ? "border-[#292524]" : "border-[#d6d3d1]")}>
         {checked && <span className="block size-2 rounded-full bg-[#292524]" />}
       </span>
+      <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
     </>
@@ -281,7 +289,6 @@ export function CatalogPositionAvailabilityMenu({
   onManualStopChange,
   onScheduleChange,
   onStopDisplayModeChange,
-  onMenuClose,
 }: CatalogPositionAvailabilityMenuProps) {
   const [open, setOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
@@ -289,6 +296,20 @@ export function CatalogPositionAvailabilityMenu({
   const [scheduleDraft, setScheduleDraft] = useState(weeklySchedule);
   const [outsideScheduleDraft, setOutsideScheduleDraft] = useState(outsideScheduleMode);
   const availability: CatalogMenuAvailability = manualStopped ? "stopped" : hasSchedule ? "scheduled" : "available";
+  const availabilityMeta = {
+    available: {
+      label: "Доступно",
+      icon: <CheckCircle size={16} weight="fill" className="text-[#56826a]" aria-hidden="true" />,
+    },
+    stopped: {
+      label: "На стопе",
+      icon: <LockLaminated size={16} className="text-[#b45309]" aria-hidden="true" />,
+    },
+    scheduled: {
+      label: "По расписанию",
+      icon: <CalendarDots size={16} className="text-[#2563eb]" aria-hidden="true" />,
+    },
+  }[availability];
 
   const selectStopDisplayMode = (mode: CatalogStopDisplayMode) => {
     onStopDisplayModeChange(mode);
@@ -308,9 +329,10 @@ export function CatalogPositionAvailabilityMenu({
           event.preventDefault();
           setOpen(true);
         }}
-        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}
+        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "font-medium text-[#292524]")}
       >
-        <span className="min-w-0 flex-1 truncate">Доступность</span>
+        <span className="flex size-4 shrink-0 items-center justify-center">{availabilityMeta.icon}</span>
+        <span className="min-w-0 flex-1 truncate">{availabilityMeta.label}</span>
         <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
@@ -318,15 +340,20 @@ export function CatalogPositionAvailabilityMenu({
           sideOffset={6}
           alignOffset={-5}
           collisionPadding={12}
-          className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+          className={cn("z-[100004] min-w-[190px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
         >
           <DropdownMenu.RadioGroup value={availability}>
             <DropdownMenu.RadioItem
               value="available"
+              onPointerMove={() => {
+                setStopOpen(false);
+                setScheduleOpen(false);
+              }}
               onSelect={(event) => {
                 event.preventDefault();
+                setStopOpen(false);
+                setScheduleOpen(false);
                 onManualStopChange(false);
-                onMenuClose?.();
               }}
               className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
             >
@@ -335,6 +362,7 @@ export function CatalogPositionAvailabilityMenu({
                   <span className="block size-2 rounded-full bg-[#292524]" />
                 </DropdownMenu.ItemIndicator>
               </span>
+              <CheckCircle size={14} className="shrink-0 text-[#56826a]" aria-hidden="true" />
               <span className="min-w-0 flex-1">Доступно</span>
             </DropdownMenu.RadioItem>
 
@@ -342,21 +370,29 @@ export function CatalogPositionAvailabilityMenu({
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "stopped"}
-                onPointerMove={() => setStopOpen(true)}
+                onPointerMove={() => {
+                  setScheduleOpen(false);
+                  setStopOpen(true);
+                }}
                 onClick={(event) => {
                   event.preventDefault();
+                  setScheduleOpen(false);
                   setStopOpen(true);
                 }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
-                <CascadeAvailabilitySubTrigger checked={availability === "stopped"} label="Стоп" />
+                <CascadeAvailabilitySubTrigger
+                  checked={availability === "stopped"}
+                  icon={<LockLaminated size={14} className="text-[#b45309]" aria-hidden="true" />}
+                  label="На стопе"
+                />
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent
                   sideOffset={6}
                   alignOffset={-5}
                   collisionPadding={12}
-                  className={cn("z-[100005] min-w-[252px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+                  className={cn("z-[100005] min-w-[176px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
                 >
                   {!manualStopped && (
                     <>
@@ -373,35 +409,56 @@ export function CatalogPositionAvailabilityMenu({
                       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
                     </>
                   )}
+                  <div className="flex h-5 items-center px-2 text-[11px] leading-4 text-[#79716b]">
+                    Отображение в меню
+                  </div>
                   <StopDisplayOptions
                     value={manualStopped ? stopDisplayMode : undefined}
                     manualStopped={false}
                     optionsDisabled={!manualStopped}
                     keepOpenOnChange
+                    comingSoonLabel="Как «скоро будет»"
                     onChange={manualStopped ? selectStopDisplayMode : () => undefined}
                   />
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
             </DropdownMenu.Sub>
 
-            <DropdownMenu.Sub open={scheduleOpen} onOpenChange={setScheduleOpen}>
+            <DropdownMenu.Sub
+              open={scheduleOpen}
+              onOpenChange={(nextOpen) => {
+                if (nextOpen) setScheduleOpen(true);
+              }}
+            >
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "scheduled"}
-                onPointerMove={() => setScheduleOpen(true)}
+                onPointerMove={() => {
+                  setStopOpen(false);
+                  setScheduleOpen(true);
+                }}
                 onClick={(event) => {
                   event.preventDefault();
+                  setStopOpen(false);
                   setScheduleOpen(true);
                 }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
-                <CascadeAvailabilitySubTrigger checked={availability === "scheduled"} label="Расписание" />
+                <CascadeAvailabilitySubTrigger
+                  checked={availability === "scheduled"}
+                  icon={<CalendarDots size={14} className="text-[#2563eb]" aria-hidden="true" />}
+                  label="По расписанию"
+                />
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent
                   sideOffset={6}
                   alignOffset={-5}
                   collisionPadding={12}
+                  onEscapeKeyDown={(event) => {
+                    event.preventDefault();
+                    setScheduleOpen(false);
+                  }}
                   className="z-[100005] bg-transparent outline-none"
                 >
                   <CatalogSchedulePopover
@@ -412,7 +469,7 @@ export function CatalogPositionAvailabilityMenu({
                     layout="cascade"
                     scheduleEnabled={availability === "scheduled"}
                     onEnableSchedule={enableSchedule}
-                    onClose={onMenuClose}
+                    onClose={() => setScheduleOpen(false)}
                     onChange={(schedule, outsideMode) => {
                       setScheduleDraft(schedule);
                       setOutsideScheduleDraft(outsideMode);
