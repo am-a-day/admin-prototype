@@ -16,6 +16,7 @@ import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import { DropdownContent, TableCheckbox } from "../table/catalog-table";
 import { SectionDraftConfirmButton } from "../ui/section-draft-confirm";
+import { CATALOG_SECTION_TO_TABLE_GAP_CLASS } from "../ui/catalog-layout";
 
 function TruncatedText({
   children,
@@ -347,7 +348,7 @@ export function SubsectionList({
       strategy={verticalListSortingStrategy}
     >
       <div className="min-w-0">
-        <div className="border-b border-[#e7e5e4] py-[5px]">
+        <div className={cn("border-b border-[#e7e5e4] pb-[5px]", CATALOG_SECTION_TO_TABLE_GAP_CLASS)}>
           <CatalogTableSearchControl
             value={query}
             onValueChange={setQuery}

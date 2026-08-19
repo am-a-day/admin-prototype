@@ -154,6 +154,7 @@ import {
   usePrefersReducedMotion,
 } from "./catalog/workspace/dnd";
 import { SubsectionList } from "./catalog/workspace/subsections";
+import { CATALOG_SECTION_TO_TABLE_GAP_CLASS } from "./catalog/ui/catalog-layout";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
   CATALOG_INFORMATION_COLUMN_IDS,
@@ -9176,7 +9177,12 @@ function OverviewWorkspace({
                 </CatalogActionButton>
               )}
             </div>
-            <div className="h-8 min-w-0">
+            <div className={cn(
+              "min-w-0",
+              USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null)
+                ? "h-8"
+                : CATALOG_SECTION_TO_TABLE_GAP_CLASS,
+            )}>
               {USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null) && (
                 <CatalogLabelFilterRow
                   tagFilter={tagFilter}
