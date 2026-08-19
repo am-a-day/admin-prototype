@@ -400,6 +400,10 @@ export function CatalogPositionAvailabilityMenu({
       }}
     >
       <DropdownMenu.SubTrigger
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
         className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}
       >
         <span className="min-w-0 flex-1 truncate">Доступность</span>
@@ -460,7 +464,13 @@ export function CatalogPositionAvailabilityCascadeMenu({
 
   return (
     <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
-      <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}>
+      <DropdownMenu.SubTrigger
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
+        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "h-9 font-medium text-[#292524]")}
+      >
         <span className="min-w-0 flex-1 truncate">Режим позиции</span>
         <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
@@ -489,6 +499,10 @@ export function CatalogPositionAvailabilityCascadeMenu({
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "stopped"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setStopOpen(true);
+                }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
                 <CascadeAvailabilitySubTrigger checked={availability === "stopped"} label="Стоп" />
@@ -530,6 +544,10 @@ export function CatalogPositionAvailabilityCascadeMenu({
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "scheduled"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setScheduleOpen(true);
+                }}
                 className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
               >
                 <CascadeAvailabilitySubTrigger checked={availability === "scheduled"} label="Расписание" />
@@ -541,19 +559,14 @@ export function CatalogPositionAvailabilityCascadeMenu({
                   collisionPadding={12}
                   className="z-[100005] bg-transparent outline-none"
                 >
-                  {availability !== "scheduled" && (
-                    <>
-                      <DropdownActionItem icon={CalendarBlank} onSelect={enableSchedule}>
-                        Включить расписание
-                      </DropdownActionItem>
-                      <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-                    </>
-                  )}
                   <CatalogSchedulePopover
                     scheduleId={scheduleId}
                     hasSchedule={availability === "scheduled"}
                     initialSchedule={scheduleDraft}
                     initialOutsideScheduleMode={outsideScheduleDraft}
+                    layout="cascade"
+                    scheduleEnabled={availability === "scheduled"}
+                    onEnableSchedule={enableSchedule}
                     onChange={(schedule, outsideMode) => {
                       setScheduleDraft(schedule);
                       setOutsideScheduleDraft(outsideMode);

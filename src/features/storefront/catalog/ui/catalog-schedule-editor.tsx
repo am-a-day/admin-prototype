@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, CaretLeft, CaretUpDown, Clock, Copy, Eye, MinusCircle, X } from "@phosphor-icons/react";
+import { CalendarBlank, CaretDown, CaretLeft, CaretUpDown, Clock, Copy, Eye, MinusCircle, X } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -12,6 +12,7 @@ import {
   CATALOG_DROPDOWN_CONTENT_CLASS,
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
+  DropdownActionItem,
 } from "./catalog-dropdown";
 import { usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 
@@ -138,11 +139,13 @@ function WeeklyScheduleRows({
   weeklySchedule,
   onWeeklyScheduleChange,
   variant = "default",
+  disabled = false,
 }: {
   scheduleId: string;
   weeklySchedule: WeeklySchedule;
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   variant?: "default" | "availability";
+  disabled?: boolean;
 }) {
   const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
   const schedule = normalizeWeeklySchedule(weeklySchedule);
@@ -163,7 +166,15 @@ function WeeklyScheduleRows({
   };
 
   return (
-    <div data-weekly-schedule-id={scheduleId} className={cn("overflow-hidden border border-[#e7e5e4] bg-white", compactAvailability ? "rounded-[15px]" : "rounded-[11px]")}>
+    <div
+      data-weekly-schedule-id={scheduleId}
+      aria-disabled={disabled || undefined}
+      className={cn(
+        "overflow-hidden border border-[#e7e5e4] bg-white",
+        compactAvailability ? "rounded-[15px]" : "rounded-[11px]",
+        disabled && "pointer-events-none opacity-50",
+      )}
+    >
       {DAY_LABELS.map(({ key, label }) => {
         const day = schedule[key];
         const timeRange = day.mode === "custom" ? getTimeRange(day) : null;
@@ -517,6 +528,9 @@ export function CatalogSchedulePopover({
   showDelete = true,
   onBack,
   onClose,
+  layout = "default",
+  scheduleEnabled = true,
+  onEnableSchedule,
 }: {
   scheduleId: string;
   hasSchedule: boolean;
@@ -527,10 +541,16 @@ export function CatalogSchedulePopover({
   showDelete?: boolean;
   onBack?: () => void;
   onClose?: () => void;
+  layout?: "default" | "cascade";
+  scheduleEnabled?: boolean;
+  onEnableSchedule?: (event: Event) => void;
 }) {
   const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(initialSchedule));
   const [outsideScheduleMode, setOutsideScheduleMode] = useState<ScheduleOutsideDisplayMode>(initialOutsideScheduleMode);
   const [outsideMenuOpen, setOutsideMenuOpen] = useState(false);
+  const cascadeLayout = layout === "cascade";
+  const canEditSchedule = !cascadeLayout || scheduleEnabled;
+  const outsideScheduleMenuOpen = canEditSchedule && outsideMenuOpen;
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(outsideMenuOpen, () => setOutsideMenuOpen(false));
 
@@ -544,6 +564,77 @@ export function CatalogSchedulePopover({
     onChange(schedule, nextMode);
     setOutsideMenuOpen(false);
   };
+
+  const outsideScheduleControl = (
+    <DropdownMenu.Root
+      open={outsideScheduleMenuOpen}
+      onOpenChange={(nextOpen) => {
+        if (canEditSchedule) setOutsideMenuOpen(nextOpen);
+      }}
+    >
+      <div className={cn("flex h-[42px] items-center gap-3 px-3", !canEditSchedule && "text-[#a6a09b]")}>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Eye size={16} className={cn("shrink-0", canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")} />
+          <span className={cn("truncate text-[13px] leading-5", canEditSchedule ? "text-[#1c1917]" : "text-[#a6a09b]")}>Вне расписания</span>
+        </div>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            disabled={!canEditSchedule}
+            aria-label="Режим вне расписания"
+            className={cn(
+              "flex h-8 w-[120px] shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              canEditSchedule
+                ? "text-[#57534d] hover:bg-[#f5f5f4]"
+                : "cursor-not-allowed text-[#a6a09b] opacity-70",
+            )}
+          >
+            <span>{canEditSchedule ? (outsideScheduleMode === "comingSoon" ? "Показывать" : "Скрывать") : "Не настроено"}</span>
+            <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
+          </button>
+        </DropdownMenu.Trigger>
+      </div>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="bottom"
+          align="end"
+          sideOffset={4}
+          collisionPadding={12}
+          onPointerDownOutside={(event) => {
+            if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+          }}
+          className={cn("z-[100006] min-w-[232px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+        >
+          {marker}
+          <DropdownMenu.RadioGroup
+            value={outsideScheduleMode}
+            onValueChange={(value) => handleOutsideScheduleModeChange(value as ScheduleOutsideDisplayMode)}
+          >
+            {([
+              { value: "hidden", label: "Скрывать из меню" },
+              { value: "comingSoon", label: "Показывать как “скоро будет”" },
+            ] as const).map((option) => (
+              <DropdownMenu.RadioItem
+                key={option.value}
+                value={option.value}
+                className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+              >
+                <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", outsideScheduleMode === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
+                  <DropdownMenu.ItemIndicator>
+                    <span className="block size-2 rounded-full bg-[#292524]" />
+                  </DropdownMenu.ItemIndicator>
+                </span>
+                <span className="min-w-0 flex-1">{option.label}</span>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
 
   return (
     <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
@@ -570,85 +661,48 @@ export function CatalogSchedulePopover({
           )}
         </div>
       )}
-      <WeeklyScheduleRows
-        scheduleId={scheduleId}
-        weeklySchedule={schedule}
-        onWeeklyScheduleChange={handleScheduleChange}
-      />
+      {cascadeLayout && !scheduleEnabled && onEnableSchedule && (
+        <DropdownActionItem icon={CalendarBlank} onSelect={onEnableSchedule}>
+          Включить расписание
+        </DropdownActionItem>
+      )}
 
-      <div className="border-t border-[#e7e5e4] bg-white">
-        <DropdownMenu.Root open={outsideMenuOpen} onOpenChange={setOutsideMenuOpen}>
-          <div className="flex h-[42px] items-center gap-3 px-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Eye size={16} className="shrink-0 text-[#1c1917]" />
-              <span className="truncate text-[13px] leading-5 text-[#1c1917]">Вне расписания</span>
-            </div>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Режим вне расписания"
-                className="flex h-8 w-[120px] shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 text-[#57534d] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-              >
-                <span>{outsideScheduleMode === "comingSoon" ? "Показывать" : "Скрывать"}</span>
-                <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
-              </button>
-            </DropdownMenu.Trigger>
+      {cascadeLayout ? (
+        <>
+          {outsideScheduleControl}
+          <div className="mx-3 h-px bg-[#e7e5e4]" />
+          <WeeklyScheduleRows
+            scheduleId={scheduleId}
+            weeklySchedule={schedule}
+            onWeeklyScheduleChange={handleScheduleChange}
+            disabled={!canEditSchedule}
+          />
+        </>
+      ) : (
+        <>
+          <WeeklyScheduleRows
+            scheduleId={scheduleId}
+            weeklySchedule={schedule}
+            onWeeklyScheduleChange={handleScheduleChange}
+          />
+          <div className="border-t border-[#e7e5e4] bg-white">
+            {outsideScheduleControl}
+            {hasSchedule && showDelete && onDelete && (
+              <>
+                <div className="mx-3 h-px bg-[#e7e5e4]" />
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="flex h-[42px] w-full items-center gap-2 px-3 text-left text-[13px] leading-5 text-[#1c1917] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+                >
+                  <MinusCircle size={16} className="shrink-0" />
+                  <span>Убрать расписание</span>
+                </button>
+              </>
+            )}
           </div>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              side="bottom"
-              align="end"
-              sideOffset={4}
-              collisionPadding={12}
-              onPointerDownOutside={(event) => {
-                if (shouldPreventOverlayDismissal(event)) event.preventDefault();
-              }}
-              onInteractOutside={(event) => {
-                if (shouldPreventOverlayDismissal(event)) event.preventDefault();
-              }}
-              className={cn("z-[100006] min-w-[232px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-            >
-              {marker}
-              <DropdownMenu.RadioGroup
-                value={outsideScheduleMode}
-                onValueChange={(value) => handleOutsideScheduleModeChange(value as ScheduleOutsideDisplayMode)}
-              >
-                {([
-                  { value: "hidden", label: "Скрывать из меню" },
-                  { value: "comingSoon", label: "Показывать как “скоро будет”" },
-                ] as const).map((option) => (
-                  <DropdownMenu.RadioItem
-                    key={option.value}
-                    value={option.value}
-                    className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
-                  >
-                    <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", outsideScheduleMode === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
-                      <DropdownMenu.ItemIndicator>
-                        <span className="block size-2 rounded-full bg-[#292524]" />
-                      </DropdownMenu.ItemIndicator>
-                    </span>
-                    <span className="min-w-0 flex-1">{option.label}</span>
-                  </DropdownMenu.RadioItem>
-                ))}
-              </DropdownMenu.RadioGroup>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-
-        {hasSchedule && showDelete && onDelete && (
-          <>
-            <div className="mx-3 h-px bg-[#e7e5e4]" />
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex h-[42px] w-full items-center gap-2 px-3 text-left text-[13px] leading-5 text-[#1c1917] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-            >
-              <MinusCircle size={16} className="shrink-0" />
-              <span>Убрать расписание</span>
-            </button>
-          </>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
