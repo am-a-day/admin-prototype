@@ -1331,6 +1331,7 @@ export function SelectionToolbar({
               manualStopped={hasStopped}
               hasSchedule={hasSchedule}
               mixed={availabilityMixed}
+              direct
               weeklySchedule={weeklySchedule}
               stopDisplayMode={stopDisplayMode}
               outsideScheduleMode={outsideScheduleMode}

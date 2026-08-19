@@ -8257,13 +8257,13 @@ function OverviewWorkspace({
   };
   const setSelectedStopDisplayMode = (mode: CatalogStopDisplayMode) => {
     updateSelectedAvailabilityItems(
-      (item) => ({ ...item, status: "stopped", unavailableDisplayMode: mode }),
+      (item) => ({ ...item, status: "stopped", scheduled: false, unavailableDisplayMode: mode }),
       "Позиции поставлены на стоп",
     );
   };
   const removeSelectedStop = () => {
     updateSelectedAvailabilityItems(
-      (item) => ({ ...item, status: "active" }),
+      (item) => ({ ...item, status: "active", scheduled: false }),
       "Позиции сняты со стопа",
       (item) => item.status === "stopped" || item.status === "coming-soon",
     );
@@ -8272,6 +8272,7 @@ function OverviewWorkspace({
     updateSelectedAvailabilityItems(
       (item) => ({
         ...item,
+        status: "active",
         scheduled: true,
         weeklySchedule: schedule,
         availabilityScheduleMode: "available",

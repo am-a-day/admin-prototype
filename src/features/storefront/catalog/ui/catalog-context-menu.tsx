@@ -39,6 +39,7 @@ export type CatalogPositionAvailabilityMenuProps = {
   manualStopped: boolean;
   hasSchedule: boolean;
   mixed?: boolean;
+  direct?: boolean;
   weeklySchedule: WeeklySchedule;
   stopDisplayMode: CatalogStopDisplayMode;
   outsideScheduleMode: CatalogStopDisplayMode;
@@ -287,6 +288,7 @@ export function CatalogPositionAvailabilityMenu({
   manualStopped,
   hasSchedule,
   mixed = false,
+  direct = false,
   weeklySchedule,
   stopDisplayMode,
   outsideScheduleMode,
@@ -310,20 +312,20 @@ export function CatalogPositionAvailabilityMenu({
   const availabilityMeta = mixed
     ? {
         label: "Смешанное состояние",
-        icon: <DotsThree size={16} weight="bold" className="text-[#79716b]" aria-hidden="true" />,
+        icon: <DotsThree size={16} weight="bold" aria-hidden="true" />,
       }
     : {
         available: {
           label: "Доступно",
-          icon: <CheckCircle size={16} weight="fill" className="text-[#56826a]" aria-hidden="true" />,
+          icon: <CheckCircle size={16} weight="regular" aria-hidden="true" />,
         },
         stopped: {
           label: "На стопе",
-          icon: <LockLaminated size={16} className="text-[#b45309]" aria-hidden="true" />,
+          icon: <LockLaminated size={16} aria-hidden="true" />,
         },
         scheduled: {
           label: "По расписанию",
-          icon: <CalendarDots size={16} className="text-[#2563eb]" aria-hidden="true" />,
+          icon: <CalendarDots size={16} aria-hidden="true" />,
         },
     }[availability as CatalogMenuAvailability];
 
@@ -337,38 +339,8 @@ export function CatalogPositionAvailabilityMenu({
     onScheduleEditorPinnedChange?.(nextOpen);
   };
 
-  return (
-    <DropdownMenu.Sub
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && scheduleOpen) return;
-        setOpen(nextOpen);
-        if (!nextOpen) {
-          setStopOpen(false);
-          setScheduleEditorOpen(false);
-        }
-      }}
-    >
-      <DropdownMenu.SubTrigger
-        onPointerMove={() => setOpen(true)}
-        onClick={(event) => {
-          event.preventDefault();
-          setOpen(true);
-        }}
-        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "font-medium text-[#292524]")}
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center">{availabilityMeta.icon}</span>
-        <span className="min-w-0 flex-1 truncate">{availabilityMeta.label}</span>
-        <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
-      </DropdownMenu.SubTrigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-5}
-          collisionPadding={12}
-          className={cn("z-[100004] min-w-[190px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-        >
-          <DropdownMenu.RadioGroup value={availability ?? undefined}>
+  const menuContent = (
+    <DropdownMenu.RadioGroup value={availability ?? undefined}>
             <DropdownMenu.RadioItem
               value="available"
               onSelect={(event) => {
@@ -384,7 +356,7 @@ export function CatalogPositionAvailabilityMenu({
                   <span className="block size-2 rounded-full bg-[#292524]" />
                 </DropdownMenu.ItemIndicator>
               </span>
-              <CheckCircle size={14} className="shrink-0 text-[#56826a]" aria-hidden="true" />
+              <CheckCircle size={14} aria-hidden="true" />
               <span className="min-w-0 flex-1">Доступно</span>
             </DropdownMenu.RadioItem>
 
@@ -410,7 +382,7 @@ export function CatalogPositionAvailabilityMenu({
               >
                 <CascadeAvailabilitySubTrigger
                   checked={availability === "stopped"}
-                  icon={<LockLaminated size={14} className="text-[#b45309]" aria-hidden="true" />}
+                  icon={<LockLaminated size={14} aria-hidden="true" />}
                   label="На стопе"
                 />
               </DropdownMenu.SubTrigger>
@@ -470,7 +442,7 @@ export function CatalogPositionAvailabilityMenu({
               >
                 <CascadeAvailabilitySubTrigger
                   checked={availability === "scheduled"}
-                  icon={<CalendarDots size={14} className="text-[#2563eb]" aria-hidden="true" />}
+                  icon={<CalendarDots size={14} aria-hidden="true" />}
                   label="По расписанию"
                 />
               </DropdownMenu.SubTrigger>
@@ -505,7 +477,43 @@ export function CatalogPositionAvailabilityMenu({
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
             </DropdownMenu.Sub>
-          </DropdownMenu.RadioGroup>
+    </DropdownMenu.RadioGroup>
+  );
+
+  if (direct) return menuContent;
+
+  return (
+    <DropdownMenu.Sub
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && scheduleOpen) return;
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setStopOpen(false);
+          setScheduleEditorOpen(false);
+        }
+      }}
+    >
+      <DropdownMenu.SubTrigger
+        onPointerMove={() => setOpen(true)}
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
+        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "font-medium text-[#292524]")}
+      >
+        <span className="flex size-4 shrink-0 items-center justify-center">{availabilityMeta.icon}</span>
+        <span className="min-w-0 flex-1 truncate">{availabilityMeta.label}</span>
+        <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent
+          sideOffset={6}
+          alignOffset={-5}
+          collisionPadding={12}
+          className={cn("z-[100004] min-w-[190px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+        >
+          {menuContent}
         </DropdownMenu.SubContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Sub>
