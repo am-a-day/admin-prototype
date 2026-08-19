@@ -49,6 +49,7 @@ import {
   FilePlus,
   ForkKnife,
   FolderPlus,
+  FolderSimplePlus,
   FunnelSimple,
   ImageBroken,
   List,
@@ -2428,7 +2429,7 @@ function SectionEditor({
       >
         <div className="w-full min-w-0">
           <div className={CATALOG_PAGE_HEADER_CLASS}>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-h-[30px] min-w-0 flex-1 items-center gap-1.5">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
                 <button
                   type="button"
@@ -2590,30 +2591,36 @@ function SectionEditor({
               )}>
                 {compositionItems.length === 0 && !compositionQuery.trim() ? (
                   sectionIsCompletelyEmpty ? (
-                    <div data-empty-section-scaffold className="w-full pt-1">
-                      {allowPositionCreation && (
-                        <button
-                          type="button"
-                          onClick={onAddPosition}
-                          disabled={archived || Boolean(positionCreateDisabledReason)}
-                          data-empty-position-create
-                          className="flex h-[38px] w-full items-center gap-2 border-b border-[#f0efed] px-2 text-left text-[13px] font-medium text-[#78716c] transition hover:bg-[#fafaf9] hover:text-[#292524] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-                        >
-                          <PlusCircle size={15} className="shrink-0" />
-                          Добавить позицию
-                        </button>
-                      )}
-                      {canCreateSubsection && (
-                        <button
-                          type="button"
-                          onClick={onStartSubsectionCreation}
-                          data-empty-subsection-create
-                          className="flex h-[38px] w-full items-center gap-2 border-b border-[#f0efed] px-2 text-left text-[13px] font-medium text-[#78716c] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-                        >
-                          <PlusCircle size={15} className="shrink-0" />
-                          Добавить подраздел
-                        </button>
-                      )}
+                    <div data-empty-section-scaffold className={cn("w-full", CATALOG_SECTION_TO_TABLE_GAP_CLASS)}>
+                      <p className="px-1 text-[13px] font-normal leading-[18px] text-[#79716b]">
+                        В разделе пока ничего нет
+                      </p>
+                      <div className="mt-[6px] w-full overflow-hidden rounded-[12px] border border-[#e7e5e4] p-px">
+                        {onAddPosition && (
+                          <button
+                            type="button"
+                            onClick={onAddPosition}
+                            disabled={!allowPositionCreation || archived || Boolean(positionCreateDisabledReason)}
+                            data-empty-position-create
+                            className="flex h-[35px] w-full items-center gap-2 px-3 text-left text-[13px] font-normal leading-[18px] text-[#292524] transition-colors hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+                          >
+                            <FilePlus size={16} weight="regular" className="shrink-0 text-[#57534d]" aria-hidden="true" />
+                            Добавить позицию
+                          </button>
+                        )}
+                        {onStartSubsectionCreation && (
+                          <button
+                            type="button"
+                            onClick={onStartSubsectionCreation}
+                            disabled={!canCreateSubsection}
+                            data-empty-subsection-create
+                            className="flex h-[35px] w-full items-center gap-2 border-t border-[#e7e5e4] px-3 text-left text-[13px] font-normal leading-[18px] text-[#292524] transition-colors hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+                          >
+                            <FolderSimplePlus size={16} weight="regular" className="shrink-0 text-[#57534d]" aria-hidden="true" />
+                            Добавить подраздел
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="py-1">
@@ -2758,7 +2765,7 @@ function UnifiedSectionTableHeader({
   const status = getSectionStatusMeta(section);
   const statusLabel = getSectionTreeStatusLabel(section);
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-0">
       <span
         data-catalog-tree-toggle-target
         data-catalog-tree-hidden={treeHidden ? "true" : undefined}

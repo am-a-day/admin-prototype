@@ -178,6 +178,7 @@ describe("catalog observable behavior baseline", () => {
     const sectionTree = (await screen.findByPlaceholderText("Поиск по разделам")).closest("aside");
     await user.click(within(sectionTree as HTMLElement).getByText("Первый раздел", { exact: true }));
     expect(document.querySelector("[data-empty-section-scaffold]")).not.toBeNull();
+    expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Вернуться к разделам" })).not.toBeInTheDocument();
 
     const emptyCreateButton = document.querySelector("[data-empty-position-create]");
