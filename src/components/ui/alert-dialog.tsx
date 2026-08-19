@@ -1,7 +1,9 @@
 import * as React from "react";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
+import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -18,21 +20,35 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <AlertDialogPortal>
-    <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-[100021] grid w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[14px] border border-stone-200 bg-white p-5 text-stone-800 shadow-[0_24px_64px_rgba(41,37,36,0.18)] outline-none",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </AlertDialogPrimitive.Content>
-  </AlertDialogPortal>
-));
+>(({ className, children, ...props }, ref) => {
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <DismissableLayer
+        asChild
+        onPointerDownOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
+      >
+        <AlertDialogPrimitive.Content
+          ref={ref}
+          className={cn(
+            "fixed left-1/2 top-1/2 z-[100021] grid w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[14px] border border-stone-200 bg-white p-5 text-stone-800 shadow-[0_24px_64px_rgba(41,37,36,0.18)] outline-none",
+            className,
+          )}
+          {...props}
+        >
+          {marker}
+          {children}
+        </AlertDialogPrimitive.Content>
+      </DismissableLayer>
+    </AlertDialogPortal>
+  );
+});
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;
 
 const AlertDialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

@@ -2,7 +2,7 @@ import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
@@ -60,7 +60,7 @@ const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", onPointerDownOutside, ...props }, ref) => {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -72,11 +72,15 @@ const SelectContent = React.forwardRef<
         )}
         position={position}
         onPointerDownOutside={(event) => {
-          consumeOverlayInteraction(event);
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(event);
         }}
         {...props}
       >
+        {marker}
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(

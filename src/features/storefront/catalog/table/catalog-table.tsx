@@ -47,7 +47,7 @@ import {
 } from "../labels/catalog-labels";
 import { getLocalCatalogItemLabels, getLocalCatalogLabelText } from "../labels/local-catalog-labels";
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "../editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 type PriceSortDirection = CatalogPriceSortDirection;
@@ -318,16 +318,21 @@ function getCatalogColumnLabel(columnId: string) {
 }
 
 function DropdownContent({ children, align = "end" }: { children: ReactNode; align?: "start" | "center" | "end" }) {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-        onPointerDownOutside={consumeOverlayInteraction}
+        onPointerDownOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>

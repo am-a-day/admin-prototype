@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -10,8 +10,8 @@ const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 6, onPointerDownOutside, children, ...props }, ref) => {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+>(({ className, sideOffset = 6, onPointerDownOutside, onInteractOutside, children, ...props }, ref) => {
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -22,12 +22,22 @@ const DropdownMenuContent = React.forwardRef<
           className,
         )}
         onPointerDownOutside={(event) => {
-          consumeOverlayInteraction(event);
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
+          onInteractOutside?.(event);
         }}
         {...props}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>

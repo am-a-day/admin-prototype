@@ -14,7 +14,7 @@ import {
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
 } from "./catalog-dropdown";
-import { usePositionSidePeekOverlay } from "../editor/side-peek-context";
+import { usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 
 export type ScheduleDay = CatalogScheduleDay;
 export type ScheduleDayKey = CatalogScheduleDayKey;
@@ -147,6 +147,7 @@ function WeeklyScheduleRows({
   const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
   const schedule = normalizeWeeklySchedule(weeklySchedule);
   const compactAvailability = variant === "availability";
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(openDayMenu !== null, () => setOpenDayMenu(null));
 
   const updateDay = (dayKey: ScheduleDayKey, day: ScheduleDay) => {
@@ -251,8 +252,15 @@ function WeeklyScheduleRows({
                   align="end"
                   sideOffset={4}
                   collisionPadding={12}
+                  onPointerDownOutside={(event) => {
+                    if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                  }}
+                  onInteractOutside={(event) => {
+                    if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                  }}
                   className={cn("z-[100006] min-w-[184px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
                 >
+                  {marker}
                   <DropdownMenu.RadioGroup
                     value={day.mode}
                     onValueChange={(value) => {
@@ -331,6 +339,7 @@ export function PositionWeeklyScheduleEditor({
   const [activeDay, setActiveDay] = useState<ScheduleDayKey>("monday");
   const [openDayMenu, setOpenDayMenu] = useState<ScheduleDayKey | null>(null);
   const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(weeklySchedule));
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
 
   useEffect(() => {
     setSchedule(normalizeWeeklySchedule(weeklySchedule));
@@ -452,8 +461,15 @@ export function PositionWeeklyScheduleEditor({
                   align="end"
                   sideOffset={4}
                   collisionPadding={12}
+                  onPointerDownOutside={(event) => {
+                    if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                  }}
+                  onInteractOutside={(event) => {
+                    if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                  }}
                   className={cn("z-[100006] min-w-[168px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
                 >
+                  {marker}
                   <DropdownMenu.RadioGroup
                     value={day.mode}
                     onValueChange={(value) => {

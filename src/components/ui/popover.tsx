@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "@/lib/utils";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -10,8 +10,8 @@ const PopoverAnchor = PopoverPrimitive.Anchor;
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 8, children, onPointerDownOutside, ...props }, ref) => {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+>(({ className, align = "center", sideOffset = 8, children, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
@@ -24,12 +24,22 @@ const PopoverContent = React.forwardRef<
           className,
         )}
         onPointerDownOutside={(event) => {
-          consumeOverlayInteraction(event);
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
+          onInteractOutside?.(event);
         }}
         {...props}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>

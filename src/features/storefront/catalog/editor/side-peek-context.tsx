@@ -69,9 +69,10 @@ function isNeutralOutsideInteraction(event: PointerEvent) {
 
 type PositionSidePeekContextValue = {
   requestClose: () => void;
-  registerOverlay: (overlayId: symbol, onEscape?: () => void) => () => void;
-  consumePointerInteraction: (event: PointerEvent) => void;
-  isPointerInteractionConsumed: (event: PointerEvent) => boolean;
+  registerOverlay: (overlayId: symbol, onEscape?: () => void, kind?: "layer" | "logical") => () => void;
+  claimPointerInteraction: (event: Event, overlayId: symbol) => boolean;
+  isTopOverlay: (overlayId: symbol) => boolean;
+  isPointerInteractionConsumed: (event: Event) => boolean;
 };
 
 const PositionSidePeekContext = createContext<PositionSidePeekContextValue | null>(null);
@@ -84,17 +85,30 @@ export function PositionSidePeekProvider({
   requestClose: () => void;
 }) {
   const openOverlayHandlersRef = useRef(new Map<symbol, () => void>());
-  const consumedPointerInteractionsRef = useRef(new WeakSet<PointerEvent>());
-  const registerOverlay = useCallback((overlayId: symbol, onEscape?: () => void) => {
+  const overlayKindsRef = useRef(new Map<symbol, "layer" | "logical">());
+  const consumedPointerInteractionsRef = useRef(new WeakMap<Event, symbol>());
+  const registerOverlay = useCallback((overlayId: symbol, onEscape?: () => void, kind: "layer" | "logical" = "logical") => {
     openOverlayHandlersRef.current.set(overlayId, onEscape ?? (() => {}));
+    overlayKindsRef.current.set(overlayId, kind);
     return () => {
       openOverlayHandlersRef.current.delete(overlayId);
+      overlayKindsRef.current.delete(overlayId);
     };
   }, []);
-  const consumePointerInteraction = useCallback((event: PointerEvent) => {
-    consumedPointerInteractionsRef.current.add(event);
+  const isTopOverlay = useCallback((overlayId: symbol) => {
+    const layerIds = [...openOverlayHandlersRef.current.keys()].filter((id) => overlayKindsRef.current.get(id) === "layer");
+    if (layerIds.length > 0) return layerIds[layerIds.length - 1] === overlayId;
+    const handlers = [...openOverlayHandlersRef.current.keys()];
+    return handlers[handlers.length - 1] === overlayId;
   }, []);
-  const isPointerInteractionConsumed = useCallback((event: PointerEvent) => {
+  const claimPointerInteraction = useCallback((event: Event, overlayId: symbol) => {
+    const claimedBy = consumedPointerInteractionsRef.current.get(event);
+    if (claimedBy === overlayId) return false;
+    if (claimedBy || !isTopOverlay(overlayId)) return true;
+    consumedPointerInteractionsRef.current.set(event, overlayId);
+    return false;
+  }, [isTopOverlay]);
+  const isPointerInteractionConsumed = useCallback((event: Event) => {
     return consumedPointerInteractionsRef.current.has(event);
   }, []);
 
@@ -118,10 +132,11 @@ export function PositionSidePeekProvider({
   }, []);
 
   return (
-    <PositionSidePeekContext.Provider value={{ requestClose, registerOverlay, consumePointerInteraction, isPointerInteractionConsumed }}>
+    <PositionSidePeekContext.Provider value={{ requestClose, registerOverlay, claimPointerInteraction, isTopOverlay, isPointerInteractionConsumed }}>
       <DismissableLayer
         asChild
         onPointerDownOutside={handlePointerDownOutside}
+        onFocusOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={handleEscapeKeyDown}
         onDismiss={requestClose}
       >
@@ -137,23 +152,33 @@ export function usePositionSidePeek() {
   return useContext(PositionSidePeekContext);
 }
 
-export function usePositionSidePeekOverlayInteraction() {
+export function usePositionSidePeekOverlayLayer() {
   const sidePeek = usePositionSidePeek();
-  return useCallback((event: { detail: { originalEvent: PointerEvent } }) => {
-    sidePeek?.consumePointerInteraction(event.detail.originalEvent);
+  const overlayIdRef = useRef(Symbol("position-side-peek-overlay-layer"));
+  const shouldPreventOverlayDismissal = useCallback((event: { detail: { originalEvent: Event } }) => {
+    const originalEvent = event.detail.originalEvent;
+    if (!sidePeek || originalEvent.type !== "pointerdown") return false;
+    return sidePeek.claimPointerInteraction(originalEvent, overlayIdRef.current);
   }, [sidePeek]);
+
+  return {
+    marker: <PositionSidePeekOverlayMarker overlayId={overlayIdRef.current} />,
+    shouldPreventOverlayDismissal,
+  };
 }
 
-export function PositionSidePeekOverlayMarker({ onEscape }: { onEscape?: () => void }) {
+export function PositionSidePeekOverlayMarker({ onEscape, overlayId: providedOverlayId }: { onEscape?: () => void; overlayId?: symbol }) {
   const sidePeek = usePositionSidePeek();
-  const overlayIdRef = useRef(Symbol("position-side-peek-overlay-marker"));
+  const generatedOverlayIdRef = useRef(Symbol("position-side-peek-overlay-marker"));
+  const overlayId = providedOverlayId ?? generatedOverlayIdRef.current;
+  const markerRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
-    if (!sidePeek) return;
-    return sidePeek.registerOverlay(overlayIdRef.current, onEscape);
-  }, [onEscape, sidePeek]);
+    if (!sidePeek || !markerRef.current?.isConnected) return;
+    return sidePeek.registerOverlay(overlayId, onEscape, "layer");
+  }, [onEscape, overlayId, sidePeek]);
 
-  return null;
+  return <span ref={markerRef} aria-hidden="true" className="hidden" />;
 }
 
 export function usePositionSidePeekOverlay(open: boolean, onEscape?: () => void) {
@@ -162,6 +187,6 @@ export function usePositionSidePeekOverlay(open: boolean, onEscape?: () => void)
 
   useEffect(() => {
     if (!open || !sidePeek) return;
-    return sidePeek.registerOverlay(overlayIdRef.current, onEscape);
+    return sidePeek.registerOverlay(overlayIdRef.current, onEscape, "logical");
   }, [onEscape, open, sidePeek]);
 }

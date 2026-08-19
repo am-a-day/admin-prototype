@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "../editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 
 export const CATALOG_DROPDOWN_CONTENT_CLASS =
   "rounded-lg border border-[#e2e8f0] bg-white p-1 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none";
@@ -11,16 +11,21 @@ export const CATALOG_DROPDOWN_ITEM_CLASS =
 export const CATALOG_DROPDOWN_SEPARATOR_CLASS = "my-1 h-px bg-[#e2e8f0]";
 
 export function DropdownContent({ children, align = "end", className }: { children: ReactNode; align?: "start" | "center" | "end"; className?: string }) {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
         className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS, className)}
-        onPointerDownOutside={consumeOverlayInteraction}
+        onPointerDownOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+        }}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>

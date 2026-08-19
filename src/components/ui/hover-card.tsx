@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card";
 import { cn } from "@/lib/utils";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 const HoverCard = HoverCardPrimitive.Root;
 const HoverCardTrigger = HoverCardPrimitive.Trigger;
@@ -9,8 +9,8 @@ const HoverCardTrigger = HoverCardPrimitive.Trigger;
 const HoverCardContent = React.forwardRef<
   React.ElementRef<typeof HoverCardPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Content>
->(({ className, align = "start", sideOffset = 6, children, onPointerDownOutside, ...props }, ref) => {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+>(({ className, align = "start", sideOffset = 6, children, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <HoverCardPrimitive.Portal>
       <HoverCardPrimitive.Content
@@ -23,12 +23,22 @@ const HoverCardContent = React.forwardRef<
           className,
         )}
         onPointerDownOutside={(event) => {
-          consumeOverlayInteraction(event);
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
+          onInteractOutside?.(event);
         }}
         {...props}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </HoverCardPrimitive.Content>
     </HoverCardPrimitive.Portal>

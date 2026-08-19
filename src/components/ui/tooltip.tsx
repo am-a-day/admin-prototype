@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
-import { PositionSidePeekOverlayMarker, usePositionSidePeekOverlayInteraction } from "@/features/storefront/catalog/editor/side-peek-context";
+import { usePositionSidePeekOverlayLayer } from "@/features/storefront/catalog/editor/side-peek-context";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const TooltipRoot     = TooltipPrimitive.Root;
@@ -14,7 +14,7 @@ export function TooltipContent({
   onPointerDownOutside,
   ...props
 }: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>) {
-  const consumeOverlayInteraction = usePositionSidePeekOverlayInteraction();
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
@@ -25,12 +25,15 @@ export function TooltipContent({
           className,
         )}
         onPointerDownOutside={(event) => {
-          consumeOverlayInteraction(event);
+          if (shouldPreventOverlayDismissal(event)) {
+            event.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(event);
         }}
         {...props}
       >
-        <PositionSidePeekOverlayMarker />
+        {marker}
         {children}
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>

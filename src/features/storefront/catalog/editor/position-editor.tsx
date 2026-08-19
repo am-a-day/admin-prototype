@@ -61,7 +61,7 @@ import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from ".
 import { WorkspaceLocalTabs } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
-import { usePositionSidePeek, usePositionSidePeekOverlay } from "./side-peek-context";
+import { usePositionSidePeek, usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "./side-peek-context";
 import { usePositionEditorFixture } from "./position-editor-fixture-context";
 import { CatalogLabelControls } from "../labels/catalog-label-controls";
 
@@ -1143,6 +1143,7 @@ function ItemSelectorPopover({
 }) {
   const [query, setQuery] = useState("");
   const [sectionFilterId, setSectionFilterId] = useState<string | null>(null);
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(open, () => onOpenChange(false));
   const selectedSet = new Set(selectedIds);
   const normalizedQuery = query.trim().toLowerCase();
@@ -1209,7 +1210,14 @@ function ItemSelectorPopover({
                     align="end"
                     sideOffset={6}
                     className="z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+                    onPointerDownOutside={(event) => {
+                      if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                    }}
+                    onInteractOutside={(event) => {
+                      if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+                    }}
                   >
+                    {marker}
                     <DropdownActionItem onSelect={() => setSectionFilterId(null)}>Все разделы</DropdownActionItem>
                     {sectionOptions.map((section) => (
                       <DropdownActionItem key={section.id} onSelect={() => setSectionFilterId(section.id)}>
