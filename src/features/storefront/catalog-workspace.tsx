@@ -165,6 +165,9 @@ import {
   sortCatalogItemsByLastModified,
   type CatalogLastModifiedSortDirection,
   CatalogTableToolbar,
+  CatalogSelectionToolbar,
+  DropdownActionItem as TableDropdownActionItem,
+  DropdownContent as TableDropdownContent,
   SelectionToolbar,
   TableCheckbox,
   TableHeaderRow,
@@ -2232,34 +2235,40 @@ function SubsectionBulkToolbar({
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
   return (
-    <div data-subsection-bulk-toolbar className="flex h-8 max-w-full items-center overflow-hidden rounded-[8px] border border-[#d8d5d0] bg-[#f7f6f2]">
-      <TableCheckbox ariaLabel="Выбрать все подразделы" checked={checked} indeterminate={indeterminate} onChange={onSelectAll} />
-      <span className="flex h-full items-center whitespace-nowrap px-2.5 text-[12px] font-medium text-[#2563eb]">Выбрано: {count}</span>
-      <ToolbarDivider />
-      <ToolbarDropdown label="Доступность">
-        <DropdownActionItem onSelect={() => onAction("availability:available")}>Доступно</DropdownActionItem>
-        <DropdownMenu.Label className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-[#a8a29e]">На стопе</DropdownMenu.Label>
-        <DropdownActionItem onSelect={() => onAction("availability:stop-soon")}>Показывать «Скоро будет»</DropdownActionItem>
-        <DropdownActionItem onSelect={() => onAction("availability:stop-hidden")}>Скрыть</DropdownActionItem>
-        <DropdownActionItem onSelect={() => onAction("availability:schedule")}>По расписанию…</DropdownActionItem>
-      </ToolbarDropdown>
-      <ToolbarDivider />
+    <CatalogSelectionToolbar
+      checked={checked}
+      indeterminate={indeterminate}
+      onSelectAll={onSelectAll}
+      count={count}
+      onClearSelection={onClear}
+      selectAllAriaLabel="Выбрать все подразделы"
+      dataAttribute="subsection"
+    >
       <button
         type="button"
         onClick={(event) => onAction("Переместить подразделы", getMovePopoverAnchor(event))}
-        className="flex h-full items-center gap-1.5 whitespace-nowrap px-2.5 text-[12px] font-medium text-[#57534d] transition hover:bg-white/70 hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+        className="inline-flex h-[26px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[8px] border border-[#e7e5e4] bg-white pl-[6px] pr-2 text-[12px] font-normal leading-4 text-[#292524] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
       >
-        <ArrowsOutCardinal size={14} />
+        <ArrowsOutCardinal size={16} weight="regular" />
         Переместить
       </button>
-      <ToolbarDivider />
-      <ToolbarDropdown label="⋯">
-        <DropdownActionItem onSelect={() => onAction("Архивировать подразделы")}>Архивировать</DropdownActionItem>
-        <DropdownActionItem onSelect={() => onAction("Удалить подразделы")} tone="danger">Удалить</DropdownActionItem>
-      </ToolbarDropdown>
-      <ToolbarDivider />
-      <button type="button" aria-label="Снять выбор" onClick={onClear} className="flex h-full w-8 items-center justify-center text-[17px] leading-none text-[#79716b] transition hover:bg-white/70 hover:text-[#292524]">×</button>
-    </div>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Ещё действия"
+            className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] border border-[#e7e5e4] bg-white text-[#57534d] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <DotsThree size={16} weight="regular" />
+          </button>
+        </DropdownMenu.Trigger>
+        <TableDropdownContent align="start">
+          <TableDropdownActionItem icon={Archive} onSelect={() => onAction("Архивировать подразделы")}>Архивировать</TableDropdownActionItem>
+          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+          <TableDropdownActionItem icon={Trash} onSelect={() => onAction("Удалить подразделы")} tone="danger">Удалить</TableDropdownActionItem>
+        </TableDropdownContent>
+      </DropdownMenu.Root>
+    </CatalogSelectionToolbar>
   );
 }
 
@@ -2461,10 +2470,10 @@ function SectionEditor({
             {showSubsectionList && canCreateSubsection ? (
               <CatalogActionButton
                 onClick={() => onStartSubsectionCreation?.()}
-                ariaLabel="Добавить подраздел"
+                ariaLabel="Новый подраздел"
                 dataSubsectionCreateButton
               >
-                Добавить подраздел
+                Новый подраздел
               </CatalogActionButton>
             ) : !sectionIsCompletelyEmpty && !hasChildSections && (
               <div className="flex shrink-0 items-center gap-1.5">

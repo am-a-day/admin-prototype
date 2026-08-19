@@ -210,6 +210,15 @@ describe("catalog observable behavior baseline", () => {
     expect(sectionTree).not.toBeNull();
     await user.click(within(sectionTree as HTMLElement).getByText("Кухня", { exact: true }));
     expect(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Новый подраздел" })).toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-table-header]")).toHaveTextContent("Название");
+    const subsectionSearch = screen.getByRole("textbox", { name: "Найти подраздел" });
+    expect(subsectionSearch).not.toHaveFocus();
+    await user.click(subsectionSearch);
+    await user.type(subsectionSearch, "Зав");
+    await user.click(screen.getByRole("button", { name: "Очистить найти подраздел" }));
+    expect(subsectionSearch).toHaveValue("");
+    expect(subsectionSearch).toHaveFocus();
 
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
     expect(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" })).toBeInTheDocument();
@@ -240,6 +249,9 @@ describe("catalog observable behavior baseline", () => {
     const search = screen.getByPlaceholderText("Поиск по названию");
     await user.type(search, firstItemTitle);
     expect(screen.getByText(firstItemTitle, { exact: true })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Очистить найти позицию" }));
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
 
     const neutralPriceSort = screen.getByRole("button", { name: "Сортировать по возрастанию" });
     expect(neutralPriceSort.querySelectorAll("svg").length).toBeGreaterThan(0);
@@ -256,8 +268,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(columnMenu).getByRole("button", { name: /Скрыть колонку «Описание»/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    const rowCheckbox = screen.getAllByRole("checkbox", { name: /Выбрать / })[0];
-    expect(rowCheckbox).toBeDefined();
+    const rowCheckbox = screen.getByRole("checkbox", { name: `Выбрать ${firstItemTitle}` });
     await user.click(rowCheckbox);
     expect(document.querySelector("[data-catalog-selection-toolbar]")).toHaveTextContent("1 выбрано");
     expect(document.querySelector("[data-catalog-table-header]")).not.toBeInTheDocument();
@@ -360,11 +371,13 @@ describe("catalog observable behavior baseline", () => {
     const breakfastCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
     expect(breakfastCheckbox.closest("[role=button]")).toHaveClass("h-[38px]");
     await user.click(breakfastCheckbox);
-    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("Выбрано: 1");
+    expect(breakfastCheckbox.closest("[role=button]")).toHaveClass("bg-[#f1f4ff]");
+    expect(document.querySelector("[data-catalog-table-header]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("1 выбрано");
 
     const bakeryCheckbox = screen.getByRole("checkbox", { name: "Выбрать подраздел Выпечка" });
     await user.click(bakeryCheckbox);
-    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("Выбрано: 2");
+    expect(document.querySelector("[data-subsection-bulk-toolbar]")).toHaveTextContent("2 выбрано");
 
     const selectAll = screen.getByRole("checkbox", { name: "Выбрать все подразделы" });
     await user.click(selectAll);
@@ -372,6 +385,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(selectAll);
     expect(breakfastCheckbox).not.toBeChecked();
     expect(bakeryCheckbox).not.toBeChecked();
+    expect(document.querySelector("[data-catalog-table-header]")).toBeInTheDocument();
   });
 
   it("keeps the leaf table header sticky and rows reorderable", async () => {

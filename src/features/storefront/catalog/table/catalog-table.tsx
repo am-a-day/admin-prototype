@@ -41,7 +41,7 @@ import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
 import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CatalogThumbnail } from "../ui/catalog-thumbnail";
-import { CatalogTableSearch } from "../ui/catalog-table-controls";
+import { CatalogTableSearchControl } from "../ui/catalog-table-controls";
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
@@ -325,7 +325,7 @@ function getCatalogColumnLabel(columnId: string) {
   return CATALOG_INFORMATION_COLUMN_LABELS[columnId as CatalogInformationColumnId] ?? columnId;
 }
 
-function DropdownContent({
+export function DropdownContent({
   children,
   align = "end",
   preventOutsideDismiss = false,
@@ -355,7 +355,7 @@ function DropdownContent({
   );
 }
 
-function DropdownActionItem({
+export function DropdownActionItem({
   children,
   onSelect,
   tone = "default",
@@ -806,25 +806,28 @@ export function CatalogTableToolbar({
       className="sticky top-0 z-20 flex h-[39px] min-w-0 items-center justify-between gap-3 border-b border-[#e7e5e4] bg-white px-3"
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <CatalogTableFilterBar
-          activeFilterIds={activeFilterIds}
-          mandatoryFilterId={mandatoryFilterId}
-          sectionScopeId={sectionScopeId}
-          items={items}
-          table={table}
-          onResetColumns={onResetColumns}
-          onActiveFilterChange={onActiveFilterChange}
-          headerActionsOnly
-          tagCategoryActive={tagCategoryActive}
-          stickerCategoryActive={stickerCategoryActive}
-          onTagCategoryChange={onTagCategoryChange}
-          onStickerCategoryChange={onStickerCategoryChange}
-        />
-        <CatalogTableSearch
+        <CatalogTableSearchControl
           value={query}
           onValueChange={onQueryChange}
           ariaLabel="Найти позицию"
-          variant="toolbar"
+          className="w-[clamp(300px,30vw,360px)]"
+          filter={(
+            <CatalogTableFilterBar
+              activeFilterIds={activeFilterIds}
+              mandatoryFilterId={mandatoryFilterId}
+              sectionScopeId={sectionScopeId}
+              items={items}
+              table={table}
+              onResetColumns={onResetColumns}
+              onActiveFilterChange={onActiveFilterChange}
+              headerActionsOnly
+              compactTrigger
+              tagCategoryActive={tagCategoryActive}
+              stickerCategoryActive={stickerCategoryActive}
+              onTagCategoryChange={onTagCategoryChange}
+              onStickerCategoryChange={onStickerCategoryChange}
+            />
+          )}
         />
       </div>
       <CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />
@@ -1300,31 +1303,14 @@ export function SelectionToolbar({
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
 
   return (
-    <div
-      data-catalog-selection-toolbar
-      className="flex h-[38px] w-full min-w-[320px] items-center overflow-x-auto overflow-y-hidden border-b border-[#e7e5e4] bg-[#fafaf9] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    <CatalogSelectionToolbar
+      checked={checked}
+      indeterminate={indeterminate}
+      onSelectAll={onSelectAll}
+      count={count}
+      onClearSelection={onClearSelection}
     >
-      <span className="flex h-full w-[42px] shrink-0 items-center justify-center border-b border-[#e7e5e4] bg-[#fafaf9]">
-          <TableCheckbox
-            ariaLabel="Выбрать все видимые позиции"
-            checked={checked}
-            indeterminate={indeterminate}
-            onChange={onSelectAll}
-          />
-      </span>
-      <div className="flex h-full min-w-max shrink-0 items-center gap-3 border-b border-[#e7e5e4] bg-[#fafaf9] px-[3px]">
-        <span className="flex shrink-0 items-center gap-[6px] text-[13px] font-normal leading-5 text-[#292524]">
-          <span>{count} выбрано</span>
-          <button
-            type="button"
-            aria-label="Снять выделение"
-            onClick={onClearSelection}
-            className="inline-flex size-[13px] items-center justify-center rounded-[3px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
-          >
-            <X size={13} weight="regular" />
-          </button>
-        </span>
-        <span className="flex shrink-0 items-center gap-[6px]">
+      <span className="flex shrink-0 items-center gap-[6px]">
           <button
             type="button"
             onClick={(event) => onMove(getMovePopoverAnchor(event))}
@@ -1380,7 +1366,57 @@ export function SelectionToolbar({
               <DropdownActionItem icon={Trash} onSelect={onOpenDelete} tone="danger">Удалить</DropdownActionItem>
             </DropdownContent>
           </DropdownMenu.Root>
+      </span>
+    </CatalogSelectionToolbar>
+  );
+}
+
+export function CatalogSelectionToolbar({
+  checked,
+  indeterminate,
+  onSelectAll,
+  count,
+  onClearSelection,
+  children,
+  selectAllAriaLabel = "Выбрать все видимые позиции",
+  dataAttribute = "catalog",
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onSelectAll: (checked: boolean) => void;
+  count: number;
+  onClearSelection: () => void;
+  children: ReactNode;
+  selectAllAriaLabel?: string;
+  dataAttribute?: "catalog" | "subsection";
+}) {
+  return (
+    <div
+      data-catalog-selection-toolbar={dataAttribute === "catalog" ? "" : undefined}
+      data-subsection-bulk-toolbar={dataAttribute === "subsection" ? "" : undefined}
+      className="flex h-[38px] w-full min-w-[320px] items-center overflow-x-auto overflow-y-hidden border-b border-[#e7e5e4] bg-[#fafaf9] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <span className="flex h-full w-[42px] shrink-0 items-center justify-center border-b border-[#e7e5e4] bg-[#fafaf9]">
+        <TableCheckbox
+          ariaLabel={selectAllAriaLabel}
+          checked={checked}
+          indeterminate={indeterminate}
+          onChange={onSelectAll}
+        />
+      </span>
+      <div className="flex h-full min-w-max shrink-0 items-center gap-3 border-b border-[#e7e5e4] bg-[#fafaf9] px-[3px]">
+        <span className="flex shrink-0 items-center gap-[6px] text-[13px] font-normal leading-5 text-[#292524]">
+          <span>{count} выбрано</span>
+          <button
+            type="button"
+            aria-label="Снять выделение"
+            onClick={onClearSelection}
+            className="inline-flex size-[13px] items-center justify-center rounded-[3px] text-[#79716b] transition hover:bg-white hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <X size={13} weight="regular" />
+          </button>
         </span>
+        <span className="flex shrink-0 items-center gap-[6px]">{children}</span>
       </div>
     </div>
   );
@@ -1395,6 +1431,7 @@ export function CatalogTableFilterBar({
   onResetColumns,
   simple = false,
   headerActionsOnly = false,
+  compactTrigger = false,
   tagCategoryActive = false,
   stickerCategoryActive = false,
 }: {
@@ -1407,6 +1444,7 @@ export function CatalogTableFilterBar({
   onResetColumns: () => void;
   simple?: boolean;
   headerActionsOnly?: boolean;
+  compactTrigger?: boolean;
   tagCategoryActive?: boolean;
   stickerCategoryActive?: boolean;
   onTagCategoryChange?: (active: boolean) => void;
@@ -1464,9 +1502,13 @@ export function CatalogTableFilterBar({
             type="button"
             aria-label="Фильтры"
             data-catalog-table-filter-trigger
-            className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className={cn(
+              compactTrigger
+                ? "inline-flex h-full max-w-[180px] shrink-0 items-center gap-1 rounded-l-[7px] px-2 text-[12px] font-normal leading-4 text-[#57534d] transition hover:bg-[#fafaf9] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"
+                : "inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-[7px] px-1 text-[13px] font-normal leading-4 text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            )}
           >
-            <FunnelSimple size={14} />
+            {!compactTrigger && <FunnelSimple size={14} />}
             <span className="min-w-0 truncate">{activeFilterLabel}</span>
             {activeCount > 0 && <span className="rounded-[4px] bg-[#efefea] px-1 text-[11px] tabular-nums text-[#57534d]">{activeCount}</span>}
             <CaretDown size={12} />

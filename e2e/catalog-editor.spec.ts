@@ -971,39 +971,25 @@ test("opens compact section rename and icon overlays from the section chevron", 
   await expect(page.getByRole("button", { name: "Изменить иконку" }).first().locator("img")).toBeVisible();
 });
 
-test("uses the shared availability and move toolbar for subsection selection", async ({ page }) => {
+test("uses the shared compact bulk toolbar for subsection selection", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByText("Кухня", { exact: true }).first().click();
 
   const breakfastCheckbox = page.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
   await breakfastCheckbox.check();
   const toolbar = page.locator("[data-subsection-bulk-toolbar]");
-  await expect(toolbar).toContainText("Выбрано: 1");
-  await expect(toolbar.getByRole("button", { name: "Доступность" })).toBeVisible();
+  await expect(toolbar).toContainText("1 выбрано");
+  await expect(toolbar.getByRole("button", { name: "Доступность" })).toHaveCount(0);
   await expect(toolbar.getByRole("button", { name: "Переместить", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "⋯" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Снять выбор" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Ещё действия" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Снять выделение" })).toBeVisible();
 
-  await toolbar.getByRole("button", { name: "Доступность" }).click();
-  await page.getByRole("menuitem", { name: "Показывать «Скоро будет»", exact: true }).click();
-  await expect(page.getByText("Подразделы поставлены на стоп: «Скоро будет»", { exact: true })).toBeVisible();
-  await expect(toolbar).not.toBeVisible();
-
-  await breakfastCheckbox.check();
-  await toolbar.getByRole("button", { name: "Доступность" }).click();
-  await page.getByRole("menuitem", { name: "Скрыть", exact: true }).click();
-  await expect(page.getByText("Подразделы поставлены на стоп и скрыты", { exact: true })).toBeVisible();
-  await expect(toolbar).not.toBeVisible();
-
-  await breakfastCheckbox.check();
-  await toolbar.getByRole("button", { name: "Доступность" }).click();
-  await page.getByRole("menuitem", { name: "Доступно", exact: true }).click();
-  await expect(page.getByText("Подразделы доступны", { exact: true })).toBeVisible();
-  await expect(toolbar).not.toBeVisible();
-
-  await breakfastCheckbox.check();
-  await toolbar.getByRole("button", { name: "⋯", exact: true }).click();
+  await toolbar.getByRole("button", { name: "Ещё действия" }).click();
   await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Удалить", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await toolbar.getByRole("button", { name: "Ещё действия" }).click();
   await page.getByRole("menuitem", { name: "Удалить", exact: true }).click();
   const deleteDialog = page.getByRole("dialog", { name: "Удалить подразделы" });
   await expect(deleteDialog).toBeVisible();
@@ -1012,9 +998,7 @@ test("uses the shared availability and move toolbar for subsection selection", a
 
   await toolbar.getByRole("button", { name: "Переместить", exact: true }).click();
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
-  await expect(moveDialog.getByRole("button", { name: "В корень каталога" })).toBeVisible();
-  await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
-  await expect(moveDialog.locator("img")).toHaveCount(0);
+  await expect(moveDialog.getByRole("button", { name: "Основное меню" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(toolbar).not.toBeVisible();
 });
