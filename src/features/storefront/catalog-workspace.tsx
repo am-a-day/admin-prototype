@@ -5277,9 +5277,15 @@ function PopulatedWorkspace({
     setFeedback(stopped ? "Раздел поставлен на стоп" : target.hasSchedule ? "Раздел снова работает по расписанию" : "Раздел снова доступен");
   };
 
-  const saveSectionSchedule = (target: TreeSection, schedule: WeeklySchedule, scheduleMode: AvailabilityScheduleMode) => {
+  const saveSectionSchedule = (
+    target: TreeSection,
+    schedule: WeeklySchedule,
+    scheduleMode: AvailabilityScheduleMode,
+    outsideScheduleMode = target.outsideScheduleMode ?? "hidden",
+  ) => {
     setSectionWeeklyScheduleBySection((current) => ({ ...current, [target.id]: schedule }));
     setSectionScheduleModeBySection((current) => ({ ...current, [target.id]: scheduleMode }));
+    setSectionOutsideScheduleBySection((current) => ({ ...current, [target.id]: outsideScheduleMode }));
     setSectionAvailabilityBySection((current) => ({
       ...current,
       [target.id]: current[target.id] === "unavailable" ? "unavailable" : "schedule",
@@ -5381,8 +5387,8 @@ function PopulatedWorkspace({
         return;
       }
       if (section && selection.startsWith("schedule-save:") && schedule) {
-        const scheduleMode = selection.slice("schedule-save:".length) === "unavailable" ? "unavailable" : "available";
-        saveSectionSchedule(section, schedule, scheduleMode);
+        const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        saveSectionSchedule(section, schedule, "available", outsideScheduleMode);
         return;
       }
       if (section && selection === "schedule-delete") {
@@ -5476,8 +5482,8 @@ function PopulatedWorkspace({
         return;
       }
       if (selection.startsWith("schedule-save:") && schedule) {
-        const scheduleMode = selection.slice("schedule-save:".length) === "unavailable" ? "unavailable" : "available";
-        saveSectionSchedule(target, schedule, scheduleMode);
+        const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        saveSectionSchedule(target, schedule, "available", outsideScheduleMode);
         return;
       }
       if (selection === "schedule-delete") {
@@ -5807,15 +5813,15 @@ function PopulatedWorkspace({
       if (selection === "manual-stop") updateItem(item.id, { status: "stopped" });
       else if (selection === "manual-resume") updateItem(item.id, { status: "active" });
       else if (selection.startsWith("schedule-save:") && schedule) {
-        const mode = selection.slice("schedule-save:".length) === "unavailable" ? "unavailable" : "available";
-        updateItem(item.id, { scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: mode });
+        const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        updateItem(item.id, { scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: "available", outsideScheduleMode });
       }
       else if (selection === "schedule-delete") {
         updateItem(item.id, { scheduled: false, weeklySchedule: undefined, availabilityScheduleMode: undefined });
       }
       else if (selection === "behavior:hidden" || selection === "behavior:comingSoon") {
         const mode = selection === "behavior:comingSoon" ? "comingSoon" : "hidden";
-        updateItem(item.id, { unavailableDisplayMode: mode, outsideScheduleMode: mode });
+        updateItem(item.id, { unavailableDisplayMode: mode });
       }
       else if (selection === "schedule-change" && schedule) updateItem(item.id, { weeklySchedule: schedule });
       else if (selection === "outside:hidden" || selection === "outside:comingSoon") updateItem(item.id, { outsideScheduleMode: selection === "outside:comingSoon" ? "comingSoon" : "hidden" });
@@ -6453,10 +6459,10 @@ function SectionActionMenuContent({
     scheduleId: `section-${section.id}`,
     manualStopped: section.availabilityMode === "unavailable",
     hasSchedule: section.hasSchedule ?? false,
-    scheduleMode: section.availabilityScheduleMode ?? "available",
     weeklySchedule: section.weeklySchedule ?? createDefaultWeeklySchedule(),
+    outsideScheduleMode: section.outsideScheduleMode ?? "hidden",
     onManualStopChange: (stopped) => onAction(stopped ? "availability:manual-stop" : "availability:manual-resume"),
-    onScheduleSave: (schedule, scheduleMode) => onAction(`availability:schedule-save:${scheduleMode}`, undefined, schedule),
+    onScheduleChange: (schedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, schedule),
     onScheduleDelete: () => onAction("availability:schedule-delete"),
   };
   return (
@@ -6541,13 +6547,13 @@ function AuditRowActionsMenu({
             scheduleId: `item-${item.id}`,
             manualStopped: item.status === "stopped" || item.status === "coming-soon",
             hasSchedule: item.scheduled,
-            scheduleMode: item.availabilityScheduleMode ?? "available",
             weeklySchedule: item.weeklySchedule ?? createDefaultWeeklySchedule(),
-            unavailableDisplayMode: stopDisplayMode,
+            stopDisplayMode,
+            outsideScheduleMode: item.outsideScheduleMode ?? "hidden",
             onManualStopChange: (stopped) => onAction(stopped ? "availability:manual-stop" : "availability:manual-resume"),
-            onScheduleSave: (nextSchedule, mode) => onAction(`availability:schedule-save:${mode}`, undefined, nextSchedule),
+            onScheduleChange: (nextSchedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, nextSchedule),
             onScheduleDelete: () => onAction("availability:schedule-delete"),
-            onUnavailableDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
+            onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
           }}
         />
       </DropdownContent>
@@ -6567,7 +6573,7 @@ function getCompositionRowStatusLabel(item: CatalogItem) {
       new Date(),
     );
     if (orderable) return "По расписанию";
-    return item.unavailableDisplayMode === "comingSoon" || item.outsideScheduleMode === "comingSoon"
+    return item.outsideScheduleMode === "comingSoon"
       ? "Скоро будет"
       : "Недоступно";
   }
@@ -6588,7 +6594,7 @@ function getCompositionRowStatusClassName(item: CatalogItem) {
       new Date(),
     );
     if (orderable) return "bg-[#dbeafe] text-[#2b7fff]";
-    return item.unavailableDisplayMode === "comingSoon" || item.outsideScheduleMode === "comingSoon"
+    return item.outsideScheduleMode === "comingSoon"
       ? "bg-[#dbeafe] text-[#2b7fff]"
       : "bg-[#fef3c7] text-[#a16207]";
   }
@@ -8357,8 +8363,8 @@ function OverviewWorkspace({
         return;
       }
       if (selection.startsWith("schedule-save:") && schedule) {
-        const mode = selection.slice("schedule-save:".length) === "unavailable" ? "unavailable" : "available";
-        updateItem(item.id, { scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: mode });
+        const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        updateItem(item.id, { scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: "available", outsideScheduleMode });
         return;
       }
       if (selection === "schedule-delete") {
@@ -8367,7 +8373,7 @@ function OverviewWorkspace({
       }
       if (selection === "behavior:hidden" || selection === "behavior:comingSoon") {
         const mode = selection === "behavior:comingSoon" ? "comingSoon" : "hidden";
-        updateItem(item.id, { unavailableDisplayMode: mode, outsideScheduleMode: mode });
+        updateItem(item.id, { unavailableDisplayMode: mode });
         return;
       }
       if (selection === "schedule-change" && schedule) {

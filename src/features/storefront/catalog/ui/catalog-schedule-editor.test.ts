@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { CatalogItem } from "@/data/catalog";
+import { getEffectiveAvailability } from "../editor/position-editor";
 import {
   DAY_LABELS,
   isWeeklyScheduleOrderable,
@@ -37,5 +39,29 @@ describe("catalog position schedule semantics", () => {
       "Суббота",
       "Воскресенье",
     ]);
+  });
+
+  it("gives a manual stop priority over the schedule display mode", () => {
+    const scheduledItem = {
+      status: "active",
+      scheduled: true,
+    } as CatalogItem;
+    const settings = {
+      unavailableDisplayMode: "hidden" as const,
+      outsideScheduleMode: "comingSoon" as const,
+      weeklySchedule: baseSchedule,
+      scheduleMode: "available" as const,
+    };
+
+    expect(getEffectiveAvailability(scheduledItem, new Date(2026, 7, 12, 13, 0), settings)).toEqual({
+      visible: true,
+      orderable: false,
+      badge: "Скоро будет",
+    });
+    expect(getEffectiveAvailability({ ...scheduledItem, status: "stopped" }, new Date(2026, 7, 12, 13, 0), settings)).toEqual({
+      visible: false,
+      orderable: false,
+      badge: null,
+    });
   });
 });

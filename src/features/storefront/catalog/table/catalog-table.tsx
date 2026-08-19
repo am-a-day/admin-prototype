@@ -76,7 +76,7 @@ function getPrimaryRowStatusLabel(item: CatalogItem) {
       new Date(),
     );
     if (orderable) return "По расписанию";
-    return item.unavailableDisplayMode === "comingSoon" || item.outsideScheduleMode === "comingSoon"
+    return item.outsideScheduleMode === "comingSoon"
       ? "Скоро будет"
       : "Недоступно";
   }

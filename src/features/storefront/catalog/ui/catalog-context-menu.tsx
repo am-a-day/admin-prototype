@@ -4,12 +4,11 @@ import {
   Archive,
   ArrowCounterClockwise,
   ArrowElbowUpRight,
+  ArrowUUpLeft,
   CalendarBlank,
   CaretRight,
-  CheckCircle,
   Check,
   Copy,
-  Eye,
   NotePencil,
   PlusCircle,
   Prohibit,
@@ -18,9 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CatalogSchedulePopover,
-  CatalogWeeklyScheduleEditor,
   createDefaultWeeklySchedule,
-  type AvailabilityScheduleMode,
   type WeeklySchedule,
 } from "./catalog-schedule-editor";
 import {
@@ -37,13 +34,13 @@ export type CatalogPositionAvailabilityMenuProps = {
   scheduleId: string;
   manualStopped: boolean;
   hasSchedule: boolean;
-  scheduleMode: AvailabilityScheduleMode;
   weeklySchedule: WeeklySchedule;
-  unavailableDisplayMode: CatalogStopDisplayMode;
+  stopDisplayMode: CatalogStopDisplayMode;
+  outsideScheduleMode: CatalogStopDisplayMode;
   onManualStopChange: (stopped: boolean) => void;
-  onScheduleSave: (schedule: WeeklySchedule, mode: AvailabilityScheduleMode) => void;
+  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onScheduleDelete: () => void;
-  onUnavailableDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+  onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
   onActionComplete?: () => void;
 };
 
@@ -74,9 +71,9 @@ function MenuItem({ children, onSelect, icon, tone = "default", disabled = false
 type AvailabilityScheduleSubmenuProps = {
   scheduleId: string;
   hasSchedule: boolean;
-  scheduleMode: AvailabilityScheduleMode;
   weeklySchedule: WeeklySchedule;
-  onScheduleSave: (schedule: WeeklySchedule, mode: AvailabilityScheduleMode) => void;
+  outsideScheduleMode: CatalogStopDisplayMode;
+  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onScheduleDelete: () => void;
   onActionComplete?: () => void;
 };
@@ -84,9 +81,9 @@ type AvailabilityScheduleSubmenuProps = {
 function AvailabilityScheduleSubmenu({
   scheduleId,
   hasSchedule,
-  scheduleMode,
   weeklySchedule,
-  onScheduleSave,
+  outsideScheduleMode,
+  onScheduleChange,
   onScheduleDelete,
   onActionComplete,
 }: AvailabilityScheduleSubmenuProps) {
@@ -95,9 +92,7 @@ function AvailabilityScheduleSubmenu({
   return (
     <DropdownMenu.Sub
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) setOpen(true);
-      }}
+      onOpenChange={setOpen}
     >
       <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
         <CalendarBlank size={15} className="shrink-0 text-[#57534d]" />
@@ -114,16 +109,13 @@ function AvailabilityScheduleSubmenu({
           <CatalogSchedulePopover
             scheduleId={scheduleId}
             hasSchedule={hasSchedule}
-            initialMode={scheduleMode}
             initialSchedule={weeklySchedule}
-            onCancel={() => setOpen(false)}
+            initialOutsideScheduleMode={outsideScheduleMode}
+            onChange={(schedule, nextOutsideScheduleMode) => {
+              onScheduleChange(schedule, nextOutsideScheduleMode);
+            }}
             onDelete={() => {
               onScheduleDelete();
-              setOpen(false);
-              onActionComplete?.();
-            }}
-            onSave={(schedule, mode) => {
-              onScheduleSave(schedule, mode);
               setOpen(false);
               onActionComplete?.();
             }}
@@ -134,51 +126,89 @@ function AvailabilityScheduleSubmenu({
   );
 }
 
-function UnavailableBehaviorSubmenu({
+function StopDisplaySubmenu({
   value,
+  manualStopped,
   onChange,
+  onResume,
 }: {
   value: CatalogStopDisplayMode;
+  manualStopped: boolean;
   onChange: (mode: CatalogStopDisplayMode) => void;
+  onResume: () => void;
 }) {
   return (
-    <DropdownMenu.Sub>
+    <DropdownMenu.SubContent
+      sideOffset={6}
+      alignOffset={-5}
+      collisionPadding={12}
+      className={cn("z-[100004] min-w-[220px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+    >
+      <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as CatalogStopDisplayMode)}>
+        {([
+          { value: "hidden", label: "Скрывать из меню" },
+          { value: "comingSoon", label: "Показывать как “скоро будет”" },
+        ] as const).map((option) => (
+          <DropdownMenu.RadioItem
+            key={option.value}
+            value={option.value}
+            className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", value === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
+              <DropdownMenu.ItemIndicator>
+                <span className="block size-2 rounded-full bg-[#292524]" />
+              </DropdownMenu.ItemIndicator>
+            </span>
+            <span className="min-w-0 flex-1">{option.label}</span>
+          </DropdownMenu.RadioItem>
+        ))}
+      </DropdownMenu.RadioGroup>
+      {manualStopped && (
+        <>
+          <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
+          <DropdownActionItem icon={ArrowUUpLeft} onSelect={onResume}>
+            Убрать со стопа
+          </DropdownActionItem>
+        </>
+      )}
+    </DropdownMenu.SubContent>
+  );
+}
+
+function StopAvailabilitySubmenu({
+  manualStopped,
+  stopDisplayMode,
+  onManualStopChange,
+  onStopDisplayModeChange,
+}: {
+  manualStopped: boolean;
+  stopDisplayMode: CatalogStopDisplayMode;
+  onManualStopChange: (stopped: boolean) => void;
+  onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
       <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
-        <Eye size={15} className="shrink-0 text-[#57534d]" />
-        <span className="min-w-0 flex-1 truncate">Когда недоступно</span>
+        <Prohibit size={15} className="shrink-0 text-[#57534d]" />
+        <span className="min-w-0 flex-1 truncate">{manualStopped ? "Позиция на стопе" : "Поставить на стоп"}</span>
         <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-5}
-          collisionPadding={12}
-          className={cn("z-[100004] w-[300px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
-        >
-          <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as CatalogStopDisplayMode)}>
-            {([
-              { value: "hidden", title: "Скрывать позицию", description: "Не показывать в меню" },
-              { value: "comingSoon", title: "Показывать «Скоро будет»", description: "Оставить в меню без возможности заказа" },
-            ] as const).map((option) => (
-              <DropdownMenu.RadioItem
-                key={option.value}
-                value={option.value}
-                className="flex min-h-12 cursor-pointer select-none items-start gap-2.5 rounded-lg px-2.5 py-2 outline-none transition data-[highlighted]:bg-[#f5f5f4] data-[state=checked]:bg-[#fafaf9]"
-              >
-                <span className={cn(
-                  "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-                  value === option.value ? "border-[#292524] bg-[#292524]" : "border-[#d6d3d1] bg-white",
-                )}>
-                  {value === option.value && <span className="size-1.5 rounded-full bg-white" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-medium leading-4 text-[#292524]">{option.title}</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[#79716b]">{option.description}</span>
-                </span>
-              </DropdownMenu.RadioItem>
-            ))}
-          </DropdownMenu.RadioGroup>
-        </DropdownMenu.SubContent>
+        <StopDisplaySubmenu
+          value={stopDisplayMode}
+          manualStopped={manualStopped}
+          onChange={(mode) => {
+            onStopDisplayModeChange(mode);
+            if (!manualStopped) onManualStopChange(true);
+            setOpen(false);
+          }}
+          onResume={() => {
+            onManualStopChange(false);
+            setOpen(false);
+          }}
+        />
       </DropdownMenu.Portal>
     </DropdownMenu.Sub>
   );
@@ -188,40 +218,33 @@ export function CatalogPositionAvailabilityMenu({
   scheduleId,
   manualStopped,
   hasSchedule,
-  scheduleMode,
   weeklySchedule,
-  unavailableDisplayMode,
+  stopDisplayMode,
+  outsideScheduleMode,
   onManualStopChange,
-  onScheduleSave,
+  onScheduleChange,
   onScheduleDelete,
-  onUnavailableDisplayModeChange,
+  onStopDisplayModeChange,
   onActionComplete,
 }: CatalogPositionAvailabilityMenuProps) {
   return (
     <>
-      <DropdownMenu.Item
-        onSelect={() => onManualStopChange(!manualStopped)}
-        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
-      >
-        {manualStopped
-          ? <ArrowCounterClockwise size={15} className="shrink-0 text-[#57534d]" />
-          : <Prohibit size={15} className="shrink-0 text-[#57534d]" />}
-        <span>{manualStopped ? "Снять со стопа" : "Поставить на стоп"}</span>
-      </DropdownMenu.Item>
+      <StopAvailabilitySubmenu
+        manualStopped={manualStopped}
+        stopDisplayMode={stopDisplayMode}
+        onManualStopChange={onManualStopChange}
+        onStopDisplayModeChange={onStopDisplayModeChange}
+      />
       <AvailabilityScheduleSubmenu
         scheduleId={scheduleId}
         hasSchedule={hasSchedule}
-        scheduleMode={scheduleMode}
         weeklySchedule={weeklySchedule}
-        onScheduleSave={onScheduleSave}
+        outsideScheduleMode={outsideScheduleMode}
+        onScheduleChange={onScheduleChange}
         onScheduleDelete={onScheduleDelete}
         onActionComplete={onActionComplete}
       />
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
-      <UnavailableBehaviorSubmenu
-        value={unavailableDisplayMode}
-        onChange={onUnavailableDisplayModeChange}
-      />
     </>
   );
 }
@@ -230,10 +253,10 @@ export type CatalogSectionAvailabilityMenuProps = {
   scheduleId: string;
   manualStopped: boolean;
   hasSchedule: boolean;
-  scheduleMode: AvailabilityScheduleMode;
   weeklySchedule: WeeklySchedule;
+  outsideScheduleMode: CatalogStopDisplayMode;
   onManualStopChange: (stopped: boolean) => void;
-  onScheduleSave: (schedule: WeeklySchedule, mode: AvailabilityScheduleMode) => void;
+  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onScheduleDelete: () => void;
   onActionComplete?: () => void;
 };
@@ -242,10 +265,10 @@ export function CatalogSectionAvailabilityMenu({
   scheduleId,
   manualStopped,
   hasSchedule,
-  scheduleMode,
   weeklySchedule,
+  outsideScheduleMode,
   onManualStopChange,
-  onScheduleSave,
+  onScheduleChange,
   onScheduleDelete,
   onActionComplete,
 }: CatalogSectionAvailabilityMenuProps) {
@@ -263,125 +286,13 @@ export function CatalogSectionAvailabilityMenu({
       <AvailabilityScheduleSubmenu
         scheduleId={scheduleId}
         hasSchedule={hasSchedule}
-        scheduleMode={scheduleMode}
         weeklySchedule={weeklySchedule}
-        onScheduleSave={onScheduleSave}
+        outsideScheduleMode={outsideScheduleMode}
+        onScheduleChange={onScheduleChange}
         onScheduleDelete={onScheduleDelete}
         onActionComplete={onActionComplete}
       />
     </>
-  );
-}
-
-function ContextSubTrigger({
-  children,
-  icon,
-  selected = false,
-  onClick,
-}: {
-  children: ReactNode;
-  icon?: ReactNode;
-  selected?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <DropdownMenu.SubTrigger
-      onClick={onClick}
-      className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
-    >
-      {icon && <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {selected && <Check size={14} weight="bold" className="shrink-0 text-[#44403b]" />}
-      <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
-    </DropdownMenu.SubTrigger>
-  );
-}
-
-function StopDisplaySubmenu({
-  value,
-  onChange,
-}: {
-  value: CatalogStopDisplayMode;
-  onChange: (value: CatalogStopDisplayMode) => void;
-}) {
-  return (
-    <DropdownMenu.SubContent
-      sideOffset={5}
-      alignOffset={-5}
-      className="z-[100003] min-w-[168px] rounded-[6px] border border-[#e2e8f0] bg-white p-1 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none"
-    >
-      <DropdownActionItem onSelect={() => onChange("comingSoon")}>Скоро будет</DropdownActionItem>
-      <DropdownActionItem onSelect={() => onChange("hidden")}>Скрыть</DropdownActionItem>
-      <span className="sr-only">Текущий вариант: {value === "comingSoon" ? "Скоро будет" : "Скрыть"}</span>
-    </DropdownMenu.SubContent>
-  );
-}
-
-function ScheduleSubmenu({
-  scheduleId,
-  outsideScheduleMode,
-  weeklySchedule,
-  onOutsideScheduleModeChange,
-  onWeeklyScheduleChange,
-  onReset,
-}: {
-  scheduleId: string;
-  outsideScheduleMode: CatalogStopDisplayMode;
-  weeklySchedule: WeeklySchedule;
-  onOutsideScheduleModeChange: (value: CatalogStopDisplayMode) => void;
-  onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
-  onReset: () => void;
-}) {
-  return (
-    <DropdownMenu.SubContent
-      sideOffset={5}
-      alignOffset={-5}
-      collisionPadding={12}
-      className="z-[100003] w-[356px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[6px] border border-[#e2e8f0] bg-white p-2 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none"
-    >
-      <div className="flex items-center justify-between gap-3 px-2 pb-2">
-        <div>
-          <div className="text-[13px] font-medium text-[#292524]">По расписанию</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">Настройте дни и часы доступности</div>
-        </div>
-        <span className="rounded-[4px] bg-[#f8fafc] px-1.5 py-1 text-[10px] text-[#64748b]">Автосохранение</span>
-      </div>
-      <div className="border-y border-[#eef2f7] py-2">
-        <div className="flex items-center justify-between gap-2 px-2 pb-1.5">
-          <span className="text-[12px] font-medium text-[#57534d]">Вне расписания</span>
-          <div className="inline-flex rounded-[6px] bg-[#f5f5f4] p-0.5" role="group" aria-label="Вне расписания">
-            {(["comingSoon", "hidden"] as CatalogStopDisplayMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={outsideScheduleMode === mode}
-                onClick={() => onOutsideScheduleModeChange(mode)}
-                className={cn(
-                  "rounded-[5px] px-2 py-1 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                  outsideScheduleMode === mode ? "bg-white text-[#292524] shadow-sm" : "text-[#79716b] hover:text-[#292524]",
-                )}
-              >
-                {mode === "comingSoon" ? "Скоро будет" : "Скрыть"}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="max-h-[330px] overflow-y-auto px-0.5 [scrollbar-width:thin]">
-          <CatalogWeeklyScheduleEditor
-            scheduleId={scheduleId}
-            weeklySchedule={weeklySchedule}
-            onWeeklyScheduleChange={onWeeklyScheduleChange}
-          />
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onReset}
-        className="mt-2 flex h-7 w-full items-center rounded-[6px] px-2 text-left text-[12px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-      >
-        Сбросить расписание
-      </button>
-    </DropdownMenu.SubContent>
   );
 }
 
@@ -408,8 +319,6 @@ export function CatalogAvailabilityMenu({
   onWeeklyScheduleChange: (schedule: WeeklySchedule) => void;
   onResetSchedule: () => void;
 }) {
-  const [openSubmenu, setOpenSubmenu] = useState<"stop" | "schedule" | null>(null);
-
   return (
     <>
       <DropdownMenu.Item
@@ -419,55 +328,30 @@ export function CatalogAvailabilityMenu({
         <span className="min-w-0 flex-1 truncate">Доступно</span>
         {availability === "available" && <Check size={14} weight="bold" className="shrink-0" />}
       </DropdownMenu.Item>
-      <DropdownMenu.Sub
-        open={openSubmenu === "stop"}
-        onOpenChange={(open) => {
-          setOpenSubmenu(open ? "stop" : null);
+      <StopAvailabilitySubmenu
+        manualStopped={availability === "stopped"}
+        stopDisplayMode={stopDisplayMode}
+        onManualStopChange={(stopped) => onAvailabilityChange(stopped ? "stopped" : "available")}
+        onStopDisplayModeChange={(value) => {
+          onStopDisplayModeChange(value);
+          onAvailabilityChange("stopped");
         }}
-      >
-        <ContextSubTrigger icon={<CheckCircle size={16} weight="regular" />} selected={availability === "stopped"}>
-          На стопе
-        </ContextSubTrigger>
-        <DropdownMenu.Portal>
-          <StopDisplaySubmenu
-            value={stopDisplayMode}
-            onChange={(value) => {
-              onStopDisplayModeChange(value);
-              onAvailabilityChange("stopped");
-              setOpenSubmenu(null);
-            }}
-          />
-        </DropdownMenu.Portal>
-      </DropdownMenu.Sub>
-      <DropdownMenu.Sub
-        open={openSubmenu === "schedule"}
-        onOpenChange={(open) => {
-          setOpenSubmenu(open ? "schedule" : null);
+      />
+      <AvailabilityScheduleSubmenu
+        scheduleId={scheduleId}
+        hasSchedule={availability === "scheduled"}
+        weeklySchedule={weeklySchedule}
+        outsideScheduleMode={outsideScheduleMode}
+        onScheduleChange={(schedule, outsideMode) => {
+          onAvailabilityChange("scheduled");
+          onOutsideScheduleModeChange(outsideMode);
+          onWeeklyScheduleChange(schedule);
         }}
-      >
-        <ContextSubTrigger selected={availability === "scheduled"} onClick={() => onAvailabilityChange("scheduled")}>
-          По расписанию
-        </ContextSubTrigger>
-        <DropdownMenu.Portal>
-          <ScheduleSubmenu
-            scheduleId={scheduleId}
-            outsideScheduleMode={outsideScheduleMode}
-            weeklySchedule={weeklySchedule}
-            onOutsideScheduleModeChange={(value) => {
-              onAvailabilityChange("scheduled");
-              onOutsideScheduleModeChange(value);
-            }}
-            onWeeklyScheduleChange={(schedule) => {
-              onAvailabilityChange("scheduled");
-              onWeeklyScheduleChange(schedule);
-            }}
-            onReset={() => {
-              onResetSchedule();
-              setOpenSubmenu(null);
-            }}
-          />
-        </DropdownMenu.Portal>
-      </DropdownMenu.Sub>
+        onScheduleDelete={() => {
+          onResetSchedule();
+          onAvailabilityChange("available");
+        }}
+      />
     </>
   );
 }

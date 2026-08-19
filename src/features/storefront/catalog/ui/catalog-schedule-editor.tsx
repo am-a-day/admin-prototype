@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, CaretUpDown, Clock, Copy } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
+import { CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle } from "@phosphor-icons/react";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -20,6 +19,7 @@ export type ScheduleDay = CatalogScheduleDay;
 export type ScheduleDayKey = CatalogScheduleDayKey;
 export type WeeklySchedule = CatalogWeeklySchedule;
 export type AvailabilityScheduleMode = CatalogAvailabilityScheduleMode;
+export type ScheduleOutsideDisplayMode = "hidden" | "comingSoon";
 
 type ScheduleTimeRange = { start: string; end: string };
 
@@ -128,7 +128,7 @@ export function isWeeklyScheduleOrderable(
 }
 
 const DAY_MODE_OPTIONS = [
-  { value: "allDay", label: "Весь день" },
+  { value: "allDay", label: "Круглосуточно" },
   { value: "custom", label: "По часам" },
   { value: "unavailable", label: "Недоступно" },
 ] as const;
@@ -168,7 +168,7 @@ function WeeklyScheduleRows({
         const day = schedule[key];
         const timeRange = day.mode === "custom" ? getTimeRange(day) : null;
         const errors = validateDaySchedule(day);
-        const statusLabel = day.mode === "allDay" ? "Весь день" : "Недоступно";
+        const statusLabel = day.mode === "allDay" ? "Круглосуточно" : "Недоступно";
         const setDayMode = (nextMode: ScheduleDay["mode"]) => {
           updateDay(
             key,
@@ -386,7 +386,7 @@ export function PositionWeeklyScheduleEditor({
         const timeRange = day.mode === "custom" ? getTimeRange(day) : null;
         const errors = validateDaySchedule(day);
         const errorId = `${scheduleId}-${key}-time-error`;
-        const statusLabel = day.mode === "allDay" ? "Весь день" : "Недоступно";
+        const statusLabel = day.mode === "allDay" ? "Круглосуточно" : "Недоступно";
         const setDayMode = (nextMode: ScheduleDay["mode"]) => {
           updateDay(
             key,
@@ -478,7 +478,7 @@ export function PositionWeeklyScheduleEditor({
                     }}
                   >
                     {([
-                      { value: "allDay", label: "Весь день" },
+                      { value: "allDay", label: "Круглосуточно" },
                       { value: "custom", label: "Своё время" },
                       { value: "unavailable", label: "Недоступно" },
                     ] as const).map((option) => (
@@ -510,78 +510,115 @@ export function PositionWeeklyScheduleEditor({
 export function CatalogSchedulePopover({
   scheduleId,
   hasSchedule,
-  initialMode,
   initialSchedule,
-  onSave,
+  initialOutsideScheduleMode,
+  onChange,
   onDelete,
-  onCancel,
 }: {
   scheduleId: string;
   hasSchedule: boolean;
-  initialMode: AvailabilityScheduleMode;
   initialSchedule: WeeklySchedule;
-  onSave: (schedule: WeeklySchedule, mode: AvailabilityScheduleMode) => void;
+  initialOutsideScheduleMode: ScheduleOutsideDisplayMode;
+  onChange: (schedule: WeeklySchedule, outsideScheduleMode: ScheduleOutsideDisplayMode) => void;
   onDelete: () => void;
-  onCancel: () => void;
 }) {
-  const [mode, setMode] = useState<AvailabilityScheduleMode>(initialMode);
   const [schedule, setSchedule] = useState<WeeklySchedule>(() => normalizeWeeklySchedule(initialSchedule));
+  const [outsideScheduleMode, setOutsideScheduleMode] = useState<ScheduleOutsideDisplayMode>(initialOutsideScheduleMode);
+  const [outsideMenuOpen, setOutsideMenuOpen] = useState(false);
+  const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
+  usePositionSidePeekOverlay(outsideMenuOpen, () => setOutsideMenuOpen(false));
+
+  const handleScheduleChange = (nextSchedule: WeeklySchedule) => {
+    setSchedule(nextSchedule);
+    onChange(nextSchedule, outsideScheduleMode);
+  };
+
+  const handleOutsideScheduleModeChange = (nextMode: ScheduleOutsideDisplayMode) => {
+    setOutsideScheduleMode(nextMode);
+    onChange(schedule, nextMode);
+    setOutsideMenuOpen(false);
+  };
 
   return (
     <div data-catalog-schedule-popover className={cn(CATALOG_DROPDOWN_CONTENT_CLASS, "w-[314px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[11px] border-[#e7e5e4] p-0")}>
-      <div className="border-b border-[#e7e5e4] p-2.5">
-        <div role="group" aria-label="Способ задания расписания" className="grid h-8 grid-cols-2 rounded-lg bg-[#f5f5f4] p-0.5">
-          {(["available", "unavailable"] as AvailabilityScheduleMode[]).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              aria-pressed={mode === candidate}
-              onClick={() => setMode(candidate)}
-              className={cn(
-                "rounded-md px-2 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                mode === candidate
-                  ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-sm"
-                  : "text-[#79716b] hover:text-[#292524]",
-              )}
-            >
-              {candidate === "available" ? "Когда доступно" : "Когда недоступно"}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <WeeklyScheduleRows
         scheduleId={scheduleId}
         weeklySchedule={schedule}
-        onWeeklyScheduleChange={setSchedule}
+        onWeeklyScheduleChange={handleScheduleChange}
       />
 
-      {hasSchedule && (
-        <div className="border-t border-[#e7e5e4] px-3 py-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onDelete}
-            className="px-2.5 text-[13px] font-medium text-[#c10007] hover:bg-[#fef2f2] hover:text-[#c10007]"
-          >
-            Удалить расписание
-          </Button>
-        </div>
-      )}
-      <div className="flex h-[55px] items-center justify-end gap-2 border-t border-[#e7e5e4] px-3">
-        <Button type="button" size="sm" variant="outline" onClick={onCancel} className="h-8 rounded-[10px] text-[14px] font-medium text-[#79716b]">
-          Отмена
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={!isWeeklyScheduleValid(schedule)}
-          onClick={() => onSave(schedule, mode)}
-          className="h-8 rounded-[10px] bg-[#4f39f6] px-3 text-[14px] font-medium text-white hover:bg-[#4338ca]"
-        >
-          {hasSchedule ? "Сохранить" : "Добавить расписание"}
-        </Button>
+      <div className="border-t border-[#e7e5e4] bg-white">
+        <DropdownMenu.Root open={outsideMenuOpen} onOpenChange={setOutsideMenuOpen}>
+          <div className="flex h-[42px] items-center gap-3 px-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Eye size={16} className="shrink-0 text-[#1c1917]" />
+              <span className="truncate text-[13px] leading-5 text-[#1c1917]">Вне расписания</span>
+            </div>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Режим вне расписания"
+                className="flex h-8 w-[120px] shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 text-[#57534d] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <span>{outsideScheduleMode === "comingSoon" ? "Показывать" : "Скрывать"}</span>
+                <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
+              </button>
+            </DropdownMenu.Trigger>
+          </div>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              side="bottom"
+              align="end"
+              sideOffset={4}
+              collisionPadding={12}
+              onPointerDownOutside={(event) => {
+                if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+              }}
+              onInteractOutside={(event) => {
+                if (shouldPreventOverlayDismissal(event)) event.preventDefault();
+              }}
+              className={cn("z-[100006] min-w-[232px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+            >
+              {marker}
+              <DropdownMenu.RadioGroup
+                value={outsideScheduleMode}
+                onValueChange={(value) => handleOutsideScheduleModeChange(value as ScheduleOutsideDisplayMode)}
+              >
+                {([
+                  { value: "hidden", label: "Скрывать из меню" },
+                  { value: "comingSoon", label: "Показывать как “скоро будет”" },
+                ] as const).map((option) => (
+                  <DropdownMenu.RadioItem
+                    key={option.value}
+                    value={option.value}
+                    className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+                  >
+                    <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border bg-white", outsideScheduleMode === option.value ? "border-[#292524]" : "border-[#d6d3d1]")}>
+                      <DropdownMenu.ItemIndicator>
+                        <span className="block size-2 rounded-full bg-[#292524]" />
+                      </DropdownMenu.ItemIndicator>
+                    </span>
+                    <span className="min-w-0 flex-1">{option.label}</span>
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+
+        {hasSchedule && (
+          <>
+            <div className="mx-3 h-px bg-[#e7e5e4]" />
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex h-[42px] w-full items-center gap-2 px-3 text-left text-[13px] leading-5 text-[#1c1917] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+            >
+              <MinusCircle size={16} className="shrink-0" />
+              <span>Убрать расписание</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1594,15 +1594,15 @@ function PositionAvailabilityStatus({
   compact?: boolean;
 }) {
   const effective = getEffectiveAvailability(item, new Date(), {
-    unavailableDisplayMode: menuProps.unavailableDisplayMode,
-    outsideScheduleMode: menuProps.unavailableDisplayMode,
+    unavailableDisplayMode: menuProps.stopDisplayMode,
+    outsideScheduleMode: menuProps.outsideScheduleMode,
     weeklySchedule: menuProps.weeklySchedule,
-    scheduleMode: menuProps.scheduleMode,
+    scheduleMode: "available",
   });
   const state = item.status === "archive"
     ? "archive"
     : menuProps.manualStopped
-      ? (item.status === "coming-soon" || menuProps.unavailableDisplayMode === "comingSoon" ? "coming-soon" : "stopped")
+      ? (item.status === "coming-soon" || menuProps.stopDisplayMode === "comingSoon" ? "coming-soon" : "stopped")
       : menuProps.hasSchedule
         ? effective.orderable
           ? "schedule"
@@ -1679,17 +1679,17 @@ export function PositionAvailabilityControl({
   statusOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"main" | "schedule" | "behavior">("main");
+  const [view, setView] = useState<"main" | "schedule" | "stop">("main");
   usePositionSidePeekOverlay(open, () => setOpen(false));
   useEffect(() => {
     if (!open) setView("main");
   }, [open]);
   if (statusOnly) return <PositionAvailabilityStatus item={item} menuProps={menuProps} />;
   const effective = getEffectiveAvailability(item, new Date(), {
-    unavailableDisplayMode: menuProps.unavailableDisplayMode,
-    outsideScheduleMode: menuProps.unavailableDisplayMode,
+    unavailableDisplayMode: menuProps.stopDisplayMode,
+    outsideScheduleMode: menuProps.outsideScheduleMode,
     weeklySchedule: menuProps.weeklySchedule,
-    scheduleMode: menuProps.scheduleMode,
+    scheduleMode: "available",
   });
   const state = item.status === "archive"
     ? "archive"
@@ -1762,14 +1762,12 @@ export function PositionAvailabilityControl({
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
-                menuProps.onManualStopChange(!menuProps.manualStopped);
-                setOpen(false);
-              }}
+              onClick={() => setView("stop")}
               className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
-              {menuProps.manualStopped ? <CheckCircle size={15} /> : <Prohibit size={15} />}
-              {menuProps.manualStopped ? "Снять со стопа" : "Поставить на стоп"}
+              <Prohibit size={15} />
+              <span className="min-w-0 flex-1 truncate">{menuProps.manualStopped ? "Позиция на стопе" : "Поставить на стоп"}</span>
+              <CaretRight size={13} weight="bold" className="text-[#a8a29e]" />
             </button>
             <button
               type="button"
@@ -1781,36 +1779,24 @@ export function PositionAvailabilityControl({
               <span className="min-w-0 flex-1 truncate">{menuProps.hasSchedule ? "Расписание" : "Добавить расписание"}</span>
               <CaretRight size={13} weight="bold" className="text-[#a8a29e]" />
             </button>
-            <div className="my-1 h-px bg-[#e7e5e4]" />
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => setView("behavior")}
-              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <span className="min-w-0 flex-1 truncate">Когда недоступно</span>
-              <CaretRight size={13} weight="bold" className="text-[#a8a29e]" />
-            </button>
           </div>
         )}
         {view === "schedule" && (
           <CatalogSchedulePopover
             scheduleId={menuProps.scheduleId}
             hasSchedule={menuProps.hasSchedule}
-            initialMode={menuProps.scheduleMode}
             initialSchedule={menuProps.weeklySchedule}
-            onCancel={() => setView("main")}
+            initialOutsideScheduleMode={menuProps.outsideScheduleMode}
+            onChange={(schedule, outsideScheduleMode) => {
+              menuProps.onScheduleChange(schedule, outsideScheduleMode);
+            }}
             onDelete={() => {
               menuProps.onScheduleDelete();
               setOpen(false);
             }}
-            onSave={(schedule, mode) => {
-              menuProps.onScheduleSave(schedule, mode);
-              setOpen(false);
-            }}
           />
         )}
-        {view === "behavior" && (
+        {view === "stop" && (
           <div>
             <button
               type="button"
@@ -1818,27 +1804,44 @@ export function PositionAvailabilityControl({
               className="mb-1 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-[#44403b] hover:bg-[#f5f5f4]"
             >
               <ArrowLeft size={14} weight="bold" />
-              Когда недоступно
+              {menuProps.manualStopped ? "Позиция на стопе" : "Поставить на стоп"}
             </button>
             {([
-              { value: "hidden", label: "Скрывать позицию" },
-              { value: "comingSoon", label: "Показывать «Скоро будет»" },
+              { value: "hidden", label: "Скрывать из меню" },
+              { value: "comingSoon", label: "Показывать как “скоро будет”" },
             ] as const).map((option) => (
               <button
                 key={option.value}
                 type="button"
                 role="menuitemradio"
-                aria-checked={menuProps.unavailableDisplayMode === option.value}
+                aria-checked={menuProps.stopDisplayMode === option.value}
                 onClick={() => {
-                  menuProps.onUnavailableDisplayModeChange(option.value);
-                  setOpen(false);
+                  menuProps.onStopDisplayModeChange(option.value);
+                  if (!menuProps.manualStopped) menuProps.onManualStopChange(true);
+                  setView("main");
                 }}
                 className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-[#44403b] hover:bg-[#f5f5f4]"
               >
                 <span className="min-w-0 flex-1">{option.label}</span>
-                {menuProps.unavailableDisplayMode === option.value && <Check size={14} weight="bold" />}
+                {menuProps.stopDisplayMode === option.value && <Check size={14} weight="bold" />}
               </button>
             ))}
+            {menuProps.manualStopped && (
+              <>
+                <div className="my-1 h-px bg-[#e7e5e4]" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    menuProps.onManualStopChange(false);
+                    setOpen(false);
+                  }}
+                  className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#44403b] hover:bg-[#f5f5f4]"
+                >
+                  <ArrowUUpLeft size={15} />
+                  Убрать со стопа
+                </button>
+              </>
+            )}
           </div>
         )}
       </PopoverContent>
@@ -1866,13 +1869,12 @@ export function getEffectiveAvailability(
     scheduleMode?: AvailabilityScheduleMode;
   },
 ) {
-  const unavailableDisplay = settings.unavailableDisplayMode ?? settings.outsideScheduleMode;
   if (item.status === "archive") return { visible: false, orderable: false, badge: "В архиве" as const };
   if (isItemStopOverrideActive(item)) {
     return {
-      visible: unavailableDisplay === "comingSoon",
+      visible: settings.unavailableDisplayMode === "comingSoon",
       orderable: false,
-      badge: unavailableDisplay === "comingSoon" ? ("Скоро будет" as const) : null,
+      badge: settings.unavailableDisplayMode === "comingSoon" ? ("Скоро будет" as const) : null,
     };
   }
   if (getItemBaseAvailabilityMode(item) === "always") return { visible: true, orderable: true, badge: null };
@@ -1885,9 +1887,9 @@ export function getEffectiveAvailability(
   return orderable
     ? { visible: true, orderable: true, badge: null }
     : {
-        visible: unavailableDisplay === "comingSoon",
+        visible: settings.outsideScheduleMode === "comingSoon",
         orderable: false,
-        badge: unavailableDisplay === "comingSoon" ? ("Скоро будет" as const) : null,
+        badge: settings.outsideScheduleMode === "comingSoon" ? ("Скоро будет" as const) : null,
       };
 }
 
@@ -3528,17 +3530,18 @@ export function PositionEditor({
     scheduleId: `item-${item.id}`,
     manualStopped,
     hasSchedule: item.scheduled,
-    scheduleMode: item.availabilityScheduleMode ?? "available",
     weeklySchedule,
-    unavailableDisplayMode,
+    stopDisplayMode: unavailableDisplayMode,
+    outsideScheduleMode,
     onManualStopChange: (stopped) => {
       if (stopped !== manualStopped) onToggleStop(item);
     },
-    onScheduleSave: (schedule, scheduleMode) => {
+    onScheduleChange: (schedule, nextOutsideScheduleMode) => {
       const patch = {
         weeklySchedule: schedule,
         scheduled: true,
-        availabilityScheduleMode: scheduleMode,
+        availabilityScheduleMode: "available",
+        outsideScheduleMode: nextOutsideScheduleMode,
       } satisfies Partial<CatalogItem>;
       if (onItemChange) onItemChange(item, patch);
       else if (onDraftChange) onDraftChange(patch);
@@ -3557,17 +3560,11 @@ export function PositionEditor({
       else if (onDraftChange) onDraftChange(patch);
       else onSetAvailabilityMode(item, "always");
     },
-    onUnavailableDisplayModeChange: (displayMode) => {
-      const patch = {
-        unavailableDisplayMode: displayMode,
-        outsideScheduleMode: displayMode,
-      } satisfies Partial<CatalogItem>;
+    onStopDisplayModeChange: (displayMode) => {
+      const patch = { unavailableDisplayMode: displayMode } satisfies Partial<CatalogItem>;
       if (onItemChange) onItemChange(item, patch);
       else if (onDraftChange) onDraftChange(patch);
-      else {
-        onUnavailableDisplayModeChange(displayMode);
-        onOutsideScheduleModeChange(displayMode);
-      }
+      else onUnavailableDisplayModeChange(displayMode);
     },
   };
 
