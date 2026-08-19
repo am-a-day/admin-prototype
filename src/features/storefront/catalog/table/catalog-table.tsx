@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, type DragEndEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
@@ -21,7 +21,6 @@ import {
   EyeSlash,
   Flag,
   FunnelSimple,
-  Lightning,
   ListChecks,
   Lock,
   MagnifyingGlass,
@@ -42,7 +41,12 @@ import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import type { CatalogPriceSortDirection } from "../navigation/types";
 import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
-import { HYBRID_PRIMARY_FILTER_LABELS } from "../model/filter-config";
+import {
+  CATALOG_TABLE_FILTER_GROUPS,
+  CATALOG_TABLE_FILTER_LABELS,
+  getCatalogTableFilterGroup,
+  HYBRID_PRIMARY_FILTER_LABELS,
+} from "../model/filter-config";
 import type { OverviewFilterId } from "../model/types";
 import { CATALOG_TABLE_ROW_THUMBNAIL_CLASS, CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableFilterTrigger, CatalogTableToolbarShell } from "../ui/catalog-table-controls";
@@ -340,10 +344,12 @@ function getCatalogColumnLabel(columnId: string) {
 export function DropdownContent({
   children,
   align = "end",
+  className,
   preventOutsideDismiss = false,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
+  className?: string;
   preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
@@ -356,7 +362,7 @@ export function DropdownContent({
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
-        className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
+        className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS, className)}
         onPointerDownOutside={(event) => {
           if (shouldPreventOutsideDismiss(event)) event.preventDefault();
         }}
@@ -1568,17 +1574,17 @@ export function CatalogTableFilterBar({
   const [openFilterGroup, setOpenFilterGroup] = useState<string | null>(null);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
   const countByFilter = (id: OverviewFilterId) => countItemsByFilter([id], items, scopeIds, mandatoryFilterId)[id] ?? 0;
-  const filterGroups: Array<{ label: string; icon: PhosphorIcon; ids: OverviewFilterId[] }> = [
-    { label: "Статус", icon: Flag, ids: ["status:active", "status:archived"] as OverviewFilterId[] },
-    { label: "Доступность", icon: Clock, ids: ["status:stop", "status:soon", "status:schedule"] as OverviewFilterId[] },
-    {
-      label: "Заполненность",
-      icon: ListChecks,
-      ids: ["quick:no-photo", "quick:no-weight", "quick:no-description", "quick:no-kbju", "quick:no-translation"] as OverviewFilterId[],
-    },
-    { label: "Возможности", icon: Lightning, ids: ["quick:no-recommendations", "quick:with-recommendations", "quick:discount", "quick:with-labels", "quick:with-tags"] as OverviewFilterId[] },
-    { label: "Отображение", icon: Eye, ids: ["display:full", "display:no-button", "display:no-price-only", "display:no-price"] as OverviewFilterId[] },
-  ].map((group) => ({ ...group, ids: group.ids.filter((id) => id !== mandatoryFilterId) }))
+  const filterGroups = CATALOG_TABLE_FILTER_GROUPS
+    .map((group) => ({
+      ...group,
+      icon: {
+        status: Flag,
+        availability: Clock,
+        content: ListChecks,
+        view: Eye,
+      }[group.key],
+      ids: group.ids.filter((id) => id !== mandatoryFilterId),
+    }))
     .filter((group) => group.ids.length > 0);
   const pinnedQuickFilterIds = useMemo(() => {
     const ordered: OverviewFilterId[] = [
@@ -1591,8 +1597,6 @@ export function CatalogTableFilterBar({
     return ordered.filter((id) => id !== mandatoryFilterId && !activeFilterIds.includes(id));
   }, [activeFilterIds, mandatoryFilterId]);
   const informationColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
-  const activeFilterId = activeFilterIds[0] ?? null;
-  const activeFilterLabel = activeFilterId ? HYBRID_PRIMARY_FILTER_LABELS[activeFilterId] : "Все";
 
   if (headerActionsOnly) {
     const selectFilter = (id: OverviewFilterId) => {
@@ -1600,20 +1604,46 @@ export function CatalogTableFilterBar({
       setOpenFilterGroup(null);
       onActiveFilterChange(id, true);
     };
+    const allPositionsSelected = activeFilterIds.length === 0;
+    const isGroupActive = (groupKey: string) => activeFilterIds.some((id) => getCatalogTableFilterGroup(id) === groupKey);
+    const menuItemClass = "flex h-7 cursor-pointer select-none items-center gap-2 rounded-[6px] px-2 text-[13px] font-normal leading-4 text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4]";
+    const submenuClass = "z-[100003] w-[200px] min-w-[200px] rounded-[8px] border border-[#e7e5e4] bg-white p-1 shadow-[0_8px_24px_rgba(41,37,36,0.14)] outline-none";
+    const renderSubmenuItem = (id: OverviewFilterId, showCount: boolean) => {
+      const selected = activeFilterIds.includes(id);
+      return (
+        <DropdownMenu.Item
+          key={id}
+          data-catalog-filter-item={id}
+          aria-current={selected ? "true" : undefined}
+          onSelect={() => selectFilter(id)}
+          className={cn(menuItemClass, selected && "bg-[#f5f5f4]")}
+        >
+          <span className="min-w-0 flex-1 truncate">{CATALOG_TABLE_FILTER_LABELS[id] ?? HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+          {selected ? (
+            <Check size={14} weight="bold" className="ml-auto shrink-0 text-[#292524]" aria-hidden="true" />
+          ) : showCount ? (
+            <span className="ml-auto shrink-0 tabular-nums text-[12px] text-[#a6a09b]">{countByFilter(id)}</span>
+          ) : null}
+        </DropdownMenu.Item>
+      );
+    };
     const filterMenu = (
-      <div className="min-w-[228px]">
+      <div className="w-[200px] min-w-[200px]" data-catalog-filter-menu>
         <DropdownMenu.Item
           onSelect={() => selectFilter("quick:all")}
-          className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+          data-catalog-filter-item="quick:all"
+          aria-current={allPositionsSelected ? "true" : undefined}
+          className={cn(menuItemClass, allPositionsSelected && "bg-[#f5f5f4]")}
         >
           <span className="size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">Все позиции</span>
-          {!activeFilterId && <Check size={13} weight="bold" className="shrink-0 text-[#57534d]" />}
+          {allPositionsSelected && <Check size={14} weight="bold" className="ml-auto shrink-0 text-[#292524]" aria-hidden="true" />}
         </DropdownMenu.Item>
         <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
         {filterGroups.map((group) => {
           const Icon = group.icon;
-          const groupActive = Boolean(activeFilterId && group.ids.includes(activeFilterId));
+          const groupActive = isGroupActive(group.key);
+          const showCount = group.key === "content" || group.key === "view";
           return (
             <DropdownMenu.Sub
               key={group.label}
@@ -1621,34 +1651,29 @@ export function CatalogTableFilterBar({
               onOpenChange={(open) => setOpenFilterGroup(open ? group.label : null)}
             >
               <DropdownMenu.SubTrigger
+                data-catalog-filter-group={group.key}
                 onPointerMove={() => setOpenFilterGroup(group.label)}
-                onClick={() => {
-                  setOpenFilterGroup(group.label);
-                }}
-                className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
+                onClick={() => setOpenFilterGroup(group.label)}
+                className={menuItemClass}
               >
                 <Icon size={16} weight="regular" className="shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                {groupActive && <span data-catalog-active-filter-dot className="size-1.5 shrink-0 rounded-full bg-[#a8a29e]" aria-hidden="true" />}
-                <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
+                {groupActive && <span data-catalog-active-filter-dot className="size-1.5 shrink-0 rounded-full bg-[#292524]" aria-hidden="true" />}
+                <CaretRight size={12} weight="bold" className="shrink-0 text-[#a6a09b]" aria-hidden="true" />
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent
-                  sideOffset={5}
-                  alignOffset={-5}
+                  data-catalog-filter-submenu={group.key}
+                  sideOffset={4}
+                  alignOffset={-4}
                   collisionPadding={12}
-                  className="z-[100003] min-w-[228px] rounded-[10px] border border-[#e7e5e4] bg-white p-1 shadow-[0_12px_28px_rgba(41,37,36,0.12)] outline-none"
+                  className={submenuClass}
                 >
-                  {group.ids.map((id) => (
-                    <DropdownMenu.Item
-                      key={id}
-                      onSelect={() => selectFilter(id)}
-                      className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{id === "quick:with-labels" ? "Со стикером" : HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
-                      <span className="shrink-0 text-[12px] tabular-nums text-[#a6a09b]">{countByFilter(id)}</span>
-                      {activeFilterId === id && <Check size={13} weight="bold" className="shrink-0 text-[#57534d]" />}
-                    </DropdownMenu.Item>
+                  {group.ids.map((id, index) => (
+                    <Fragment key={id}>
+                      {group.key === "content" && index === 3 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+                      {renderSubmenuItem(id, showCount)}
+                    </Fragment>
                   ))}
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
@@ -1666,9 +1691,9 @@ export function CatalogTableFilterBar({
         }}
       >
         <DropdownMenu.Trigger asChild>
-          <CatalogTableFilterTrigger label={activeFilterLabel} ariaLabel="Фильтры" />
+          <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтры" />
         </DropdownMenu.Trigger>
-        <DropdownContent align="start">{filterMenu}</DropdownContent>
+        <DropdownContent align="start" className="w-[200px] min-w-[200px] rounded-[8px] shadow-[0_8px_24px_rgba(41,37,36,0.14)]">{filterMenu}</DropdownContent>
       </DropdownMenu.Root>
     );
   }

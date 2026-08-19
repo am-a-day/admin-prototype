@@ -1,5 +1,69 @@
 import type { CatalogViewMode, OverviewFilterId } from "./types";
 
+export type CatalogTableFilterGroupKey = "status" | "availability" | "content" | "view";
+
+export const CATALOG_TABLE_FILTER_GROUPS: ReadonlyArray<{
+  key: CatalogTableFilterGroupKey;
+  label: string;
+  ids: readonly OverviewFilterId[];
+}> = [
+  { key: "status", label: "Статус", ids: ["status:active", "status:archived"] },
+  { key: "availability", label: "Доступность", ids: ["status:stop", "status:schedule"] },
+  {
+    key: "content",
+    label: "Наполнение",
+    ids: [
+      "quick:no-photo",
+      "quick:no-description",
+      "quick:no-recommendations",
+      "quick:with-recommendations",
+      "quick:with-tags",
+      "quick:discount",
+      "quick:with-labels",
+    ],
+  },
+  { key: "view", label: "Вид", ids: ["display:full", "display:no-price", "display:no-button", "display:no-price-only"] },
+];
+
+export const CATALOG_TABLE_FILTER_LABELS: Partial<Record<OverviewFilterId, string>> = {
+  "quick:no-photo": "Без фото и видео",
+  "quick:no-description": "Без описания",
+  "quick:no-recommendations": "Без рекомендаций",
+  "quick:with-recommendations": "С рекомендациями",
+  "quick:with-tags": "С тегами",
+  "quick:discount": "Со скидкой",
+  "quick:with-labels": "Со стикером",
+  "display:full": "Полный вид",
+  "display:no-price": "Без кнопки и цены",
+  "display:no-button": "Без кнопки",
+  "display:no-price-only": "Без цены",
+};
+
+export function getCatalogTableFilterGroup(id: OverviewFilterId): CatalogTableFilterGroupKey | null {
+  if (id === "status:soon") return "availability";
+  if (["quick:no-weight", "quick:no-kbju", "quick:no-translation", "quick:with-options"].includes(id)) return "content";
+  return CATALOG_TABLE_FILTER_GROUPS.find((group) => group.ids.includes(id))?.key ?? null;
+}
+
+export function updateCatalogTableFilterIds(
+  current: OverviewFilterId[],
+  id: OverviewFilterId,
+  active = true,
+): OverviewFilterId[] {
+  if (id === "quick:all") return [];
+  if (!active) return current.filter((currentId) => currentId !== id);
+
+  const group = getCatalogTableFilterGroup(id);
+  const withoutGroup = current.filter((currentId) => (
+    group ? getCatalogTableFilterGroup(currentId) !== group : currentId !== id
+  ));
+  return [...withoutGroup, id];
+}
+
+export function normalizeCatalogTableFilterIds(ids: OverviewFilterId[]): OverviewFilterId[] {
+  return ids.reduce<OverviewFilterId[]>((current, id) => updateCatalogTableFilterIds(current, id), []);
+}
+
 export const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
   { label: "Вид", ids: ["sections"] },
   { label: "Статус", ids: ["status:active", "status:archived"] },

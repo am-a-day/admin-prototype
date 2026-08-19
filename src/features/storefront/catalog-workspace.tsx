@@ -116,6 +116,8 @@ import {
   HYBRID_PRIMARY_FILTER_IDS,
   HYBRID_PRIMARY_FILTER_LABELS,
   getFilterPanelTitle,
+  normalizeCatalogTableFilterIds,
+  updateCatalogTableFilterIds,
 } from "./catalog/model/filter-config";
 import {
   buildCatalogTree as buildLocalSectionTree,
@@ -7706,7 +7708,7 @@ function OverviewWorkspace({
           && Object.prototype.hasOwnProperty.call(FILTER_PREDICATES, id),
         )
       : [];
-    if (restored.length > 0) return [restored.at(-1)!];
+    if (restored.length > 0) return normalizeCatalogTableFilterIds(restored);
     return filterId !== "quick:all" && filterId !== mandatoryFilterId ? [filterId] : [];
   });
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
@@ -7932,11 +7934,7 @@ function OverviewWorkspace({
     else setLastModifiedSort(value);
   };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
-    const next = id === "quick:all"
-      ? []
-        : active
-        ? [id]
-        : [];
+    const next = updateCatalogTableFilterIds(activeFilterIds, id, active);
     setActiveFilterIds(next);
     setWorkspaceFilterId(next.at(-1) ?? "quick:all");
     setSelectedIds(new Set());
