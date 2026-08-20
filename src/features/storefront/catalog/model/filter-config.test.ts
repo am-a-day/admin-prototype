@@ -1,35 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeCatalogTableFilterIds,
-  updateCatalogTableFilterIds,
+  normalizeCatalogTableActiveFilter,
+  updateCatalogTableActiveFilter,
 } from "./filter-config";
 
-describe("catalog table filter groups", () => {
-  it("combines filters from different categories", () => {
-    expect(updateCatalogTableFilterIds(["status:active"], "quick:no-photo")).toEqual([
-      "status:active",
-      "quick:no-photo",
-    ]);
+describe("catalog table active filter", () => {
+  it("replaces a selected value with one from another category", () => {
+    expect(updateCatalogTableActiveFilter("quick:no-description", "status:archived")).toBe("status:archived");
   });
 
-  it("replaces only the selected category", () => {
-    expect(updateCatalogTableFilterIds(["status:active", "quick:no-photo"], "quick:no-description")).toEqual([
-      "status:active",
-      "quick:no-description",
-    ]);
+  it("replaces a selected value inside the same category", () => {
+    expect(updateCatalogTableActiveFilter("quick:no-photo", "quick:no-description")).toBe("quick:no-description");
   });
 
-  it("clears every category through all positions", () => {
-    expect(updateCatalogTableFilterIds(["status:active", "quick:no-photo"], "quick:all")).toEqual([]);
+  it("clears the current value through all positions", () => {
+    expect(updateCatalogTableActiveFilter("status:active", "quick:all")).toBeNull();
   });
 
-  it("normalizes restored filters to one value per category", () => {
-    expect(normalizeCatalogTableFilterIds([
+  it("restores only the last value from legacy multi-filter state", () => {
+    expect(normalizeCatalogTableActiveFilter([
       "status:active",
       "quick:no-photo",
       "status:archived",
       "display:full",
       "display:no-button",
-    ])).toEqual(["quick:no-photo", "status:archived", "display:no-button"]);
+    ])).toBe("display:no-button");
   });
 });

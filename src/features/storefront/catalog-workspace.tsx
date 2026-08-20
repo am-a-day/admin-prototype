@@ -117,8 +117,8 @@ import {
   HYBRID_PRIMARY_FILTER_IDS,
   HYBRID_PRIMARY_FILTER_LABELS,
   getFilterPanelTitle,
-  normalizeCatalogTableFilterIds,
-  updateCatalogTableFilterIds,
+  normalizeCatalogTableActiveFilter,
+  updateCatalogTableActiveFilter,
 } from "./catalog/model/filter-config";
 import {
   buildCatalogTree as buildLocalSectionTree,
@@ -577,6 +577,12 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     countText: (count) => `${count} ${plural(count, "позиция", "позиции", "позиций")} без кнопки и цены`,
     emptyTitle: "Нет позиций без кнопки и цены",
     emptyText: "Позиции, где скрыты кнопка заказа и цена, появятся здесь.",
+  },
+  "availability:available": {
+    label: "Доступно",
+    countText: (count) => `${count} ${plural(count, "позиция доступна", "позиции доступны", "позиций доступны")} без расписания`,
+    emptyTitle: "Нет доступных позиций",
+    emptyText: "Позиции без ограничений доступности появятся здесь.",
   },
   "status:active": {
     label: "Активные",
@@ -7704,19 +7710,20 @@ function OverviewWorkspace({
   } = catalogMutations;
   const [initialEditorFirstState] = useState<EditorFirstPositionsState>(() => readEditorFirstPositionsState());
   const [initialOverviewContext] = useState<OverviewWorkspaceContext>(() => readOverviewWorkspaceContext(overviewContextStorageKey));
-  const activeFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v2`;
-  const [activeFilterIds, setActiveFilterIds] = useState<OverviewFilterId[]>(() => {
-    const stored = readJsonRecord<unknown>(activeFiltersStorageKey, []);
-    const restored = Array.isArray(stored)
-      ? stored.filter((id): id is OverviewFilterId =>
+  const activeFilterStorageKey = `${overviewContextStorageKey}.activeFilter.v3`;
+  const legacyActiveFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v2`;
+  const [activeFilterId, setActiveFilterId] = useState<OverviewFilterId | null>(() => {
+    const stored = readJsonRecord<unknown>(activeFilterStorageKey, null);
+    const legacyStored = readJsonRecord<unknown>(legacyActiveFiltersStorageKey, []);
+    const candidates = typeof stored === "string" ? [stored] : Array.isArray(legacyStored) ? legacyStored : [];
+    const restored = candidates.filter((id): id is OverviewFilterId =>
           typeof id === "string"
           && id !== "quick:all"
           && id !== mandatoryFilterId
           && Object.prototype.hasOwnProperty.call(FILTER_PREDICATES, id),
-        )
-      : [];
-    if (restored.length > 0) return normalizeCatalogTableFilterIds(restored);
-    return filterId !== "quick:all" && filterId !== mandatoryFilterId ? [filterId] : [];
+        );
+    if (restored.length > 0) return normalizeCatalogTableActiveFilter(restored);
+    return filterId !== "quick:all" && filterId !== mandatoryFilterId ? filterId : null;
   });
   const initialWorkspaceItems = initialItemsWithPending(pendingOpen, items);
   const restoredEditorFirstQueue = editorFirstEnabled && !pendingOpen
@@ -7918,8 +7925,8 @@ function OverviewWorkspace({
     });
   }, [overviewContextStorageKey, overviewScrollTop, panelQuery, priceSort, workspaceSectionScopeId]);
   useEffect(() => {
-    writeJsonRecord(activeFiltersStorageKey, activeFilterIds);
-  }, [activeFilterIds, activeFiltersStorageKey]);
+    writeJsonRecord(activeFilterStorageKey, activeFilterId);
+  }, [activeFilterId, activeFilterStorageKey]);
   const setWorkspaceFilterId = (id: OverviewFilterId) => {
     if (editorFirstEnabled) setEditorFirstFilterId(id);
     else onFilterChange(id);
@@ -7941,9 +7948,9 @@ function OverviewWorkspace({
     else setLastModifiedSort(value);
   };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
-    const next = updateCatalogTableFilterIds(activeFilterIds, id, active);
-    setActiveFilterIds(next);
-    setWorkspaceFilterId(next.at(-1) ?? "quick:all");
+    const next = updateCatalogTableActiveFilter(activeFilterId, id, active);
+    setActiveFilterId(next);
+    setWorkspaceFilterId(next ?? "quick:all");
     setSelectedIds(new Set());
   };
   const availableScopeSections = structureSections ?? catalogSections;
@@ -7960,9 +7967,9 @@ function OverviewWorkspace({
   );
   const filtered = useMemo(() => {
     const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-    const nextItems = activeFilterIds.reduce((current, activeFilterId) => getOverviewItems(activeFilterId, current), baseItems);
+    const nextItems = activeFilterId ? getOverviewItems(activeFilterId, baseItems) : baseItems;
     return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
-  }, [activeFilterIds, items, mandatoryFilterId, scopeIds]);
+  }, [activeFilterId, items, mandatoryFilterId, scopeIds]);
   const scopeTotalCount = useMemo(
     () => items.filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length,
     [items, scopeIds],
@@ -8012,13 +8019,13 @@ function OverviewWorkspace({
       && draftItem.sectionId !== "no-section"
       && (!scopeIds || scopeIds.has(draftItem.sectionId))
       && !normalizedQuery
-      && activeFilterIds.length === 0
+      && activeFilterId == null
       && !mandatoryFilterId
       && tagFilter == null
       && stickerFilter == null,
     );
     return draftIsVisible ? [draftItem!, ...ordered] : ordered;
-  }, [activeFilterIds.length, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspaceLastModifiedSort, workspacePriceSort]);
+  }, [activeFilterId, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspaceLastModifiedSort, workspacePriceSort]);
   const scopeIsLeafSection = Boolean(
     scopeSection
     && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
@@ -8029,7 +8036,7 @@ function OverviewWorkspace({
     && !mandatoryFilterId
     && scopeSection
     && scopeIsLeafSection
-    && activeFilterIds.length === 0
+    && activeFilterId == null
     && tagFilter == null
     && stickerFilter == null
     && workspaceQuery.trim() === ""
@@ -8061,7 +8068,7 @@ function OverviewWorkspace({
       : filtered,
     [filtered, normalizedPanelQuery],
   );
-  const activeDisplayFilterId = activeFilterIds[0] ?? mandatoryFilterId ?? "quick:all";
+  const activeDisplayFilterId = activeFilterId ?? mandatoryFilterId ?? "quick:all";
   const activeSelectionLabel = HYBRID_PRIMARY_FILTER_LABELS[activeDisplayFilterId];
   const statusMeta = OVERVIEW_FILTER_META[activeDisplayFilterId];
   const visibleIds = useMemo(() => visible.map((item) => item.id), [visible]);
@@ -8131,7 +8138,7 @@ function OverviewWorkspace({
 
   const resetFilter = () => {
     setWorkspaceQuery("");
-    setActiveFilterIds([]);
+    setActiveFilterId(null);
     setWorkspaceFilterId("quick:all");
     setSelectedIds(new Set());
     onReturnToSections(null);
@@ -8147,7 +8154,7 @@ function OverviewWorkspace({
     setWorkspacePriceSort("none");
     setWorkspaceLastModifiedSort((current) => current === "none" ? "asc" : current === "asc" ? "desc" : "none");
   };
-  const emptyTitle = activeFilterIds.length > 0
+  const emptyTitle = activeFilterId != null
     ? statusMeta.emptyTitle
     : titleOverride ?? statusMeta.emptyTitle;
   const emptyText = scopeSection
@@ -8157,7 +8164,7 @@ function OverviewWorkspace({
     scopeSection
     && scopeTotalCount === 0
     && !mandatoryFilterId
-    && activeFilterIds.length === 0
+    && activeFilterId == null
     && !workspaceQuery.trim(),
   );
   const clearSelection = () => setSelectedIds(new Set());
@@ -8616,7 +8623,7 @@ function OverviewWorkspace({
       setPanelQuery("");
       setPriceSort("none");
     }
-    setActiveFilterIds([]);
+    setActiveFilterId(null);
     setActivePositionId(null);
   }, [editorFirstEnabled, embedded, sectionScopeId, tableOpenSignal]);
   // Пока редактор открыт, смена фильтра/scope меняет ТОЛЬКО browse (список слева),
@@ -8654,7 +8661,7 @@ function OverviewWorkspace({
     clearSelection();
     setWorkspaceQuery("");
     if (!editorFirstEnabled) setPanelQuery("");
-    setActiveFilterIds(id === "quick:all" || id === mandatoryFilterId ? [] : [id]);
+    setActiveFilterId(id === "quick:all" || id === mandatoryFilterId ? null : id);
     setWorkspaceFilterId(id);
     if (leavingDraft) setQueue(null);
     else if (queue) rebrowse(id, queue.snapshot.sectionScopeId);
@@ -9069,7 +9076,7 @@ function OverviewWorkspace({
                 onFeedback={showFeedback}
                 structureSections={structureSections}
                 onRevealItem={(item) => {
-                  setActiveFilterIds([]);
+                  setActiveFilterId(null);
                   setWorkspaceFilterId("quick:all");
                   setWorkspaceSectionScopeId(item.sectionId);
                   setWorkspaceQuery("");
@@ -9212,7 +9219,7 @@ function OverviewWorkspace({
               <CatalogTableToolbar
                 query={workspaceQuery}
                 onQueryChange={handleQueryChange}
-                activeFilterIds={activeFilterIds}
+                activeFilterId={activeFilterId}
                 mandatoryFilterId={mandatoryFilterId}
                 sectionScopeId={workspaceSectionScopeId}
                 items={items}
@@ -9306,7 +9313,7 @@ function OverviewWorkspace({
                           ? "Ничего не найдено"
                           : selectedSectionIsCompletelyEmpty
                           ? "В разделе пока нет позиций"
-                          : activeFilterIds.length > 0 && !workspaceQuery.trim()
+                          : activeFilterId != null && !workspaceQuery.trim()
                             ? "По текущим фильтрам ничего не найдено"
                             : emptyTitle}
                       </p>
@@ -9315,7 +9322,7 @@ function OverviewWorkspace({
                           ? "Измените поисковый запрос или очистите поиск."
                           : selectedSectionIsCompletelyEmpty
                           ? "Добавьте первую позицию или создайте подраздел."
-                          : activeFilterIds.length > 0 && !workspaceQuery.trim()
+                          : activeFilterId != null && !workspaceQuery.trim()
                             ? "Измените условия фильтрации или сбросьте фильтры."
                             : emptyText}
                       </p>
@@ -9329,7 +9336,7 @@ function OverviewWorkspace({
                         >
                           Очистить поиск
                         </button>
-                        {activeFilterIds.length > 0 && (
+                        {activeFilterId != null && (
                           <button
                             type="button"
                             onClick={resetFilter}
@@ -9339,7 +9346,7 @@ function OverviewWorkspace({
                           </button>
                         )}
                       </div>
-                    ) : activeFilterIds.length > 0 ? (
+                    ) : activeFilterId != null ? (
                       <button
                         type="button"
                         onClick={resetFilter}
@@ -9596,7 +9603,7 @@ function OverviewWorkspace({
               onFeedback={showFeedback}
               structureSections={structureSections}
               onRevealItem={(item) => {
-                setActiveFilterIds([]);
+                setActiveFilterId(null);
                 setWorkspaceFilterId("quick:all");
                 setWorkspaceSectionScopeId(item.sectionId);
                 setWorkspaceQuery("");

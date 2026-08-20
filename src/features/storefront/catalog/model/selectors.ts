@@ -19,6 +19,7 @@ export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogI
   "display:no-button": (item) => item.displayMode === "no-button",
   "display:no-price-only": (item) => item.displayMode === "no-price",
   "display:no-price": (item) => item.displayMode === "no-price",
+  "availability:available": (item) => item.status === "active" && !item.scheduled,
   "status:active": (item) => item.status === "active",
   "status:archived": (item) => item.status === "archive",
   "status:stop": (item) => item.status === "stopped",

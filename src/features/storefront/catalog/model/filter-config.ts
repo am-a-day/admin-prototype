@@ -8,7 +8,7 @@ export const CATALOG_TABLE_FILTER_GROUPS: ReadonlyArray<{
   ids: readonly OverviewFilterId[];
 }> = [
   { key: "status", label: "Статус", ids: ["status:active", "status:archived"] },
-  { key: "availability", label: "Доступность", ids: ["status:stop", "status:schedule"] },
+  { key: "availability", label: "Доступность", ids: ["availability:available", "status:stop", "status:schedule"] },
   {
     key: "content",
     label: "Наполнение",
@@ -26,6 +26,7 @@ export const CATALOG_TABLE_FILTER_GROUPS: ReadonlyArray<{
 ];
 
 export const CATALOG_TABLE_FILTER_LABELS: Partial<Record<OverviewFilterId, string>> = {
+  "availability:available": "Доступно",
   "quick:no-photo": "Без фото и видео",
   "quick:no-description": "Без описания",
   "quick:no-recommendations": "Без рекомендаций",
@@ -40,28 +41,26 @@ export const CATALOG_TABLE_FILTER_LABELS: Partial<Record<OverviewFilterId, strin
 };
 
 export function getCatalogTableFilterGroup(id: OverviewFilterId): CatalogTableFilterGroupKey | null {
-  if (id === "status:soon") return "availability";
+  if (id === "status:soon" || id === "availability:available") return "availability";
   if (["quick:no-weight", "quick:no-kbju", "quick:no-translation", "quick:with-options"].includes(id)) return "content";
   return CATALOG_TABLE_FILTER_GROUPS.find((group) => group.ids.includes(id))?.key ?? null;
 }
 
-export function updateCatalogTableFilterIds(
-  current: OverviewFilterId[],
+export function updateCatalogTableActiveFilter(
+  current: OverviewFilterId | null,
   id: OverviewFilterId,
   active = true,
-): OverviewFilterId[] {
-  if (id === "quick:all") return [];
-  if (!active) return current.filter((currentId) => currentId !== id);
-
-  const group = getCatalogTableFilterGroup(id);
-  const withoutGroup = current.filter((currentId) => (
-    group ? getCatalogTableFilterGroup(currentId) !== group : currentId !== id
-  ));
-  return [...withoutGroup, id];
+): OverviewFilterId | null {
+  if (id === "quick:all") return null;
+  if (!active) return current === id ? null : current;
+  return id;
 }
 
-export function normalizeCatalogTableFilterIds(ids: OverviewFilterId[]): OverviewFilterId[] {
-  return ids.reduce<OverviewFilterId[]>((current, id) => updateCatalogTableFilterIds(current, id), []);
+export function normalizeCatalogTableActiveFilter(ids: OverviewFilterId[]): OverviewFilterId | null {
+  for (let index = ids.length - 1; index >= 0; index -= 1) {
+    if (ids[index] !== "quick:all") return ids[index];
+  }
+  return null;
 }
 
 export const CATALOG_VIEW_MODE_GROUPS: { label: string; ids: CatalogViewMode[] }[] = [
@@ -83,6 +82,7 @@ export const HYBRID_PRIMARY_FILTER_IDS: OverviewFilterId[] = [
 ];
 
 export const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
+  "availability:available": "Доступно",
   "quick:all": "Все позиции",
   "status:stop": "На стопе",
   "status:archived": "В архиве",
@@ -107,6 +107,7 @@ export const HYBRID_PRIMARY_FILTER_LABELS: Record<OverviewFilterId, string> = {
 };
 
 const FILTER_PANEL_TITLES: Record<OverviewFilterId, string> = {
+  "availability:available": "Доступные позиции",
   "quick:all": "Все позиции",
   "quick:no-description": "Позиции без описания",
   "quick:no-photo": "Позиции без фото",

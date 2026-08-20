@@ -21,6 +21,7 @@ export type OverviewFilterId =
   | "display:no-button"
   | "display:no-price-only"
   | "display:no-price"
+  | "availability:available"
   | "status:active"
   | "status:archived"
   | "status:stop"
