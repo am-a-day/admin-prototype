@@ -626,6 +626,7 @@ describe("catalog observable behavior baseline", () => {
 
     const card = document.querySelector("[data-catalog-items-card]");
     expect(card).not.toBeNull();
+    expect(card).toHaveClass("-mx-6", "w-[calc(100%+3rem)]", "flex-1", "bg-[#f7f7f7]");
     const localHeader = document.querySelector("[data-catalog-local-header]");
     expect(localHeader).toBeNull();
     const toolbar = document.querySelector("[data-catalog-table-toolbar]");
@@ -637,7 +638,11 @@ describe("catalog observable behavior baseline", () => {
     expect(tableHeader).toHaveClass("sticky", "top-[38px]", "bg-[#fafaf9]");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-catalog-table-horizontal-scroll]")).not.toBeNull();
+    const tableBody = document.querySelector("[data-catalog-table-body]");
+    expect(tableBody).not.toBeNull();
+    expect(tableBody).toHaveClass("w-full", "bg-[#f7f7f7]");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
 
     const reorderableRow = document.querySelector("[data-row-reorder-enabled=true]");
     expect(reorderableRow).not.toBeNull();

@@ -212,7 +212,7 @@ Match verification to the risk. Do not run the full unit or E2E suite after ever
 - Keep no more than 20 active entries and remove obsolete ones.
 - Do not use this section as a task diary.
 
-<!-- No active project learnings. -->
+- Treat a Figma frame width as viewport context: catalog tables fill the available workspace, while only their content columns keep Figma dimensions.
 
 ## Definition of done
 

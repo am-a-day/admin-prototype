@@ -108,6 +108,94 @@ test("keeps catalog add and table controls compact and aligned", async ({ page }
   await expect(languageSettings.locator("svg")).toHaveAttribute("width", "15");
 });
 
+test("stretches the table across the available workspace while panels change", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const showPreview = page.getByRole("button", { name: "Показать предпросмотр" });
+  if (await showPreview.isVisible()) await showPreview.click();
+  await expect(page.getByRole("button", { name: "Скрыть предпросмотр" })).toBeVisible();
+
+  const readGeometry = () => page.evaluate(() => {
+    const rect = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, width: box.width };
+    };
+    return {
+      workspace: rect("[data-catalog-workspace-layout]"),
+      surface: rect("[data-position-editor-surface]"),
+      results: rect("[data-catalog-results-scroll]"),
+      card: rect("[data-catalog-items-card]"),
+      toolbar: rect("[data-catalog-table-toolbar]"),
+      header: rect("[data-catalog-table-header]"),
+      body: rect("[data-catalog-table-body]"),
+      actions: rect("[data-catalog-table-row] [data-catalog-table-actions]"),
+      filler: rect("[data-catalog-table-row] [data-catalog-table-filler]"),
+      position: rect("[data-catalog-table-row] [data-catalog-table-content-cell=position]"),
+      weight: rect("[data-catalog-table-row] [data-catalog-table-content-cell=weight]"),
+      price: rect("[data-catalog-table-row] [data-catalog-table-content-cell=price]"),
+      peek: rect("[data-position-editor-pane]"),
+    };
+  });
+  const expectTableEdges = (geometry: Awaited<ReturnType<typeof readGeometry>>, left: number, right: number) => {
+    [geometry.results, geometry.card, geometry.toolbar, geometry.header, geometry.body].forEach((box) => {
+      expect(box).toBeTruthy();
+      expect(Math.abs(box!.left - left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box!.right - right)).toBeLessThanOrEqual(1);
+    });
+    expect(Math.abs(geometry.actions!.right - right)).toBeLessThanOrEqual(1);
+  };
+
+  const previewOpen = await readGeometry();
+  expectTableEdges(previewOpen, previewOpen.surface!.left, previewOpen.surface!.right);
+  expect(previewOpen.filler!.width).toBeGreaterThan(0);
+  expect(previewOpen.position!.width).toBe(231);
+  expect(previewOpen.weight!.width).toBe(119);
+  expect(previewOpen.price!.width).toBe(119);
+
+  await page.getByRole("button", { name: "Скрыть предпросмотр" }).click();
+  await expect(page.getByRole("button", { name: "Показать предпросмотр" })).toBeVisible();
+  const previewClosed = await readGeometry();
+  expectTableEdges(previewClosed, previewClosed.surface!.left, previewClosed.surface!.right);
+  expect(previewClosed.card!.width).toBeGreaterThan(previewOpen.card!.width);
+  expect(previewClosed.position!.width).toBe(231);
+  expect(previewClosed.weight!.width).toBe(119);
+  expect(previewClosed.price!.width).toBe(119);
+
+  await page.getByRole("button", { name: "Свернуть разделы" }).click();
+  const workspace = page.locator("[data-catalog-workspace-layout]");
+  const sectionTree = page.locator("[data-catalog-tree-shell]");
+  await expect(workspace).toHaveAttribute("data-catalog-tree-hidden", "true");
+  await expect(sectionTree).toHaveCSS("width", "0px");
+  const treeClosed = await readGeometry();
+  expectTableEdges(treeClosed, treeClosed.workspace!.left, treeClosed.surface!.right);
+  expect(treeClosed.card!.width).toBeGreaterThan(previewClosed.card!.width);
+
+  await page.getByRole("button", { name: "Показать разделы" }).click();
+  await expect(sectionTree).toHaveCSS("width", "250px");
+  await page.getByRole("button", { name: "Показать предпросмотр" }).click();
+  await expect(page.getByRole("button", { name: "Скрыть предпросмотр" })).toBeVisible();
+  await page.locator("[data-catalog-table-row]").first().click();
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane).toBeVisible();
+  await expect(pane).toHaveCSS("transform", "none");
+  const peekOpen = await readGeometry();
+  expectTableEdges(peekOpen, peekOpen.results!.left, peekOpen.peek!.left);
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await expect(workspace).toHaveAttribute("data-catalog-tree-hidden", "true");
+  await expect(sectionTree).toHaveCSS("width", "0px");
+  const narrow = await readGeometry();
+  expectTableEdges(narrow, narrow.surface!.left, narrow.peek!.left);
+  expect(narrow.position!.width).toBe(231);
+  expect(narrow.weight!.width).toBe(119);
+  expect(narrow.price!.width).toBe(119);
+});
+
 test("keeps sibling sections grouped under their parent in the left tree", async ({ page }) => {
   await page.goto("/?editorNav=unified");
 
@@ -471,25 +559,34 @@ test("keeps the side peek open through outside interaction and closes it explici
   await expect(pane).toHaveCount(0);
 });
 
-test("resizes the side peek without reflowing the table or moving preview", async ({ page }) => {
+test("resizes the side peek while the table fills the remaining workspace", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?editorNav=unified");
+  await page.evaluate(() => window.localStorage.removeItem("tasko.catalog.positionSidePeek.width.v1"));
+  await page.reload();
+  const collapseMainMenu = page.getByRole("button", { name: "Свернуть меню", exact: true });
+  if (await collapseMainMenu.isVisible()) {
+    await collapseMainMenu.click();
+    await expect(page.getByRole("button", { name: "Развернуть меню", exact: true })).toBeVisible();
+  }
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const card = page.locator("[data-catalog-items-card]");
   const preview = page.locator('[data-tour="preview-panel"]');
   const row = page.locator(`[data-catalog-table-row="${firstItemId}"]`);
-  const before = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
+  const before = await Promise.all([card.boundingBox(), preview.boundingBox()]);
 
   await row.click();
   const pane = page.locator("[data-position-editor-pane]");
-  await expect(pane).toHaveCSS("width", "400px");
+  await expect(pane).toHaveCSS("width", "470px");
   await expect(page.getByText("Вес", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Описание", { exact: true }).first()).toBeAttached();
   await expect(page.getByText("Цена", { exact: true }).first()).toBeAttached();
 
-  const opened = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
-  expect(Math.abs(opened[0]!.width - before[0]!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(opened[2]!.width - before[2]!.width)).toBeLessThanOrEqual(1);
+  const opened = await Promise.all([card.boundingBox(), preview.boundingBox(), pane.boundingBox()]);
+  expect(Math.abs(opened[0]!.width - (before[0]!.width - opened[2]!.width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(opened[0]!.x + opened[0]!.width - opened[2]!.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(opened[1]!.x - before[1]!.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(opened[1]!.width - before[1]!.width)).toBeLessThanOrEqual(1);
 
@@ -502,12 +599,12 @@ test("resizes the side peek without reflowing the table or moving preview", asyn
   await page.mouse.up();
   const resizedPane = await pane.boundingBox();
   expect(resizedPane).toBeTruthy();
-  expect(resizedPane!.width).toBeGreaterThanOrEqual(438);
-  expect(resizedPane!.width).toBeLessThanOrEqual(444);
+  expect(resizedPane!.width).toBeGreaterThanOrEqual(opened[2]!.width + 35);
+  expect(resizedPane!.width).toBeLessThanOrEqual(opened[2]!.width + 50);
 
-  const resized = await Promise.all([card.boundingBox(), preview.boundingBox(), row.boundingBox()]);
-  expect(Math.abs(resized[0]!.width - before[0]!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(resized[2]!.width - before[2]!.width)).toBeLessThanOrEqual(1);
+  const resized = await Promise.all([card.boundingBox(), preview.boundingBox()]);
+  expect(Math.abs(resized[0]!.width - (before[0]!.width - resizedPane!.width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(resized[0]!.x + resized[0]!.width - resizedPane!.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(resized[1]!.x - before[1]!.x)).toBeLessThanOrEqual(1);
   const persistedWidth = await page.evaluate(() =>
     window.localStorage.getItem("tasko.catalog.positionSidePeek.width.v1"),
@@ -515,6 +612,7 @@ test("resizes the side peek without reflowing the table or moving preview", asyn
   expect(Number(persistedWidth)).toBe(Math.round(resizedPane!.width));
 
   await page.getByRole("button", { name: "Свернуть редактор" }).click();
+  await expect(pane).toHaveCount(0);
   await row.click();
   const restoredPane = await page.locator("[data-position-editor-pane]").boundingBox();
   expect(restoredPane).toBeTruthy();

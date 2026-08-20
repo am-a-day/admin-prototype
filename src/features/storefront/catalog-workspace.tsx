@@ -2439,7 +2439,7 @@ function SectionEditor({
         onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
         className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
       >
-        <div className="w-full min-w-0">
+        <div className="flex min-h-full w-full min-w-0 flex-col">
           <div className={CATALOG_PAGE_HEADER_CLASS}>
             <div className="flex min-h-[30px] min-w-0 flex-1 items-center gap-1.5">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
@@ -2556,7 +2556,7 @@ function SectionEditor({
               <div className={cn(!sectionIsCompletelyEmpty && !showSubsectionList && "pt-3")}>
             {showSubsectionList || activeTab === "composition" || sectionIsCompletelyEmpty ? (
             showSubsectionList ? (
-              <section className="min-w-0">
+              <section className="-mx-6 flex w-[calc(100%+3rem)] min-w-0 flex-1 flex-col bg-[#f7f7f7]">
                 <SubsectionList
                   parentSectionId={section.id}
                   childSections={childSections}
@@ -3438,7 +3438,7 @@ function PositionEditorDialogShell({
         data-position-editor-resizing={resizeSessionRef.current ? "true" : undefined}
         style={{ width: clampPaneWidth(paneSize.width) }}
         className={cn(
-          "absolute inset-y-0 right-0 z-40 flex min-w-0 border-l border-[#e7e5e4] bg-white transition-transform duration-200 motion-reduce:transition-none",
+          "relative z-40 flex h-full min-w-0 shrink-0 border-l border-[#e7e5e4] bg-white transition-transform duration-200 motion-reduce:transition-none",
           paneVisible ? "translate-x-0 ease-out" : "translate-x-full ease-in",
         )}
       >
@@ -9175,7 +9175,7 @@ function OverviewWorkspace({
             "px-6",
           )}
         >
-          <div className="w-full min-w-0">
+          <div className="flex min-h-full w-full min-w-0 flex-col">
             <div className={CATALOG_PAGE_HEADER_CLASS}>
               <div className="min-w-0 flex-1">
                 {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
@@ -9217,7 +9217,10 @@ function OverviewWorkspace({
                 />
               )}
             </div>
-            <div className="min-w-0" data-catalog-items-card>
+            <div
+              className="relative -mx-6 flex w-[calc(100%+3rem)] min-w-0 flex-1 flex-col bg-[#f7f7f7]"
+              data-catalog-items-card
+            >
               <CatalogTableToolbar
                 query={workspaceQuery}
                 onQueryChange={handleQueryChange}
@@ -9301,8 +9304,9 @@ function OverviewWorkspace({
                     tableBottomScrollbarRef.current.scrollLeft = source.scrollLeft;
                   }
                 }}
-                className="-ml-6 w-[calc(100%+1.5rem)] min-w-0 overflow-x-auto overflow-y-clip pl-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="w-full min-w-0 overflow-x-auto overflow-y-clip bg-[#f7f7f7] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 data-catalog-table-horizontal-scroll
+                data-catalog-table-body
               >
                 <div className="min-w-full">
                 <div>

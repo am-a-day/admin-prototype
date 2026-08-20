@@ -304,7 +304,7 @@ export function SubsectionList({
       items={visibleChildSections.map(({ section }) => catalogDndId("section", section.id))}
       strategy={verticalListSortingStrategy}
     >
-      <div className={cn("min-w-0", CATALOG_SECTION_TO_TABLE_GAP_CLASS)}>
+      <div className={cn("min-w-0 flex-1 bg-[#f7f7f7]", CATALOG_SECTION_TO_TABLE_GAP_CLASS)}>
         {isEmpty ? (
           <>
             <div data-catalog-table-toolbar className={CATALOG_TABLE_TOOLBAR_CLASS} />

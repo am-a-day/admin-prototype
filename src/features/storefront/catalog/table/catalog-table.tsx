@@ -834,7 +834,7 @@ export function TableHeaderRow({
             data-catalog-table-actions
             aria-hidden="true"
             style={getColumnWidthStyle(actionColumn.getSize())}
-            className="flex h-full shrink-0 items-center justify-center"
+            className="sticky right-0 z-[1] flex h-full shrink-0 items-center justify-center bg-[#fafaf9]"
           />
         )}
         </div>
@@ -1264,7 +1264,7 @@ function AuditDishRowContent({
           data-catalog-table-actions
           data-no-dnd
           style={getColumnWidthStyle(actionCell.column.getSize())}
-          className="flex h-full shrink-0 items-center justify-center"
+          className="sticky right-0 z-[1] flex h-full shrink-0 items-center justify-center bg-inherit"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
