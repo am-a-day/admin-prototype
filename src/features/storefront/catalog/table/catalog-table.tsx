@@ -225,6 +225,15 @@ function getColumnWidthStyle(width: number) {
   return { width, minWidth: width, maxWidth: width };
 }
 
+function getTableContentDividerClass(columnId: string, visibleContentColumnIds: string[]) {
+  const index = visibleContentColumnIds.indexOf(columnId);
+  if (index < 0) return undefined;
+  return cn(
+    index > 0 && "border-l border-[#eceae7]",
+    index === visibleContentColumnIds.length - 1 && "border-r border-[#eceae7]",
+  );
+}
+
 const TABLE_COLUMN_RESIZE_LABELS: Record<string, string> = {
   position: "Название",
   description: "Описание",
@@ -708,6 +717,10 @@ export function TableHeaderRow({
   const priceSortTooltip = getPriceSortTooltip(priceSort);
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const tableWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
+  const visibleContentColumnIds = visibleColumns
+    .filter((column) => column.id !== "selection" && column.id !== "actions")
+    .map((column) => column.id);
+  const actionColumn = visibleColumns.find((column) => column.id === "actions");
 
   return (
     <div
@@ -716,12 +729,13 @@ export function TableHeaderRow({
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
         <div
-          className="flex h-full min-w-full shrink-0 items-center"
+          className="flex h-full w-full shrink-0 items-center"
           style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
         >
-        {visibleColumns.map((column) => {
+        {visibleColumns.filter((column) => column.id !== "actions").map((column) => {
           if (!column.getIsVisible()) return null;
           const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
+          const dividerClass = getTableContentDividerClass(column.id, visibleContentColumnIds);
           if (column.id === "selection") {
             return (
               <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
@@ -736,7 +750,7 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center truncate px-3 text-[12px] font-medium leading-5 text-[#79716b]">
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate px-3 text-[12px] font-medium leading-5 text-[#79716b]", dividerClass)}>
                 Название
                 <ColumnResizeHandle header={header} />
               </span>
@@ -744,7 +758,7 @@ export function TableHeaderRow({
           }
           if (column.id === "description") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
                 {CATALOG_INFORMATION_COLUMN_LABELS.description}
                 <ColumnResizeHandle header={header} />
               </span>
@@ -752,7 +766,7 @@ export function TableHeaderRow({
           }
           if (column.id === "discount") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
                 {CATALOG_INFORMATION_COLUMN_LABELS.discount}
                 <ColumnResizeHandle header={header} />
               </span>
@@ -760,7 +774,7 @@ export function TableHeaderRow({
           }
           if (column.id === "price") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-[38px] shrink-0">
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-[38px] shrink-0", dividerClass)}>
                 <Tooltip label={priceSortTooltip} side="top">
                   <button
                     type="button"
@@ -784,7 +798,7 @@ export function TableHeaderRow({
           if (column.id === "lastModified") {
             const lastModifiedSortTooltip = getLastModifiedSortTooltip(lastModifiedSort);
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-[38px] shrink-0">
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-[38px] shrink-0", dividerClass)}>
                 <Tooltip label={lastModifiedSortTooltip} side="top">
                   <button
                     type="button"
@@ -805,18 +819,22 @@ export function TableHeaderRow({
               </span>
             );
           }
-          if (column.id === "actions") {
-            return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-[38px] shrink-0 items-center justify-center" />
-            );
-          }
           return (
-            <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
+            <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
               {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
               <ColumnResizeHandle header={header} />
             </span>
           );
         })}
+        <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
+        {actionColumn && (
+          <span
+            data-catalog-table-actions
+            aria-hidden="true"
+            style={getColumnWidthStyle(actionColumn.getSize())}
+            className="flex h-full shrink-0 items-center justify-center"
+          />
+        )}
         </div>
       </div>
     </div>
@@ -1002,6 +1020,12 @@ function AuditDishRowContent({
     ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
     : null;
   const primaryStatusLabel = getPrimaryRowStatusLabel(item);
+  const visibleCells = row.getVisibleCells().filter((cell) => cell.column.getIsVisible());
+  const visibleContentColumnIds = visibleCells
+    .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "actions")
+    .map((cell) => cell.column.id);
+  const actionCell = visibleCells.find((cell) => cell.column.id === "actions");
+  const rowWidth = visibleCells.reduce((total, cell) => total + cell.column.getSize(), 0);
 
   return (
     <div
@@ -1016,6 +1040,7 @@ function AuditDishRowContent({
         transform: CSS.Transform.toString(reorderTransform),
         transition: reducedMotion ? undefined : reorderTransition,
         zIndex: isReordering ? 2 : undefined,
+        minWidth: rowWidth,
       }}
       role="button"
       tabIndex={0}
@@ -1028,7 +1053,7 @@ function AuditDishRowContent({
         }
       }}
       className={cn(
-        "group relative flex cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
+        "group relative flex w-full cursor-pointer items-center overflow-visible border-b border-[#e5e7eb] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
         CATALOG_TABLE_ROW_HEIGHT_CLASS,
         selected ? "bg-[#f1f4ff] hover:bg-[#f1f4ff]" : "bg-white hover:bg-[#fafaf9]",
         highlighted && !active && "bg-[#fff7d6] shadow-[inset_0_0_0_1px_rgba(168,117,0,0.18)]",
@@ -1036,8 +1061,8 @@ function AuditDishRowContent({
         isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
       )}
     >
-      {row.getVisibleCells().map((cell) => {
-        if (!cell.column.getIsVisible()) return null;
+      {visibleCells.filter((cell) => cell.column.id !== "actions").map((cell) => {
+        const dividerClass = getTableContentDividerClass(cell.column.id, visibleContentColumnIds);
         switch (cell.column.id) {
           case "reorder":
             return (
@@ -1070,7 +1095,7 @@ function AuditDishRowContent({
             );
           case "position":
             return (
-              <div key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center gap-[7px] pr-3">
+              <div key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center gap-[7px] pr-3", dividerClass)}>
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className={CATALOG_TABLE_ROW_THUMBNAIL_CLASS} />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
@@ -1082,31 +1107,31 @@ function AuditDishRowContent({
             );
           case "description":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex min-w-0 shrink-0 items-center px-3 text-[13px] font-normal leading-5 text-[#57534d]" title={getDescriptionPreview(item.description) || undefined}>
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full min-w-0 shrink-0 items-center px-3 text-[13px] font-normal leading-5 text-[#57534d]", dividerClass)} title={getDescriptionPreview(item.description) || undefined}>
                 <span className={cn("min-w-0 truncate whitespace-nowrap", !getDescriptionPreview(item.description) && "text-[#a6a09b]")}>{getDescriptionPreview(item.description) || "—"}</span>
               </span>
             );
           case "weight":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]" title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]", dividerClass)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
                 {item.weightLabel ? <span className="truncate whitespace-nowrap">{item.weightLabel}</span> : <span className="text-[#a6a09b]">—</span>}
               </span>
             );
           case "kbju":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-3">
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-3", dividerClass)}>
                 <AuditDot state={kbjuState} title={kbjuState === "missing" ? "Нет КБЖУ" : kbjuState === "partial" ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)` : "КБЖУ (на 100 г) заполнено"} />
               </span>
             );
           case "translation":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]" title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", dividerClass)} title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
                 {item.translationFilledCount}/{item.translationTotalCount}
               </span>
             );
           case "section":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center px-2">
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center px-2", dividerClass)}>
                 <button
                   type="button"
                   data-no-dnd
@@ -1124,8 +1149,9 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
+                data-catalog-table-content-cell={cell.column.id}
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className="flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]"
+                className={cn("flex h-full min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", dividerClass)}
                 title={resolvedTags.length > 0 ? resolvedTags.join(", ") : "Теги не назначены"}
               >
                 {firstTag ? (
@@ -1142,8 +1168,9 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
+                data-catalog-table-content-cell={cell.column.id}
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className="flex min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]"
+                className={cn("flex h-full min-w-0 shrink-0 items-center gap-1 px-2 text-[12px] leading-5 text-[#57534d]", dividerClass)}
                 title={firstSticker || "Стикеры не назначены"}
               >
                 {firstSticker ? (
@@ -1156,8 +1183,9 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
+                data-catalog-table-content-cell={cell.column.id}
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className="flex shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]"
+                className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[13px] leading-5 tabular-nums text-[#292524]", dividerClass)}
                 title={`Настроено рекомендаций: ${item.recommendationsCount}`}
               >
                 {item.recommendationsCount}
@@ -1165,13 +1193,13 @@ function AuditDishRowContent({
             );
           case "price":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]">
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", dividerClass)}>
                 {item.price === 0 ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(item.price)}</span>}
               </span>
             );
           case "discount":
             return (
-              <span key={cell.id} style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]">
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", dividerClass)}>
                 {discountPercent == null ? <span className="text-[#a6a09b]">—</span> : <span className="whitespace-nowrap tabular-nums">−{discountPercent}%</span>}
               </span>
             );
@@ -1179,23 +1207,31 @@ function AuditDishRowContent({
             return (
               <span
                 key={cell.id}
+                data-catalog-table-content-cell={cell.column.id}
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className="flex shrink-0 items-center justify-end px-2 text-[12px] leading-5 tabular-nums text-[#79716b]"
+                className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[12px] leading-5 tabular-nums text-[#79716b]", dividerClass)}
                 title={`Последнее изменение: ${formatCatalogItemLastModified(item)}`}
               >
                 <span className="truncate whitespace-nowrap">{formatCatalogItemLastModified(item)}</span>
-              </span>
-            );
-          case "actions":
-            return (
-              <span key={cell.id} data-no-dnd style={getColumnWidthStyle(cell.column.getSize())} className="flex shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                {renderActions?.(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
               </span>
             );
           default:
             return null;
         }
       })}
+      <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
+      {actionCell && (
+        <span
+          data-catalog-table-actions
+          data-no-dnd
+          style={getColumnWidthStyle(actionCell.column.getSize())}
+          className="flex h-full shrink-0 items-center justify-center"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          {renderActions?.(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
+        </span>
+      )}
     </div>
   );
 }
