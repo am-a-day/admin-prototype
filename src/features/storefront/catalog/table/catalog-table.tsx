@@ -163,13 +163,13 @@ function usePrefersReducedMotion(): boolean {
 
 const TABLE_COLUMN_WIDTHS = {
   selection: CATALOG_TABLE_SELECTION_COLUMN_WIDTH,
-  position: 330,
+  position: 231,
   description: 280,
-  weight: 90,
+  weight: 119,
   kbju: 88,
   translation: 92,
   section: 160,
-  price: 120,
+  price: 119,
   discount: 78,
   tags: 150,
   stickers: 140,
@@ -194,7 +194,7 @@ export const DEFAULT_TABLE_COLUMN_SIZING: ColumnSizingState = {
 };
 
 export const TABLE_COLUMN_MIN_SIZES: ColumnSizingState = {
-  position: 280,
+  position: 180,
   description: 180,
   weight: 80,
   kbju: 72,
@@ -301,13 +301,13 @@ export const DEFAULT_TABLE_COLUMN_ORDER = [
 ] as string[];
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   position: true,
-  description: true,
+  description: false,
   weight: true,
   kbju: false,
   translation: false,
   section: false,
   price: true,
-  discount: true,
+  discount: false,
   tags: false,
   stickers: false,
   upsells: false,
@@ -645,7 +645,7 @@ export function TableCheckbox({
         onChange={(event) => onChange?.(event.target.checked)}
         aria-label={ariaLabel}
         className={cn(
-          "absolute inset-0 h-4 w-4 cursor-pointer appearance-none rounded-[4.8px] border-[0.8px] border-[#d6d3d1] bg-white transition duration-150 ease-out checked:border-[#4f39f6] checked:bg-[#4f39f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
+          "absolute inset-0 h-4 w-4 cursor-pointer appearance-none rounded-[4.8px] border-[0.8px] border-[#a8a29e] bg-white transition duration-150 ease-out checked:border-[#4f39f6] checked:bg-[#4f39f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
           indeterminate && "border-[#4f39f6] bg-[#4f39f6]",
           quiet && !checked && !indeterminate && !forceVisible && !hideQuietUntilInteractive && "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100",
           quiet && !checked && !indeterminate && !forceVisible && hideQuietUntilInteractive && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
@@ -726,7 +726,7 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[87px]")}
+      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[76px]")}
       data-catalog-table-header
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
@@ -752,7 +752,7 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate px-3 text-[12px] font-medium leading-5 text-[#79716b]", dividerClass)}>
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pl-[6px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
                 Название
                 <ColumnResizeHandle header={header} />
               </span>
@@ -776,15 +776,15 @@ export function TableHeaderRow({
           }
           if (column.id === "price") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-[38px] shrink-0", dividerClass)}>
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0", dividerClass)}>
                 <Tooltip label={priceSortTooltip} side="top">
                   <button
                     type="button"
                     onClick={onPriceSortChange}
                     aria-label={priceSortTooltip}
                     className={cn(
-                      "flex h-[38px] w-full items-center justify-end px-2 text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                      priceSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
+                      "flex h-full w-full items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                      priceSort === "none" ? "text-[#939393]" : "text-[#57534d]",
                     )}
                   >
                     <span>Базовая цена</span>
@@ -800,14 +800,14 @@ export function TableHeaderRow({
           if (column.id === "lastModified") {
             const lastModifiedSortTooltip = getLastModifiedSortTooltip(lastModifiedSort);
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-[38px] shrink-0", dividerClass)}>
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0", dividerClass)}>
                 <Tooltip label={lastModifiedSortTooltip} side="top">
                   <button
                     type="button"
                     onClick={onLastModifiedSortChange}
                     aria-label={lastModifiedSortTooltip}
                     className={cn(
-                      "flex h-[38px] w-full items-center justify-end gap-1 px-2 text-right text-[12px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                      "flex h-full w-full items-center justify-end gap-1 px-2 text-right text-[13px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                       lastModifiedSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
                     )}
                   >
@@ -822,7 +822,7 @@ export function TableHeaderRow({
             );
           }
           return (
-            <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-center px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
+            <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
               {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
               <ColumnResizeHandle header={header} />
             </span>
@@ -1134,10 +1134,10 @@ function AuditDishRowContent({
             );
           case "position":
             return (
-              <div key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center gap-[7px] pr-3", dividerClass)}>
+              <div key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center gap-[7px] pl-[6px] pr-[12px]", dividerClass)}>
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className={CATALOG_TABLE_ROW_THUMBNAIL_CLASS} />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#57534d] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
+                  <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#44403b] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
                     {itemTitle}
                   </span>
                   {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
@@ -1152,7 +1152,7 @@ function AuditDishRowContent({
             );
           case "weight":
             return (
-              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-2 text-[13px] font-normal leading-5 text-[#79716b]", dividerClass)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center pl-[6px] pr-[12px] text-[13px] font-normal leading-5 text-[#44403b]", dividerClass)} title={item.weightLabel ? `Граммовка: ${item.weightLabel}` : "Нет граммовки"}>
                 {item.weightLabel ? <span className="truncate whitespace-nowrap">{item.weightLabel}</span> : <span className="text-[#a6a09b]">—</span>}
               </span>
             );
@@ -1232,7 +1232,7 @@ function AuditDishRowContent({
             );
           case "price":
             return (
-              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-end px-2 text-[13px] font-normal leading-5 text-[#44403b]", dividerClass)}>
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center pl-[6px] pr-[12px] text-[13px] font-normal leading-5 text-[#44403b]", dividerClass)}>
                 {item.price === 0 ? <span className="text-[#a6a09b]" title="Цена не указана">—</span> : <span className="whitespace-nowrap">{formatPrice(item.price)}</span>}
               </span>
             );
@@ -1625,7 +1625,7 @@ export function CatalogSelectionToolbar({
       data-subsection-bulk-toolbar={dataAttribute === "subsection" ? "" : undefined}
       className="flex h-[38px] w-full min-w-[320px] items-center overflow-x-auto overflow-y-hidden border-b border-[#e7e5e4] bg-[#fafaf9] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <span className="flex h-full w-[42px] shrink-0 items-center justify-center border-b border-[#e7e5e4] bg-[#fafaf9]">
+      <span style={{ width: CATALOG_TABLE_SELECTION_COLUMN_WIDTH }} className="flex h-full shrink-0 items-center justify-center border-b border-[#e7e5e4] bg-[#fafaf9]">
         <TableCheckbox
           ariaLabel={selectAllAriaLabel}
           checked={checked}

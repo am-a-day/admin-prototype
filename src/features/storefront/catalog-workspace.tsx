@@ -49,7 +49,6 @@ import {
   FilePlus,
   ForkKnife,
   FolderPlus,
-  FolderSimplePlus,
   FunnelSimple,
   ImageBroken,
   List,
@@ -356,6 +355,11 @@ const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
 function createRealPositionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `position-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createRealSectionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `section-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 const CREATED_SECTION: TreeSection = {
@@ -2379,11 +2383,12 @@ function SectionEditor({
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const preserveInlineCreateFocusRef = useRef(false);
   const archived = section.status === "archive";
   const status = getSectionStatusMeta(section);
   const hasChildSections = childSections.length > 0;
-  const showSubsectionList = hasChildSections || subsectionDraftActive;
   const sectionIsCompletelyEmpty = !hasChildSections && compositionItems.length === 0 && !compositionQuery.trim();
+  const showSubsectionList = hasChildSections || sectionIsCompletelyEmpty || subsectionDraftActive;
   const canCreateSubsection = !archived && !subsectionCreateDisabledReason && Boolean(onStartSubsectionCreation);
   const [selectedSubsectionIds, setSelectedSubsectionIds] = useState<Set<string>>(() => new Set());
 
@@ -2468,13 +2473,21 @@ function SectionEditor({
                     <CaretDown size={13} />
                   </button>
                 </DropdownMenu.Trigger>
-                <DropdownContent align="start">
+                <DropdownContent
+                  align="start"
+                  onCloseAutoFocus={(event) => {
+                    if (!preserveInlineCreateFocusRef.current) return;
+                    event.preventDefault();
+                    preserveInlineCreateFocusRef.current = false;
+                  }}
+                >
                   <SectionActionMenuContent
                     section={section}
                     allowPositionCreation={allowPositionCreation}
                     allowSubsectionCreation={canCreateSubsection}
                     onAction={(action, anchor, schedule) => {
                       if (action === "Добавить подраздел") {
+                        preserveInlineCreateFocusRef.current = true;
                         onStartSubsectionCreation?.();
                         return;
                       }
@@ -2570,8 +2583,11 @@ function SectionEditor({
                     />
                   ) : undefined}
                   draftActive={subsectionDraftActive}
+                  onStartDraft={canCreateSubsection ? onStartSubsectionCreation : undefined}
                   onCreateDraft={onCreateSubsection}
                   onCancelDraft={onCancelSubsectionCreation}
+                  onAddPosition={onAddPosition}
+                  addPositionDisabled={!allowPositionCreation || archived || Boolean(positionCreateDisabledReason)}
                   onSelect={onSelectChildSection}
                   onAction={onChildSectionAction}
                   renderActions={(subsection, onAction) => {
@@ -2591,53 +2607,7 @@ function SectionEditor({
                 />
               </section>
             ) : (
-              <section className={cn(
-                sectionIsCompletelyEmpty
-                  ? "min-w-0"
-                  : "overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 pb-3 shadow-[0_1px_4px_rgba(12,12,13,0.05)]",
-              )}>
-                {compositionItems.length === 0 && !compositionQuery.trim() ? (
-                  sectionIsCompletelyEmpty ? (
-                    <div data-empty-section-scaffold className={cn("w-full", CATALOG_SECTION_TO_TABLE_GAP_CLASS)}>
-                      <p className="px-1 text-[13px] font-normal leading-[18px] text-[#79716b]">
-                        В разделе пока ничего нет
-                      </p>
-                      <div className="mt-[6px] w-full overflow-hidden rounded-[12px] border border-[#e7e5e4] p-px">
-                        {onAddPosition && (
-                          <button
-                            type="button"
-                            onClick={onAddPosition}
-                            disabled={!allowPositionCreation || archived || Boolean(positionCreateDisabledReason)}
-                            data-empty-position-create
-                            className="flex h-[35px] w-full items-center gap-2 px-3 text-left text-[13px] font-normal leading-[18px] text-[#292524] transition-colors hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-                          >
-                            <FilePlus size={16} weight="regular" className="shrink-0 text-[#57534d]" aria-hidden="true" />
-                            Добавить позицию
-                          </button>
-                        )}
-                        {onStartSubsectionCreation && (
-                          <button
-                            type="button"
-                            onClick={onStartSubsectionCreation}
-                            disabled={!canCreateSubsection}
-                            data-empty-subsection-create
-                            className="flex h-[35px] w-full items-center gap-2 border-t border-[#e7e5e4] px-3 text-left text-[13px] font-normal leading-[18px] text-[#292524] transition-colors hover:bg-[#f5f5f4] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-                          >
-                            <FolderSimplePlus size={16} weight="regular" className="shrink-0 text-[#57534d]" aria-hidden="true" />
-                            Добавить подраздел
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-1">
-                      <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] px-4 py-5">
-                        <p className="text-[13px] font-medium text-[#44403b]">В разделе пока нет позиций</p>
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <>
+              <section className="overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white px-3 pb-3 shadow-[0_1px_4px_rgba(12,12,13,0.05)]">
                     <div className="sticky top-0 z-10 flex min-h-9 items-center gap-2 border-b border-[#e7e5e4] bg-white pb-2 pt-2">
                       <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-[7px] border border-[#e7e5e4] px-[7px]">
                         <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
@@ -2666,8 +2636,6 @@ function SectionEditor({
                         </div>
                       )}
                     </div>
-                  </>
-                )}
               </section>
             )
             ) : activeTab === "basic" ? (
@@ -4066,7 +4034,6 @@ function PopulatedWorkspace({
   );
   // Последняя открытая позиция в каждом разделе за сессию (для правила 2.1).
   const [lastItemBySection, setLastItemBySection] = useState<Record<string, string>>({});
-  const [extraSections, setExtraSections] = useState<TreeSection[]>([]);
   const [sectionCreationDraftParentId, setSectionCreationDraftParentId] = useState<string | null | undefined>(undefined);
   const [sectionCreationSource, setSectionCreationSource] = useState<SectionCreationSource>("tree");
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
@@ -4074,6 +4041,12 @@ function PopulatedWorkspace({
   const [sectionIconRequest, setSectionIconRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (sectionCreationSource !== "table" || sectionCreationDraftParentId === undefined) return;
+    if (sectionCreationDraftParentId === selectedSectionId) return;
+    setSectionCreationDraftParentId(undefined);
+    setSectionCreationSource("tree");
+  }, [sectionCreationDraftParentId, sectionCreationSource, selectedSectionId]);
   // Подсветка исходной позиции после возврата из вкладки «Позиции».
   const [highlightItemId, setHighlightItemId] = useState<string | null>(() =>
     initialHighlightItemId
@@ -4154,9 +4127,7 @@ function PopulatedWorkspace({
     if (initialReturnContext.workspaceScrollTop !== undefined) setSectionEditorScrollTop(initialReturnContext.workspaceScrollTop);
   }, [initialReturnContext]);
 
-  const allSections = Array.from(new Map(
-    [...flattenSections(sections), ...extraSections].map((section) => [section.id, section]),
-  ).values())
+  const allSections = flattenSections(sections)
     .filter((section) => !deletedSectionIds.has(section.id))
     .map<TreeSection>((section) => {
       const parentId = Object.prototype.hasOwnProperty.call(sectionParentOverrides, section.id)
@@ -4298,25 +4269,42 @@ function PopulatedWorkspace({
 
   const createSectionFromDialog = (name: string, parentId: string | null): SectionCreationResult => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
-    if (parentId && !parent) return "Родительский раздел не найден. Обновите список и повторите попытку.";
+    if (parentId && !parent) {
+      const message = "Родительский раздел не найден. Обновите список и повторите попытку.";
+      setFeedback(message);
+      return message;
+    }
     const normalizedName = name.trim();
+    if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") {
+      const message = "Введите название раздела";
+      setFeedback(message);
+      return message;
+    }
     const duplicate = allSections.some((candidate) =>
       (candidate.parentId ?? null) === (parent?.id ?? null)
       && candidate.name.trim().toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
     );
-    if (duplicate) return "Раздел с таким названием уже существует здесь.";
+    if (duplicate) {
+      const message = "Раздел с таким названием уже существует здесь.";
+      setFeedback(message);
+      return message;
+    }
 
-    const id = `draft-section-${Date.now()}-${extraSections.length + 1}`;
+    const siblings = allSections
+      .filter((candidate) => (candidate.parentId ?? null) === (parent?.id ?? null))
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"));
+    const id = createRealSectionId();
     const created: TreeSection = {
       id,
       parentId: parent?.id ?? null,
       name: normalizedName,
       imageUrl: null,
       emoji: "🍽️",
-      sortOrder: -100_000 - extraSections.length,
+      sortOrder: sectionCreationSource === "table"
+        ? (siblings.at(-1)?.sortOrder ?? 0) + 1
+        : (siblings[0]?.sortOrder ?? 0) - 1,
       status: "active",
     };
-    setExtraSections((current) => [...current, created]);
     addSection({
       id: created.id,
       parentId: created.parentId ?? null,
@@ -4333,10 +4321,9 @@ function PopulatedWorkspace({
     }
     setSectionOrderByParent((current) => ({
       ...current,
-      [parent?.id ?? "__root__"]: [
-        id,
-        ...(current[parent?.id ?? "__root__"] ?? []),
-      ],
+      [parent?.id ?? "__root__"]: sectionCreationSource === "table"
+        ? [...(current[parent?.id ?? "__root__"] ?? siblings.map((sibling) => sibling.id)), id]
+        : [id, ...(current[parent?.id ?? "__root__"] ?? siblings.map((sibling) => sibling.id))],
     }));
     if (sectionCreationSource !== "table") {
       setSelectedSectionId(id);
@@ -5479,7 +5466,8 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Добавить подраздел") {
-      openSectionCreation(target.id);
+      openSectionEditor(target.id);
+      openSectionCreation(target.id, "table");
       return;
     }
     if (action === "Настроить раздел" || action === "Изменить раздел") {
@@ -6399,9 +6387,9 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
   return chips;
 }
 
-const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v2");
+const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v3");
 const CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnOrder.v1");
-const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v1");
+const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v2");
 function readTableColumnVisibility(): VisibilityState {
   const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
   const next = { ...DEFAULT_TABLE_COLUMN_VISIBILITY };
@@ -6565,7 +6553,7 @@ function AuditRowActionsMenu({
           className="flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           aria-label={`Действия для ${item.title}`}
         >
-          <DotsThreeVertical size={18} weight="bold" />
+          <DotsThreeVertical size={16} weight="regular" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent
@@ -9248,7 +9236,7 @@ function OverviewWorkspace({
               {selectedIds.size > 0 ? (
                 <div
                   data-catalog-local-header
-                  className="sticky top-[43px] z-20 min-w-0 bg-white"
+                  className="sticky top-[38px] z-20 min-w-0 bg-white"
                 >
                   <SelectionToolbar
                     checked={allVisibleSelected}

@@ -11,6 +11,7 @@ export const CATALOG_DROPDOWN_ITEM_CLASS =
 export const CATALOG_DROPDOWN_SEPARATOR_CLASS = "my-1 h-px bg-[#e2e8f0]";
 
 export type CatalogDropdownOutsideEvent = Parameters<NonNullable<ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onInteractOutside"]>>[0];
+export type CatalogDropdownCloseAutoFocusEvent = Parameters<NonNullable<ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onCloseAutoFocus"]>>[0];
 export type CatalogDropdownOutsideDismiss = boolean | ((event: CatalogDropdownOutsideEvent) => boolean);
 
 export function DropdownContent({
@@ -18,11 +19,13 @@ export function DropdownContent({
   align = "end",
   className,
   preventOutsideDismiss = false,
+  onCloseAutoFocus,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
   preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
+  onCloseAutoFocus?: (event: CatalogDropdownCloseAutoFocusEvent) => void;
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   const shouldPreventOutsideDismiss = (event: CatalogDropdownOutsideEvent) => (
@@ -45,6 +48,7 @@ export function DropdownContent({
             event.preventDefault();
           }
         }}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         {marker}
         {children}

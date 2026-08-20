@@ -131,6 +131,23 @@ async function openSectionTreeSearch(user: ReturnType<typeof userEvent.setup>) {
   return (await screen.findByPlaceholderText("Поиск по разделам")).closest("aside");
 }
 
+async function openKitchenSubsectionTable(user: ReturnType<typeof userEvent.setup>) {
+  const sectionTree = await openSectionTreeSearch(user);
+  await user.click(within(sectionTree as HTMLElement).getByText("Кухня", { exact: true }));
+  return sectionTree as HTMLElement;
+}
+
+async function createAndOpenEmptySection(user: ReturnType<typeof userEvent.setup>, name = "Пустой раздел") {
+  renderCatalog("empty");
+  await user.click(screen.getByRole("button", { name: "Создать раздел" }));
+  const createDialog = screen.getByRole("dialog", { name: "Новый раздел" });
+  await user.type(within(createDialog).getByLabelText("Название раздела"), name);
+  await user.click(within(createDialog).getByRole("button", { name: "Добавить раздел" }));
+  const sectionTree = await openSectionTreeSearch(user);
+  await user.click(within(sectionTree as HTMLElement).getByText(name, { exact: true }));
+  return sectionTree as HTMLElement;
+}
+
 async function chooseCatalogTableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
   await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
   const filterMenu = screen.getByRole("menu");
@@ -193,7 +210,7 @@ describe("catalog observable behavior baseline", () => {
     const emptyCreateButton = document.querySelector("[data-empty-position-create]");
     expect(emptyCreateButton).not.toBeNull();
     expect(emptyCreateButton).toHaveTextContent("Добавить позицию");
-    expect(emptyCreateButton?.querySelector("svg")).not.toBeNull();
+    expect(emptyCreateButton?.parentElement?.querySelector("svg")).not.toBeNull();
     expect(document.querySelector("[data-empty-subsection-create]")).toHaveTextContent("Добавить подраздел");
 
     await user.click(emptyCreateButton as HTMLElement);
@@ -237,6 +254,103 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
   });
 
+  it("matches the filled subsection table and keeps the add row last", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+    await openKitchenSubsectionTable(user);
+
+    const header = document.querySelector("[data-catalog-table-header]");
+    expect(header).toHaveTextContent("Название подраздела");
+    expect(header?.firstElementChild).toHaveClass("h-[34px]");
+
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.classList.contains("h-[38px]"))).toBe(true);
+    expect(rows[0]).toHaveTextContent(/\d+ позиц/);
+    expect(rows[0].querySelector(".h-7.w-7")).not.toBeNull();
+
+    const addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
+    expect(addRow).toHaveTextContent("Добавить подраздел...");
+    expect(addRow).toHaveClass("h-[36px]");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+  });
+
+  it("creates and cancels subsections through the shared inline row", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+    const sectionTree = await openKitchenSubsectionTable(user);
+
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
+    let input = screen.getByPlaceholderText("Название подраздела...");
+    let commit = screen.getByRole("button", { name: "Создать подраздел" });
+    expect(input).toHaveFocus();
+    expect(commit).toBeDisabled();
+    fireEvent.blur(input);
+    expect(screen.getByPlaceholderText("Название подраздела...")).toBeInTheDocument();
+
+    await user.type(input, "Черновик");
+    expect(commit).toBeEnabled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByPlaceholderText("Название подраздела...")).not.toBeInTheDocument();
+    expect(screen.queryByText("Черновик", { exact: true })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Новый подраздел" }));
+    input = screen.getByPlaceholderText("Название подраздела...");
+    expect(input).toHaveFocus();
+    await user.type(input, "Сезонное меню");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(document.querySelectorAll("[data-subsection-row]").length).toBeGreaterThan(4));
+    expect(within(sectionTree).getByText("Сезонное меню", { exact: true })).toBeInTheDocument();
+    let rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
+    expect(rows.at(-1)).toHaveTextContent("Сезонное меню");
+    let addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
+    input = screen.getByPlaceholderText("Название подраздела...");
+    await user.type(input, "Летнее меню");
+    await user.click(screen.getByRole("button", { name: "Создать подраздел" }));
+    expect(await screen.findAllByText("Летнее меню", { exact: true })).not.toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
+    input = screen.getByPlaceholderText("Название подраздела...");
+    await user.type(input, "Завтраки");
+    await user.click(screen.getByRole("button", { name: "Создать подраздел" }));
+    expect(input).toHaveValue("Завтраки");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Раздел с таким названием уже существует здесь.", { exact: true })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Отменить создание" }));
+    expect(screen.queryByPlaceholderText("Название подраздела...")).not.toBeInTheDocument();
+
+    rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
+    addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+    expect(rows.filter((row) => row.textContent?.includes("Завтраки"))).toHaveLength(1);
+  });
+
+  it("keeps the empty-section rows stable while editing and drops the draft on navigation", async () => {
+    const user = userEvent.setup();
+    const sectionTree = await createAndOpenEmptySection(user);
+
+    expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-empty-position-create]")).toHaveTextContent("Добавить позицию");
+    expect(screen.getByRole("button", { name: "Новый подраздел" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
+    const input = screen.getByPlaceholderText("Название подраздела...");
+    expect(input).toHaveFocus();
+    expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
+    expect(document.querySelector("[data-empty-position-create]")).toHaveTextContent("Добавить позицию");
+    await user.type(input, "Не сохранять");
+    fireEvent.blur(input);
+    expect(input).toHaveValue("Не сохранять");
+
+    await user.click(document.querySelector("[data-catalog-tree-root]") as HTMLElement);
+    expect(screen.queryByPlaceholderText("Название подраздела...")).not.toBeInTheDocument();
+    expect(within(sectionTree).queryByText("Не сохранять", { exact: true })).not.toBeInTheDocument();
+  });
+
   it("opens position creation in a side peek from a leaf section", async () => {
     const user = userEvent.setup();
     renderCatalog();
@@ -275,7 +389,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByRole("button", { name: "Настроить колонки" }));
     const columnMenu = screen.getByRole("menu");
     expect(within(columnMenu).getByText("Описание")).toBeInTheDocument();
-    expect(within(columnMenu).getByRole("button", { name: /Скрыть колонку «Описание»/ })).toBeInTheDocument();
+    expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     const rowCheckbox = screen.getByRole("checkbox", { name: `Выбрать ${firstItemTitle}` });
@@ -286,25 +400,25 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("button", { name: "Доступность" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ещё действия" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Фильтры/ }));
-    const completenessMenu = screen.getByRole("menu");
-    await user.click(within(completenessMenu).getByRole("menuitem", { name: "Заполненность" }));
-    const completenessSubmenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: /Без описания/ }));
-    expect(completenessSubmenu).toBeDefined();
-    ["Без описания", "Без фото", "Без веса", "Без КБЖУ", "Без перевода"].forEach((label) => {
-      expect(within(completenessSubmenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
+    const contentMenu = screen.getByRole("menu");
+    await user.click(within(contentMenu).getByRole("menuitem", { name: "Наполнение" }));
+    const contentSubmenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: /Без описания/ }));
+    expect(contentSubmenu).toBeDefined();
+    ["Без описания", "Без фото и видео", "Без рекомендаций", "С рекомендациями", "С тегами", "Со скидкой", "Со стикером"].forEach((label) => {
+      expect(within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     });
-    const withoutDescription = within(completenessSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
+    const withoutDescription = within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
     await user.click(withoutDescription);
-    const filterTrigger = screen.getByRole("button", { name: /Фильтры/ });
+    const filterTrigger = screen.getByRole("button", { name: /Фильтр таблицы:/ });
     expect(filterTrigger).toHaveTextContent("Без описания");
-    expect(filterTrigger).not.toHaveTextContent("Фильтры");
+    expect(filterTrigger).not.toHaveTextContent("Все");
 
     await user.click(filterTrigger);
     const statusMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Статус" });
     expect(statusMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeNull();
-    const completenessMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Заполненность" });
-    expect(completenessMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
+    const contentMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Наполнение" });
+    expect(contentMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
     await user.click(statusMenuItem);
     await user.click(await screen.findByRole("menuitem", { name: /В архиве/ }));
     expect(filterTrigger).toHaveTextContent("В архиве");
@@ -312,7 +426,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(filterTrigger);
     const openFilterMenu = screen.getByRole("menu");
     expect(within(openFilterMenu).getByRole("menuitem", { name: "Статус" }).querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
-    expect(within(openFilterMenu).getByRole("menuitem", { name: "Заполненность" }).querySelector("[data-catalog-active-filter-dot]")).toBeNull();
+    expect(within(openFilterMenu).getByRole("menuitem", { name: "Наполнение" }).querySelector("[data-catalog-active-filter-dot]")).toBeNull();
     await user.click(within(openFilterMenu).getByRole("menuitem", { name: "Все позиции" }));
     expect(filterTrigger).toHaveTextContent("Все");
   });
@@ -520,7 +634,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(toolbar as HTMLElement).getByText("Все", { exact: true })).toBeInTheDocument();
     expect(within(toolbar as HTMLElement).getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     const tableHeader = document.querySelector("[data-catalog-table-header]");
-    expect(tableHeader).toHaveClass("sticky", "top-[43px]", "bg-[#fafaf9]");
+    expect(tableHeader).toHaveClass("sticky", "top-[38px]", "bg-[#fafaf9]");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-table-horizontal-scroll]")).not.toBeNull();

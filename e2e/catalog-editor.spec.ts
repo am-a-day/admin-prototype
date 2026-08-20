@@ -899,14 +899,17 @@ test("uses the section chevron for actions and creates a subsection from the wor
   await expect(sectionActions).toBeVisible();
   await expect(page.getByRole("button", { name: "Действия с разделом", exact: true })).toHaveCount(0);
   await sectionActions.click();
-  await expect(page.getByRole("menuitem", { name: "Добавить подраздел" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem", { name: "Добавить подраздел" }).click();
+  const menuInlineName = page.getByPlaceholder("Название подраздела...");
+  await expect(menuInlineName).toBeFocused();
+  await menuInlineName.press("Escape");
+  await expect(menuInlineName).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Добавить подраздел" }).click();
-  const createDialog = page.getByRole("dialog", { name: "Новый раздел" });
-  await expect(createDialog.getByRole("button", { name: "Расположение: Кухня" })).toBeVisible();
-  await createDialog.getByLabel("Название раздела").fill("Сезонное меню");
-  await createDialog.getByRole("button", { name: "Добавить раздел" }).click();
+  await page.getByRole("button", { name: "Новый подраздел" }).click();
+  const inlineName = page.getByPlaceholder("Название подраздела...");
+  await expect(inlineName).toBeFocused();
+  await inlineName.fill("Сезонное меню");
+  await inlineName.press("Enter");
   await expect(page.getByText("Сезонное меню", { exact: true }).first()).toBeVisible();
 });
 
