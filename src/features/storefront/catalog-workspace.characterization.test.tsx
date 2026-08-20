@@ -131,6 +131,15 @@ async function openSectionTreeSearch(user: ReturnType<typeof userEvent.setup>) {
   return (await screen.findByPlaceholderText("Поиск по разделам")).closest("aside");
 }
 
+async function chooseCatalogTableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
+  const filterMenu = screen.getByRole("menu");
+  await user.click(within(filterMenu).getByRole("menuitem", { name: "Наполнение" }));
+  const submenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: new RegExp(label) }));
+  expect(submenu).toBeDefined();
+  await user.click(within(submenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) }));
+}
+
 function getPositionSidePeek(name?: string) {
   return name
     ? screen.getByRole("complementary", { name })
@@ -327,6 +336,49 @@ describe("catalog observable behavior baseline", () => {
     await user.click(screen.getByText("Название", { exact: true }));
     expect(search).toHaveValue("Омлет");
     expect(control).toHaveClass("border-transparent");
+  });
+
+  it("shows the universal filtered empty state for search-only results", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    await user.type(screen.getByPlaceholderText("Поиск по названию"), "Позиция которой точно нет");
+
+    const emptyState = document.querySelector("[data-catalog-filtered-empty-state]");
+    expect(emptyState).toBeInTheDocument();
+    expect(emptyState).toHaveTextContent("Ничего не найдено");
+    expect(emptyState).toHaveTextContent("Попробуйте изменить запрос или настройки фильтров");
+    expect(emptyState).toHaveTextContent("Сбросить всё");
+    expect(document.querySelector("[data-catalog-table-header]")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-catalog-table-row]")).toHaveLength(0);
+
+    const icon = document.querySelector("[data-catalog-filtered-empty-icon]");
+    expect(icon).toHaveAttribute("width", "45");
+    expect(icon).toHaveAttribute("height", "45");
+    expect(decodeURIComponent(icon?.getAttribute("src") ?? "")).toContain("<linearGradient");
+  });
+
+  it("shows the same empty state for a zero-result filter and resets filter plus search", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = await openSectionTreeSearch(user);
+    await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+    await chooseCatalogTableFilter(user, "Со скидкой");
+
+    expect(document.querySelector("[data-catalog-filtered-empty-state]")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-catalog-table-row]")).toHaveLength(0);
+
+    const search = screen.getByPlaceholderText("Поиск по названию");
+    await user.type(search, "Позиция которой точно нет");
+    expect(document.querySelector("[data-catalog-filtered-empty-state]")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Сбросить всё" }));
+
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("button", { name: /Фильтр таблицы:/ })).toHaveTextContent("Все");
+    expect(document.querySelector("[data-catalog-filtered-empty-state]")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[data-catalog-table-row]")).not.toHaveLength(0);
   });
 
   it("opens bulk availability directly and keeps secondary actions under more", async () => {

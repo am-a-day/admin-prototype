@@ -34,6 +34,7 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -73,6 +74,7 @@ import {
 import { getLocalCatalogItemLabels, getLocalCatalogLabelText } from "../labels/local-catalog-labels";
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
 import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
+import binocularsAsset from "../ui/binoculars.svg";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 type PriceSortDirection = CatalogPriceSortDirection;
@@ -893,6 +895,43 @@ export function CatalogTableToolbar({
       )}
       endContent={<CatalogColumnSettingsMenu table={table} onResetColumns={onResetColumns} />}
     />
+  );
+}
+
+export function CatalogFilteredEmptyState({ onReset }: { onReset: () => void }) {
+  return (
+    <div
+      data-catalog-filtered-empty-state
+      className="relative min-h-[470px] border-b border-[#e7e5e4]"
+    >
+      <div className="absolute left-1/2 top-[162px] flex w-full max-w-[757px] -translate-x-1/2 flex-col items-center justify-center gap-[13px] rounded-[10px] px-[24px] py-[8px]">
+        <div className="flex w-full flex-col items-center justify-center gap-[8px]">
+          <img
+            src={binocularsAsset}
+            alt=""
+            width={45}
+            height={45}
+            data-catalog-filtered-empty-icon
+            className="block size-[45px]"
+          />
+          <p className="text-center text-[16px] font-medium leading-[1.4] text-[#1c1917]">
+            Ничего не найдено
+          </p>
+          <p className="w-[224.27px] text-center text-[14px] font-normal leading-[1.4] text-[#79716b]">
+            Попробуйте изменить запрос или настройки фильтров
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onReset}
+          className="h-[32px] rounded-[10px] border-[#e7e5e4] bg-white px-[10px] py-[10px] text-[14px] font-medium leading-normal text-[#292524] hover:bg-[#fafaf9]"
+        >
+          Сбросить всё
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -176,6 +176,7 @@ import {
   type CatalogLastModifiedSortDirection,
   CatalogTableToolbar,
   CatalogSelectionToolbar,
+  CatalogFilteredEmptyState,
   DropdownActionItem as TableDropdownActionItem,
   DropdownContent as TableDropdownContent,
   SelectionToolbar,
@@ -8136,11 +8137,16 @@ function OverviewWorkspace({
     }
   };
 
-  const resetFilter = () => {
+  const resetTableConstraints = () => {
     setWorkspaceQuery("");
     setActiveFilterId(null);
+    setTagFilter(null);
+    setStickerFilter(null);
     setWorkspaceFilterId("quick:all");
     setSelectedIds(new Set());
+  };
+  const resetFilter = () => {
+    resetTableConstraints();
     onReturnToSections(null);
   };
   const clearSearch = () => {
@@ -8167,6 +8173,14 @@ function OverviewWorkspace({
     && activeFilterId == null
     && !workspaceQuery.trim(),
   );
+  const hasActiveTableConstraints = Boolean(
+    workspaceQuery.trim()
+    || activeFilterId != null
+    || mandatoryFilterId != null
+    || tagFilter != null
+    || stickerFilter != null,
+  );
+  const showFilteredEmptyState = scopeTotalCount > 0 && visible.length === 0 && hasActiveTableConstraints;
   const clearSelection = () => setSelectedIds(new Set());
   useEffect(() => {
     if (selectedIds.size === 0) return;
@@ -9304,7 +9318,9 @@ function OverviewWorkspace({
               >
                 <div className="min-w-full">
                 <div>
-                  {visible.length === 0 ? (
+                  {showFilteredEmptyState ? (
+                    <CatalogFilteredEmptyState onReset={resetTableConstraints} />
+                  ) : visible.length === 0 ? (
                 <div className="border-b border-[#e7e5e4] px-6 py-12">
                   <div className="flex flex-col gap-4">
                     <div>
