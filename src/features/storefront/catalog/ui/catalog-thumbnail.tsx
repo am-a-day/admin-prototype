@@ -1,4 +1,4 @@
-import { ForkKnife, ImageBroken } from "@phosphor-icons/react";
+import { ForkKnife, Image as ImageIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 const CATALOG_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5px]";
@@ -28,7 +28,7 @@ export function CatalogThumbnail({
       ) : kind === "section" ? (
         <ForkKnife size={13} weight="fill" />
       ) : (
-        <ImageBroken size={13} />
+        <ImageIcon size={14} weight="fill" className="text-stone-500" />
       )}
     </span>
   );
