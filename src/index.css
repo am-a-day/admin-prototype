@@ -84,6 +84,36 @@ body {
   scrollbar-width: none;
 }
 
+.scrollbar-subtle {
+  scrollbar-width: thin;
+  scrollbar-color: #e7e5e4 transparent;
+}
+
+.scrollbar-subtle::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #e7e5e4;
+  background-clip: padding-box;
+}
+
+.scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  background-clip: padding-box;
+}
+
+.scrollbar-subtle:hover {
+  scrollbar-color: #d6d3d1 transparent;
+}
+
 [data-catalog-adaptive-shell] {
   container-name: catalog-edit-layout;
   container-type: inline-size;

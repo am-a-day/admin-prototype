@@ -1239,7 +1239,7 @@ function ItemSelectorPopover({
                     data-recommendation-section-menu
                     align="end"
                     sideOffset={6}
-                    className="z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+                    className="scrollbar-subtle z-[100006] max-h-[280px] min-w-[220px] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
                     onPointerDownOutside={(event) => {
                       if (shouldPreventOverlayDismissal(event)) event.preventDefault();
                     }}
@@ -1263,7 +1263,7 @@ function ItemSelectorPopover({
           data-recommendation-picker-list
           role="group"
           aria-label="Позиции для рекомендации"
-          className="mt-2 max-h-[304px] overflow-y-auto overscroll-contain"
+          className="scrollbar-subtle mt-2 max-h-[304px] overflow-y-auto overscroll-contain"
         >
           {visibleItems.map((candidate) => {
             const checked = selectedSet.has(candidate.id);
@@ -2584,7 +2584,7 @@ function OptionGroupPopoverContent({
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+      <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto pr-0.5">
         <div className="space-y-2">
           <div className="flex items-center" role="tablist" aria-label="Настройки опции">
             {([
@@ -2664,7 +2664,7 @@ function OptionGroupPopoverContent({
               onDragEnd={handleVariantDragEnd}
             >
               <SortableContext items={group.variants.map((variant) => variant.id)} strategy={verticalListSortingStrategy}>
-                <div data-option-variants-list className="max-h-[260px] space-y-1.5 overflow-y-auto pr-0.5">
+                <div data-option-variants-list className="scrollbar-subtle max-h-[260px] space-y-1.5 overflow-y-auto pr-0.5">
                   {group.variants.map((variant) => (
                     <SortableOptionVariantRow
                       key={variant.id}

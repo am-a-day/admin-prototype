@@ -618,7 +618,7 @@ export function CatalogColumnSettingsMenu({
               />
             </label>
           </div>
-          <div className="max-h-[360px] overflow-y-auto pr-0.5 [scrollbar-width:thin]">
+          <div className="scrollbar-subtle max-h-[360px] overflow-y-auto pr-0.5">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={filteredColumns.map((column) => column.id)} strategy={verticalListSortingStrategy}>
                 {filteredColumns.map((column) => (

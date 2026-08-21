@@ -364,7 +364,7 @@ export function MoveToSectionPopover({
                     className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-[#292524] outline-none placeholder:text-[#a8a29e]"
                   />
                 </label>
-                <div className="max-h-[340px] overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+                <div className="scrollbar-subtle max-h-[340px] overflow-y-auto overscroll-contain">
                   {(operation === "section" || operation === "sections") && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
                     <DropdownMenu.Item
                       aria-label="Основное меню"

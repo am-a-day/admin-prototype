@@ -790,7 +790,7 @@ function CatalogSidePanel({
   onCreateAction?: (action: string) => void;
 }) {
   return (
-    <aside className="w-[250px] shrink-0 overflow-y-auto border-r border-[#e7e5e4] bg-white px-2 pt-4">
+    <aside className="scrollbar-subtle w-[250px] shrink-0 overflow-y-auto border-r border-[#e7e5e4] bg-white px-2 pt-4">
       <div className="mb-4 flex items-center px-2">
         <h2 className="min-w-0 flex-1 text-[14px] font-normal leading-[1.4] text-[#292524]">{title}</h2>
         {actionLabel && onCreateAction && (
@@ -1162,7 +1162,7 @@ function CatalogDestinationPicker({
         <DropdownMenu.Content
           align="start"
           sideOffset={6}
-          className="z-[100002] max-h-[min(420px,calc(100vh-32px))] w-[min(380px,calc(100vw-32px))] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+          className="scrollbar-subtle z-[100002] max-h-[min(420px,calc(100vh-32px))] w-[min(380px,calc(100vw-32px))] overflow-y-auto rounded-[12px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
         >
           <div className="mb-1 flex h-9 items-center gap-2 rounded-[8px] border border-[#e7e5e4] bg-white px-2.5 focus-within:border-[#c7c2bd] focus-within:ring-2 focus-within:ring-[#292524]/5">
             <MagnifyingGlass size={14} className="shrink-0 text-[#a8a29e]" />
@@ -1681,7 +1681,7 @@ function CatalogEmptyState({
   menuSwitcher?: ReactNode;
 }) {
   return (
-    <main data-catalog-onboarding className="relative flex min-h-0 flex-1 overflow-y-auto bg-white p-8">
+    <main data-catalog-onboarding className="scrollbar-subtle relative flex min-h-0 flex-1 overflow-y-auto bg-white p-8">
       {menuSwitcher && <div className="absolute left-3 top-3 z-10 max-w-[260px]">{menuSwitcher}</div>}
       <div className="mx-auto flex w-full max-w-[680px] flex-1 items-center justify-center py-8">
         <div className="w-full rounded-[16px] border border-[#e7e5e4] bg-white px-8 py-9 shadow-[0_8px_28px_rgba(41,37,36,0.07)] sm:px-10 sm:py-10">
@@ -1765,7 +1765,7 @@ function CatalogImportDialog({ source, onClose }: { source: "iiko" | "sheets"; o
 
 function SectionEmptyState({ sectionName, onAddItem }: { sectionName: string; onAddItem?: () => void }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-8">
+    <div className="scrollbar-subtle flex min-w-0 flex-1 flex-col overflow-y-auto p-8">
       <div className="mx-auto w-full max-w-3xl space-y-4">
         <h2 className="text-[18px] font-semibold text-[#292524]">{sectionName}</h2>
         <div className="rounded-[12px] border border-dashed border-[#e7e5e4] bg-[#fafaf9] p-6">
@@ -2039,7 +2039,7 @@ function SectionItemList({
   const someSelected = items.some((item) => selectedIds.has(item.id));
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-6">
+    <div className="scrollbar-subtle flex min-w-0 flex-1 flex-col overflow-y-auto p-6">
       <div className="mx-auto w-full max-w-3xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -2472,7 +2472,7 @@ function SectionEditor({
         ref={scrollContainerRef}
         onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
         className={cn(
-          "min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6",
+          "scrollbar-subtle min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6",
           showSubsectionList ? "pb-0" : "pb-10",
         )}
       >
@@ -3088,7 +3088,7 @@ function SectionPositionNav({
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]"
                   />
                 </label>
-                <div className="max-h-[360px] overflow-y-auto overscroll-contain">
+                <div className="scrollbar-subtle max-h-[360px] overflow-y-auto overscroll-contain">
                   {visibleSections.map((section) => renderSectionOption(section))}
                   {visibleSections.length === 0 && (
                     <div className="px-2 py-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
@@ -3157,7 +3157,7 @@ function SectionPositionNav({
           if (event.clientY < bounds.top + edge) listScrollRef.current.scrollTop -= 10;
           else if (event.clientY > bounds.bottom - edge) listScrollRef.current.scrollTop += 10;
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3"
+        className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3"
       >
         {visibleActiveItems.length === 0 && visibleArchivedItems.length === 0 ? (
           <div className="rounded-[10px] border border-dashed border-[#e7e5e4] bg-white/60 px-3 py-4 text-[13px] leading-5 text-[#79716b]">
@@ -3258,7 +3258,7 @@ function PositionDestinationDialog({
     <div className="fixed inset-0 z-[100010] flex items-start justify-center bg-black/15 pt-[18vh]" onMouseDown={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Выберите раздел" className="w-[356px] overflow-hidden rounded-[13px] border border-[#e7e5e4] bg-white p-3 shadow-[0_18px_48px_rgba(41,37,36,0.18)]" onMouseDown={(event) => event.stopPropagation()}>
         <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти раздел..." className="h-8 border-0 bg-[#f5f5f4] text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-[#a8a29e]" />
-        <div className="mt-2 max-h-[280px] overflow-y-auto">
+        <div className="scrollbar-subtle mt-2 max-h-[280px] overflow-y-auto">
           {destinations.map((section) => (
             <button key={section.id} type="button" onClick={() => onSelect(section)} className="flex h-[38px] w-full items-center gap-2 rounded-[8px] px-2 text-left hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
               <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 shrink-0 rounded-[5px]" />
@@ -7191,7 +7191,7 @@ function CatalogScopeSelect({
             <MagnifyingGlass size={14} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Найти раздел" autoFocus className="min-w-0 flex-1 bg-transparent text-[13px] text-[#292524] outline-none placeholder:text-[#a8a29e]" />
           </label>
-          <div className="max-h-[360px] overflow-y-auto">
+          <div className="scrollbar-subtle max-h-[360px] overflow-y-auto">
             {allOptionLabel ? (
               <>
                 <DropdownMenu.Item
@@ -7398,7 +7398,7 @@ function UnifiedFlatCatalogPanel({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownContent align="start">
-                <div className="max-h-[360px] overflow-y-auto">
+                <div className="scrollbar-subtle max-h-[360px] overflow-y-auto">
                   {moreFilterGroups.map((group, groupIndex) => (
                     <div key={group.label}>
                       {groupIndex > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
@@ -7481,7 +7481,7 @@ function UnifiedFlatCatalogPanel({
         <div
           ref={listScrollRef}
           onScroll={(event) => onListScrollTopChange?.(event.currentTarget.scrollTop)}
-          className="mt-3 min-h-0 flex-1 overflow-y-auto"
+          className="scrollbar-subtle mt-3 min-h-0 flex-1 overflow-y-auto"
         >
           {items.length > 0 && (
             <VirtualizedDescriptionQueueRows
@@ -9279,7 +9279,7 @@ function OverviewWorkspace({
             else setOverviewScrollTop(event.currentTarget.scrollTop);
           }}
           className={cn(
-            "h-full min-w-0 overflow-y-auto overflow-x-hidden",
+            "scrollbar-subtle h-full min-w-0 overflow-y-auto overflow-x-hidden",
             "px-6",
           )}
         >
@@ -9628,7 +9628,7 @@ function OverviewWorkspace({
               }
             }}
             style={{ width: tableHorizontalScrollbar.viewportWidth }}
-            className="absolute bottom-0 left-0 z-30 h-4 overflow-x-auto border-t border-[#e7e5e4] bg-white [scrollbar-width:thin]"
+            className="scrollbar-subtle absolute bottom-0 left-0 z-30 h-2 overflow-x-auto bg-white"
           >
             <div style={{ width: tableHorizontalScrollbar.width }} className="h-px" />
           </div>
@@ -10064,7 +10064,7 @@ export function RecommendationsContextWorkspace({
               <MagnifyingGlass size={14} className="shrink-0 text-[#a6a09b]" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти позицию" className="min-w-0 flex-1 bg-transparent text-[12px] text-[#292524] outline-none placeholder:text-[#a6a09b]" />
             </label>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               {visibleItems.map((item) => {
                 const count = resolveRecommendationIds(item, items, upsellByItem[item.id]).length;
                 const selected = item.id === selectedItemId;
@@ -10089,7 +10089,7 @@ export function RecommendationsContextWorkspace({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 overflow-y-auto bg-white px-6 pb-10 pt-4">
+        <section className="scrollbar-subtle min-w-0 flex-1 overflow-y-auto bg-white px-6 pb-10 pt-4">
           <div className="mx-auto w-full max-w-[680px]">
             {selectedItem ? (
               <>

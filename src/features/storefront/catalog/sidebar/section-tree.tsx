@@ -603,7 +603,7 @@ export function UnifiedCatalogTreePanel({
         </div>
       </div>
       <DndContext sensors={dndSensors} collisionDetection={sameParentCollisionDetection} onDragEnd={handleSectionDragEnd}>
-        <div ref={treeScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] pb-3 pt-2">
+        <div ref={treeScrollRef} className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto overscroll-contain px-[6px] pb-3 pt-2">
           {renderSectionList(sections, null, 0)}
           {normalizedQuery && visibleIds.size === 0 && <p className="px-2 py-4 text-[13px] leading-5 text-[#79716b]">Разделы не найдены</p>}
         </div>
