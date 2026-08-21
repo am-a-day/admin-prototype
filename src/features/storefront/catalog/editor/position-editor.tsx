@@ -3147,7 +3147,7 @@ function PositionAvailabilityTab({
     const displayMode = mode === "schedule" ? outsideScheduleMode : unavailableDisplayMode;
 
     return (
-      <div className="space-y-3 px-4 pb-6 pt-2" data-position-availability-content={mode}>
+      <div className="space-y-3 pb-6 pt-2" data-position-availability-content={mode}>
         {isArchived && (
           <section
             aria-label="Архивная позиция"
