@@ -1,8 +1,8 @@
 export const CATALOG_PAGE_HEADER_CLASS = "-mx-6 flex w-[calc(100%+3rem)] items-center gap-3 px-[14px] pt-[18px]";
-export const CATALOG_SECTION_TO_TABLE_GAP_CLASS = "pt-[5px]";
+export const CATALOG_SECTION_TO_TABLE_GAP_CLASS = "h-[5px] shrink-0 bg-white";
 export const CATALOG_TABLE_TOOLBAR_CLASS = "sticky top-0 z-20 flex h-[38px] min-w-0 items-center justify-between border-b border-[#e7e5e4] bg-white pl-1 pr-4 py-[6px]";
 export const CATALOG_TABLE_TOOLBAR_GROUP_CLASS = "flex min-w-0 flex-1 items-center gap-3";
-export const CATALOG_TABLE_TOOLBAR_DIVIDER_CLASS = "mx-3 h-4 w-px shrink-0 bg-[#e7e5e4]";
+export const CATALOG_TABLE_TOOLBAR_DIVIDER_CLASS = "mr-[25.5px] h-4 w-px shrink-0 bg-[#d6d3d1]";
 export const CATALOG_TABLE_HEADER_STICKY_CLASS = "sticky top-[38px] z-10 bg-[#fafaf9]";
 export const CATALOG_TABLE_HEADER_SURFACE_CLASS = "flex h-[34px] min-w-0 items-center overflow-hidden border-b border-[#eeeeec]";
 export const CATALOG_TABLE_ROW_HEIGHT_CLASS = "h-[38px] min-h-[38px] max-h-[38px]";
