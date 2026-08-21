@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, type DragEndEvent, useSensor, useSensors } from "@dnd-kit/core";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { arrayMove, sortableKeyboardCoordinates, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowElbowUpRight,
   Archive,
   Asterisk,
+  CalendarDots,
   CaretDown,
   CaretUpDown,
   CaretRight,
@@ -24,6 +25,7 @@ import {
   FunnelSimple,
   Layout,
   Lock,
+  LockLaminated,
   MagnifyingGlass,
   Minus,
   Plus,
@@ -63,9 +65,8 @@ import {
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS, type CatalogDropdownOutsideDismiss, type CatalogDropdownOutsideEvent } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { DiscountBlock, calculateDiscountPercent } from "../editor/position-editor";
-import { createDefaultWeeklySchedule, isWeeklyScheduleOrderable, type WeeklySchedule } from "../ui/catalog-schedule-editor";
+import { createDefaultWeeklySchedule, type WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
-import { StructureDragHandle } from "../workspace/dnd";
 import {
   getCatalogLabelText,
   resolveCatalogItemStickerId,
@@ -121,21 +122,15 @@ function getPriceSortTooltip(direction: PriceSortDirection) {
   return "Сбросить сортировку";
 }
 
-function getPrimaryRowStatusLabel(item: CatalogItem) {
-  if (item.status === "archive") return "В архиве";
+type CatalogRowAvailability = "archive" | "stopped" | "scheduled" | "soon";
+
+function getPrimaryRowAvailability(item: CatalogItem): CatalogRowAvailability | null {
+  if (item.status === "archive") return "archive";
   if (item.status === "stopped" || item.status === "coming-soon") {
-    return item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon" ? "Скоро будет" : "На стопе";
+    return item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon" ? "soon" : "stopped";
   }
   if (item.scheduled) {
-    const orderable = isWeeklyScheduleOrderable(
-      item.weeklySchedule ?? createDefaultWeeklySchedule(),
-      item.availabilityScheduleMode ?? "available",
-      new Date(),
-    );
-    if (orderable) return "По расписанию";
-    return item.outsideScheduleMode === "comingSoon"
-      ? "Скоро будет"
-      : "Недоступно";
+    return "scheduled";
   }
   return null;
 }
@@ -177,6 +172,7 @@ const TABLE_COLUMN_WIDTHS = {
   upsells: 100,
   lastModified: 154,
   actions: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
+  addColumn: 36,
 } as const;
 
 export const DEFAULT_TABLE_COLUMN_SIZING: ColumnSizingState = {
@@ -297,7 +293,9 @@ export const MANAGEABLE_TABLE_COLUMN_IDS = [
 export const DEFAULT_TABLE_COLUMN_ORDER = [
   "reorder",
   "selection",
-  ...MANAGEABLE_TABLE_COLUMN_IDS,
+  "position",
+  ...MANAGEABLE_TABLE_COLUMN_IDS.filter((id) => id !== "position"),
+  "add-column",
   "actions",
 ] as string[];
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
@@ -330,6 +328,7 @@ export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "stickers", accessorKey: "guestLabels", size: DEFAULT_TABLE_COLUMN_SIZING.stickers, minSize: TABLE_COLUMN_MIN_SIZES.stickers, maxSize: TABLE_COLUMN_MAX_SIZES.stickers },
   { id: "upsells", accessorKey: "recommendationsCount", size: DEFAULT_TABLE_COLUMN_SIZING.upsells, minSize: TABLE_COLUMN_MIN_SIZES.upsells, maxSize: TABLE_COLUMN_MAX_SIZES.upsells },
   { id: "lastModified", accessorKey: "lastModifiedAt", size: DEFAULT_TABLE_COLUMN_SIZING.lastModified, minSize: TABLE_COLUMN_MIN_SIZES.lastModified, maxSize: TABLE_COLUMN_MAX_SIZES.lastModified },
+  { id: "add-column", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.addColumn, minSize: TABLE_COLUMN_WIDTHS.addColumn, maxSize: TABLE_COLUMN_WIDTHS.addColumn },
   { id: "actions", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.actions, minSize: TABLE_COLUMN_WIDTHS.actions, maxSize: TABLE_COLUMN_WIDTHS.actions },
 ];
 
@@ -381,6 +380,29 @@ function getSortIcon(direction: "none" | "asc" | "desc") {
 function getCatalogColumnLabel(columnId: string) {
   if (columnId === "position") return "Название";
   return CATALOG_INFORMATION_COLUMN_LABELS[columnId as CatalogInformationColumnId] ?? columnId;
+}
+
+const USER_REORDERABLE_TABLE_COLUMN_IDS = MANAGEABLE_TABLE_COLUMN_IDS.filter((id) => id !== "position");
+
+function getTableColumnOrder(table: TanStackTable<CatalogItem>) {
+  return table.getAllLeafColumns().map((column) => column.id);
+}
+
+function setUserTableColumnOrder(table: TanStackTable<CatalogItem>, nextVisibleUserOrder: string[]) {
+  const currentOrder = getTableColumnOrder(table);
+  const visibleUserIds = new Set(nextVisibleUserOrder);
+  const hiddenUserOrder = currentOrder.filter((id) =>
+    (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(id) && !visibleUserIds.has(id),
+  );
+  table.setColumnOrder([
+    "reorder",
+    "selection",
+    "position",
+    ...nextVisibleUserOrder,
+    ...hiddenUserOrder,
+    "add-column",
+    "actions",
+  ]);
 }
 
 export function DropdownContent({
@@ -478,14 +500,16 @@ function SortableColumnSetting({
   id,
   visible,
   canHide,
+  draggable = true,
   onToggle,
 }: {
   id: string;
   visible: boolean;
   canHide: boolean;
+  draggable?: boolean;
   onToggle: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !draggable });
   const label = getCatalogColumnLabel(id);
 
   return (
@@ -501,7 +525,8 @@ function SortableColumnSetting({
       <button
         type="button"
         aria-label={`Изменить порядок колонки «${label}»`}
-        className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-[#a8a29e] outline-none hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing"
+        disabled={!draggable}
+        className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing disabled:cursor-default disabled:text-[#c7c2bd]"
         {...attributes}
         {...listeners}
       >
@@ -546,12 +571,12 @@ export function CatalogColumnSettingsMenu({
     if (!over || active.id === over.id) return;
     const managedOrder = table.getAllLeafColumns()
       .map((column) => column.id)
-      .filter((id) => (MANAGEABLE_TABLE_COLUMN_IDS as readonly string[]).includes(id));
+      .filter((id) => (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(id));
     const activeIndex = managedOrder.indexOf(String(active.id));
     const overIndex = managedOrder.indexOf(String(over.id));
     if (activeIndex < 0 || overIndex < 0) return;
     const nextOrder = arrayMove(managedOrder, activeIndex, overIndex);
-    table.setColumnOrder(["reorder", "selection", ...nextOrder, "actions"]);
+    setUserTableColumnOrder(table, nextOrder);
   };
 
   return (
@@ -595,6 +620,7 @@ export function CatalogColumnSettingsMenu({
                     id={column.id}
                     visible={column.getIsVisible()}
                     canHide={column.getCanHide()}
+                    draggable={column.id !== "position"}
                     onToggle={() => column.toggleVisibility(!column.getIsVisible())}
                   />
                 ))}
@@ -676,11 +702,168 @@ function ColumnResizeHandle({ header }: { header?: Header<CatalogItem, unknown> 
       onClick={(event) => event.stopPropagation()}
       className={cn(
         "absolute right-[-4px] top-0 z-30 h-full w-2 cursor-col-resize touch-none border-0 bg-transparent p-0 outline-none",
-        "after:absolute after:right-[3px] after:top-0 after:h-full after:w-px after:bg-[#a8a29e] after:opacity-0 after:transition-opacity",
+        "after:absolute after:right-[3px] after:top-0 after:h-full after:w-[2px] after:bg-[#4f39f6] after:opacity-0 after:transition-opacity",
         "hover:after:opacity-100 focus-visible:after:opacity-100",
         header.column.getIsResizing() && "after:opacity-100",
       )}
     />
+  );
+}
+
+function CatalogAddColumnMenu({ table }: { table: TanStackTable<CatalogItem> }) {
+  const hiddenColumns = table.getAllLeafColumns().filter((column) =>
+    (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id) && !column.getIsVisible(),
+  );
+
+  return (
+    <DropdownMenu.Root>
+      <Tooltip label="Добавить колонку" side="top">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Добавить колонку"
+            data-catalog-add-column-trigger
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <Plus size={16} weight="regular" />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownContent align="start" className="min-w-[190px]">
+        {hiddenColumns.length > 0 ? hiddenColumns.map((column) => (
+          <DropdownActionItem
+            key={column.id}
+            icon={column.id === "position" ? Layout : undefined}
+            onSelect={() => column.toggleVisibility(true)}
+          >
+            {getCatalogColumnLabel(column.id)}
+          </DropdownActionItem>
+        )) : (
+          <DropdownMenu.Item disabled className="flex h-8 items-center px-2 text-[13px] text-[#a6a09b]">
+            Все колонки уже отображены
+          </DropdownMenu.Item>
+        )}
+      </DropdownContent>
+    </DropdownMenu.Root>
+  );
+}
+
+const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
+  canDrag: boolean;
+  ariaLabel: string;
+  dragProps: Record<string, unknown>;
+}>(({ canDrag, ariaLabel, dragProps }, ref) => {
+  if (!canDrag) {
+    return <span className="h-7 w-6 shrink-0 invisible" aria-hidden="true" />;
+  }
+
+  return (
+    <Tooltip label={ariaLabel} side="top" delayDuration={250}>
+      <button
+        ref={ref}
+        type="button"
+        data-composition-dnd-handle
+        data-catalog-dnd-handle
+        {...dragProps}
+        disabled={!canDrag}
+        aria-label={ariaLabel}
+        tabIndex={0}
+        className={cn(
+          "flex h-7 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing",
+          "cursor-grab",
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <DotsSixVertical size={15} weight="bold" />
+      </button>
+    </Tooltip>
+  );
+});
+
+CatalogTableRowDragHandle.displayName = "CatalogTableRowDragHandle";
+
+function CatalogAvailabilityStatusButton({
+  item,
+  onAction,
+}: {
+  item: CatalogItem;
+  onAction: AuditDishRowProps["onAction"];
+}) {
+  const [open, setOpen] = useState(false);
+  const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
+  const [stopEditorPinned, setStopEditorPinned] = useState(false);
+  const status = getPrimaryRowAvailability(item);
+  if (!status) return null;
+
+  const statusMeta: { label: string; icon: PhosphorIcon; className: string } = {
+    archive: { label: "В архиве", icon: Archive, className: "text-[#94a3b8]" },
+    stopped: { label: "На стопе", icon: LockLaminated, className: "text-[#f54900]" },
+    scheduled: { label: "По расписанию", icon: CalendarDots, className: "text-[#2b7fff]" },
+    soon: { label: "Скоро будет", icon: Clock, className: "text-[#2b7fff]" },
+  }[status];
+  const StatusIcon = statusMeta.icon;
+  if (status === "archive") {
+    return (
+      <Tooltip label={statusMeta.label} side="top">
+        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+          <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
+        </span>
+      </Tooltip>
+    );
+  }
+  const manualStopped = item.status === "stopped" || item.status === "coming-soon";
+
+  return (
+    <DropdownMenu.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setScheduleEditorPinned(false);
+          setStopEditorPinned(false);
+        }
+      }}
+    >
+      <Tooltip label={statusMeta.label} side="top">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            data-catalog-availability-trigger={item.id}
+            aria-label={`Настроить доступность: ${statusMeta.label}`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+          >
+            <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownContent
+        align="start"
+        preventOutsideDismiss={(event) => (
+          scheduleEditorPinned
+          || (stopEditorPinned
+            && event.target instanceof Element
+            && Boolean(event.target.closest("[data-catalog-stop-popover]")))
+        )}
+      >
+        <CatalogPositionAvailabilityMenu
+          scheduleId={`item-${item.id}`}
+          manualStopped={manualStopped}
+          hasSchedule={item.scheduled}
+          direct
+          weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
+          stopDisplayMode={item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")}
+          outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
+          onManualStopChange={(stopped) => onAction(item, stopped ? "availability:manual-stop" : "availability:manual-resume")}
+          onScheduleChange={(schedule, outsideScheduleMode) => onAction(item, `availability:schedule-save:${outsideScheduleMode}`, undefined, schedule)}
+          onScheduleDelete={() => onAction(item, "availability:schedule-delete")}
+          onStopDisplayModeChange={(mode) => onAction(item, `availability:behavior:${mode}`)}
+          onScheduleEditorPinnedChange={setScheduleEditorPinned}
+          onStopEditorPinnedChange={setStopEditorPinned}
+        />
+      </DropdownContent>
+    </DropdownMenu.Root>
   );
 }
 
@@ -690,6 +873,66 @@ function AuditDot({ state, title }: { state: "filled" | "partial" | "missing"; t
       {state === "filled" && <Dot size={22} weight="fill" className="text-[#006045]" />}
       {state === "partial" && <span className="h-[9px] w-[9px] rounded-full border-[1.5px] border-[#006045]" />}
       {state === "missing" && <span className="text-[13px] leading-none text-[#a6a09b]">—</span>}
+    </span>
+  );
+}
+
+function CatalogDraggableHeaderCell({
+  column,
+  header,
+  dividerClass,
+  activeColumnId,
+  dropTarget,
+  children,
+}: {
+  column: ReturnType<TanStackTable<CatalogItem>["getVisibleLeafColumns"]>[number];
+  header?: Header<CatalogItem, unknown>;
+  dividerClass?: string;
+  activeColumnId: string | null;
+  dropTarget: { id: string; side: "before" | "after" } | null;
+  children: ReactNode;
+}) {
+  const isReorderable = (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: column.id,
+    disabled: !isReorderable,
+  });
+  const indicator = dropTarget?.id === column.id && activeColumnId !== column.id ? dropTarget.side : null;
+
+  return (
+    <span
+      ref={setNodeRef}
+      data-catalog-table-content-cell={column.id}
+      data-catalog-draggable-column-header={isReorderable ? column.id : undefined}
+      style={{
+        ...getColumnWidthStyle(column.getSize()),
+        transform: isDragging ? CSS.Translate.toString(transform) : undefined,
+        transition: isDragging ? transition : undefined,
+      }}
+      className={cn(
+        "relative flex h-full shrink-0",
+        dividerClass,
+        isReorderable && "cursor-grab hover:bg-[#f5f5f4] active:cursor-grabbing",
+        isDragging && "z-20 cursor-grabbing bg-white shadow-[0_4px_12px_rgba(41,37,36,0.12)]",
+      )}
+      {...(isReorderable ? attributes : {})}
+      {...(isReorderable ? listeners : {})}
+      onPointerDown={(event) => {
+        if ((event.target as HTMLElement | null)?.closest("[data-catalog-column-resize-handle]")) event.stopPropagation();
+      }}
+    >
+      {children}
+      <ColumnResizeHandle header={header} />
+      {indicator && (
+        <span
+          data-catalog-column-drop-indicator={column.id}
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute top-0 z-40 h-full w-[2px] bg-[#4f39f6]",
+            indicator === "after" ? "right-[-1px]" : "left-[-1px]",
+          )}
+        />
+      )}
     </span>
   );
 }
@@ -721,9 +964,58 @@ export function TableHeaderRow({
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const tableWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
-    .filter((column) => column.id !== "selection" && column.id !== "actions")
+    .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
     .map((column) => column.id);
   const actionColumn = visibleColumns.find((column) => column.id === "actions");
+  const visibleUserColumns = visibleColumns.filter((column) =>
+    (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id),
+  );
+  const columnSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
+
+  const handleColumnDragStart = ({ active }: DragStartEvent) => setActiveColumnId(String(active.id));
+  const handleColumnDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over || active.id === over.id) {
+      setDropTarget(null);
+      return;
+    }
+    const overId = String(over.id);
+    if (!(USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(overId)) {
+      setDropTarget(null);
+      return;
+    }
+    const activeRect = active.rect.current.translated;
+    const overRect = over.rect;
+    const activeCenter = activeRect ? activeRect.left + activeRect.width / 2 : overRect.left;
+    const overCenter = overRect.left + overRect.width / 2;
+    setDropTarget({ id: overId, side: activeCenter > overCenter ? "after" : "before" });
+  };
+  const clearColumnDrag = () => {
+    setActiveColumnId(null);
+    setDropTarget(null);
+  };
+  const handleColumnDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) {
+      clearColumnDrag();
+      return;
+    }
+    const visibleUserIds = visibleUserColumns.map((column) => column.id);
+    const activeIndex = visibleUserIds.indexOf(String(active.id));
+    const overIndex = visibleUserIds.indexOf(String(over.id));
+    if (activeIndex < 0 || overIndex < 0) {
+      clearColumnDrag();
+      return;
+    }
+    const side = dropTarget?.id === String(over.id) ? dropTarget.side : "before";
+    let targetIndex = overIndex + (side === "after" ? 1 : 0);
+    targetIndex = Math.max(0, Math.min(visibleUserIds.length - 1, targetIndex));
+    if (activeIndex !== targetIndex) setUserTableColumnOrder(table, arrayMove(visibleUserIds, activeIndex, targetIndex));
+    clearColumnDrag();
+  };
 
   return (
     <div
@@ -731,10 +1023,19 @@ export function TableHeaderRow({
       data-catalog-table-header
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
-        <div
-          className="flex h-full w-full shrink-0 items-center"
-          style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
+        <DndContext
+          sensors={columnSensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleColumnDragStart}
+          onDragOver={handleColumnDragOver}
+          onDragCancel={clearColumnDrag}
+          onDragEnd={handleColumnDragEnd}
         >
+          <SortableContext items={visibleUserColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
+            <div
+              className="flex h-full w-full shrink-0 items-center"
+              style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
+            >
         {visibleColumns.filter((column) => column.id !== "actions").map((column) => {
           if (!column.getIsVisible()) return null;
           const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
@@ -742,42 +1043,55 @@ export function TableHeaderRow({
           if (column.id === "selection") {
             return (
               <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
+                <span className="flex items-center gap-1">
+                  <span className="h-7 w-6 shrink-0" aria-hidden="true" />
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
                   indeterminate={indeterminate}
                   onChange={onSelectAll}
                 />
+                </span>
+              </span>
+            );
+          }
+          if (column.id === "add-column") {
+            return (
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
+                <CatalogAddColumnMenu table={table} />
               </span>
             );
           }
           if (column.id === "position") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pl-[8px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
+              <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
+                <span className="flex h-full min-w-0 items-center truncate pl-[8px] pr-[3px] text-[13px] font-medium text-[#939393]">
                 Название
-                <ColumnResizeHandle header={header} />
-              </span>
+                </span>
+              </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "description") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
+              <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
+                <span className="flex h-full min-w-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
                 {CATALOG_INFORMATION_COLUMN_LABELS.description}
-                <ColumnResizeHandle header={header} />
-              </span>
+                </span>
+              </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "discount") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]", dividerClass)}>
+              <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
+                <span className="flex h-full min-w-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
                 {CATALOG_INFORMATION_COLUMN_LABELS.discount}
-                <ColumnResizeHandle header={header} />
-              </span>
+                </span>
+              </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "price") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0", dividerClass)}>
+              <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <Tooltip label={priceSortTooltip} side="top">
                   <button
                     type="button"
@@ -794,14 +1108,13 @@ export function TableHeaderRow({
                     </span>
                   </button>
                 </Tooltip>
-                <ColumnResizeHandle header={header} />
-              </span>
+              </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "lastModified") {
             const lastModifiedSortTooltip = getLastModifiedSortTooltip(lastModifiedSort);
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0", dividerClass)}>
+              <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <Tooltip label={lastModifiedSortTooltip} side="top">
                   <button
                     type="button"
@@ -818,15 +1131,15 @@ export function TableHeaderRow({
                     </span>
                   </button>
                 </Tooltip>
-                <ColumnResizeHandle header={header} />
-              </span>
+              </CatalogDraggableHeaderCell>
             );
           }
           return (
-            <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
-              {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
-              <ColumnResizeHandle header={header} />
-            </span>
+            <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
+              <span className="flex h-full min-w-0 items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium text-[#939393]">
+                {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
+              </span>
+            </CatalogDraggableHeaderCell>
           );
         })}
         <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
@@ -838,7 +1151,9 @@ export function TableHeaderRow({
             className="sticky right-0 z-[1] flex h-full shrink-0 items-center justify-center bg-[#fafaf9]"
           />
         )}
-        </div>
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </div>
   );
@@ -936,37 +1251,6 @@ export function CatalogFilteredEmptyState({ onReset }: { onReset: () => void }) 
   );
 }
 
-function StatusBadge({ label }: { label: string }) {
-  const isStop = label === "На стопе";
-  const isBlue = label === "С расписанием" || label === "По расписанию" || label === "Скоро будет";
-  const isUnavailable = label === "Недоступно";
-  const isSlate = label === "В архиве" || label === "Скрыта";
-
-  return (
-    <span
-      className={cn(
-        "flex h-4 items-center justify-center gap-0.5 rounded-[4px]",
-        isStop && "bg-[#ffedd4] pl-[3px] pr-1.5",
-        isBlue && "bg-[#dbeafe] pl-[3px] pr-1.5",
-        isUnavailable && "bg-[#fef3c7] pl-[3px] pr-1.5",
-        isSlate && "bg-[#f1f5f9] px-1.5",
-        !isStop && !isBlue && !isUnavailable && !isSlate && "bg-[#f5f5f4] px-1.5",
-      )}
-    >
-      {isStop && <Lock size={12} weight="fill" className="shrink-0 text-[#f54900]" />}
-      {isBlue && <Clock size={12} weight="fill" className="shrink-0 text-[#2b7fff]" />}
-      {isUnavailable && <Clock size={12} weight="fill" className="shrink-0 text-[#a16207]" />}
-      <span
-        className={cn(
-          "whitespace-nowrap text-[11px] font-semibold leading-5",
-          isStop ? "text-[#ca3500]" : isBlue ? "text-[#2b7fff]" : isUnavailable ? "text-[#a16207]" : isSlate ? "text-[#62748e]" : "text-[#57534d]",
-        )}
-      >
-        {label}
-      </span>
-    </span>
-  );
-}
 type AuditDishRowProps = {
   row: TableRow<CatalogItem>;
   onAction: (item: CatalogItem, action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
@@ -1059,10 +1343,10 @@ function AuditDishRowContent({
   const discountPercent = item.hasDiscount && item.priceWithSale != null
     ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
     : null;
-  const primaryStatusLabel = getPrimaryRowStatusLabel(item);
+  const primaryStatus = getPrimaryRowAvailability(item);
   const visibleCells = row.getVisibleCells().filter((cell) => cell.column.getIsVisible());
   const visibleContentColumnIds = visibleCells
-    .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "actions")
+    .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "actions" && cell.column.id !== "add-column")
     .map((cell) => cell.column.id);
   const actionCell = visibleCells.find((cell) => cell.column.id === "actions");
   const rowWidth = visibleCells.reduce((total, cell) => total + cell.column.getSize(), 0);
@@ -1105,32 +1389,32 @@ function AuditDishRowContent({
         const dividerClass = getTableContentDividerClass(cell.column.id, visibleContentColumnIds);
         switch (cell.column.id) {
           case "reorder":
-            return (
-              <StructureDragHandle
-                key={cell.id}
-                ref={setReorderHandleRef}
-                canDrag={reorderEnabled}
-                ariaLabel={`Изменить порядок позиции ${item.title}`}
-                dragProps={{ ...reorderAttributes, ...reorderListeners }}
-                disabledTooltip="Очистите поиск, чтобы изменить порядок"
-              />
-            );
+            return null;
           case "selection":
             return (
               <span
                 key={cell.id}
-                data-no-dnd
                 style={getColumnWidthStyle(cell.column.getSize())}
                 className="flex h-full shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
-                <TableCheckbox
-                  ariaLabel={`Выбрать ${item.title}`}
-                  checked={selected}
-                  forceVisible={selectionMode}
-                  onChange={(checked) => onSelectedChange(item.id, checked)}
-                />
+                <span className="flex items-center gap-1">
+                  <CatalogTableRowDragHandle
+                    ref={setReorderHandleRef}
+                    canDrag={reorderEnabled}
+                    ariaLabel={`Изменить порядок позиции ${item.title}`}
+                    dragProps={{ ...reorderAttributes, ...reorderListeners }}
+                  />
+                  <span data-no-dnd>
+                    <TableCheckbox
+                      ariaLabel={`Выбрать ${item.title}`}
+                      checked={selected}
+                      forceVisible={selectionMode}
+                      onChange={(checked) => onSelectedChange(item.id, checked)}
+                    />
+                  </span>
+                </span>
               </span>
             );
           case "position":
@@ -1141,7 +1425,9 @@ function AuditDishRowContent({
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#44403b] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
                     {itemTitle}
                   </span>
-                  {primaryStatusLabel && <StatusBadge label={primaryStatusLabel} />}
+                  {primaryStatus && (
+                    <CatalogAvailabilityStatusButton item={item} onAction={onAction} />
+                  )}
                 </div>
               </div>
             );
@@ -1254,6 +1540,16 @@ function AuditDishRowContent({
               >
                 <span className="truncate whitespace-nowrap">{formatCatalogItemLastModified(item)}</span>
               </span>
+            );
+          case "add-column":
+            return (
+              <span
+                key={cell.id}
+                data-catalog-table-add-column-cell
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className="flex h-full shrink-0"
+                aria-hidden="true"
+              />
             );
           default:
             return null;
@@ -1385,7 +1681,7 @@ export function CatalogPositionCreateRow({
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const rowWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
-    .filter((column) => column.id !== "selection" && column.id !== "actions")
+    .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
     .map((column) => column.id);
   const actionColumn = visibleColumns.find((column) => column.id === "actions");
 
@@ -1411,6 +1707,17 @@ export function CatalogPositionCreateRow({
             >
               <Plus size={16} weight="regular" />
             </span>
+          );
+        }
+        if (column.id === "add-column") {
+          return (
+            <span
+              key={column.id}
+              data-catalog-table-add-column-cell
+              style={getColumnWidthStyle(column.getSize())}
+              className="flex h-full shrink-0"
+              aria-hidden="true"
+            />
           );
         }
 

@@ -8050,7 +8050,7 @@ function OverviewWorkspace({
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
-    state: { columnVisibility: { ...columnVisibility, reorder: tableSupportsReorder }, columnOrder, columnSizing },
+    state: { columnVisibility: { ...columnVisibility, reorder: true }, columnOrder, columnSizing },
     onColumnVisibilityChange: handleColumnVisibilityChange,
     onColumnOrderChange: handleColumnOrderChange,
     onColumnSizingChange: handleColumnSizingChange,
