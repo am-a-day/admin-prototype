@@ -1038,7 +1038,7 @@ export function TableHeaderRow({
           if (column.id === "selection") {
             return (
               <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-center">
-                <span className="absolute right-2 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center">
+                <span className="flex size-4 items-center justify-center">
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -1409,7 +1409,7 @@ function AuditDishRowContent({
                   ariaLabel={`Изменить порядок позиции ${item.title}`}
                   dragProps={{ ...reorderAttributes, ...reorderListeners }}
                 />
-                <span data-no-dnd className="absolute right-2 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center">
+                <span data-no-dnd className="flex size-4 items-center justify-center">
                   <TableCheckbox
                     ariaLabel={`Выбрать ${item.title}`}
                     checked={selected}
