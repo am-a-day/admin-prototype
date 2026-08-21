@@ -161,6 +161,50 @@ test("keeps catalog add and table controls compact and aligned", async ({ page }
   await expect(languageSettings.locator("svg")).toHaveAttribute("width", "15");
 });
 
+test("reserves toolbar space for the selected filter label", async ({ page }) => {
+  await page.setViewportSize({ width: 859, height: 747 });
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  const filterCell = page.locator("[data-catalog-table-filter-cell]");
+  const filterTrigger = page.locator("[data-catalog-table-filter-trigger]");
+  const search = page.locator("[data-catalog-table-search-control] label");
+  const readGeometry = async () => {
+    const [cell, trigger, searchBox] = await Promise.all([
+      filterCell.boundingBox(),
+      filterTrigger.boundingBox(),
+      search.boundingBox(),
+    ]);
+    if (!cell || !trigger || !searchBox) throw new Error("Toolbar controls are outside the viewport");
+    return { cell, trigger, search: searchBox };
+  };
+
+  expect((await readGeometry()).cell.width).toBe(60);
+
+  await page.getByRole("button", { name: "Фильтр таблицы: Все" }).click();
+  await page.getByRole("menuitem", { name: /^В архиве/ }).click();
+  const archived = await readGeometry();
+  expect(archived.cell.width).toBeGreaterThan(60);
+  expect(archived.trigger.x + archived.trigger.width).toBeLessThanOrEqual(archived.search.x);
+
+  await page.getByRole("button", { name: "Фильтр таблицы: В архиве" }).click();
+  await page.getByRole("menuitem", { name: /^По расписанию/ }).click();
+  const scheduled = await readGeometry();
+  expect(scheduled.cell.width).toBeGreaterThan(archived.cell.width);
+  expect(scheduled.trigger.x + scheduled.trigger.width).toBeLessThanOrEqual(scheduled.search.x);
+
+  await page.getByRole("textbox", { name: "Найти позицию" }).focus();
+  const [focusedCell, divider] = await Promise.all([
+    filterCell.boundingBox(),
+    page.locator("[data-catalog-table-search-divider]").boundingBox(),
+  ]);
+  expect(focusedCell && divider).toBeTruthy();
+  expect(Math.abs(focusedCell!.x + focusedCell!.width - (divider!.x + divider!.width))).toBeLessThanOrEqual(1);
+
+  await page.getByRole("button", { name: "Фильтр таблицы: По расписанию" }).click();
+  await page.getByRole("menuitem", { name: "Все позиции" }).click();
+  expect((await readGeometry()).cell.width).toBe(60);
+});
+
 test("shows row More only for hover, focus, and an open menu without shifting the table", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/?editorNav=unified");

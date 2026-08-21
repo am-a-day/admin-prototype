@@ -123,17 +123,17 @@ export function CatalogTableSearchControl({
     >
       <span
         data-catalog-table-filter-cell
-        className="-ml-px flex h-full w-[60px] shrink-0 items-center pl-[16px]"
+        className="relative -ml-px flex h-full w-auto min-w-[60px] shrink-0 items-center pl-[16px]"
       >
         {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
+        {focused && (
+          <span
+            data-catalog-table-search-divider
+            className="pointer-events-none absolute bottom-[6px] right-0 top-[6px] w-px bg-[#e7e5e4]"
+            aria-hidden="true"
+          />
+        )}
       </span>
-      {focused && (
-        <span
-          data-catalog-table-search-divider
-          className="pointer-events-none absolute bottom-[6px] left-[60px] top-[6px] w-px bg-[#e7e5e4]"
-          aria-hidden="true"
-        />
-      )}
       <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[#a6a09b]">
         {showSearchHint && <MagnifyingGlass size={14} className="shrink-0" />}
         <input
