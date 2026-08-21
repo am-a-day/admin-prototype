@@ -55,6 +55,7 @@ export function PositionEditorHost({
   onFeedback,
   onRequestPermanentDelete,
   onRevealItem,
+  onCreateSectionForMove,
   structureSections = catalogSections,
   presentation = "pane",
 }: {
@@ -64,6 +65,7 @@ export function PositionEditorHost({
   onFeedback?: (message: string) => void;
   onRequestPermanentDelete?: (item: CatalogItem) => void;
   onRevealItem?: (item: CatalogItem) => void;
+  onCreateSectionForMove?: (name: string, parentId: string | null) => TreeSection | string;
   structureSections?: TreeSection[];
   presentation?: "pane" | "dialog";
 }) {
@@ -296,10 +298,11 @@ export function PositionEditorHost({
           sections={structureSections}
           anchor={moveRequest.anchor}
           onClose={() => setMoveRequest(null)}
-          onMove={async (targetSectionId) => {
+          onCreateSection={onCreateSectionForMove}
+          onMove={async (targetSectionId, destinationOverride) => {
             if (!targetSectionId) return;
             const target = itemsById[moveRequest.itemId];
-            const destination = structureSections.find((section) => section.id === targetSectionId);
+            const destination = destinationOverride ?? structureSections.find((section) => section.id === targetSectionId);
             if (!target || !destination || target.sectionId === targetSectionId) return;
             const previous = { itemId: target.id, sectionId: target.sectionId, sectionName: target.sectionName };
             moveItem(target.id, targetSectionId, { sectionName: destination.name });

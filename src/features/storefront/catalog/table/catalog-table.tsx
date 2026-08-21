@@ -46,7 +46,6 @@ import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
-import type { CatalogPriceSortDirection } from "../navigation/types";
 import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
 import {
   CATALOG_TABLE_FILTER_GROUPS,
@@ -81,18 +80,10 @@ import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 import binocularsAsset from "../ui/binoculars.svg";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
-type PriceSortDirection = CatalogPriceSortDirection;
-
 function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
   const target = event.currentTarget as HTMLElement;
   const rect = target.getBoundingClientRect();
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-}
-
-function getPriceSortTooltip(direction: PriceSortDirection) {
-  if (direction === "none") return "Сортировать по возрастанию";
-  if (direction === "asc") return "Сортировать по убыванию";
-  return "Сбросить сортировку";
 }
 
 type CatalogRowAvailability = "archive" | "stopped" | "scheduled" | "soon";
@@ -325,18 +316,59 @@ export function formatCatalogItemLastModified(item: CatalogItem) {
   return LAST_MODIFIED_FORMATTER.format(new Date(getCatalogItemLastModifiedTimestamp(item)));
 }
 
-export function sortCatalogItemsByLastModified(items: CatalogItem[], direction: CatalogLastModifiedSortDirection) {
-  if (direction === "none") return items;
-  return [...items].sort((left, right) => {
-    const difference = getCatalogItemLastModifiedTimestamp(left) - getCatalogItemLastModifiedTimestamp(right);
-    return direction === "asc" ? difference : -difference;
-  });
+export const CATALOG_SORTABLE_TABLE_COLUMN_IDS = [
+  "position",
+  "section",
+  "weight",
+  "kbju",
+  "translation",
+  "price",
+  "discount",
+  "upsells",
+  "lastModified",
+] as const;
+export type CatalogSortableTableColumnId = typeof CATALOG_SORTABLE_TABLE_COLUMN_IDS[number];
+export type CatalogTableSort = {
+  columnId: CatalogSortableTableColumnId;
+  direction: "asc" | "desc";
+} | null;
+
+const CATALOG_SORT_COLLATOR = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
+
+function getCatalogSortValue(item: CatalogItem, columnId: CatalogSortableTableColumnId): number | string | null {
+  switch (columnId) {
+    case "position": return item.title;
+    case "section": return item.sectionName;
+    case "weight": return item.weightLabel || null;
+    case "kbju": return item.nutritionFilledCount;
+    case "translation": return item.translationFilledCount;
+    case "price": return item.price > 0 ? item.price : null;
+    case "discount":
+      return item.hasDiscount && item.priceWithSale != null
+        ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
+        : null;
+    case "upsells": return item.recommendationsCount;
+    case "lastModified": return getCatalogItemLastModifiedTimestamp(item);
+  }
 }
 
-function getLastModifiedSortTooltip(direction: CatalogLastModifiedSortDirection) {
-  if (direction === "none") return "Сортировать по возрастанию даты изменения";
-  if (direction === "asc") return "Сортировать по убыванию даты изменения";
-  return "Сбросить сортировку по дате изменения";
+export function sortCatalogItemsByColumn(items: CatalogItem[], sort: CatalogTableSort) {
+  if (!sort) return items;
+  const multiplier = sort.direction === "asc" ? 1 : -1;
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const leftValue = getCatalogSortValue(left.item, sort.columnId);
+      const rightValue = getCatalogSortValue(right.item, sort.columnId);
+      if (leftValue == null && rightValue == null) return left.index - right.index;
+      if (leftValue == null) return 1;
+      if (rightValue == null) return -1;
+      const difference = typeof leftValue === "number" && typeof rightValue === "number"
+        ? leftValue - rightValue
+        : CATALOG_SORT_COLLATOR.compare(String(leftValue), String(rightValue));
+      return difference === 0 ? left.index - right.index : difference * multiplier;
+    })
+    .map(({ item }) => item);
 }
 
 function getSortIcon(direction: "none" | "asc" | "desc") {
@@ -683,6 +715,89 @@ function ColumnResizeHandle({ header }: { header?: Header<CatalogItem, unknown> 
   );
 }
 
+function CatalogColumnHeaderMenu({
+  column,
+  sort,
+  onSortChange,
+  children,
+  className,
+  align = "start",
+}: {
+  column: ReturnType<TanStackTable<CatalogItem>["getVisibleLeafColumns"]>[number];
+  sort: CatalogTableSort;
+  onSortChange: (sort: CatalogTableSort) => void;
+  children: ReactNode;
+  className?: string;
+  align?: "start" | "end";
+}) {
+  const sortable = (CATALOG_SORTABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id);
+  const hideable = column.getCanHide();
+  const currentDirection = sort?.columnId === column.id ? sort.direction : null;
+  const label = getCatalogColumnLabel(column.id);
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          data-catalog-column-menu-trigger={column.id}
+          data-sort-direction={currentDirection ?? undefined}
+          aria-label={`Настройки колонки «${label}»`}
+          className={cn(
+            "flex h-full w-full min-w-0 items-center transition hover:bg-[#f5f5f4] data-[state=open]:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20",
+            currentDirection ? "text-[#57534d]" : "text-[#939393]",
+            className,
+          )}
+        >
+          <span className="min-w-0 truncate">{children}</span>
+          {currentDirection && (
+            <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+              {getSortIcon(currentDirection)}
+            </span>
+          )}
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownContent align={align} className="min-w-[210px]">
+        {sortable && (
+          <DropdownMenu.RadioGroup value={currentDirection ?? ""}>
+            <DropdownMenu.RadioItem
+              value="asc"
+              onSelect={() => onSortChange({ columnId: column.id as CatalogSortableTableColumnId, direction: "asc" })}
+              className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b] data-[state=checked]:bg-[#f3f3ed]")}
+            >
+              <CaretUp size={15} weight="bold" className="shrink-0 text-[#79716b]" />
+              <span className="min-w-0 flex-1">По возрастанию</span>
+              <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
+            </DropdownMenu.RadioItem>
+            <DropdownMenu.RadioItem
+              value="desc"
+              onSelect={() => onSortChange({ columnId: column.id as CatalogSortableTableColumnId, direction: "desc" })}
+              className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b] data-[state=checked]:bg-[#f3f3ed]")}
+            >
+              <CaretDown size={15} weight="bold" className="shrink-0 text-[#79716b]" />
+              <span className="min-w-0 flex-1">По убыванию</span>
+              <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
+            </DropdownMenu.RadioItem>
+          </DropdownMenu.RadioGroup>
+        )}
+        {sortable && hideable && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+        {hideable && (
+          <DropdownMenu.Item
+            onSelect={() => {
+              if (currentDirection) onSortChange(null);
+              column.toggleVisibility(false);
+            }}
+            className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <EyeSlash size={16} weight="regular" className="shrink-0 text-[#79716b]" />
+            <span>Скрыть колонку</span>
+          </DropdownMenu.Item>
+        )}
+      </DropdownContent>
+    </DropdownMenu.Root>
+  );
+}
+
 function CatalogAddColumnMenu({ table }: { table: TanStackTable<CatalogItem> }) {
   const hiddenColumns = table.getAllLeafColumns().filter((column) =>
     (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id) && !column.getIsVisible(),
@@ -914,26 +1029,23 @@ export function TableHeaderRow({
   checked,
   indeterminate,
   onSelectAll,
-  priceSort,
-  onPriceSortChange,
-  lastModifiedSort,
-  onLastModifiedSortChange,
+  sort,
+  onSortChange,
   table,
   offsetForLocalHeader = false,
   horizontalScrollLeft = 0,
+  actionsSticky = true,
 }: {
   checked: boolean;
   indeterminate: boolean;
   onSelectAll: (checked: boolean) => void;
-  priceSort: PriceSortDirection;
-  onPriceSortChange: () => void;
-  lastModifiedSort: CatalogLastModifiedSortDirection;
-  onLastModifiedSortChange: () => void;
+  sort: CatalogTableSort;
+  onSortChange: (sort: CatalogTableSort) => void;
   table: TanStackTable<CatalogItem>;
   offsetForLocalHeader?: boolean;
   horizontalScrollLeft?: number;
+  actionsSticky?: boolean;
 }) {
-  const priceSortTooltip = getPriceSortTooltip(priceSort);
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const tableWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
@@ -1042,80 +1154,85 @@ export function TableHeaderRow({
           if (column.id === "position") {
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-                <span className="flex h-full min-w-0 items-center truncate pl-[8px] pr-[3px] text-[13px] font-medium text-[#939393]">
-                Название
-                </span>
+                <CatalogColumnHeaderMenu
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  className="justify-start pl-[8px] pr-[3px] text-[13px] font-medium"
+                >
+                  Название
+                </CatalogColumnHeaderMenu>
               </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "description") {
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-                <span className="flex h-full min-w-0 items-center px-3 text-[12px] font-medium leading-5 text-[#a6a09b]">
-                {CATALOG_INFORMATION_COLUMN_LABELS.description}
-                </span>
+                <CatalogColumnHeaderMenu
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  className="justify-start px-3 text-[12px] font-medium leading-5"
+                >
+                  {CATALOG_INFORMATION_COLUMN_LABELS.description}
+                </CatalogColumnHeaderMenu>
               </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "discount") {
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-                <span className="flex h-full min-w-0 items-center justify-end px-2 text-[12px] font-medium leading-5 text-[#a6a09b]">
-                {CATALOG_INFORMATION_COLUMN_LABELS.discount}
-                </span>
+                <CatalogColumnHeaderMenu
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  align="end"
+                  className="justify-end px-2 text-[12px] font-medium leading-5"
+                >
+                  {CATALOG_INFORMATION_COLUMN_LABELS.discount}
+                </CatalogColumnHeaderMenu>
               </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "price") {
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-                <Tooltip label={priceSortTooltip} side="top">
-                  <button
-                    type="button"
-                    onClick={onPriceSortChange}
-                    aria-label={priceSortTooltip}
-                    className={cn(
-                      "flex h-full w-full items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                      priceSort === "none" ? "text-[#939393]" : "text-[#57534d]",
-                    )}
-                  >
-                    <span>Базовая цена</span>
-                    <span className="ml-1 flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
-                      {getSortIcon(priceSort)}
-                    </span>
-                  </button>
-                </Tooltip>
+                <CatalogColumnHeaderMenu
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  className="justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5"
+                >
+                  Базовая цена
+                </CatalogColumnHeaderMenu>
               </CatalogDraggableHeaderCell>
             );
           }
           if (column.id === "lastModified") {
-            const lastModifiedSortTooltip = getLastModifiedSortTooltip(lastModifiedSort);
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-                <Tooltip label={lastModifiedSortTooltip} side="top">
-                  <button
-                    type="button"
-                    onClick={onLastModifiedSortChange}
-                    aria-label={lastModifiedSortTooltip}
-                    className={cn(
-                      "flex h-full w-full items-center justify-end gap-1 px-2 text-right text-[13px] font-medium leading-5 transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                      lastModifiedSort === "none" ? "text-[#a6a09b]" : "text-[#57534d]",
-                    )}
-                  >
-                    <span className="truncate">Последнее изменение</span>
-                    <span className="flex h-4 w-3 shrink-0 items-center justify-center" aria-hidden="true">
-                      {getSortIcon(lastModifiedSort)}
-                    </span>
-                  </button>
-                </Tooltip>
+                <CatalogColumnHeaderMenu
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  align="end"
+                  className="justify-end px-2 text-right text-[13px] font-medium leading-5"
+                >
+                  Последнее изменение
+                </CatalogColumnHeaderMenu>
               </CatalogDraggableHeaderCell>
             );
           }
           return (
             <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
-              <span className="flex h-full min-w-0 items-center justify-start pl-[6px] pr-[3px] text-[13px] font-medium text-[#939393]">
+              <CatalogColumnHeaderMenu
+                column={column}
+                sort={sort}
+                onSortChange={onSortChange}
+                className="justify-start pl-[6px] pr-[3px] text-[13px] font-medium"
+              >
                 {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}
-              </span>
+              </CatalogColumnHeaderMenu>
             </CatalogDraggableHeaderCell>
           );
         })}
@@ -1125,7 +1242,10 @@ export function TableHeaderRow({
             data-catalog-table-actions
             aria-hidden="true"
             style={getColumnWidthStyle(actionColumn.getSize())}
-            className="sticky right-0 z-[1] flex h-full shrink-0 items-center justify-center bg-[#fafaf9]"
+            className={cn(
+              "flex h-full shrink-0 items-center justify-center bg-[#fafaf9]",
+              actionsSticky && "sticky right-0 z-[1]",
+            )}
           />
         )}
             </div>
@@ -1249,6 +1369,7 @@ type AuditDishRowProps = {
   highlighted?: boolean;
   active?: boolean;
   reorderEnabled?: boolean;
+  actionsSticky?: boolean;
 };
 
 function SharedAuditDishRow(props: AuditDishRowProps) {
@@ -1300,6 +1421,7 @@ function AuditDishRowContent({
   highlighted,
   active,
   reorderEnabled = false,
+  actionsSticky = true,
   resolvedTags,
   resolvedSticker,
 }: AuditDishRowProps & { resolvedTags: string[]; resolvedSticker: string }) {
@@ -1546,7 +1668,10 @@ function AuditDishRowContent({
           data-catalog-table-actions
           data-no-dnd
           style={getColumnWidthStyle(actionCell.column.getSize())}
-          className="sticky right-0 z-[1] flex h-full shrink-0 items-center justify-center bg-inherit"
+          className={cn(
+            "flex h-full shrink-0 items-center justify-center bg-inherit",
+            actionsSticky && "sticky right-0 z-[1]",
+          )}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
@@ -1595,6 +1720,7 @@ export function VirtualizedAuditRows({
   highlightItemId,
   activeItemId,
   reorderEnabled = false,
+  actionsSticky = true,
 }: {
   rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
@@ -1607,6 +1733,7 @@ export function VirtualizedAuditRows({
   highlightItemId?: string | null;
   activeItemId?: string | null;
   reorderEnabled?: boolean;
+  actionsSticky?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
@@ -1646,6 +1773,7 @@ export function VirtualizedAuditRows({
               highlighted={highlightItemId != null && item.id === highlightItemId}
               active={activeItemId != null && item.id === activeItemId}
               reorderEnabled={reorderEnabled}
+              actionsSticky={actionsSticky}
             />
           </div>
         );
@@ -1658,10 +1786,12 @@ export function CatalogPositionCreateRow({
   table,
   onCreate,
   disabledReason,
+  actionsSticky = true,
 }: {
   table: TanStackTable<CatalogItem>;
   onCreate: () => void;
   disabledReason?: string | null;
+  actionsSticky?: boolean;
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const rowWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
@@ -1728,7 +1858,7 @@ export function CatalogPositionCreateRow({
           data-catalog-table-actions
           aria-hidden="true"
           style={getColumnWidthStyle(actionColumn.getSize())}
-          className="sticky right-0 z-[1] h-full shrink-0 bg-inherit"
+          className={cn("h-full shrink-0 bg-inherit", actionsSticky && "sticky right-0 z-[1]")}
         />
       )}
     </button>

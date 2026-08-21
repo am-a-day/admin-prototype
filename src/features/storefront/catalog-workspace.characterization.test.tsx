@@ -400,12 +400,17 @@ describe("catalog observable behavior baseline", () => {
     const sectionTree = await openSectionTreeSearch(user);
     expect(sectionTree).not.toBeNull();
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
     await user.click(document.querySelector("[data-catalog-position-create-row]") as HTMLElement);
     const sidePeek = await screen.findByRole("complementary", { name: "Новая позиция" });
     expect(sidePeek).toHaveAttribute("data-position-create-pane", "true");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-position-create-row] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
     await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
 
     expect(document.querySelector("[data-inline-position-create]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
   });
 
   it("keeps table search, completeness filter, sorting, columns, and selection observable", async () => {
@@ -419,23 +424,34 @@ describe("catalog observable behavior baseline", () => {
     expect(search).toHaveValue("");
     expect(search).toHaveFocus();
 
-    const neutralPriceSort = screen.getByRole("button", { name: "Сортировать по возрастанию" });
-    expect(neutralPriceSort.querySelectorAll("svg").length).toBeGreaterThan(0);
-    await user.click(neutralPriceSort);
-    const ascendingPriceSort = screen.getByRole("button", { name: "Сортировать по убыванию" });
-    expect(ascendingPriceSort.querySelector("svg")).not.toBeNull();
-    await user.click(ascendingPriceSort);
-    await user.click(screen.getByRole("button", { name: "Сбросить сортировку" }));
-    expect(screen.getByRole("button", { name: "Сортировать по возрастанию" })).toBeInTheDocument();
+    const priceHeader = screen.getByRole("button", { name: "Настройки колонки «Базовая цена»" });
+    await user.click(priceHeader);
+    await user.click(screen.getByRole("menuitemradio", { name: "По возрастанию" }));
+    expect(priceHeader).toHaveAttribute("data-sort-direction", "asc");
+    await user.click(priceHeader);
+    expect(screen.getByRole("menuitemradio", { name: "По возрастанию" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("menuitemradio", { name: "По убыванию" }));
+    expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
+    const nameHeader = screen.getByRole("button", { name: "Настройки колонки «Название»" });
+    await user.click(nameHeader);
+    await user.click(screen.getByRole("menuitemradio", { name: "По возрастанию" }));
+    expect(nameHeader).toHaveAttribute("data-sort-direction", "asc");
+    expect(priceHeader).not.toHaveAttribute("data-sort-direction");
+
+    await user.click(screen.getByRole("button", { name: "Настройки колонки «Вес или объём»" }));
+    await user.click(screen.getByRole("menuitem", { name: "Скрыть колонку" }));
+    expect(screen.queryByRole("button", { name: "Настройки колонки «Вес или объём»" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Настроить колонки" }));
     const columnMenu = screen.getByRole("menu");
     expect(within(columnMenu).getByText("Описание")).toBeInTheDocument();
     expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ })).toBeInTheDocument();
+    expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Вес или объём»/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    const rowCheckbox = screen.getByRole("checkbox", { name: `Выбрать ${firstItemTitle}` });
-    await user.click(rowCheckbox);
+    const rowCheckbox = document.querySelector("[data-catalog-table-row] input[type='checkbox']");
+    expect(rowCheckbox).not.toBeNull();
+    await user.click(rowCheckbox as HTMLElement);
     expect(document.querySelector("[data-catalog-selection-toolbar]")).toHaveTextContent("1 выбрано");
     expect(document.querySelector("[data-catalog-table-header]")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Переместить" })).toBeInTheDocument();
@@ -1069,8 +1085,9 @@ describe("catalog observable behavior baseline", () => {
     const moveDialog = screen.getByRole("dialog", { name: "Переместить в раздел" });
     expect(within(moveDialog).getByPlaceholderText("Найти раздел...")).toBeInTheDocument();
     expect(moveDialog.querySelector("img")).not.toBeNull();
+    await user.type(within(moveDialog).getByPlaceholderText("Найти раздел..."), "Выпечка");
     expect(within(moveDialog).getByText("Кухня / Выпечка", { exact: true })).toBeInTheDocument();
-    await user.click(within(moveDialog).getByRole("button", { name: "Кухня / Выпечка" }));
+    await user.click(within(moveDialog).getByRole("menuitem", { name: "Кухня / Выпечка" }));
 
     await waitFor(() => {
       expect(screen.getByText("Позиция перемещена в «Выпечка»", { exact: true })).toBeInTheDocument();
@@ -1083,11 +1100,12 @@ describe("catalog observable behavior baseline", () => {
     const search = screen.getByPlaceholderText("Поиск по названию");
     await user.type(search, "Омлет");
     expect(search).toHaveValue("Омлет");
-    await user.click(screen.getByRole("button", { name: "Сортировать по возрастанию" }));
+    await user.click(screen.getByRole("button", { name: "Настройки колонки «Базовая цена»" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "По возрастанию" }));
 
     view.unmount();
     render(<CatalogHarness />, { wrapper: Providers });
 
-    expect(screen.getByRole("button", { name: "Сортировать по убыванию" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Настройки колонки «Базовая цена»" })).toHaveAttribute("data-sort-direction", "asc");
   });
 });

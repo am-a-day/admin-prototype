@@ -2,8 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 const firstItemTitle = "Омлет с томатами и сыром";
 const firstItemId = "669204cd-0d0d-4782-8784-27df185f169e";
+const kitchenSectionId = "36aaedf1-a675-47ee-be09-6c6764d9080f";
 const breakfastSectionId = "bbcc693d-bb99-4666-b5b0-98c05cd63af9";
 const bakerySectionId = "97869cb7-1192-4bf6-9db8-6680fb2fc8a4";
+const barSectionId = "247627eb-93f7-4a68-990d-8cb1912fcddf";
 const structureCreateTitle = "Structure create characterization";
 const directCreateTitle = "Direct create characterization";
 
@@ -52,6 +54,15 @@ async function openDirectCreateDraft(page: Page) {
   await expect(page.getByRole("complementary", { name: "Новая позиция" })).toBeVisible();
 }
 
+async function openRowMoveMenu(page: Page, row: ReturnType<Page["locator"]>) {
+  await row.hover();
+  await row.locator("[data-catalog-row-more]").click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Переместить в раздел" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 async function preserveLocalStorageOnReload(page: Page) {
   await page.addInitScript(() => {
     const snapshot = window.sessionStorage.getItem("catalog-e2e-local-storage-snapshot");
@@ -71,11 +82,6 @@ async function getSubsectionOrder(page: Page) {
   return page.locator("[data-composition-dnd-handle]").evaluateAll((handles) => handles.map((handle) => {
     return (handle.getAttribute("aria-label") ?? "").replace("Изменить порядок подраздела ", "");
   }));
-}
-
-function directChildRows(page: Page, parentName: string) {
-  const parentRow = page.locator("[data-tree-section-id]").filter({ hasText: parentName }).first();
-  return parentRow.locator("xpath=..").locator(":scope > div").nth(1).locator(":scope > div > div[data-tree-section-id]");
 }
 
 test("keeps catalog add and table controls compact and aligned", async ({ page }) => {
@@ -175,6 +181,203 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   await secondSubsection.hover();
   await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
   await expect(secondSubsectionMore).toHaveCSS("opacity", "1");
+});
+
+test("opens column actions from the full header cell and keeps sorting and visibility synchronized", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto("/?editorNav=unified");
+
+  const priceHeader = page.getByRole("button", { name: "Настройки колонки «Базовая цена»", exact: true });
+  const geometry = await priceHeader.evaluate((element) => {
+    const trigger = element.getBoundingClientRect();
+    const cell = element.parentElement?.getBoundingClientRect();
+    return {
+      trigger: { x: trigger.x, y: trigger.y, width: trigger.width, height: trigger.height },
+      cell: cell ? { x: cell.x, y: cell.y, width: cell.width, height: cell.height } : null,
+    };
+  });
+  expect(geometry.cell).not.toBeNull();
+  expect(Math.abs(geometry.trigger.x - geometry.cell!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.trigger.width - geometry.cell!.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.trigger.height - geometry.cell!.height)).toBeLessThanOrEqual(1);
+
+  for (const offsetX of [8, geometry.trigger.width / 2, geometry.trigger.width - 8]) {
+    await priceHeader.click({ position: { x: offsetX, y: geometry.trigger.height / 2 } });
+    await expect(page.getByRole("menuitemradio", { name: "По возрастанию" })).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
+
+  await priceHeader.click();
+  await page.getByRole("menuitemradio", { name: "По возрастанию" }).click();
+  await expect(priceHeader).toHaveAttribute("data-sort-direction", "asc");
+  await priceHeader.click();
+  await expect(page.getByRole("menuitemradio", { name: "По возрастанию" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "По убыванию" }).click();
+  await expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
+
+  const prices = await page.locator("[data-catalog-table-row] [data-catalog-table-content-cell=price]").evaluateAll((cells) => {
+    return cells
+      .map((cell) => Number((cell.textContent ?? "").replace(/\D/g, "")))
+      .filter((value) => Number.isFinite(value) && value > 0);
+  });
+  expect(prices).toEqual([...prices].sort((left, right) => right - left));
+
+  const weightHeader = page.getByRole("button", { name: "Настройки колонки «Вес или объём»", exact: true });
+  await weightHeader.click({ position: { x: 8, y: 16 } });
+  await page.getByRole("menuitem", { name: "Скрыть колонку" }).click();
+  await expect(weightHeader).toHaveCount(0);
+  await page.getByRole("button", { name: "Настроить колонки" }).click();
+  await expect(page.getByRole("button", { name: "Показать колонку «Вес или объём»" })).toBeVisible();
+  await page.getByRole("button", { name: "Показать колонку «Описание»" }).click();
+  await page.getByLabel("Поиск по колонкам").press("Escape");
+
+  const descriptionHeader = page.getByRole("button", { name: "Настройки колонки «Описание»", exact: true });
+  await descriptionHeader.click({ position: { x: 8, y: 16 } });
+  await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+});
+
+test("keeps the More column in normal flow only while position creation is active", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 720 });
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const horizontalScroll = page.locator("[data-catalog-table-horizontal-scroll]");
+  const headerActions = page.locator("[data-catalog-table-header] [data-catalog-table-actions]");
+  await expect(headerActions).toHaveCSS("position", "sticky");
+  await horizontalScroll.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  await expect.poll(async () => horizontalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+
+  await horizontalScroll.evaluate((element) => { element.scrollLeft = 0; });
+  await page.locator("[data-catalog-position-create-row]").click();
+  await expect(page.getByRole("complementary", { name: "Новая позиция" })).toBeVisible();
+  await expect(headerActions).toHaveCSS("position", "static");
+  const createX = (await headerActions.boundingBox())!.x;
+  await horizontalScroll.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  await expect.poll(async () => horizontalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  expect((await headerActions.boundingBox())!.x).toBeLessThan(createX - 10);
+
+  await page.getByRole("button", { name: "Отменить создание" }).click();
+  await expect(headerActions).toHaveCSS("position", "sticky");
+  await page.locator("[data-catalog-table-row]").first().click();
+  await expect(page.locator("[data-position-editor-pane]")).toBeVisible();
+  await expect(headerActions).toHaveCSS("position", "sticky");
+});
+
+test("keeps nested move menus open through three levels and applies the deep target", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.goto("/?editorNav=unified");
+
+  await page.getByRole("button", { name: "Добавить раздел", exact: true }).click();
+  await page.getByLabel("Название раздела").fill("E2E корень");
+  await page.getByLabel("Название раздела").press("Enter");
+  const rootRow = page.locator("[data-tree-section-id]").filter({ hasText: "E2E корень" }).first();
+  await rootRow.hover();
+  await page.getByRole("button", { name: "Добавить подраздел в раздел E2E корень" }).click();
+  await page.getByLabel("Название раздела").fill("E2E уровень 2");
+  await page.getByLabel("Название раздела").press("Enter");
+  const middleRow = page.locator("[data-tree-section-id]").filter({ hasText: "E2E уровень 2" }).first();
+  await middleRow.hover();
+  await page.getByRole("button", { name: "Добавить подраздел в раздел E2E уровень 2" }).click();
+  await page.getByLabel("Название раздела").fill("E2E глубокий раздел");
+  await page.getByLabel("Название раздела").press("Enter");
+  await expect(page.getByRole("button", { name: "Раздел E2E глубокий раздел" })).toBeVisible();
+
+  await page.getByText("Завтраки", { exact: true }).first().click();
+  const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
+  const moveDialog = await openRowMoveMenu(page, sourceRow);
+  const kitchenTarget = moveDialog.getByRole("menuitem", { name: "E2E корень", exact: true });
+  await kitchenTarget.hover();
+  const breakfastTarget = page.getByRole("menuitem", { name: "E2E корень / E2E уровень 2", exact: true });
+  await expect(breakfastTarget).toBeVisible();
+
+  const kitchenBox = await kitchenTarget.boundingBox();
+  const breakfastBox = await breakfastTarget.boundingBox();
+  expect(kitchenBox && breakfastBox).toBeTruthy();
+  await page.mouse.move(kitchenBox!.x + kitchenBox!.width - 2, kitchenBox!.y + kitchenBox!.height / 2);
+  await page.mouse.move(breakfastBox!.x + 2, breakfastBox!.y + breakfastBox!.height / 2, { steps: 6 });
+  await expect(breakfastTarget).toBeVisible();
+
+  await breakfastTarget.hover();
+  const deepTarget = page.getByRole("menuitem", { name: "E2E корень / E2E уровень 2 / E2E глубокий раздел", exact: true });
+  await expect(deepTarget).toBeVisible();
+  const deepBox = await deepTarget.boundingBox();
+  expect(deepBox).not.toBeNull();
+  await page.mouse.move(breakfastBox!.x + breakfastBox!.width - 2, breakfastBox!.y + breakfastBox!.height / 2);
+  await page.mouse.move(deepBox!.x + 2, deepBox!.y + deepBox!.height / 2, { steps: 6 });
+  await expect(deepTarget).toBeVisible();
+  await deepTarget.click();
+
+  await expect(page.getByText("Позиция перемещена в «E2E глубокий раздел»", { exact: true })).toBeVisible();
+  await page.getByText("E2E глубокий раздел", { exact: true }).first().click();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle })).toBeVisible();
+});
+
+test("creates a destination while moving one position", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const firstRow = page.locator("[data-catalog-table-row]").first();
+  const firstTitle = (await firstRow.locator("[data-catalog-table-content-cell=position]").innerText()).trim();
+  let moveDialog = await openRowMoveMenu(page, firstRow);
+  await moveDialog.getByRole("menuitem", { name: "Создать раздел…" }).click();
+  await page.getByLabel("Название нового раздела").fill("E2E перенос одной");
+  await page.getByRole("button", { name: "Создать и переместить" }).click();
+  await expect(page.getByText("E2E перенос одной", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstTitle })).toHaveCount(0);
+  await page.getByText("E2E перенос одной", { exact: true }).first().click();
+  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstTitle })).toBeVisible();
+});
+
+test("creates a destination while moving a bulk selection", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const bulkRows = page.locator("[data-catalog-table-row]");
+  const bulkTitles = [
+    (await bulkRows.nth(0).locator("[data-catalog-table-content-cell=position]").innerText()).trim(),
+    (await bulkRows.nth(1).locator("[data-catalog-table-content-cell=position]").innerText()).trim(),
+  ];
+  await bulkRows.nth(0).getByRole("checkbox").check();
+  await bulkRows.nth(1).getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Переместить", exact: true }).click();
+  const moveDialog = page.getByRole("dialog", { name: "Переместить в раздел" });
+  await expect(moveDialog).toBeVisible();
+  await moveDialog.getByRole("menuitem", { name: "Создать раздел…" }).click();
+  await page.getByLabel("Название нового раздела").fill("E2E bulk перенос");
+  await page.getByRole("button", { name: "Создать и переместить" }).click();
+  await expect(page.locator("[data-catalog-selection-toolbar]")).toHaveCount(0);
+  await expect(page.getByText("E2E bulk перенос", { exact: true })).toBeVisible();
+  for (const title of bulkTitles) {
+    await expect(page.locator("[data-catalog-table-row]").filter({ hasText: title })).toHaveCount(0);
+  }
+  await page.getByText("E2E bulk перенос", { exact: true }).first().click();
+  for (const title of bulkTitles) {
+    await expect(page.locator("[data-catalog-table-row]").filter({ hasText: title })).toBeVisible();
+  }
+});
+
+test("creates a destination while moving a section", async ({ page }) => {
+  await page.goto("/?editorNav=unified");
+  await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+
+  const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  await moveDialog.getByRole("menuitem", { name: "Создать раздел…" }).click();
+  await page.getByLabel("Название нового раздела").fill("E2E назначение раздела");
+  await page.getByRole("button", { name: "Создать и переместить" }).click();
+  await expect(page.getByText("Раздел перемещён в «E2E назначение раздела»", { exact: true })).toBeVisible();
+
+  const destinationRow = page.getByRole("button", { name: "Раздел E2E назначение раздела", exact: true });
+  await expect(destinationRow).toBeVisible();
+  const destinationId = await destinationRow.getAttribute("data-tree-section-id");
+  expect(destinationId).not.toBeNull();
+  const breakfastParent = page.locator(`[data-tree-section-id="${breakfastSectionId}"]`).locator("xpath=ancestor::*[@data-section-parent-id][1]");
+  await expect(breakfastParent).toHaveAttribute("data-section-parent-id", destinationId!);
 });
 
 test("uses one aligned workspace header and toolbar for every catalog table state", async ({ page }) => {
@@ -1232,7 +1435,7 @@ test("uses the shared compact bulk toolbar for subsection selection", async ({ p
 
   await toolbar.getByRole("button", { name: "Переместить", exact: true }).click();
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
-  await expect(moveDialog.getByRole("button", { name: "Основное меню" })).toBeVisible();
+  await expect(moveDialog.getByRole("menuitem", { name: "Основное меню" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(toolbar).not.toBeVisible();
 });
@@ -1278,11 +1481,9 @@ test("records explicit position move parent/order and current reload behavior", 
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
-  await sourceRow.getByRole("button", { name: `Действия для ${firstItemTitle}` }).click();
-  await page.getByRole("menuitem", { name: "Переместить в раздел…" }).click();
-
-  const moveDialog = page.getByRole("dialog", { name: "Переместить в раздел" });
-  await moveDialog.getByRole("button", { name: "Выпечка", exact: true }).click();
+  const moveDialog = await openRowMoveMenu(page, sourceRow);
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("Выпечка");
+  await moveDialog.getByRole("menuitem", { name: "Кухня / Выпечка" }).click();
   await expect(page.getByText("Позиция перемещена в «Выпечка»", { exact: true })).toBeVisible();
 
   await page.getByText("Выпечка", { exact: true }).first().click();
@@ -1297,36 +1498,38 @@ test("records explicit position move parent/order and current reload behavior", 
 test("records explicit subsection move parent/order and current reload behavior", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByRole("button", { name: "Раскрыть раздел Бар", exact: true }).click();
-  const barOrderBeforeMove = await directChildRows(page, "Бар").allTextContents();
 
   await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить…" }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
-  await moveDialog.getByRole("button", { name: "Бар", exact: true }).click();
+  await moveDialog.getByRole("menuitem", { name: "Бар", exact: true }).hover();
+  await page.getByRole("menuitem", { name: "Переместить сюда", exact: true }).click();
   await expect(page.getByText("Раздел перемещён в «Бар»", { exact: true })).toBeVisible();
 
-  const barChildren = directChildRows(page, "Бар");
-  await expect(barChildren.last()).toContainText("Завтраки");
+  const breakfastParent = page.locator(`[data-tree-section-id="${breakfastSectionId}"]`).locator("xpath=ancestor::*[@data-section-parent-id][1]");
+  await expect(breakfastParent).toHaveAttribute("data-section-parent-id", barSectionId);
 
   await page.reload();
   await page.getByRole("button", { name: "Раскрыть раздел Бар", exact: true }).click();
   // Current baseline: the moved subsection returns to its original parent/order after a full reload.
-  await expect(directChildRows(page, "Бар").allTextContents()).resolves.toEqual(barOrderBeforeMove);
+  const restoredBreakfastParent = page.locator(`[data-tree-section-id="${breakfastSectionId}"]`).locator("xpath=ancestor::*[@data-section-parent-id][1]");
+  await expect(restoredBreakfastParent).toHaveAttribute("data-section-parent-id", kitchenSectionId);
 });
 
 test("keeps current section and descendants disabled as explicit move targets", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByRole("button", { name: "Действия с разделом Кухня", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить…" }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
-  await expect(moveDialog.getByRole("button", { name: "В корень каталога" })).toBeVisible();
-  await expect(moveDialog.getByPlaceholder("Найти раздел")).toBeVisible();
-  await expect(moveDialog.locator("img")).toHaveCount(0);
+  await expect(moveDialog.getByRole("menuitem", { name: "Основное меню" })).toHaveCount(0);
+  await expect(moveDialog.getByPlaceholder("Найти раздел...")).toBeVisible();
+  await expect(moveDialog.locator("img").first()).toBeVisible();
   await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(top|bottom)$/);
-  await expect(moveDialog.getByRole("button", { name: /^Кухня/ })).toBeDisabled();
-  await expect(moveDialog.getByRole("button", { name: /^Завтраки/ })).toBeDisabled();
+  await moveDialog.getByRole("menuitem", { name: "Кухня", exact: true }).hover();
+  await expect(page.getByRole("menuitem", { name: "Кухня / Завтраки" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Переместить сюда", exact: true })).toHaveCount(0);
 });
 
 test("keeps bulk selection commands in the sticky local header without shifting table rows", async ({ page }) => {

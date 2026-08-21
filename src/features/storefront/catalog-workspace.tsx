@@ -172,7 +172,8 @@ import {
   DEFAULT_TABLE_COLUMN_VISIBILITY,
   TABLE_COLUMN_MAX_SIZES,
   TABLE_COLUMN_MIN_SIZES,
-  sortCatalogItemsByLastModified,
+  sortCatalogItemsByColumn,
+  type CatalogTableSort,
   type CatalogLastModifiedSortDirection,
   CatalogPositionCreateRow,
   CatalogTableToolbar,
@@ -757,12 +758,6 @@ function readDirectCreatePendingOpen(
     } : undefined,
   };
 }
-function getNextPriceSort(direction: PriceSortDirection): PriceSortDirection {
-  if (direction === "none") return "asc";
-  if (direction === "asc") return "desc";
-  return "none";
-}
-
 function getQueueItemIds(
   filterId: AuditQueueFilterId,
   items: CatalogItem[],
@@ -4297,27 +4292,25 @@ function PopulatedWorkspace({
     setSectionCreationSource("tree");
   };
 
-  const createSectionFromDialog = (name: string, parentId: string | null): SectionCreationResult => {
+  const commitSectionCreation = (
+    name: string,
+    parentId: string | null,
+    source: SectionCreationSource,
+  ): TreeSection | string => {
     const parent = parentId ? allSections.find((candidate) => candidate.id === parentId) ?? null : null;
     if (parentId && !parent) {
-      const message = "Родительский раздел не найден. Обновите список и повторите попытку.";
-      setFeedback(message);
-      return message;
+      return "Родительский раздел не найден. Обновите список и повторите попытку.";
     }
     const normalizedName = name.trim();
     if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") {
-      const message = "Введите название раздела";
-      setFeedback(message);
-      return message;
+      return "Введите название раздела";
     }
     const duplicate = allSections.some((candidate) =>
       (candidate.parentId ?? null) === (parent?.id ?? null)
       && candidate.name.trim().toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
     );
     if (duplicate) {
-      const message = "Раздел с таким названием уже существует здесь.";
-      setFeedback(message);
-      return message;
+      return "Раздел с таким названием уже существует здесь.";
     }
 
     const siblings = allSections
@@ -4330,7 +4323,7 @@ function PopulatedWorkspace({
       name: normalizedName,
       imageUrl: null,
       emoji: "🍽️",
-      sortOrder: sectionCreationSource === "table"
+      sortOrder: source === "table"
         ? (siblings.at(-1)?.sortOrder ?? 0) + 1
         : (siblings[0]?.sortOrder ?? 0) - 1,
       status: "active",
@@ -4351,22 +4344,37 @@ function PopulatedWorkspace({
     }
     setSectionOrderByParent((current) => ({
       ...current,
-      [parent?.id ?? "__root__"]: sectionCreationSource === "table"
+      [parent?.id ?? "__root__"]: source === "table"
         ? [...(current[parent?.id ?? "__root__"] ?? siblings.map((sibling) => sibling.id)), id]
         : [id, ...(current[parent?.id ?? "__root__"] ?? siblings.map((sibling) => sibling.id))],
     }));
-    if (sectionCreationSource !== "table") {
+    if (source !== "table") {
       setSelectedSectionId(id);
       setSelectedItemId(null);
       setEditing(false);
       setSectionEditorTab("composition");
     }
     setRevealSectionId(id);
+    registerChange("catalog");
+    return created;
+  };
+
+  const createSectionFromDialog = (name: string, parentId: string | null): SectionCreationResult => {
+    const result = commitSectionCreation(name, parentId, sectionCreationSource);
+    if (typeof result === "string") {
+      setFeedback(result);
+      return result;
+    }
     setSectionCreationDraftParentId(undefined);
     setSectionCreationSource("tree");
-    registerChange("catalog");
     setFeedback("Раздел создан");
     return true;
+  };
+
+  const createSectionForMove = (name: string, parentId: string | null) => {
+    const result = commitSectionCreation(name, parentId, "table");
+    if (typeof result === "string") setFeedback(result);
+    return result;
   };
 
   const handleTreeSelectSection = (id: string) => {
@@ -5746,7 +5754,7 @@ function PopulatedWorkspace({
     }));
   }, [allItems, allSections, moveRequest?.operation]);
 
-  const performMoveRequest = async (targetSectionId: string | null) => {
+  const performMoveRequest = async (targetSectionId: string | null, destinationOverride?: TreeSection) => {
     if (!moveRequest) return;
     const snapshot = captureTreeMoveSnapshot();
     try {
@@ -5781,7 +5789,7 @@ function PopulatedWorkspace({
         await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
         registerChange("catalog");
         const destinationName = targetSectionId
-          ? allSections.find((candidate) => candidate.id === targetSectionId)?.name ?? "выбранный раздел"
+          ? destinationOverride?.name ?? allSections.find((candidate) => candidate.id === targetSectionId)?.name ?? "выбранный раздел"
           : null;
         offerTreeMoveUndo(
           moveRequest.operation === "sections"
@@ -5795,7 +5803,7 @@ function PopulatedWorkspace({
       }
 
       if (!targetSectionId) return;
-      const destination = allSections.find((candidate) => candidate.id === targetSectionId);
+      const destination = destinationOverride ?? allSections.find((candidate) => candidate.id === targetSectionId);
       if (!destination) return;
       const targets = moveRequest.entityIds
         .map((id) => allItems.find((item) => item.id === id))
@@ -5938,6 +5946,7 @@ function PopulatedWorkspace({
           onFeedback={setFeedback}
           onRequestPermanentDelete={requestPermanentDelete}
           structureSections={allSections}
+          onCreateSectionForMove={createSectionForMove}
         />
       </PositionEditorDialogShell>
     );
@@ -6324,6 +6333,7 @@ function PopulatedWorkspace({
             anchor={moveRequest.anchor}
             onClose={() => setMoveRequest(null)}
             onMove={performMoveRequest}
+            onCreateSection={createSectionForMove}
             onError={() => setFeedback("Не удалось переместить. Попробуйте ещё раз")}
           />
         )}
@@ -7724,6 +7734,8 @@ function OverviewWorkspace({
     itemOrderBySection,
     setActiveEditorItemId,
     revision: catalogRevision,
+    activeMenuId,
+    addSection,
     mutations: catalogMutations,
   } = useCatalogStore();
   const {
@@ -7821,6 +7833,7 @@ function OverviewWorkspace({
   const [queueUpsellByItem, setQueueUpsellByItem] = useState<CatalogUpsellStateByItem>({});
   const [priceSort, setPriceSort] = useState<PriceSortDirection>(initialOverviewContext.priceSort);
   const [lastModifiedSort, setLastModifiedSort] = useState<CatalogLastModifiedSortDirection>("none");
+  const [additionalColumnSort, setAdditionalColumnSort] = useState<CatalogTableSort>(null);
   const [overviewScrollTop, setOverviewScrollTop] = useState(initialOverviewContext.scrollTop);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [itemRenameRequest, setItemRenameRequest] = useState<{ itemId: string; anchor?: MovePopoverAnchor } | null>(null);
@@ -7942,6 +7955,12 @@ function OverviewWorkspace({
   const workspaceQuery = editorFirstEnabled ? editorFirstQuery : query;
   const workspacePriceSort = editorFirstEnabled ? editorFirstPriceSort : priceSort;
   const workspaceLastModifiedSort = editorFirstEnabled ? editorFirstLastModifiedSort : lastModifiedSort;
+  const workspaceColumnSort = useMemo<CatalogTableSort>(() => {
+    if (additionalColumnSort) return additionalColumnSort;
+    if (workspaceLastModifiedSort !== "none") return { columnId: "lastModified", direction: workspaceLastModifiedSort };
+    if (workspacePriceSort !== "none") return { columnId: "price", direction: workspacePriceSort };
+    return null;
+  }, [additionalColumnSort, workspaceLastModifiedSort, workspacePriceSort]);
   const workspacePanelQuery = editorFirstEnabled ? editorFirstQuery : panelQuery;
   useEffect(() => {
     writeJsonRecord(overviewContextStorageKey, {
@@ -7974,6 +7993,11 @@ function OverviewWorkspace({
     if (editorFirstEnabled) setEditorFirstLastModifiedSort(value);
     else setLastModifiedSort(value);
   };
+  const setWorkspaceColumnSort = (next: CatalogTableSort) => {
+    setAdditionalColumnSort(next && next.columnId !== "price" && next.columnId !== "lastModified" ? next : null);
+    setWorkspacePriceSort(next?.columnId === "price" ? next.direction : "none");
+    setWorkspaceLastModifiedSort(next?.columnId === "lastModified" ? next.direction : "none");
+  };
   const setWorkspaceActiveFilter = (id: OverviewFilterId, active: boolean) => {
     const next = updateCatalogTableActiveFilter(activeFilterId, id, active);
     setActiveFilterId(next);
@@ -7981,6 +8005,44 @@ function OverviewWorkspace({
     setSelectedIds(new Set());
   };
   const availableScopeSections = structureSections ?? catalogSections;
+  const createSectionForMove = (name: string, parentId: string | null): TreeSection | string => {
+    const parent = parentId ? availableScopeSections.find((candidate) => candidate.id === parentId) ?? null : null;
+    if (parentId && !parent) return "Родительский раздел не найден. Обновите список и повторите попытку.";
+    const normalizedName = name.trim();
+    if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") return "Введите название раздела";
+    const duplicate = availableScopeSections.some((candidate) =>
+      (candidate.parentId ?? null) === (parent?.id ?? null)
+      && candidate.name.trim().toLocaleLowerCase("ru") === normalizedName.toLocaleLowerCase("ru"),
+    );
+    if (duplicate) return "Раздел с таким названием уже существует здесь.";
+    const siblings = availableScopeSections
+      .filter((candidate) => (candidate.parentId ?? null) === (parent?.id ?? null))
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"));
+    const created: TreeSection = {
+      id: createRealSectionId(),
+      parentId: parent?.id ?? null,
+      name: normalizedName,
+      imageUrl: null,
+      emoji: "🍽️",
+      sortOrder: (siblings.at(-1)?.sortOrder ?? 0) + 1,
+      status: "active",
+    };
+    addSection({
+      id: created.id,
+      parentId: created.parentId ?? null,
+      name: created.name,
+      imageUrl: null,
+      sortOrder: created.sortOrder ?? 0,
+    });
+    if (activeMenuId === "primary") {
+      writeCreatedCatalogSections([
+        ...readCreatedCatalogSections().filter((section) => section.id !== created.id),
+        created,
+      ]);
+    }
+    registerChange("catalog");
+    return created;
+  };
   const scopeSection = useMemo(
     () => availableScopeSections.find((section) => section.id === workspaceSectionScopeId) ?? null,
     [availableScopeSections, workspaceSectionScopeId],
@@ -8037,9 +8099,7 @@ function OverviewWorkspace({
     [itemOrderBySection, searched],
   );
   const visible = useMemo(() => {
-    const ordered = workspaceLastModifiedSort !== "none"
-      ? sortCatalogItemsByLastModified(manuallyOrdered, workspaceLastModifiedSort)
-      : sortItemsByPrice(manuallyOrdered, workspacePriceSort);
+    const ordered = sortCatalogItemsByColumn(manuallyOrdered, workspaceColumnSort);
     const draftIsVisible = Boolean(
       isPendingCreateDraft
       && draftItem
@@ -8052,7 +8112,7 @@ function OverviewWorkspace({
       && stickerFilter == null,
     );
     return draftIsVisible ? [draftItem!, ...ordered] : ordered;
-  }, [activeFilterId, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspaceLastModifiedSort, workspacePriceSort]);
+  }, [activeFilterId, draftItem, isPendingCreateDraft, mandatoryFilterId, manuallyOrdered, normalizedQuery, scopeIds, stickerFilter, tagFilter, workspaceColumnSort]);
   const scopeIsLeafSection = Boolean(
     scopeSection
     && !(structureSections ?? catalogSections).some((candidate) => candidate.parentId === scopeSection.id),
@@ -8067,7 +8127,7 @@ function OverviewWorkspace({
     && tagFilter == null
     && stickerFilter == null
     && workspaceQuery.trim() === ""
-    && workspacePriceSort === "none"
+    && workspaceColumnSort === null
   );
   const canReorderTable = Boolean(
     tableSupportsReorder
@@ -8177,14 +8237,6 @@ function OverviewWorkspace({
   };
   const clearSearch = () => {
     setWorkspaceQuery("");
-  };
-  const handlePriceSortChange = () => {
-    setWorkspaceLastModifiedSort("none");
-    setWorkspacePriceSort((current) => getNextPriceSort(current));
-  };
-  const handleLastModifiedSortChange = () => {
-    setWorkspacePriceSort("none");
-    setWorkspaceLastModifiedSort((current) => current === "none" ? "asc" : current === "asc" ? "desc" : "none");
   };
   const emptyTitle = activeFilterId != null
     ? statusMeta.emptyTitle
@@ -9115,6 +9167,7 @@ function OverviewWorkspace({
                 onClose={returnToOrigin}
                 onFeedback={showFeedback}
                 structureSections={structureSections}
+                onCreateSectionForMove={createSectionForMove}
                 onRevealItem={(item) => {
                   setActiveFilterId(null);
                   setWorkspaceFilterId("quick:all");
@@ -9319,13 +9372,12 @@ function OverviewWorkspace({
                   checked={allVisibleSelected}
                   indeterminate={!allVisibleSelected && someVisibleSelected}
                   onSelectAll={setVisibleSelected}
-                  priceSort={workspacePriceSort}
-                  onPriceSortChange={handlePriceSortChange}
+                  sort={workspaceColumnSort}
+                  onSortChange={setWorkspaceColumnSort}
                   table={catalogTable}
-                  lastModifiedSort={workspaceLastModifiedSort}
-                  onLastModifiedSortChange={handleLastModifiedSortChange}
                   offsetForLocalHeader={false}
                   horizontalScrollLeft={tableHorizontalScrollLeft}
+                  actionsSticky={!isCreateDraftOpen}
                 />
               )}
               <div
@@ -9454,6 +9506,7 @@ function OverviewWorkspace({
                             highlightItemId={tableHighlightId}
                             activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
+                            actionsSticky={!isCreateDraftOpen}
                           />
                         </SortableContext>
                       </DndContext>
@@ -9462,6 +9515,7 @@ function OverviewWorkspace({
                           table={catalogTable}
                           onCreate={onAddPosition}
                           disabledReason={positionCreateDisabledReason}
+                          actionsSticky={!isCreateDraftOpen}
                         />
                       )}
                       {onAddPosition && allowPositionCreation && (
@@ -9486,9 +9540,10 @@ function OverviewWorkspace({
                       sections={structureSections ?? catalogSections}
                       anchor={moveRequest.anchor}
                       onClose={() => setMoveRequest(null)}
-                      onMove={async (targetSectionId) => {
+                      onCreateSection={createSectionForMove}
+                      onMove={async (targetSectionId, destinationOverride) => {
                         if (!targetSectionId) return;
-                        const destination = (structureSections ?? catalogSections).find((section) => section.id === targetSectionId);
+                        const destination = destinationOverride ?? (structureSections ?? catalogSections).find((section) => section.id === targetSectionId);
                         if (!destination) return;
                         const targets = moveRequest.itemIds
                           .map((id) => items.find((item) => item.id === id))
@@ -9653,6 +9708,7 @@ function OverviewWorkspace({
               onClose={returnToOrigin}
               onFeedback={showFeedback}
               structureSections={structureSections}
+              onCreateSectionForMove={createSectionForMove}
               onRevealItem={(item) => {
                 setActiveFilterId(null);
                 setWorkspaceFilterId("quick:all");
