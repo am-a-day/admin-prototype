@@ -19,6 +19,7 @@ import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import { DropdownContent, TableCheckbox } from "../table/catalog-table";
 import { CatalogStructureInlineCreateRow } from "../ui/structure-inline-create";
+import { CatalogTableTrailingSpace } from "../ui/catalog-table-trailing-space";
 import {
   CATALOG_SECTION_TO_TABLE_GAP_CLASS,
   CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
@@ -247,6 +248,7 @@ function SubsectionTableHeader({
 }
 
 export function SubsectionList({
+  scrollParentRef,
   parentSectionId,
   childSections,
   dropTarget,
@@ -264,6 +266,7 @@ export function SubsectionList({
   onAction,
   renderActions,
 }: {
+  scrollParentRef: RefObject<HTMLDivElement | null>;
   parentSectionId: string;
   childSections: Array<{ section: CatalogTreeSection; itemCount: number }>;
   dropTarget: CatalogDropTarget;
@@ -304,7 +307,7 @@ export function SubsectionList({
       items={visibleChildSections.map(({ section }) => catalogDndId("section", section.id))}
       strategy={verticalListSortingStrategy}
     >
-      <div className="min-w-0 flex-1 bg-[#f7f7f7]">
+      <div className="min-w-0 flex-1 bg-[#f5f5f4]">
         <div data-catalog-section-table-gap className={CATALOG_SECTION_TO_TABLE_GAP_CLASS} aria-hidden="true" />
         {isEmpty ? (
           <>
@@ -405,6 +408,7 @@ export function SubsectionList({
             )}
           </>
         )}
+        <CatalogTableTrailingSpace scrollParentRef={scrollParentRef} />
       </div>
     </SortableContext>
   );

@@ -163,6 +163,7 @@ import {
   CATALOG_PAGE_HEADER_CLASS,
   CATALOG_SECTION_TO_TABLE_GAP_CLASS,
 } from "./catalog/ui/catalog-layout";
+import { CatalogTableTrailingSpace } from "./catalog/ui/catalog-table-trailing-space";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
   CATALOG_INFORMATION_COLUMN_IDS,
@@ -173,6 +174,7 @@ import {
   TABLE_COLUMN_MIN_SIZES,
   sortCatalogItemsByLastModified,
   type CatalogLastModifiedSortDirection,
+  CatalogPositionCreateRow,
   CatalogTableToolbar,
   CatalogSelectionToolbar,
   CatalogFilteredEmptyState,
@@ -2437,7 +2439,10 @@ function SectionEditor({
       <div
         ref={scrollContainerRef}
         onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
-        className="min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6 pb-10"
+        className={cn(
+          "min-w-0 flex-1 overflow-y-auto overflow-x-auto px-6",
+          showSubsectionList ? "pb-0" : "pb-10",
+        )}
       >
         <div className="flex min-h-full w-full min-w-0 flex-col">
           <div className={CATALOG_PAGE_HEADER_CLASS}>
@@ -2558,6 +2563,7 @@ function SectionEditor({
             showSubsectionList ? (
               <section className="-mx-6 flex w-[calc(100%+3rem)] min-w-0 flex-1 flex-col bg-[#f7f7f7]">
                 <SubsectionList
+                  scrollParentRef={scrollContainerRef}
                   parentSectionId={section.id}
                   childSections={childSections}
                   dropTarget={dropTarget}
@@ -9171,7 +9177,7 @@ function OverviewWorkspace({
             else setOverviewScrollTop(event.currentTarget.scrollTop);
           }}
           className={cn(
-            "h-full min-w-0 overflow-y-auto overflow-x-hidden pb-10",
+            "h-full min-w-0 overflow-y-auto overflow-x-hidden",
             "px-6",
           )}
         >
@@ -9304,7 +9310,7 @@ function OverviewWorkspace({
                     tableBottomScrollbarRef.current.scrollLeft = source.scrollLeft;
                   }
                 }}
-                className="w-full min-w-0 overflow-x-auto overflow-y-clip bg-[#f7f7f7] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="w-full min-w-0 overflow-x-auto overflow-y-clip bg-[#f5f5f4] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 data-catalog-table-horizontal-scroll
                 data-catalog-table-body
               >
@@ -9424,6 +9430,16 @@ function OverviewWorkspace({
                           />
                         </SortableContext>
                       </DndContext>
+                      {onAddPosition && allowPositionCreation && (
+                        <CatalogPositionCreateRow
+                          table={catalogTable}
+                          onCreate={onAddPosition}
+                          disabledReason={positionCreateDisabledReason}
+                        />
+                      )}
+                      {onAddPosition && allowPositionCreation && (
+                        <CatalogTableTrailingSpace scrollParentRef={scrollContainerRef} />
+                      )}
                     </div>
                   )}
                   {bulkDialog && (

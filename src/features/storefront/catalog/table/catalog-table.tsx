@@ -26,6 +26,7 @@ import {
   Lock,
   MagnifyingGlass,
   Minus,
+  Plus,
   SquareSplitHorizontalIcon,
   SealPercent,
   Trash,
@@ -1369,6 +1370,76 @@ export function VirtualizedAuditRows({
         );
       })}
     </div>
+  );
+}
+
+export function CatalogPositionCreateRow({
+  table,
+  onCreate,
+  disabledReason,
+}: {
+  table: TanStackTable<CatalogItem>;
+  onCreate: () => void;
+  disabledReason?: string | null;
+}) {
+  const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
+  const rowWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
+  const visibleContentColumnIds = visibleColumns
+    .filter((column) => column.id !== "selection" && column.id !== "actions")
+    .map((column) => column.id);
+  const actionColumn = visibleColumns.find((column) => column.id === "actions");
+
+  return (
+    <button
+      type="button"
+      onClick={onCreate}
+      disabled={Boolean(disabledReason)}
+      title={disabledReason ?? undefined}
+      aria-label="Добавить позицию"
+      data-catalog-position-create-row
+      style={{ minWidth: rowWidth }}
+      className="group flex h-[36px] min-h-[36px] w-full items-center border-b border-[#f5f5f4] bg-white text-left transition-colors hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+    >
+      {visibleColumns.filter((column) => column.id !== "actions").map((column) => {
+        if (column.id === "selection") {
+          return (
+            <span
+              key={column.id}
+              style={getColumnWidthStyle(column.getSize())}
+              className="flex h-full shrink-0 items-center justify-center text-[#78716c]"
+              aria-hidden="true"
+            >
+              <Plus size={16} weight="regular" />
+            </span>
+          );
+        }
+
+        const dividerClass = getTableContentDividerClass(column.id, visibleContentColumnIds);
+        return (
+          <span
+            key={column.id}
+            data-catalog-table-content-cell={column.id}
+            style={getColumnWidthStyle(column.getSize())}
+            className={cn(
+              "flex h-full shrink-0 items-center pl-[6px] pr-[12px] text-[13px] font-normal leading-4",
+              dividerClass,
+              column.id === "position" ? "text-[#a6a09b]" : "text-transparent",
+            )}
+          >
+            {column.id === "position" ? "Добавить позицию" : ""}
+          </span>
+        );
+      })}
+      <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
+      {actionColumn && (
+        <span
+          data-catalog-table-actions
+          aria-hidden="true"
+          style={getColumnWidthStyle(actionColumn.getSize())}
+          className="sticky right-0 z-[1] h-full shrink-0 bg-inherit"
+        />
+      )}
+    </button>
   );
 }
 

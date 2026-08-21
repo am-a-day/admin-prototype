@@ -254,7 +254,7 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
   });
 
-  it("matches the filled subsection table and keeps the add row last", async () => {
+  it("matches the filled subsection table and keeps trailing scroll space after the add row", async () => {
     const user = userEvent.setup();
     renderCatalog();
     await openKitchenSubsectionTable(user);
@@ -272,7 +272,8 @@ describe("catalog observable behavior baseline", () => {
     const addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
     expect(addRow).toHaveTextContent("Добавить подраздел...");
     expect(addRow).toHaveClass("h-[36px]");
-    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+    expect(addRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow?.nextElementSibling);
   });
 
   it("creates and cancels subsections through the shared inline row", async () => {
@@ -305,7 +306,8 @@ describe("catalog observable behavior baseline", () => {
     let rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
     expect(rows.at(-1)).toHaveTextContent("Сезонное меню");
     let addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
-    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+    expect(addRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow?.nextElementSibling);
 
     await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
     input = screen.getByPlaceholderText("Название подраздела...");
@@ -325,7 +327,8 @@ describe("catalog observable behavior baseline", () => {
 
     rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
     addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
-    expect(addRow?.parentElement?.lastElementChild).toBe(addRow);
+    expect(addRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
+    expect(addRow?.parentElement?.lastElementChild).toBe(addRow?.nextElementSibling);
     expect(rows.filter((row) => row.textContent?.includes("Завтраки"))).toHaveLength(1);
   });
 
@@ -358,7 +361,7 @@ describe("catalog observable behavior baseline", () => {
     const sectionTree = await openSectionTreeSearch(user);
     expect(sectionTree).not.toBeNull();
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
-    await user.click(screen.getByRole("button", { name: "Добавить позицию" }));
+    await user.click(document.querySelector("[data-catalog-position-create-row]") as HTMLElement);
     const sidePeek = await screen.findByRole("complementary", { name: "Новая позиция" });
     expect(sidePeek).toHaveAttribute("data-position-create-pane", "true");
     await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
@@ -627,6 +630,7 @@ describe("catalog observable behavior baseline", () => {
     const card = document.querySelector("[data-catalog-items-card]");
     expect(card).not.toBeNull();
     expect(card).toHaveClass("-mx-6", "w-[calc(100%+3rem)]", "flex-1", "bg-[#f7f7f7]");
+    expect(document.querySelector("[data-catalog-results-scroll]")).not.toHaveClass("pb-10");
     const localHeader = document.querySelector("[data-catalog-local-header]");
     expect(localHeader).toBeNull();
     const toolbar = document.querySelector("[data-catalog-table-toolbar]");
@@ -640,9 +644,16 @@ describe("catalog observable behavior baseline", () => {
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
     const tableBody = document.querySelector("[data-catalog-table-body]");
     expect(tableBody).not.toBeNull();
-    expect(tableBody).toHaveClass("w-full", "bg-[#f7f7f7]");
+    expect(tableBody).toHaveClass("w-full", "bg-[#f5f5f4]");
     expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
     expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
+    const positionCreateRow = document.querySelector<HTMLElement>("[data-catalog-position-create-row]");
+    expect(positionCreateRow).toHaveTextContent("Добавить позицию");
+    expect(positionCreateRow).toHaveClass("h-[36px]");
+    expect(positionCreateRow?.querySelector('[data-catalog-table-content-cell="position"]')).toHaveClass("pl-[6px]");
+    expect(positionCreateRow?.querySelector('[data-catalog-table-actions]')).toBeEmptyDOMElement();
+    expect(positionCreateRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
+    expect(positionCreateRow?.nextElementSibling).toHaveClass("bg-[#f5f5f4]");
 
     const reorderableRow = document.querySelector("[data-row-reorder-enabled=true]");
     expect(reorderableRow).not.toBeNull();
