@@ -177,6 +177,65 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   await expect(secondSubsectionMore).toHaveCSS("opacity", "1");
 });
 
+test("uses one aligned workspace header and toolbar for every catalog table state", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/?editorNav=unified");
+
+  const readChrome = () => page.evaluate(() => {
+    const rect = (target: Element | null) => {
+      if (!target) return null;
+      const box = target.getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+    };
+    const tableHeader = document.querySelector("[data-catalog-table-header]");
+    const emptyScaffold = document.querySelector("[data-empty-section-scaffold]");
+    return {
+      header: rect(document.querySelector("[data-catalog-workspace-table-header]")),
+      title: rect(document.querySelector("[data-catalog-workspace-table-title]")),
+      create: rect(document.querySelector("[data-position-create-button], [data-subsection-create-button]")),
+      toolbar: rect(document.querySelector("[data-catalog-table-toolbar]")),
+      filter: rect(document.querySelector("[data-catalog-table-filter-trigger]")),
+      tableHeader: rect(tableHeader),
+      serviceCell: rect(tableHeader?.querySelector("span") ?? emptyScaffold?.querySelector("[data-catalog-utility-cell]") ?? null),
+      emptyScaffold: rect(emptyScaffold),
+    };
+  });
+  const expectSharedChrome = (chrome: Awaited<ReturnType<typeof readChrome>>) => {
+    expect(chrome.header).toBeTruthy();
+    expect(chrome.header!.height).toBe(62);
+    expect(chrome.title!.left - chrome.header!.left).toBe(16);
+    expect(chrome.header!.right - chrome.create!.right).toBe(16);
+    expect(chrome.toolbar!.left).toBe(chrome.header!.left);
+    expect(chrome.toolbar!.right).toBe(chrome.header!.right);
+    expect(chrome.toolbar!.top).toBe(chrome.header!.bottom);
+    expect(chrome.filter!.left - chrome.toolbar!.left).toBe(16);
+    expect(chrome.serviceCell!.width).toBe(60);
+  };
+
+  await page.getByRole("button", { name: /^Раздел Завтраки/ }).click();
+  const leaf = await readChrome();
+  expectSharedChrome(leaf);
+  expect(leaf.tableHeader!.top).toBe(leaf.toolbar!.bottom);
+
+  await page.getByRole("button", { name: /^Раздел Кухня/ }).click();
+  const parent = await readChrome();
+  expectSharedChrome(parent);
+  expect(parent.tableHeader!.top).toBe(parent.toolbar!.bottom);
+
+  await page.getByRole("button", { name: /^Раздел Повреждение имущества/ }).click();
+  const empty = await readChrome();
+  expectSharedChrome(empty);
+  expect(empty.emptyScaffold!.top).toBe(empty.toolbar!.bottom);
+
+  await page.getByRole("button", { name: /^Все позиции \d+$/ }).click();
+  const overview = await readChrome();
+  expectSharedChrome(overview);
+  expect(overview.tableHeader!.top).toBe(overview.toolbar!.bottom);
+  await expect(page.locator("[data-catalog-overview-header-trigger]")).toContainText("Все позиции");
+  await expect(page.locator("[data-position-create-button]")).toContainText("Новая позиция");
+});
+
 test("stretches the table across the available workspace while panels change", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });

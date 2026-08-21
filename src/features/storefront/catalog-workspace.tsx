@@ -160,10 +160,9 @@ import {
 } from "./catalog/workspace/dnd";
 import { SubsectionList } from "./catalog/workspace/subsections";
 import {
-  CATALOG_PAGE_HEADER_CLASS,
-  CATALOG_SECTION_TO_TABLE_GAP_CLASS,
   CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
 } from "./catalog/ui/catalog-layout";
+import { CatalogWorkspaceTableHeader } from "./catalog/ui/catalog-workspace-table-header";
 import { CatalogTableTrailingSpace } from "./catalog/ui/catalog-table-trailing-space";
 import {
   CATALOG_TABLE_COLUMN_DEFS,
@@ -2411,6 +2410,41 @@ function SectionEditor({
 
   const allSubsectionsSelected = childSections.length > 0 && childSections.every(({ section: child }) => selectedSubsectionIds.has(child.id));
   const someSubsectionsSelected = childSections.some(({ section: child }) => selectedSubsectionIds.has(child.id));
+  const headerAction = showSubsectionList && canCreateSubsection ? (
+    <CatalogActionButton
+      onClick={() => onStartSubsectionCreation?.()}
+      ariaLabel="Новый подраздел"
+      dataSubsectionCreateButton
+      className="h-7 rounded-[10px] text-[13px]"
+    >
+      Новый подраздел
+    </CatalogActionButton>
+  ) : !sectionIsCompletelyEmpty && !hasChildSections ? (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {allowPositionCreation && (
+        <CatalogActionButton
+          onClick={onAddPosition}
+          disabled={archived}
+          disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
+          ariaLabel="Добавить позицию"
+          dataPositionCreateButton
+          className="h-7 rounded-[10px] text-[13px]"
+        >
+          Добавить позицию
+        </CatalogActionButton>
+      )}
+      {canCreateSubsection && (
+        <CatalogActionButton
+          onClick={() => onStartSubsectionCreation?.()}
+          ariaLabel="Добавить подраздел"
+          dataSubsectionCreateButton
+          className="h-7 rounded-[10px] text-[13px]"
+        >
+          Добавить подраздел
+        </CatalogActionButton>
+      )}
+    </div>
+  ) : undefined;
 
   const handleImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2448,7 +2482,7 @@ function SectionEditor({
         )}
       >
         <div className="flex min-h-full w-full min-w-0 flex-col">
-          <div className={CATALOG_PAGE_HEADER_CLASS}>
+          <CatalogWorkspaceTableHeader endAction={headerAction}>
             <div className="flex min-h-[30px] min-w-0 flex-1 items-center gap-1.5">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
                 <button
@@ -2470,7 +2504,15 @@ function SectionEditor({
                   </span>
                 </button>
               </Tooltip>
-              <h2 className="min-w-0 truncate text-[14px] font-medium leading-7 text-[#292524]">{section.name}</h2>
+              <h2 className="min-w-0 truncate text-[14px] font-normal leading-7 text-[#1c1917]">{section.name}</h2>
+              {showSubsectionList && (
+                <>
+                  <span className="shrink-0 text-[12px] leading-5 text-[#a8a29e]" aria-hidden="true">•</span>
+                  <span className="shrink-0 text-[14px] font-normal leading-5 text-[#a6a09b]">
+                    {childSections.length}
+                  </span>
+                </>
+              )}
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <button
@@ -2508,29 +2550,7 @@ function SectionEditor({
                 <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>
               )}
             </div>
-            {showSubsectionList && canCreateSubsection ? (
-              <CatalogActionButton
-                onClick={() => onStartSubsectionCreation?.()}
-                ariaLabel="Новый подраздел"
-                dataSubsectionCreateButton
-              >
-                Новый подраздел
-              </CatalogActionButton>
-            ) : !sectionIsCompletelyEmpty && !hasChildSections && (
-              <div className="flex shrink-0 items-center gap-1.5">
-                {allowPositionCreation && <CatalogActionButton
-                  onClick={onAddPosition}
-                  disabled={archived}
-                  disabledReason={archived ? "Архивный раздел нельзя изменять" : positionCreateDisabledReason}
-                  ariaLabel="Добавить позицию"
-                  dataPositionCreateButton
-                >
-                  Добавить позицию
-                </CatalogActionButton>}
-                {canCreateSubsection && <CatalogActionButton onClick={() => onStartSubsectionCreation?.()} ariaLabel="Добавить подраздел" dataSubsectionCreateButton>Добавить подраздел</CatalogActionButton>}
-              </div>
-            )}
-          </div>
+          </CatalogWorkspaceTableHeader>
           <div>
             <div data-editor-tabs>
               {!sectionIsCompletelyEmpty && !showSubsectionList && (hideNavigationTabs ? activeTab === "composition" ? null : (
@@ -2777,12 +2797,13 @@ function UnifiedSectionTableHeader({
             <span className={cn("flex shrink-0 items-center justify-center overflow-hidden bg-[#e6e6db] text-[#a8a29e]", CATALOG_SECTION_HEADER_THUMBNAIL_CLASS)}>
               {section.imageUrl ? <img src={section.imageUrl} alt="" className="h-full w-full object-cover" /> : <ImageBroken size={13} />}
             </span>
-            <span className="min-w-0 truncate text-[14px] font-medium leading-5 text-[#292524]">{section.name}</span>
-            <span className="flex h-[17px] min-w-6 shrink-0 items-center justify-center rounded-[5px] bg-[#f3f3ed] px-1 text-[12px] font-medium leading-4 tabular-nums text-[#79716b]">
+            <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#1c1917]">{section.name}</span>
+            <span className="shrink-0 text-[12px] leading-5 text-[#a8a29e]" aria-hidden="true">•</span>
+            <span className="shrink-0 text-[14px] font-normal leading-5 tabular-nums text-[#a6a09b]">
               {itemCount}
             </span>
             {statusLabel && <span className={cn("shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium", status.className)}>{status.label}</span>}
-            <CaretDown size={14} className="shrink-0 text-[#57534d]" />
+            <CaretDown size={12} className="shrink-0 text-[#57534d]" />
           </button>
         </DropdownMenu.Trigger>
         <DropdownContent align="start">
@@ -6004,7 +6025,7 @@ function PopulatedWorkspace({
       positionsWorkspaceMode="legacy"
       embedded
       tableHeader={tableHeader}
-      onAddPosition={section ? () => addPositionToSection(section.id) : undefined}
+      onAddPosition={section ? () => addPositionToSection(section.id) : addPosition}
       onAddSubsection={section && directChildSections.length === 0
         ? () => openSectionCreation(section.id, "table")
         : undefined}
@@ -6888,27 +6909,6 @@ function SelectionFeedback({ message }: { message: string }) {
   );
 }
 
-function OverviewStatusBar({
-  filterId,
-  titleOverride,
-  count,
-}: {
-  filterId: OverviewFilterId;
-  titleOverride?: string;
-  count?: number;
-}) {
-  return (
-    <div className="flex min-h-[24px] min-w-0 items-center gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-medium leading-[17px] text-[#292524]">
-          {titleOverride ?? getFilterPanelTitle(filterId)}
-          {count != null && <span className="ml-1 text-[#79716b]">{count}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const QUEUE_ROW_HEIGHT = 36;
 
 function useVirtualScrollMargin(
@@ -7057,18 +7057,22 @@ function CatalogScopeSelect({
   onReset,
   allOptionLabel,
   compact = false,
+  headingLabel,
+  headingCount,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   onReset: () => void;
   allOptionLabel?: string;
   compact?: boolean;
+  headingLabel?: string;
+  headingCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = catalogSections.find((section) => section.id === value) ?? null;
   const canReset = value !== null;
-  const selectedLabel = selected?.name ?? allOptionLabel ?? "Выбрать раздел";
+  const selectedLabel = selected?.name ?? headingLabel ?? allOptionLabel ?? "Выбрать раздел";
   const normalizedQuery = query.trim().toLowerCase();
   const sectionTree = useMemo(() => buildSectionTree(catalogSections), []);
   // Счётчик раздела включает позиции всех его подразделов (как в дереве «Разделов»).
@@ -7123,6 +7127,24 @@ function CatalogScopeSelect({
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
+      {headingLabel ? (
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            data-catalog-overview-header-trigger
+            aria-label={`Выбран раздел: ${selected?.name ?? allOptionLabel ?? selectedLabel}`}
+            className="group flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-[8px] text-left transition hover:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className={cn("flex shrink-0 items-center justify-center overflow-hidden bg-[#e6e6db] text-[#79716b]", CATALOG_SECTION_HEADER_THUMBNAIL_CLASS)}>
+              {selected?.imageUrl ? <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" /> : <List size={14} />}
+            </span>
+            <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#1c1917]">{selectedLabel}</span>
+            <span className="shrink-0 text-[12px] leading-5 text-[#a8a29e]" aria-hidden="true">•</span>
+            <span className="shrink-0 text-[14px] font-normal leading-5 tabular-nums text-[#a6a09b]">{headingCount ?? 0}</span>
+            <CaretDown size={12} className="shrink-0 text-[#57534d]" />
+          </button>
+        </DropdownMenu.Trigger>
+      ) : (
       <div className={cn("flex w-full min-w-0 items-center overflow-hidden transition hover:bg-[#eae9e2] focus-within:ring-2 focus-within:ring-[#292524]/10", compact ? "h-6 max-w-[160px] rounded-[28px] bg-[#f5f5f4] py-0.5 pl-0.5 pr-1.5" : "h-9 rounded-[8px] bg-[#f0f0ea] py-1.5 pl-1 pr-1.5")}>
         <DropdownMenu.Trigger asChild>
           <button
@@ -7152,6 +7174,7 @@ function CatalogScopeSelect({
           <CaretDown size={12} weight="bold" />
         </button>
       </div>
+      )}
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="start" sideOffset={6} className="z-[100002] w-[310px] rounded-[12px] border border-[#e7e5e4] bg-white p-2 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
           <label className="mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-[#e7e5e4] px-2 text-[#a8a29e] focus-within:border-[#a8a29e]">
@@ -9191,37 +9214,32 @@ function OverviewWorkspace({
           )}
         >
           <div className="flex min-h-full w-full min-w-0 flex-col">
-            <div className={CATALOG_PAGE_HEADER_CLASS}>
-              <div className="min-w-0 flex-1">
-                {tableHeader ?? <OverviewStatusBar filterId={workspaceFilterId} titleOverride={titleOverride} count={scopeTotalCount} />}
-              </div>
-              {!tableHeader && (
-                <CatalogScopeSelect
-                  value={workspaceSectionScopeId}
-                  onChange={setWorkspaceSectionScopeId}
-                  onReset={() => setWorkspaceSectionScopeId(null)}
-                  allOptionLabel="Все разделы"
-                  compact
-                />
-              )}
-              {tableHeader && onAddPosition && allowPositionCreation && !selectedSectionIsCompletelyEmpty && (
+            <CatalogWorkspaceTableHeader
+              endAction={onAddPosition && allowPositionCreation && !selectedSectionIsCompletelyEmpty ? (
                 <CatalogActionButton
                   onClick={onAddPosition}
                   disabledReason={positionCreateDisabledReason}
                   ariaLabel="Добавить позицию"
                   dataPositionCreateButton
+                  className="h-7 rounded-[10px] text-[13px]"
                 >
                   Новая позиция
                 </CatalogActionButton>
+              ) : undefined}
+            >
+              {tableHeader ?? (
+                <CatalogScopeSelect
+                  value={workspaceSectionScopeId}
+                  onChange={setWorkspaceSectionScopeId}
+                  onReset={() => setWorkspaceSectionScopeId(null)}
+                  allOptionLabel="Все разделы"
+                  headingLabel={titleOverride ?? getFilterPanelTitle(workspaceFilterId)}
+                  headingCount={scopeTotalCount}
+                />
               )}
-            </div>
-            <div className={cn(
-              "min-w-0",
-              USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null)
-                ? "h-8"
-                : CATALOG_SECTION_TO_TABLE_GAP_CLASS,
-            )}>
-              {USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null) && (
+            </CatalogWorkspaceTableHeader>
+            {USE_SHARED_TAGS_AND_STICKERS && (tagFilter != null || stickerFilter != null) && (
+              <div className="h-8 min-w-0">
                 <CatalogLabelFilterRow
                   tagFilter={tagFilter}
                   stickerFilter={stickerFilter}
@@ -9230,8 +9248,8 @@ function OverviewWorkspace({
                   tagCountContext={tagCountContext}
                   stickerCountContext={stickerCountContext}
                 />
-              )}
-            </div>
+              </div>
+            )}
             <div
               className="relative -mx-6 flex w-[calc(100%+3rem)] min-w-0 flex-1 flex-col bg-[#f7f7f7]"
               data-catalog-items-card

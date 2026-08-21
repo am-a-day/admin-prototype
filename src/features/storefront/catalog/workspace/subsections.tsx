@@ -21,7 +21,6 @@ import { DropdownContent, TableCheckbox } from "../table/catalog-table";
 import { CatalogStructureInlineCreateRow } from "../ui/structure-inline-create";
 import { CatalogTableTrailingSpace } from "../ui/catalog-table-trailing-space";
 import {
-  CATALOG_SECTION_TO_TABLE_GAP_CLASS,
   CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
   CATALOG_TABLE_HEADER_STICKY_CLASS,
   CATALOG_TABLE_HEADER_SURFACE_CLASS,
@@ -312,7 +311,15 @@ export function SubsectionList({
       strategy={verticalListSortingStrategy}
     >
       <div className="min-w-0 flex-1 bg-[#f5f5f4]">
-        <div data-catalog-section-table-gap className={CATALOG_SECTION_TO_TABLE_GAP_CLASS} aria-hidden="true" />
+        <CatalogTableToolbarShell
+          value={query}
+          onValueChange={setQuery}
+          ariaLabel="Найти подраздел"
+          inputRef={searchInputRef}
+          onFocus={() => { searchActiveRef.current = true; }}
+          onBlur={() => { searchActiveRef.current = false; }}
+          filter={<SubsectionFilter />}
+        />
         {isEmpty ? (
           <div data-empty-section-scaffold className="w-full border-b border-[#e7e5e4]">
             <div data-empty-section-row="message" className="flex h-[34px] w-full items-center bg-[#fafaf9]">
@@ -364,15 +371,6 @@ export function SubsectionList({
           </div>
         ) : (
           <>
-            <CatalogTableToolbarShell
-              value={query}
-              onValueChange={setQuery}
-              ariaLabel="Найти подраздел"
-              inputRef={searchInputRef}
-              onFocus={() => { searchActiveRef.current = true; }}
-              onBlur={() => { searchActiveRef.current = false; }}
-              filter={<SubsectionFilter />}
-            />
             {selectedCount > 0 && bulkToolbar && (
               <div className="border-b border-[#e7e5e4]">{bulkToolbar}</div>
             )}

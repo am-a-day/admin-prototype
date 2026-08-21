@@ -992,7 +992,7 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, "mt-[6px]", offsetForLocalHeader && "top-[76px]")}
+      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[76px]")}
       data-catalog-table-header
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>

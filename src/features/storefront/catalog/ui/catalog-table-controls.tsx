@@ -116,13 +116,24 @@ export function CatalogTableSearchControl({
     <div
       data-catalog-table-search-control
       className={cn(
-        "box-border flex min-w-0 max-w-full flex-1 items-center gap-3 overflow-hidden rounded-[7px] border px-2 py-[2px] text-[#a6a09b]",
+        "relative box-border flex h-[30px] min-w-0 max-w-full flex-1 items-center gap-2 overflow-hidden rounded-[7px] border text-[#a6a09b]",
         focused ? "border-[#4f39f6]" : "border-transparent",
         className,
       )}
     >
-      {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
-      {focused && <span data-catalog-table-search-divider className="h-4 w-px shrink-0 bg-[#e7e5e4]" aria-hidden="true" />}
+      <span
+        data-catalog-table-filter-cell
+        className="-ml-px flex h-full w-[60px] shrink-0 items-center pl-[16px]"
+      >
+        {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
+      </span>
+      {focused && (
+        <span
+          data-catalog-table-search-divider
+          className="pointer-events-none absolute bottom-[6px] left-[60px] top-[6px] w-px bg-[#e7e5e4]"
+          aria-hidden="true"
+        />
+      )}
       <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[#a6a09b]">
         {showSearchHint && <MagnifyingGlass size={14} className="shrink-0" />}
         <input
