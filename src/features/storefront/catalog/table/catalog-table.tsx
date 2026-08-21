@@ -892,6 +892,7 @@ function CatalogDraggableHeaderCell({
     id: column.id,
     disabled: !isReorderable,
   });
+  const sortablePointerDown = listeners?.onPointerDown;
   const indicator = dropTarget?.id === column.id && activeColumnId !== column.id ? dropTarget.side : null;
 
   return (
@@ -913,7 +914,11 @@ function CatalogDraggableHeaderCell({
       {...(isReorderable ? attributes : {})}
       {...(isReorderable ? listeners : {})}
       onPointerDown={(event) => {
-        if ((event.target as HTMLElement | null)?.closest("[data-catalog-column-resize-handle]")) event.stopPropagation();
+        if ((event.target as HTMLElement | null)?.closest("[data-catalog-column-resize-handle]")) {
+          event.stopPropagation();
+          return;
+        }
+        sortablePointerDown?.(event);
       }}
     >
       {children}
@@ -983,11 +988,14 @@ export function TableHeaderRow({
       setDropTarget(null);
       return;
     }
-    const activeRect = active.rect.current.translated;
-    const overRect = over.rect;
-    const activeCenter = activeRect ? activeRect.left + activeRect.width / 2 : overRect.left;
-    const overCenter = overRect.left + overRect.width / 2;
-    setDropTarget({ id: overId, side: activeCenter > overCenter ? "after" : "before" });
+    const visibleUserIds = visibleUserColumns.map((column) => column.id);
+    const activeIndex = visibleUserIds.indexOf(String(active.id));
+    const overIndex = visibleUserIds.indexOf(overId);
+    if (activeIndex < 0 || overIndex < 0) {
+      setDropTarget(null);
+      return;
+    }
+    setDropTarget({ id: overId, side: activeIndex < overIndex ? "after" : "before" });
   };
   const clearColumnDrag = () => {
     setActiveColumnId(null);
@@ -1005,10 +1013,7 @@ export function TableHeaderRow({
       clearColumnDrag();
       return;
     }
-    const side = dropTarget?.id === String(over.id) ? dropTarget.side : "before";
-    let targetIndex = overIndex + (side === "after" ? 1 : 0);
-    targetIndex = Math.max(0, Math.min(visibleUserIds.length - 1, targetIndex));
-    if (activeIndex !== targetIndex) setUserTableColumnOrder(table, arrayMove(visibleUserIds, activeIndex, targetIndex));
+    if (activeIndex !== overIndex) setUserTableColumnOrder(table, arrayMove(visibleUserIds, activeIndex, overIndex));
     clearColumnDrag();
   };
 
