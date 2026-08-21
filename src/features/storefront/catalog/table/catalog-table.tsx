@@ -88,9 +88,9 @@ function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): Mov
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
 }
 
-type CatalogRowAvailability = "archive" | "stopped" | "scheduled" | "soon";
+type CatalogRowAvailability = "available" | "archive" | "stopped" | "scheduled" | "soon";
 
-function getPrimaryRowAvailability(item: CatalogItem): CatalogRowAvailability | null {
+function getPrimaryRowAvailability(item: CatalogItem): CatalogRowAvailability {
   if (item.status === "archive") return "archive";
   if (item.status === "stopped" || item.status === "coming-soon") {
     return item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon" ? "soon" : "stopped";
@@ -98,7 +98,7 @@ function getPrimaryRowAvailability(item: CatalogItem): CatalogRowAvailability | 
   if (item.scheduled) {
     return "scheduled";
   }
-  return null;
+  return "available";
 }
 
 function getDescriptionPreview(description: string) {
@@ -1018,15 +1018,18 @@ function CatalogAvailabilityStatusButton({
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const [stopEditorPinned, setStopEditorPinned] = useState(false);
   const status = getPrimaryRowAvailability(item);
-  if (!status) return null;
 
   const statusMeta: { label: string; icon: PhosphorIcon; className: string } = {
+    available: { label: "Доступно", icon: CheckCircle, className: "text-[#56826a]" },
     archive: { label: "В архиве", icon: Archive, className: "text-[#94a3b8]" },
     stopped: { label: "На стопе", icon: LockLaminated, className: "text-[#f54900]" },
     scheduled: { label: "По расписанию", icon: CalendarDots, className: "text-[#2b7fff]" },
     soon: { label: "Скоро будет", icon: Clock, className: "text-[#2b7fff]" },
   }[status];
   const StatusIcon = statusMeta.icon;
+  const availableVisibilityClass = status === "available"
+    ? "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+    : "";
   if (status === "archive") {
     return (
       <Tooltip label={statusMeta.label} side="top">
@@ -1057,7 +1060,10 @@ function CatalogAvailabilityStatusButton({
             aria-label={`Настроить доступность: ${statusMeta.label}`}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors hover:bg-[#efefea] focus-visible:bg-[#efefea] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+            className={cn(
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors hover:bg-[#efefea] focus-visible:bg-[#efefea] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
+              availableVisibilityClass,
+            )}
           >
             <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
           </button>

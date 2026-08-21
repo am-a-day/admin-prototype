@@ -226,10 +226,15 @@ test("uses a 28px status hit area with a visible hover surface", async ({ page }
 
   await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
   const statusTrigger = page.locator("[data-catalog-availability-trigger]").first();
-  await expect(statusTrigger).toBeVisible();
   await expect(statusTrigger).toHaveCSS("width", "28px");
   await expect(statusTrigger).toHaveCSS("height", "28px");
+  await expect(statusTrigger).toHaveCSS("opacity", "0");
 
+  const statusRow = statusTrigger.locator("xpath=ancestor::*[@data-catalog-table-row][1]");
+  await statusRow.hover();
+  await expect(statusTrigger).toBeVisible();
+  await statusTrigger.focus();
+  await expect(statusTrigger).toHaveCSS("opacity", "1");
   await statusTrigger.hover();
   await expect(statusTrigger).toHaveCSS("background-color", "rgb(239, 239, 234)");
   await expect(page.getByRole("tooltip")).toBeVisible();
@@ -240,6 +245,8 @@ test("keeps row availability settings in the local popover", async ({ page }) =>
 
   await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
   const statusTrigger = page.locator("[data-catalog-availability-trigger]").first();
+  const statusRow = statusTrigger.locator("xpath=ancestor::*[@data-catalog-table-row][1]");
+  await statusRow.hover();
   await statusTrigger.click();
   await expect(page.getByRole("menuitemradio", { name: /На стопе|Доступно|По расписанию/ }).first()).toBeVisible();
   await page.getByRole("menuitemradio", { name: "Доступно", exact: true }).click();
