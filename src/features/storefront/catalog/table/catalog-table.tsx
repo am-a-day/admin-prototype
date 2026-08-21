@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
+import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -723,7 +723,7 @@ function CatalogAddColumnMenu({ table }: { table: TanStackTable<CatalogItem> }) 
             type="button"
             aria-label="Добавить колонку"
             data-catalog-add-column-trigger
-            className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+            className="inline-flex h-full w-full cursor-pointer items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
           >
             <Plus size={16} weight="regular" />
           </button>
@@ -753,9 +753,7 @@ const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
   ariaLabel: string;
   dragProps: Record<string, unknown>;
 }>(({ canDrag, ariaLabel, dragProps }, ref) => {
-  if (!canDrag) {
-    return <span className="h-7 w-6 shrink-0 invisible" aria-hidden="true" />;
-  }
+  if (!canDrag) return null;
 
   return (
     <Tooltip label={ariaLabel} side="top" delayDuration={250}>
@@ -768,10 +766,7 @@ const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
         disabled={!canDrag}
         aria-label={ariaLabel}
         tabIndex={0}
-        className={cn(
-          "flex h-7 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing",
-          "cursor-grab",
-        )}
+        className="absolute left-[5px] top-1/2 z-10 flex h-7 w-6 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing cursor-grab"
         onClick={(event) => event.stopPropagation()}
       >
         <DotsSixVertical size={15} weight="bold" />
@@ -1042,9 +1037,8 @@ export function TableHeaderRow({
           const dividerClass = getTableContentDividerClass(column.id, visibleContentColumnIds);
           if (column.id === "selection") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
-                <span className="flex items-center gap-1">
-                  <span className="h-7 w-6 shrink-0" aria-hidden="true" />
+              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="relative flex h-full shrink-0 items-center justify-center">
+                <span className="absolute right-2 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center">
                 <TableCheckbox
                   ariaLabel="Выбрать все видимые позиции"
                   checked={checked}
@@ -1153,6 +1147,16 @@ export function TableHeaderRow({
         )}
             </div>
           </SortableContext>
+          <DragOverlay dropAnimation={null}>
+            {activeColumnId ? (
+              <div
+                data-catalog-column-drag-preview
+                className="flex h-8 min-w-[96px] items-center justify-center rounded-[7px] border border-[#4f39f6]/35 bg-white px-3 text-[13px] font-medium text-[#57534d] shadow-[0_8px_20px_rgba(41,37,36,0.16)]"
+              >
+                {getCatalogColumnLabel(activeColumnId)}
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       </div>
     </div>
@@ -1395,25 +1399,23 @@ function AuditDishRowContent({
               <span
                 key={cell.id}
                 style={getColumnWidthStyle(cell.column.getSize())}
-                className="flex h-full shrink-0 items-center justify-center"
+                className="relative flex h-full shrink-0 items-center justify-center"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
-                <span className="flex items-center gap-1">
-                  <CatalogTableRowDragHandle
-                    ref={setReorderHandleRef}
-                    canDrag={reorderEnabled}
-                    ariaLabel={`Изменить порядок позиции ${item.title}`}
-                    dragProps={{ ...reorderAttributes, ...reorderListeners }}
+                <CatalogTableRowDragHandle
+                  ref={setReorderHandleRef}
+                  canDrag={reorderEnabled}
+                  ariaLabel={`Изменить порядок позиции ${item.title}`}
+                  dragProps={{ ...reorderAttributes, ...reorderListeners }}
+                />
+                <span data-no-dnd className="absolute right-2 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center">
+                  <TableCheckbox
+                    ariaLabel={`Выбрать ${item.title}`}
+                    checked={selected}
+                    forceVisible={selectionMode}
+                    onChange={(checked) => onSelectedChange(item.id, checked)}
                   />
-                  <span data-no-dnd>
-                    <TableCheckbox
-                      ariaLabel={`Выбрать ${item.title}`}
-                      checked={selected}
-                      forceVisible={selectionMode}
-                      onChange={(checked) => onSelectedChange(item.id, checked)}
-                    />
-                  </span>
                 </span>
               </span>
             );

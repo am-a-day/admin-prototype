@@ -3433,8 +3433,8 @@ export function PositionEditor({
   }, [item.id, nextForcedTab]);
 
   useEffect(() => {
-    if (!titleEditing) setTitleDraft(item.title);
-  }, [item.title, titleEditing]);
+    if (!titleEditing && (mode === "edit" || createCommitted)) setTitleDraft(item.title);
+  }, [createCommitted, item.title, mode, titleEditing]);
 
   useEffect(() => {
     if (!focusAnchor) return;
@@ -3453,7 +3453,6 @@ export function PositionEditor({
   };
 
   const focusCreateName = () => {
-    selectEditorTab("basic");
     window.setTimeout(() => {
       editorScrollRef.current
         ?.querySelector<HTMLInputElement>('input[aria-label="Название позиции"]')
@@ -3590,8 +3589,27 @@ export function PositionEditor({
 
   const commitTitle = () => {
     const nextTitle = titleDraft.trim();
-    if (nextTitle && nextTitle !== item.title) onItemChange?.(item, { title: nextTitle });
+    if (!nextTitle) return;
+    if (nextTitle !== item.title) onItemChange?.(item, { title: nextTitle });
     setTitleEditing(false);
+  };
+
+  const cancelTitleEditing = () => {
+    setTitleEditing(false);
+    setTitleDraft(item.title);
+  };
+
+  const commitCreateTitle = () => {
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle) {
+      setCreateNameError("Введите название");
+      titleInputRef.current?.focus();
+      return;
+    }
+    setCreateNameError("");
+    onDraftChange?.({ title: nextTitle });
+    if (onCommitDraftName) onCommitDraftName(nextTitle);
+    else onCreatePosition?.();
   };
 
   const renderPositionActionsMenu = (trigger: ReactNode) => {
@@ -3770,23 +3788,93 @@ export function PositionEditor({
               className="group/side-peek-header relative sticky top-0 z-30 -mx-4 flex h-[49px] min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-3"
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2">
-                {titleEditing ? (
-                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] bg-white px-2 ring-1 ring-[#c7c2bd]">
+                {creationPane && !createCommitted ? (
+                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
+                    <input
+                      ref={titleInputRef}
+                      value={titleDraft}
+                      aria-label="Название позиции"
+                      aria-invalid={Boolean(createNameError)}
+                      autoFocus
+                      onChange={(event) => {
+                        setTitleDraft(event.target.value);
+                        if (event.target.value.trim()) setCreateNameError("");
+                        onDraftChange?.({ title: event.target.value });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitCreateTitle();
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          (onCancelCreate ?? onBackCreate)?.();
+                        }
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold leading-7 text-[#292524] outline-none"
+                    />
+                    <Tooltip label="Отменить создание" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Отменить создание"
+                        onClick={onCancelCreate ?? onBackCreate}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
+                      >
+                        <X size={14} weight="regular" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Создать позицию" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Создать позицию"
+                        onClick={commitCreateTitle}
+                        disabled={createDisabled || createSubmitting || !titleDraft.trim()}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
+                      >
+                        <Check size={15} weight="bold" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                ) : titleEditing ? (
+                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
                     <input
                       ref={titleInputRef}
                       value={titleDraft}
                       aria-label="Название позиции"
                       onChange={(event) => setTitleDraft(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") commitTitle();
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitTitle();
+                        }
                         if (event.key === "Escape") {
-                          setTitleEditing(false);
-                          setTitleDraft(item.title);
+                          event.preventDefault();
+                          cancelTitleEditing();
                         }
                       }}
-                      onBlur={commitTitle}
                       className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold leading-7 text-[#292524] outline-none"
                     />
+                    <Tooltip label="Отменить переименование" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Отменить переименование"
+                        onClick={cancelTitleEditing}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
+                      >
+                        <X size={14} weight="regular" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Подтвердить переименование" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Подтвердить переименование"
+                        onClick={commitTitle}
+                        disabled={!titleDraft.trim()}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
+                      >
+                        <Check size={15} weight="bold" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
                   </div>
                 ) : renderPositionActionsMenu(
                   <button
@@ -3869,22 +3957,45 @@ export function PositionEditor({
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2 text-[14px] font-medium leading-7 text-[#292524]">
                 {titleEditing ? (
-                  <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-2 ring-1 ring-[#c7c2bd]">
+                  <div className="flex min-w-0 flex-1 items-center rounded-lg border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
                     <input
                       ref={titleInputRef}
                       value={titleDraft}
                       aria-label="Название позиции"
                       onChange={(event) => setTitleDraft(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") commitTitle();
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitTitle();
+                        }
                         if (event.key === "Escape") {
-                          setTitleEditing(false);
-                          setTitleDraft(item.title);
+                          event.preventDefault();
+                          cancelTitleEditing();
                         }
                       }}
-                      onBlur={commitTitle}
                       className="min-w-0 flex-1 bg-transparent text-[14px] font-medium leading-7 text-[#292524] outline-none"
                     />
+                    <Tooltip label="Отменить переименование" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Отменить переименование"
+                        onClick={cancelTitleEditing}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
+                      >
+                        <X size={14} weight="regular" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Подтвердить переименование" side="bottom" delayDuration={250}>
+                      <button
+                        type="button"
+                        aria-label="Подтвердить переименование"
+                        onClick={commitTitle}
+                        disabled={!titleDraft.trim()}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
+                      >
+                        <Check size={15} weight="bold" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 px-1">
@@ -3948,15 +4059,14 @@ export function PositionEditor({
                   onDescriptionChange?.(item, value);
                   onDraftChange?.({ description: value, hasDescription: descriptionHasContent(value) });
                 }}
-                autoFocusName={mode !== "edit"}
-                hideName={false}
+                autoFocusName={false}
+                hideName={mode !== "edit"}
                 nameError={fixture?.nameError ?? (mode !== "edit" ? createNameError : undefined)}
                 namePlaceholder={mode !== "edit" ? "Название позиции" : "Введите перевод…"}
                 nameResetKey={mode === "edit" ? item.id : "active-create-session"}
                 onNameChange={(value) => {
                   if (value.trim()) setCreateNameError("");
                   onDraftChange?.({ title: value });
-                  if (mode === "create" && value.trim()) onCommitDraftName?.(value);
                 }}
                 onWeightChange={(value, unit) => {
                   const parsed = parseMoneyInput(value);
