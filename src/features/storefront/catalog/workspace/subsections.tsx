@@ -172,7 +172,7 @@ export function SubsectionRow({
           <span
             data-no-dnd
             style={{ width: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH }}
-            className="flex shrink-0 items-center justify-center"
+            className="pointer-events-none absolute inset-y-0 right-0 z-[1] flex items-center justify-center"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -244,7 +244,6 @@ function SubsectionTableHeader({
         <span className="flex h-full min-w-0 flex-1 items-center pl-[8px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]">
           Название подраздела
         </span>
-        <span style={{ width: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH }} className="flex h-full shrink-0" aria-hidden="true" />
       </div>
     </div>
   );

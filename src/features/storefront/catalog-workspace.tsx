@@ -9377,7 +9377,6 @@ function OverviewWorkspace({
                   table={catalogTable}
                   offsetForLocalHeader={false}
                   horizontalScrollLeft={tableHorizontalScrollLeft}
-                  actionsSticky={!isCreateDraftOpen}
                 />
               )}
               <div
@@ -9515,7 +9514,6 @@ function OverviewWorkspace({
                           table={catalogTable}
                           onCreate={onAddPosition}
                           disabledReason={positionCreateDisabledReason}
-                          actionsSticky={!isCreateDraftOpen}
                         />
                       )}
                       {onAddPosition && allowPositionCreation && (

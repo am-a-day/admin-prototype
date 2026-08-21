@@ -234,6 +234,8 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   const defaultGeometry = await geometry(firstRow);
   expect(defaultGeometry.row?.height).toBe(38);
   expect(defaultGeometry.actions?.width).toBe(33);
+  expect(defaultGeometry.actions!.x + defaultGeometry.actions!.width)
+    .toBeLessThanOrEqual(defaultGeometry.row!.x + defaultGeometry.row!.width);
 
   await firstRow.hover();
   await expect(firstMore).toHaveCSS("opacity", "1");
@@ -266,6 +268,8 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   const secondSubsection = subsectionRows.nth(1);
   const firstSubsectionMore = firstSubsection.locator("[data-catalog-row-more]");
   const secondSubsectionMore = secondSubsection.locator("[data-catalog-row-more]");
+  await expect(page.locator("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveCount(0);
+  await expect(firstSubsection.locator("[data-no-dnd]").last()).toHaveCSS("position", "absolute");
   await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
   await firstSubsection.hover();
   await expect(firstSubsectionMore).toHaveCSS("opacity", "1");
@@ -430,31 +434,42 @@ test("keeps row handles visible in reorderable state and supports repeated point
   await expect(priceHeader).not.toHaveAttribute("data-sort-direction");
 });
 
-test("keeps the More column in normal flow only while position creation is active", async ({ page }) => {
+test("renders More above row content without reserving a table column", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 720 });
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const horizontalScroll = page.locator("[data-catalog-table-horizontal-scroll]");
   const headerActions = page.locator("[data-catalog-table-header] [data-catalog-table-actions]");
-  await expect(headerActions).toHaveCSS("position", "sticky");
+  const rowActions = page.locator("[data-catalog-table-row] [data-catalog-table-actions]").first();
+  await expect(headerActions).toHaveCount(0);
+  await expect(rowActions).toHaveCSS("position", "sticky");
+  await expect(rowActions).toHaveCSS("margin-left", "-33px");
+  await expect(rowActions).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.locator("[data-catalog-position-create-row] [data-catalog-table-actions]")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Добавить колонку" }).click();
+  await page.getByRole("menuitem", { name: "Описание", exact: true }).click();
+
+  const stickyX = (await rowActions.boundingBox())!.x;
   await horizontalScroll.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
   await expect.poll(async () => horizontalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  expect(Math.abs((await rowActions.boundingBox())!.x - stickyX)).toBeLessThanOrEqual(1);
 
   await horizontalScroll.evaluate((element) => { element.scrollLeft = 0; });
   await page.locator("[data-catalog-position-create-row]").click();
   await expect(page.getByRole("complementary", { name: "Новая позиция" })).toBeVisible();
-  await expect(headerActions).toHaveCSS("position", "static");
-  const createX = (await headerActions.boundingBox())!.x;
+  await expect(rowActions).toHaveCSS("position", "absolute");
+  const createX = (await rowActions.boundingBox())!.x;
   await horizontalScroll.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
   await expect.poll(async () => horizontalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  expect((await headerActions.boundingBox())!.x).toBeLessThan(createX - 10);
+  expect((await rowActions.boundingBox())!.x).toBeLessThan(createX - 10);
 
   await page.getByRole("button", { name: "Отменить создание" }).click();
-  await expect(headerActions).toHaveCSS("position", "sticky");
+  await expect(rowActions).toHaveCSS("position", "sticky");
   await page.locator("[data-catalog-table-row]").first().click();
   await expect(page.locator("[data-position-editor-pane]")).toBeVisible();
-  await expect(headerActions).toHaveCSS("position", "sticky");
+  await expect(rowActions).toHaveCSS("position", "sticky");
 });
 
 test("keeps nested move menus open through three levels and applies the deep target", async ({ page }) => {

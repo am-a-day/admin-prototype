@@ -400,17 +400,17 @@ describe("catalog observable behavior baseline", () => {
     const sectionTree = await openSectionTreeSearch(user);
     expect(sectionTree).not.toBeNull();
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
-    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
     await user.click(document.querySelector("[data-catalog-position-create-row]") as HTMLElement);
     const sidePeek = await screen.findByRole("complementary", { name: "Новая позиция" });
     expect(sidePeek).toHaveAttribute("data-position-create-pane", "true");
-    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
-    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
-    expect(document.querySelector("[data-catalog-position-create-row] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("absolute", "right-0");
+    expect(document.querySelector("[data-catalog-position-create-row] [data-catalog-table-actions]")).not.toBeInTheDocument();
     await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
 
     expect(document.querySelector("[data-inline-position-create]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
   });
 
   it("keeps table search, completeness filter, sorting, columns, and selection observable", async () => {
@@ -716,14 +716,14 @@ describe("catalog observable behavior baseline", () => {
     const tableBody = document.querySelector("[data-catalog-table-body]");
     expect(tableBody).not.toBeNull();
     expect(tableBody).toHaveClass("w-full", "bg-[#f5f5f4]");
-    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
+    expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
     const positionCreateRow = document.querySelector<HTMLElement>("[data-catalog-position-create-row]");
     expect(positionCreateRow).toHaveTextContent("Добавить позицию");
     expect(positionCreateRow).toHaveClass("h-[36px]");
     expect((positionCreateRow?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
     expect(positionCreateRow?.querySelector('[data-catalog-table-content-cell="position"]')).toHaveClass("pl-[8px]");
-    expect(positionCreateRow?.querySelector('[data-catalog-table-actions]')).toBeEmptyDOMElement();
+    expect(positionCreateRow?.querySelector('[data-catalog-table-actions]')).not.toBeInTheDocument();
     expect(positionCreateRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
     expect(positionCreateRow?.nextElementSibling).toHaveClass("bg-[#f5f5f4]");
 

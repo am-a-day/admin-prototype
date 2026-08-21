@@ -1106,7 +1106,6 @@ export function TableHeaderRow({
   table,
   offsetForLocalHeader = false,
   horizontalScrollLeft = 0,
-  actionsSticky = true,
 }: {
   checked: boolean;
   indeterminate: boolean;
@@ -1116,14 +1115,14 @@ export function TableHeaderRow({
   table: TanStackTable<CatalogItem>;
   offsetForLocalHeader?: boolean;
   horizontalScrollLeft?: number;
-  actionsSticky?: boolean;
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
-  const tableWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
+  const tableWidth = visibleColumns
+    .filter((column) => column.id !== "actions")
+    .reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
     .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
     .map((column) => column.id);
-  const actionColumn = visibleColumns.find((column) => column.id === "actions");
   const visibleUserColumns = visibleColumns.filter((column) =>
     (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id),
   );
@@ -1309,17 +1308,6 @@ export function TableHeaderRow({
           );
         })}
         <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
-        {actionColumn && (
-          <span
-            data-catalog-table-actions
-            aria-hidden="true"
-            style={getColumnWidthStyle(actionColumn.getSize())}
-            className={cn(
-              "flex h-full shrink-0 items-center justify-center bg-[#fafaf9]",
-              actionsSticky && "sticky right-0 z-[1]",
-            )}
-          />
-        )}
             </div>
           </SortableContext>
           <DragOverlay dropAnimation={null}>
@@ -1530,7 +1518,9 @@ function AuditDishRowContent({
     .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "actions" && cell.column.id !== "add-column")
     .map((cell) => cell.column.id);
   const actionCell = visibleCells.find((cell) => cell.column.id === "actions");
-  const rowWidth = visibleCells.reduce((total, cell) => total + cell.column.getSize(), 0);
+  const rowWidth = visibleCells
+    .filter((cell) => cell.column.id !== "actions")
+    .reduce((total, cell) => total + cell.column.getSize(), 0);
 
   return (
     <div
@@ -1739,10 +1729,12 @@ function AuditDishRowContent({
         <span
           data-catalog-table-actions
           data-no-dnd
-          style={getColumnWidthStyle(actionCell.column.getSize())}
+          style={actionsSticky
+            ? { ...getColumnWidthStyle(actionCell.column.getSize()), marginLeft: -actionCell.column.getSize() }
+            : getColumnWidthStyle(actionCell.column.getSize())}
           className={cn(
-            "flex h-full shrink-0 items-center justify-center bg-inherit",
-            actionsSticky && "sticky right-0 z-[1]",
+            "pointer-events-none z-[2] flex h-full shrink-0 items-center justify-center",
+            actionsSticky ? "sticky right-0" : "absolute inset-y-0 right-0",
           )}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
@@ -1858,19 +1850,18 @@ export function CatalogPositionCreateRow({
   table,
   onCreate,
   disabledReason,
-  actionsSticky = true,
 }: {
   table: TanStackTable<CatalogItem>;
   onCreate: () => void;
   disabledReason?: string | null;
-  actionsSticky?: boolean;
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
-  const rowWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
+  const rowWidth = visibleColumns
+    .filter((column) => column.id !== "actions")
+    .reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
     .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
     .map((column) => column.id);
-  const actionColumn = visibleColumns.find((column) => column.id === "actions");
 
   return (
     <button
@@ -1925,14 +1916,6 @@ export function CatalogPositionCreateRow({
         );
       })}
       <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
-      {actionColumn && (
-        <span
-          data-catalog-table-actions
-          aria-hidden="true"
-          style={getColumnWidthStyle(actionColumn.getSize())}
-          className={cn("h-full shrink-0 bg-inherit", actionsSticky && "sticky right-0 z-[1]")}
-        />
-      )}
     </button>
   );
 }
