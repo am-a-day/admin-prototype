@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { createContext, forwardRef, useContext, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
@@ -417,11 +417,13 @@ export function DropdownContent({
   align = "end",
   className,
   preventOutsideDismiss = false,
+  onClick,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
   preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
+  onClick?: ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onClick"];
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   const shouldPreventOutsideDismiss = (event: CatalogDropdownOutsideEvent) => (
@@ -440,6 +442,7 @@ export function DropdownContent({
         onInteractOutside={(event) => {
           if (shouldPreventOutsideDismiss(event)) event.preventDefault();
         }}
+        onClick={onClick}
       >
         {marker}
         {children}
@@ -1062,6 +1065,7 @@ function CatalogAvailabilityStatusButton({
       </Tooltip>
       <DropdownContent
         align="start"
+        onClick={(event) => event.stopPropagation()}
         preventOutsideDismiss={(event) => (
           scheduleEditorPinned
           || (stopEditorPinned

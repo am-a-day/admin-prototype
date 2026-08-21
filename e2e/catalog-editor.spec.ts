@@ -224,6 +224,7 @@ test("reserves toolbar space for the selected filter label", async ({ page }) =>
 test("uses a 28px status hit area with a visible hover surface", async ({ page }) => {
   await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
 
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
   const statusTrigger = page.locator("[data-catalog-availability-trigger]").first();
   await expect(statusTrigger).toBeVisible();
   await expect(statusTrigger).toHaveCSS("width", "28px");
@@ -232,6 +233,17 @@ test("uses a 28px status hit area with a visible hover surface", async ({ page }
   await statusTrigger.hover();
   await expect(statusTrigger).toHaveCSS("background-color", "rgb(239, 239, 234)");
   await expect(page.getByRole("tooltip")).toBeVisible();
+});
+
+test("keeps row availability settings in the local popover", async ({ page }) => {
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
+  const statusTrigger = page.locator("[data-catalog-availability-trigger]").first();
+  await statusTrigger.click();
+  await expect(page.getByRole("menuitemradio", { name: /На стопе|Доступно|По расписанию/ }).first()).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "Доступно", exact: true }).click();
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
 });
 
 test("shows row More only for hover, focus, and an open menu without shifting the table", async ({ page }) => {

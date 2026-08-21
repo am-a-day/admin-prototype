@@ -351,6 +351,7 @@ export function CatalogPositionAvailabilityMenu({
     <DropdownMenu.RadioGroup value={availability ?? undefined}>
             <DropdownMenu.RadioItem
               value="available"
+              onClick={(event) => event.stopPropagation()}
               onSelect={(event) => {
                 event.preventDefault();
                 setStopEditorOpen(false);
@@ -377,6 +378,7 @@ export function CatalogPositionAvailabilityMenu({
                 <DropdownMenu.Item
                   role="menuitemradio"
                   aria-checked={availability === "stopped"}
+                  onClick={(event) => event.stopPropagation()}
                   onSelect={(event) => {
                     event.preventDefault();
                     setScheduleEditorOpen(false);
@@ -398,6 +400,7 @@ export function CatalogPositionAvailabilityMenu({
                 align="start"
                 sideOffset={6}
                 collisionPadding={12}
+                onClick={(event) => event.stopPropagation()}
                 onFocusOutside={(event) => event.preventDefault()}
                 className={cn("z-[100005] min-w-[176px]", CATALOG_DROPDOWN_CONTENT_CLASS)}
               >
@@ -421,7 +424,9 @@ export function CatalogPositionAvailabilityMenu({
               <DropdownMenu.SubTrigger
                 role="menuitemradio"
                 aria-checked={availability === "scheduled"}
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
+                  event.stopPropagation();
                   event.preventDefault();
                   setStopEditorOpen(false);
                   if (availability !== "scheduled") {
@@ -442,6 +447,7 @@ export function CatalogPositionAvailabilityMenu({
                   sideOffset={6}
                   alignOffset={-5}
                   collisionPadding={12}
+                  onClick={(event) => event.stopPropagation()}
                   onPointerDownOutside={(event) => event.preventDefault()}
                   onInteractOutside={(event) => event.preventDefault()}
                   onFocusOutside={(event) => event.preventDefault()}
