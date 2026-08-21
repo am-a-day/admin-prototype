@@ -7,6 +7,8 @@ import { arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, 
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowElbowUpRight,
+  ArrowLeft,
+  ArrowRight,
   Archive,
   Asterisk,
   CalendarDots,
@@ -729,24 +731,64 @@ const CatalogColumnHeaderDragContext = createContext<CatalogColumnHeaderDragInte
   isReorderable: false,
 });
 
+const CATALOG_COLUMN_MENU_SORTABLE_IDS = ["price", "discount"] as const;
+
+type CatalogColumnFilterAction = {
+  id: OverviewFilterId;
+  label: string;
+};
+
+const CATALOG_COLUMN_FILTER_ACTIONS: Partial<Record<string, readonly CatalogColumnFilterAction[]>> = {
+  position: [{ id: "quick:no-photo", label: "Показать без фото и видео" }],
+  description: [{ id: "quick:no-description", label: "Показать без описания" }],
+  discount: [{ id: "quick:discount", label: "Показать со скидкой" }],
+  tags: [{ id: "quick:with-tags", label: "Показать с тегами" }],
+  stickers: [{ id: "quick:with-labels", label: "Показать со стикером" }],
+  upsells: [
+    { id: "quick:with-recommendations", label: "Показать с рекомендациями" },
+    { id: "quick:no-recommendations", label: "Показать без рекомендаций" },
+  ],
+};
+
+function getCatalogColumnSortLabels(columnId: string) {
+  if (columnId === "price") return { asc: "Сначала дешевле", desc: "Сначала дороже" };
+  return { asc: "Сначала меньшая скидка", desc: "Сначала большая скидка" };
+}
+
 function CatalogColumnHeaderMenu({
+  table,
   column,
   sort,
   onSortChange,
+  activeFilterId,
+  onActiveFilterChange,
   children,
   className,
   align = "start",
 }: {
+  table: TanStackTable<CatalogItem>;
   column: ReturnType<TanStackTable<CatalogItem>["getVisibleLeafColumns"]>[number];
   sort: CatalogTableSort;
   onSortChange: (sort: CatalogTableSort) => void;
+  activeFilterId: OverviewFilterId | null;
+  onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
   children: ReactNode;
   className?: string;
   align?: "start" | "end";
 }) {
-  const sortable = (CATALOG_SORTABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id);
+  const sortable = (CATALOG_COLUMN_MENU_SORTABLE_IDS as readonly string[]).includes(column.id);
   const hideable = column.getCanHide();
-  const currentDirection = sort?.columnId === column.id ? sort.direction : null;
+  const currentDirection = sortable && sort?.columnId === column.id ? sort.direction : null;
+  const sortLabels = getCatalogColumnSortLabels(column.id);
+  const filterActions = CATALOG_COLUMN_FILTER_ACTIONS[column.id] ?? [];
+  const activeColumnFilter = filterActions.find((action) => action.id === activeFilterId) ?? null;
+  const visibleUserColumnIds = table.getVisibleLeafColumns()
+    .filter((candidate) => (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(candidate.id))
+    .map((candidate) => candidate.id);
+  const columnIndex = visibleUserColumnIds.indexOf(column.id);
+  const movable = columnIndex >= 0;
+  const canMoveLeft = movable && columnIndex > 0;
+  const canMoveRight = movable && columnIndex < visibleUserColumnIds.length - 1;
   const label = getCatalogColumnLabel(column.id);
   const { dragProps, setActivatorNodeRef, isDragging, isReorderable } = useContext(CatalogColumnHeaderDragContext);
   const [open, setOpen] = useState(false);
@@ -765,6 +807,13 @@ function CatalogColumnHeaderMenu({
     dragStartedRef.current = true;
     setOpen(false);
   }, [isDragging]);
+
+  const moveColumn = (offset: -1 | 1) => {
+    if (!movable) return;
+    const nextIndex = columnIndex + offset;
+    if (nextIndex < 0 || nextIndex >= visibleUserColumnIds.length) return;
+    setUserTableColumnOrder(table, arrayMove(visibleUserColumnIds, columnIndex, nextIndex));
+  };
 
   return (
     <DropdownMenu.Root
@@ -831,7 +880,7 @@ function CatalogColumnHeaderMenu({
               className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b] data-[state=checked]:bg-[#f3f3ed]")}
             >
               <CaretUp size={15} weight="bold" className="shrink-0 text-[#79716b]" />
-              <span className="min-w-0 flex-1">По возрастанию</span>
+              <span className="min-w-0 flex-1">{sortLabels.asc}</span>
               <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
             </DropdownMenu.RadioItem>
             <DropdownMenu.RadioItem
@@ -840,7 +889,7 @@ function CatalogColumnHeaderMenu({
               className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b] data-[state=checked]:bg-[#f3f3ed]")}
             >
               <CaretDown size={15} weight="bold" className="shrink-0 text-[#79716b]" />
-              <span className="min-w-0 flex-1">По убыванию</span>
+              <span className="min-w-0 flex-1">{sortLabels.desc}</span>
               <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
             </DropdownMenu.RadioItem>
           </DropdownMenu.RadioGroup>
@@ -854,7 +903,57 @@ function CatalogColumnHeaderMenu({
             <span>Сбросить сортировку</span>
           </DropdownMenu.Item>
         )}
-        {sortable && hideable && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+        {sortable && filterActions.length > 0 && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+        {filterActions.length > 0 && (
+          <DropdownMenu.RadioGroup value={activeColumnFilter?.id ?? ""}>
+            {filterActions.map((action) => (
+              <DropdownMenu.RadioItem
+                key={action.id}
+                value={action.id}
+                data-catalog-column-filter-action={action.id}
+                onSelect={() => onActiveFilterChange(action.id, true)}
+                className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b] data-[state=checked]:bg-[#f3f3ed]")}
+              >
+                <FunnelSimple size={15} weight="regular" className="shrink-0 text-[#79716b]" />
+                <span className="min-w-0 flex-1">{action.label}</span>
+                <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        )}
+        {activeColumnFilter && (
+          <DropdownMenu.Item
+            onSelect={() => onActiveFilterChange(activeColumnFilter.id, false)}
+            className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <XCircle size={16} weight="regular" className="shrink-0 text-[#79716b]" />
+            <span>Сбросить фильтр</span>
+          </DropdownMenu.Item>
+        )}
+        {(sortable || filterActions.length > 0) && movable && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+        {movable && (
+          <>
+            <DropdownMenu.Item
+              disabled={!canMoveLeft}
+              data-catalog-column-move="left"
+              onSelect={() => moveColumn(-1)}
+              className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+            >
+              <ArrowLeft size={16} weight="regular" className="shrink-0 text-[#79716b]" />
+              <span>Переместить левее</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              disabled={!canMoveRight}
+              data-catalog-column-move="right"
+              onSelect={() => moveColumn(1)}
+              className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+            >
+              <ArrowRight size={16} weight="regular" className="shrink-0 text-[#79716b]" />
+              <span>Переместить правее</span>
+            </DropdownMenu.Item>
+          </>
+        )}
+        {(sortable || filterActions.length > 0 || movable) && hideable && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
         {hideable && (
           <DropdownMenu.Item
             onSelect={() => {
@@ -1114,6 +1213,8 @@ export function TableHeaderRow({
   onSelectAll,
   sort,
   onSortChange,
+  activeFilterId,
+  onActiveFilterChange,
   table,
   offsetForLocalHeader = false,
   horizontalScrollLeft = 0,
@@ -1123,6 +1224,8 @@ export function TableHeaderRow({
   onSelectAll: (checked: boolean) => void;
   sort: CatalogTableSort;
   onSortChange: (sort: CatalogTableSort) => void;
+  activeFilterId: OverviewFilterId | null;
+  onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
   table: TanStackTable<CatalogItem>;
   offsetForLocalHeader?: boolean;
   horizontalScrollLeft?: number;
@@ -1237,9 +1340,12 @@ export function TableHeaderRow({
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <CatalogColumnHeaderMenu
+                  table={table}
                   column={column}
                   sort={sort}
                   onSortChange={onSortChange}
+                  activeFilterId={activeFilterId}
+                  onActiveFilterChange={onActiveFilterChange}
                   className="justify-start pl-[8px] pr-[3px] text-[13px] font-medium"
                 >
                   Название
@@ -1251,9 +1357,12 @@ export function TableHeaderRow({
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <CatalogColumnHeaderMenu
+                  table={table}
                   column={column}
                   sort={sort}
                   onSortChange={onSortChange}
+                  activeFilterId={activeFilterId}
+                  onActiveFilterChange={onActiveFilterChange}
                   className="justify-start px-3 text-[12px] font-medium leading-5"
                 >
                   {CATALOG_INFORMATION_COLUMN_LABELS.description}
@@ -1265,9 +1374,12 @@ export function TableHeaderRow({
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <CatalogColumnHeaderMenu
+                  table={table}
                   column={column}
                   sort={sort}
                   onSortChange={onSortChange}
+                  activeFilterId={activeFilterId}
+                  onActiveFilterChange={onActiveFilterChange}
                   align="end"
                   className="justify-end px-2 text-[12px] font-medium leading-5"
                 >
@@ -1280,9 +1392,12 @@ export function TableHeaderRow({
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <CatalogColumnHeaderMenu
+                  table={table}
                   column={column}
                   sort={sort}
                   onSortChange={onSortChange}
+                  activeFilterId={activeFilterId}
+                  onActiveFilterChange={onActiveFilterChange}
                   className="justify-start pl-[6px] pr-[3px] text-[13px] font-medium leading-5"
                 >
                   Базовая цена
@@ -1294,9 +1409,12 @@ export function TableHeaderRow({
             return (
               <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
                 <CatalogColumnHeaderMenu
+                  table={table}
                   column={column}
                   sort={sort}
                   onSortChange={onSortChange}
+                  activeFilterId={activeFilterId}
+                  onActiveFilterChange={onActiveFilterChange}
                   align="end"
                   className="justify-end px-2 text-right text-[13px] font-medium leading-5"
                 >
@@ -1308,9 +1426,12 @@ export function TableHeaderRow({
           return (
             <CatalogDraggableHeaderCell key={column.id} column={column} header={header} dividerClass={dividerClass} activeColumnId={activeColumnId} dropTarget={dropTarget}>
               <CatalogColumnHeaderMenu
+                table={table}
                 column={column}
                 sort={sort}
                 onSortChange={onSortChange}
+                activeFilterId={activeFilterId}
+                onActiveFilterChange={onActiveFilterChange}
                 className="justify-start pl-[6px] pr-[3px] text-[13px] font-medium"
               >
                 {column.id === "weight" ? "Вес" : CATALOG_INFORMATION_COLUMN_LABELS[column.id as CatalogInformationColumnId]}

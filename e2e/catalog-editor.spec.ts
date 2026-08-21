@@ -301,16 +301,16 @@ test("opens column actions from the full header cell and keeps sorting and visib
 
   for (const offsetX of [8, geometry.trigger.width / 2, geometry.trigger.width - 8]) {
     await priceHeader.click({ position: { x: offsetX, y: geometry.trigger.height / 2 } });
-    await expect(page.getByRole("menuitemradio", { name: "По возрастанию" })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Сначала дешевле" })).toBeVisible();
     await page.keyboard.press("Escape");
   }
 
   await priceHeader.click();
-  await page.getByRole("menuitemradio", { name: "По возрастанию" }).click();
+  await page.getByRole("menuitemradio", { name: "Сначала дешевле" }).click();
   await expect(priceHeader).toHaveAttribute("data-sort-direction", "asc");
   await priceHeader.click();
-  await expect(page.getByRole("menuitemradio", { name: "По возрастанию" })).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("menuitemradio", { name: "По убыванию" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Сначала дешевле" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Сначала дороже" }).click();
   await expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
 
   const prices = await page.locator("[data-catalog-table-row] [data-catalog-table-content-cell=price]").evaluateAll((cells) => {
@@ -326,6 +326,7 @@ test("opens column actions from the full header cell and keeps sorting and visib
 
   const weightHeader = page.getByRole("button", { name: "Настройки колонки «Вес или объём»", exact: true });
   await weightHeader.click({ position: { x: 8, y: 16 } });
+  await expect(page.getByRole("menuitemradio", { name: /Сначала/ })).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Скрыть колонку" }).click();
   await expect(weightHeader).toHaveCount(0);
   await page.getByRole("button", { name: "Настроить колонки" }).click();
@@ -336,7 +337,24 @@ test("opens column actions from the full header cell and keeps sorting and visib
   const descriptionHeader = page.getByRole("button", { name: "Настройки колонки «Описание»", exact: true });
   await descriptionHeader.click({ position: { x: 8, y: 16 } });
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
-  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio", { name: /Сначала/ })).toHaveCount(0);
+  await page.getByRole("menuitemradio", { name: "Показать без описания" }).click();
+  await expect(page.getByRole("button", { name: "Фильтр таблицы: Без описания" })).toBeVisible();
+  await descriptionHeader.click();
+  await expect(page.getByRole("menuitemradio", { name: "Показать без описания" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitem", { name: "Сбросить фильтр" }).click();
+  await expect(page.getByRole("button", { name: "Фильтр таблицы: Все" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Добавить колонку" }).click();
+  await page.getByRole("menuitem", { name: "Скидка", exact: true }).click();
+  const discountHeader = page.getByRole("button", { name: "Настройки колонки «Скидка»", exact: true });
+  await discountHeader.click();
+  await expect(page.getByRole("menuitemradio", { name: "Сначала меньшая скидка" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Сначала большая скидка" })).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "Показать со скидкой" }).click();
+  await expect(page.getByRole("button", { name: "Фильтр таблицы: Со скидкой" })).toBeVisible();
+  await discountHeader.click();
+  await page.getByRole("menuitem", { name: "Сбросить фильтр" }).click();
 });
 
 test("keeps column header click and repeated pointer reordering compatible across rerenders", async ({ page }) => {
@@ -352,7 +370,14 @@ test("keeps column header click and repeated pointer reordering compatible acros
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
   await expect(page.locator("[data-catalog-column-drag-preview]")).toHaveCount(0);
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
-  await page.getByRole("menuitem", { name: "Скрыть колонку" }).press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Переместить левее" })).toHaveAttribute("data-disabled");
+  await page.getByRole("menuitem", { name: "Переместить правее" }).click();
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await weightHeader.click();
+  await page.getByRole("menuitem", { name: "Переместить левее" }).click();
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["weight", "price"]);
 
   await pointerDrag(page, weightHeader, priceHeader, async () => {
     await expect(page.locator("[data-catalog-column-drag-preview]")).toBeVisible();
@@ -425,7 +450,7 @@ test("keeps row handles visible in reorderable state and supports repeated point
 
   const priceHeader = page.locator('[data-catalog-column-menu-trigger="price"]');
   await priceHeader.click();
-  await page.getByRole("menuitemradio", { name: "По убыванию" }).click();
+  await page.getByRole("menuitemradio", { name: "Сначала дороже" }).click();
   await expect(handles).toHaveCount(await page.locator("[data-catalog-table-row]").count());
   await expect(handles.first()).toHaveAttribute("aria-disabled", "true");
   await expect(handles.first()).toHaveCSS("opacity", "0.4");
