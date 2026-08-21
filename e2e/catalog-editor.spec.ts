@@ -364,7 +364,10 @@ test("keeps column header click and repeated pointer reordering compatible acros
 
   const weightHeader = page.locator('[data-catalog-column-menu-trigger="weight"]');
   const priceHeader = page.locator('[data-catalog-column-menu-trigger="price"]');
+  const positionHeader = page.locator('[data-catalog-column-menu-trigger="position"]');
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await expect(weightHeader).toHaveCSS("cursor", "grab");
+  await expect(positionHeader).toHaveCSS("cursor", "default");
 
   await weightHeader.click();
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
@@ -382,6 +385,7 @@ test("keeps column header click and repeated pointer reordering compatible acros
   await pointerDrag(page, weightHeader, priceHeader, async () => {
     await expect(page.locator("[data-catalog-column-drag-preview]")).toBeVisible();
     await expect(page.locator("[data-catalog-column-drop-indicator]")).toBeVisible();
+    await expect(weightHeader).toHaveCSS("cursor", "grabbing");
     await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
   });
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);

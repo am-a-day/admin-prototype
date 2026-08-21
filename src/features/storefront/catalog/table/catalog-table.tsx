@@ -859,6 +859,11 @@ function CatalogColumnHeaderMenu({
           }}
           className={cn(
             "flex h-full w-full min-w-0 items-center transition hover:bg-[#f5f5f4] data-[state=open]:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20",
+            isDragging
+              ? "cursor-grabbing"
+              : isReorderable
+                ? "cursor-grab active:cursor-grabbing"
+                : "cursor-default",
             currentDirection ? "text-[#57534d]" : "text-[#939393]",
             className,
           )}
