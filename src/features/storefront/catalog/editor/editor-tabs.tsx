@@ -52,23 +52,11 @@ export function WorkspaceLocalTabs<T extends string>({
         return;
       }
 
-      const activeIndex = tabs.findIndex((tab) => tab.id === value);
       const getTabWidth = (id: T) => tabWidths[tabs.findIndex((tab) => tab.id === id)] ?? 0;
       const getOverflowWidth = (count: number) => overflowMeasureRefs.current[count]?.getBoundingClientRect().width ?? 0;
 
       for (let prefixLength = tabs.length; prefixLength >= 1; prefixLength -= 1) {
-        let candidateIds = tabs.slice(0, prefixLength).map((tab) => tab.id);
-
-        if (activeIndex >= prefixLength) {
-          const replaceIndex = [...candidateIds].reverse().findIndex((id) => id !== value);
-          if (replaceIndex === -1) continue;
-          const actualReplaceIndex = candidateIds.length - 1 - replaceIndex;
-          candidateIds = candidateIds.filter((_, index) => index !== actualReplaceIndex);
-          candidateIds.push(value);
-          candidateIds.sort((first, second) => (
-            tabs.findIndex((tab) => tab.id === first) - tabs.findIndex((tab) => tab.id === second)
-          ));
-        }
+        const candidateIds = tabs.slice(0, prefixLength).map((tab) => tab.id);
 
         const overflowCount = tabs.length - candidateIds.length;
         const candidateWidth = candidateIds.reduce((sum, id) => sum + getTabWidth(id), 0)
@@ -99,7 +87,7 @@ export function WorkspaceLocalTabs<T extends string>({
       observer.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [tabs, value]);
+  }, [tabs]);
 
   useLayoutEffect(() => {
     const tabIds = new Set(tabs.map((tab) => tab.id));

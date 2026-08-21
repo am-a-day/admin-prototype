@@ -1265,7 +1265,15 @@ test("supports the 310px side-peek minimum with responsive tab overflow", async 
   await expect(page.getByRole("separator", { name: "Изменить ширину редактора" })).toHaveAttribute("aria-valuemin", "310");
   const tabs = pane.locator("[data-workspace-local-tabs]");
   await expect(tabs).toHaveCSS("height", "41px");
-  await expect(tabs.getByRole("button", { name: /^Еще \d+$/ })).toBeVisible();
+  const overflowTab = tabs.getByRole("button", { name: /^Еще \d+$/ });
+  await expect(overflowTab).toBeVisible();
+
+  await overflowTab.click();
+  await page.getByRole("menuitem", { name: "Вид", exact: true }).click();
+
+  await expect(overflowTab).toHaveAttribute("aria-current", "page");
+  await expect(tabs.getByRole("button", { name: "Основное", exact: true })).not.toHaveAttribute("aria-current", "page");
+  await expect(tabs.getByRole("button", { name: "Вид", exact: true })).not.toBeVisible();
 });
 
 test("returns from an all-positions editor with the same search context", async ({ page }) => {
