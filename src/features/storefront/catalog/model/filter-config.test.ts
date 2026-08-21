@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  CATALOG_TABLE_FILTER_GROUPS,
   normalizeCatalogTableActiveFilter,
   updateCatalogTableActiveFilter,
 } from "./filter-config";
 
 describe("catalog table active filter", () => {
+  it("matches the current primary and nested filter structure", () => {
+    expect(CATALOG_TABLE_FILTER_GROUPS).toEqual([
+      { key: "primary", label: "Позиции", ids: ["status:active", "status:archived", "status:stop", "status:schedule"] },
+      { key: "missing", label: "Не заполнено", ids: ["quick:no-photo", "quick:no-description", "quick:no-recommendations"] },
+      { key: "contains", label: "Содержит", ids: ["quick:with-recommendations", "quick:with-tags", "quick:discount", "quick:with-labels"] },
+      { key: "view", label: "Вид", ids: ["display:full", "display:no-price", "display:no-button", "display:no-price-only"] },
+    ]);
+  });
+
   it("replaces a selected value with one from another category", () => {
     expect(updateCatalogTableActiveFilter("quick:no-description", "status:archived")).toBe("status:archived");
   });

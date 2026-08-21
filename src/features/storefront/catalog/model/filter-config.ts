@@ -1,32 +1,28 @@
 import type { CatalogViewMode, OverviewFilterId } from "./types";
 
-export type CatalogTableFilterGroupKey = "status" | "availability" | "content" | "view";
+export type CatalogTableFilterGroupKey = "primary" | "missing" | "contains" | "view";
 
 export const CATALOG_TABLE_FILTER_GROUPS: ReadonlyArray<{
   key: CatalogTableFilterGroupKey;
   label: string;
   ids: readonly OverviewFilterId[];
 }> = [
-  { key: "status", label: "Статус", ids: ["status:active", "status:archived"] },
-  { key: "availability", label: "Доступность", ids: ["availability:available", "status:stop", "status:schedule"] },
+  { key: "primary", label: "Позиции", ids: ["status:active", "status:archived", "status:stop", "status:schedule"] },
   {
-    key: "content",
-    label: "Наполнение",
-    ids: [
-      "quick:no-photo",
-      "quick:no-description",
-      "quick:no-recommendations",
-      "quick:with-recommendations",
-      "quick:with-tags",
-      "quick:discount",
-      "quick:with-labels",
-    ],
+    key: "missing",
+    label: "Не заполнено",
+    ids: ["quick:no-photo", "quick:no-description", "quick:no-recommendations"],
   },
+  { key: "contains", label: "Содержит", ids: ["quick:with-recommendations", "quick:with-tags", "quick:discount", "quick:with-labels"] },
   { key: "view", label: "Вид", ids: ["display:full", "display:no-price", "display:no-button", "display:no-price-only"] },
 ];
 
 export const CATALOG_TABLE_FILTER_LABELS: Partial<Record<OverviewFilterId, string>> = {
   "availability:available": "Доступно",
+  "status:active": "В каталоге",
+  "status:archived": "В архиве",
+  "status:stop": "На стопе",
+  "status:schedule": "По расписанию",
   "quick:no-photo": "Без фото и видео",
   "quick:no-description": "Без описания",
   "quick:no-recommendations": "Без рекомендаций",
@@ -41,8 +37,9 @@ export const CATALOG_TABLE_FILTER_LABELS: Partial<Record<OverviewFilterId, strin
 };
 
 export function getCatalogTableFilterGroup(id: OverviewFilterId): CatalogTableFilterGroupKey | null {
-  if (id === "status:soon" || id === "availability:available") return "availability";
-  if (["quick:no-weight", "quick:no-kbju", "quick:no-translation", "quick:with-options"].includes(id)) return "content";
+  if (id === "status:soon" || id === "availability:available") return "primary";
+  if (["quick:no-weight", "quick:no-kbju", "quick:no-translation"].includes(id)) return "missing";
+  if (id === "quick:with-options") return "contains";
   return CATALOG_TABLE_FILTER_GROUPS.find((group) => group.ids.includes(id))?.key ?? null;
 }
 

@@ -151,7 +151,12 @@ async function createAndOpenEmptySection(user: ReturnType<typeof userEvent.setup
 async function chooseCatalogTableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
   await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
   const filterMenu = screen.getByRole("menu");
-  await user.click(within(filterMenu).getByRole("menuitem", { name: "Наполнение" }));
+  const groupLabel = ["Без фото и видео", "Без описания", "Без рекомендаций"].includes(label)
+    ? "Не заполнено"
+    : ["С рекомендациями", "С тегами", "Со скидкой", "Со стикером"].includes(label)
+      ? "Содержит"
+      : "Вид";
+  await user.click(within(filterMenu).getByRole("menuitem", { name: groupLabel }));
   const submenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: new RegExp(label) }));
   expect(submenu).toBeDefined();
   await user.click(within(submenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) }));
@@ -431,10 +436,25 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
     const contentMenu = screen.getByRole("menu");
-    await user.click(within(contentMenu).getByRole("menuitem", { name: "Наполнение" }));
+    expect(within(contentMenu).getByRole("menuitem", { name: /В каталоге/ })).toBeInTheDocument();
+    expect(within(contentMenu).getByRole("menuitem", { name: /В архиве/ })).toBeInTheDocument();
+    expect(within(contentMenu).getByRole("menuitem", { name: /На стопе/ })).toBeInTheDocument();
+    expect(within(contentMenu).getByRole("menuitem", { name: /По расписанию/ })).toBeInTheDocument();
+    expect(within(contentMenu).queryByRole("menuitem", { name: "Статус" })).not.toBeInTheDocument();
+    expect(within(contentMenu).queryByRole("menuitem", { name: "Доступность" })).not.toBeInTheDocument();
+    expect(within(contentMenu).queryByRole("menuitem", { name: "Наполнение" })).not.toBeInTheDocument();
+    const archivedHoverItem = within(contentMenu).getByRole("menuitem", { name: /В архиве/ });
+    await user.hover(archivedHoverItem);
+    expect(archivedHoverItem).toHaveAttribute("data-highlighted");
+    expect(archivedHoverItem.querySelector("[data-catalog-filter-count]")).toHaveClass("group-data-[highlighted]:hidden");
+    expect(archivedHoverItem.querySelector("[data-catalog-filter-hover-check]")).toHaveClass("group-data-[highlighted]:block", "opacity-30");
+    const missingGroup = within(contentMenu).getByRole("menuitem", { name: "Не заполнено" });
+    await user.hover(missingGroup);
+    expect(missingGroup).toHaveAttribute("data-highlighted");
+    await user.click(missingGroup);
     const contentSubmenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: /Без описания/ }));
     expect(contentSubmenu).toBeDefined();
-    ["Без описания", "Без фото и видео", "Без рекомендаций", "С рекомендациями", "С тегами", "Со скидкой", "Со стикером"].forEach((label) => {
+    ["Без описания", "Без фото и видео", "Без рекомендаций"].forEach((label) => {
       expect(within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     });
     const withoutDescription = within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
@@ -444,19 +464,18 @@ describe("catalog observable behavior baseline", () => {
     expect(filterTrigger).not.toHaveTextContent("Все");
 
     await user.click(filterTrigger);
-    const statusMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Статус" });
-    expect(statusMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeNull();
-    const contentMenuItem = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Наполнение" });
-    expect(contentMenuItem.querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
-    await user.click(statusMenuItem);
-    await user.click(await screen.findByRole("menuitem", { name: /В архиве/ }));
+    const selectedMissingGroup = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Без описания" });
+    expect(selectedMissingGroup).toHaveAttribute("data-catalog-filter-group-selected", "true");
+    expect(selectedMissingGroup).toHaveClass("!bg-[#eef2ff]");
+    expect(document.querySelector("[data-catalog-active-filter-dot]")).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: /В архиве/ }));
     expect(filterTrigger).toHaveTextContent("В архиве");
 
     await user.click(filterTrigger);
     const openFilterMenu = screen.getByRole("menu");
-    expect(within(openFilterMenu).getByRole("menuitem", { name: "Статус" }).querySelector("[data-catalog-active-filter-dot]")).toBeInTheDocument();
-    expect(within(openFilterMenu).getByRole("menuitem", { name: "Наполнение" }).querySelector("[data-catalog-active-filter-dot]")).toBeNull();
-    await user.click(within(openFilterMenu).getByRole("menuitem", { name: "Все позиции" }));
+    expect(within(openFilterMenu).getByRole("menuitem", { name: "В архиве" })).toHaveAttribute("aria-current", "true");
+    expect(within(openFilterMenu).getByRole("menuitem", { name: "Не заполнено" })).not.toHaveAttribute("data-catalog-filter-group-selected");
+    await user.click(within(openFilterMenu).getByRole("menuitem", { name: /Все позиции/ }));
     expect(filterTrigger).toHaveTextContent("Все");
   });
 

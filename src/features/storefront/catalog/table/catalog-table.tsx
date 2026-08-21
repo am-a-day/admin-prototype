@@ -15,13 +15,15 @@ import {
   CaretRight,
   CaretUp,
   Check,
+  CheckCircle,
+  CircleDashed,
+  CircleHalf,
   Clock,
   Dot,
   DotsSixVertical,
   DotsThree,
   Eye,
   EyeSlash,
-  FlagPennant,
   FunnelSimple,
   Layout,
   Lock,
@@ -80,35 +82,6 @@ import binocularsAsset from "../ui/binoculars.svg";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 type PriceSortDirection = CatalogPriceSortDirection;
-
-function CatalogContentFilterIcon({
-  size = 16,
-  className,
-  weight: _weight,
-  "aria-hidden": ariaHidden,
-}: {
-  size?: number;
-  className?: string;
-  weight?: string;
-  "aria-hidden"?: boolean | "true" | "false";
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-      aria-hidden={ariaHidden}
-    >
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path
-        d="M10.8284 10.8284C11.5523 10.1046 12 9.1046 12 8C12 5.79086 10.2091 4 8 4V8L10.8284 10.8284Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
 
 function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
   const target = event.currentTarget as HTMLElement;
@@ -2073,9 +2046,9 @@ export function CatalogTableFilterBar({
     .map((group) => ({
       ...group,
       icon: {
-        status: FlagPennant,
-        availability: Clock,
-        content: CatalogContentFilterIcon,
+        primary: CheckCircle,
+        missing: CircleDashed,
+        contains: CircleHalf,
         view: Layout,
       }[group.key],
       ids: group.ids.filter((id) => id !== mandatoryFilterId),
@@ -2104,8 +2077,54 @@ export function CatalogTableFilterBar({
     const triggerLabel = activeFilterId
       ? CATALOG_TABLE_FILTER_LABELS[activeFilterId] ?? HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]
       : "Все";
-    const menuItemClass = "flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[7px] px-2 text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[state=open]:rounded-[8px] data-[state=open]:bg-[#f5f5f4]";
-    const submenuClass = "z-[100003] w-[200px] min-w-[200px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none";
+    const primaryFilterIcons: Partial<Record<OverviewFilterId, PhosphorIcon>> = {
+      "status:active": CheckCircle,
+      "status:archived": Archive,
+      "status:stop": LockLaminated,
+      "status:schedule": CalendarDots,
+    };
+    const primaryFilterIds = filterGroups.find((group) => group.key === "primary")?.ids ?? [];
+    const nestedFilterGroups = filterGroups.filter((group) => group.key !== "primary");
+    const menuItemClass = "group flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[8px] px-2 text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[highlighted]:text-[#1c1917]";
+    const submenuTriggerClass = "group flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[8px] py-[6px] pl-2 pr-1 text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[highlighted]:text-[#1c1917] data-[state=open]:bg-[#f5f5f4] data-[state=open]:text-[#1c1917]";
+    const submenuClass = "z-[100003] w-[200px] min-w-[200px] overflow-hidden rounded-[12px] border-0 bg-white p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none ring-1 ring-inset ring-[#e7e5e4]";
+    const renderInactiveTrailing = (id: OverviewFilterId) => (
+      <>
+        <span
+          data-catalog-filter-count
+          className="ml-auto shrink-0 tabular-nums text-[12px] leading-4 text-[#a6a09b] group-data-[highlighted]:hidden"
+        >
+          {countByFilter(id)}
+        </span>
+        <Check
+          size={16}
+          weight="regular"
+          data-catalog-filter-hover-check
+          className="ml-auto hidden shrink-0 text-[#292524] opacity-30 group-data-[highlighted]:block"
+          aria-hidden="true"
+        />
+      </>
+    );
+    const renderPrimaryItem = (id: OverviewFilterId) => {
+      const selected = activeFilterId === id;
+      const Icon = primaryFilterIcons[id] ?? CheckCircle;
+      return (
+        <DropdownMenu.Item
+          key={id}
+          data-catalog-filter-item={id}
+          data-catalog-filter-primary
+          aria-current={selected ? "true" : undefined}
+          onSelect={() => selectFilter(id)}
+          className={cn(menuItemClass, selected && "bg-[#f5f5f4] text-[#1c1917]")}
+        >
+          <Icon size={16} weight="regular" className="shrink-0 text-[#292524]" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{CATALOG_TABLE_FILTER_LABELS[id] ?? HYBRID_PRIMARY_FILTER_LABELS[id]}</span>
+          {selected ? (
+            <Check size={16} weight="regular" className="ml-auto shrink-0 text-[#292524]" aria-hidden="true" />
+          ) : renderInactiveTrailing(id)}
+        </DropdownMenu.Item>
+      );
+    };
     const renderSubmenuItem = (id: OverviewFilterId) => {
       const selected = activeFilterId === id;
       return (
@@ -2127,7 +2146,7 @@ export function CatalogTableFilterBar({
     };
     const filterMenu = (
       <div className="w-full min-w-0" data-catalog-filter-menu>
-        <div className="border-b border-[#e7e5e4] bg-white p-1">
+        <div className="relative bg-white p-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-[#e7e5e4]">
           <DropdownMenu.Item
             onSelect={() => selectFilter("quick:all")}
             data-catalog-filter-item="quick:all"
@@ -2139,42 +2158,46 @@ export function CatalogTableFilterBar({
           >
             <Asterisk size={16} weight="regular" className="shrink-0 text-[#292524]" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">Все позиции</span>
-            {allPositionsSelected && <Check size={16} weight="regular" className="ml-auto shrink-0 text-[#292524]" aria-hidden="true" />}
+            {allPositionsSelected
+              ? <Check size={16} weight="regular" className="ml-auto shrink-0 text-[#292524]" aria-hidden="true" />
+              : renderInactiveTrailing("quick:all")}
           </DropdownMenu.Item>
         </div>
+        <div className="relative bg-white p-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-[#e7e5e4]">
+          {primaryFilterIds.map(renderPrimaryItem)}
+        </div>
         <div className="bg-white p-1">
-          {filterGroups.map((group) => {
+          {nestedFilterGroups.map((group) => {
             const Icon = group.icon;
             const groupActive = activeGroup === group.key;
-            const firstSectionIds = group.key === "content" ? group.ids.slice(0, 3) : group.ids;
-            const secondSectionIds = group.key === "content" ? group.ids.slice(3) : [];
+            const groupLabel = groupActive && activeFilterId
+              ? CATALOG_TABLE_FILTER_LABELS[activeFilterId] ?? HYBRID_PRIMARY_FILTER_LABELS[activeFilterId]
+              : group.label;
             return (
               <DropdownMenu.Sub
-                key={group.label}
-                open={openFilterGroup === group.label}
-                onOpenChange={(open) => setOpenFilterGroup(open ? group.label : null)}
+                key={group.key}
+                open={openFilterGroup === group.key}
+                onOpenChange={(open) => setOpenFilterGroup(open ? group.key : null)}
               >
                 <DropdownMenu.SubTrigger
                   data-catalog-filter-group={group.key}
-                  className={menuItemClass}
+                  data-catalog-filter-group-selected={groupActive ? "true" : undefined}
+                  aria-current={groupActive ? "true" : undefined}
+                  className={cn(submenuTriggerClass, groupActive && "!bg-[#eef2ff] text-[#1c1917]")}
                 >
                   <Icon size={16} weight="regular" className="shrink-0 text-[#292524]" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                  {groupActive && <Dot size={16} weight="fill" data-catalog-active-filter-dot className="ml-auto shrink-0 text-[#0c0a09]" aria-hidden="true" />}
-                  <CaretRight size={14} weight="regular" className={cn("shrink-0 text-[#a6a09b]", !groupActive && "ml-auto")} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate" data-catalog-filter-group-label>{groupLabel}</span>
+                  <CaretRight size={14} weight="regular" className="ml-auto shrink-0 text-[#a6a09b]" aria-hidden="true" />
                 </DropdownMenu.SubTrigger>
                 <DropdownMenu.Portal>
                   <DropdownMenu.SubContent
                     data-catalog-filter-submenu={group.key}
-                    sideOffset={4}
+                    sideOffset={8}
                     alignOffset={-4}
                     collisionPadding={12}
                     className={submenuClass}
                   >
-                    <div className={cn("p-1", secondSectionIds.length > 0 && "border-b border-[#e7e5e4]")}>
-                      {firstSectionIds.map(renderSubmenuItem)}
-                    </div>
-                    {secondSectionIds.length > 0 && <div className="p-1">{secondSectionIds.map(renderSubmenuItem)}</div>}
+                    <div className="bg-white p-1">{group.ids.map(renderSubmenuItem)}</div>
                   </DropdownMenu.SubContent>
                 </DropdownMenu.Portal>
               </DropdownMenu.Sub>
@@ -2196,7 +2219,7 @@ export function CatalogTableFilterBar({
         </DropdownMenu.Trigger>
         <DropdownContent
           align="start"
-          className="w-[200px] min-w-[200px] overflow-hidden rounded-[12px] border-[#e7e5e4] p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
+          className="w-[200px] min-w-[200px] overflow-hidden rounded-[12px] !border-0 p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-inset ring-[#e7e5e4]"
         >
           {filterMenu}
         </DropdownContent>

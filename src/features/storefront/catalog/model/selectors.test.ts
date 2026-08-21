@@ -55,7 +55,6 @@ describe("catalog table filter counts", () => {
     expect(counts).toMatchObject({
       "status:active": 2,
       "status:archived": 1,
-      "availability:available": 1,
       "status:stop": 1,
       "status:schedule": 1,
       "quick:no-photo": 2,
