@@ -3,6 +3,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { CaretRight, CircleNotch, FolderPlus, MagnifyingGlass } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { CatalogThumbnail } from "./catalog-thumbnail";
 import {
@@ -136,9 +137,39 @@ export function MoveToSectionPopover({
     () => flatSections.filter((section) => !disabledReasonFor(section)),
     [disabledReasonFor, flatSections],
   );
-  const visibleSearchSections = normalizedQuery
-    ? availableSections.filter((section) => pathFor(section).toLocaleLowerCase("ru").includes(normalizedQuery))
-    : [];
+  const visibleTreeSectionIds = useMemo(() => {
+    const ids = new Set<string>();
+    availableSections.forEach((section) => {
+      ids.add(section.id);
+      const seen = new Set<string>([section.id]);
+      let parentId = section.parentId ?? null;
+      while (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        ids.add(parentId);
+        parentId = sectionById.get(parentId)?.parentId ?? null;
+      }
+    });
+    return ids;
+  }, [availableSections, sectionById]);
+  const matchingSearchSections = useMemo(
+    () => normalizedQuery
+      ? flatSections.filter((section) => pathFor(section).toLocaleLowerCase("ru").includes(normalizedQuery))
+      : [],
+    [flatSections, normalizedQuery, pathFor],
+  );
+  const visibleSearchSections = useMemo(
+    () => matchingSearchSections.filter((section) => !disabledReasonFor(section)),
+    [disabledReasonFor, matchingSearchSections],
+  );
+  const unavailableSearchSections = useMemo(
+    () => visibleSearchSections.length === 0
+      ? matchingSearchSections.filter((section) => Boolean(disabledReasonFor(section)))
+      : [],
+    [disabledReasonFor, matchingSearchSections, visibleSearchSections.length],
+  );
+  const destinationHint = operation === "section" || operation === "sections"
+    ? "Показаны разделы без позиций — только в них можно перемещать другие разделы."
+    : "Показаны разделы без подразделов — только в них можно перемещать позиции.";
   const createDisabledReason = (operation === "section" || operation === "sections") && movingSubtreeHeight + 1 > MAX_CATALOG_SECTION_DEPTH
     ? "Достигнута максимальная глубина"
     : null;
@@ -210,7 +241,8 @@ export function MoveToSectionPopover({
   };
 
   const renderTreeTarget = (section: TreeSection): ReactNode => {
-    const children = childSectionsByParent.get(section.id) ?? [];
+    const children = (childSectionsByParent.get(section.id) ?? [])
+      .filter((child) => visibleTreeSectionIds.has(child.id));
     if (children.length === 0) return renderMoveItem(section);
     const disabledReason = disabledReasonFor(section);
     return (
@@ -358,6 +390,17 @@ export function MoveToSectionPopover({
               </div>
             ) : (
               <>
+                <div className="px-2 pb-2 pt-1">
+                  <Tooltip label={destinationHint} side="top" delayDuration={250}>
+                    <button
+                      type="button"
+                      data-move-destinations-hint
+                      className="cursor-help border-b border-dashed border-stone-400 pb-px text-left text-[12px] font-medium leading-4 text-stone-600 outline-none focus-visible:border-indigo-500 focus-visible:text-stone-900"
+                    >
+                      Можно переместить в
+                    </button>
+                  </Tooltip>
+                </div>
                 <label className="mb-1.5 flex h-8 items-center gap-2 rounded-[7px] bg-[#f5f5f4] px-2.5 ring-1 ring-inset ring-[#eceae7] focus-within:bg-white focus-within:ring-[#a8a29e]">
                   <MagnifyingGlass size={14} className="shrink-0 text-[#79716b]" />
                   <input
@@ -387,9 +430,29 @@ export function MoveToSectionPopover({
                   )}
                   {normalizedQuery
                     ? visibleSearchSections.map((section) => renderMoveItem(section, pathFor(section)))
-                    : (childSectionsByParent.get(null) ?? []).map(renderTreeTarget)}
-                  {normalizedQuery && visibleSearchSections.length === 0 && (
+                    : (childSectionsByParent.get(null) ?? [])
+                      .filter((section) => visibleTreeSectionIds.has(section.id))
+                      .map(renderTreeTarget)}
+                  {normalizedQuery && unavailableSearchSections.map((section) => (
+                    <div
+                      key={section.id}
+                      data-move-unavailable-search-result={section.id}
+                      className="rounded-[7px] bg-stone-50 px-2 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2 text-[13px] leading-4 text-stone-600">
+                        <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 shrink-0 rounded-[5px]" />
+                        <span className="min-w-0 flex-1 truncate">{pathFor(section)}</span>
+                      </div>
+                      <p className="mt-1 pl-7 text-[11px] leading-4 text-stone-400">
+                        {disabledReasonFor(section)}
+                      </p>
+                    </div>
+                  ))}
+                  {normalizedQuery && visibleSearchSections.length === 0 && unavailableSearchSections.length === 0 && (
                     <div className="flex h-16 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+                  )}
+                  {!normalizedQuery && availableSections.length === 0 && (
+                    <div className="flex h-16 items-center justify-center px-3 text-[13px] text-[#79716b]">Нет подходящих разделов</div>
                   )}
                 </div>
                 {onCreateSection && (

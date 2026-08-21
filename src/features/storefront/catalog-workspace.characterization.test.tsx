@@ -1095,6 +1095,7 @@ describe("catalog observable behavior baseline", () => {
     await user.hover(moveItem);
     const moveDialog = screen.getByRole("dialog", { name: "Переместить в раздел" });
     expect(moveItem).toBeVisible();
+    expect(within(moveDialog).getByRole("button", { name: "Можно переместить в" })).toHaveClass("border-dashed");
     expect(within(moveDialog).getByPlaceholderText("Найти раздел...")).toBeInTheDocument();
     expect(moveDialog.querySelector("img")).not.toBeNull();
     await user.type(within(moveDialog).getByPlaceholderText("Найти раздел..."), "Выпечка");
