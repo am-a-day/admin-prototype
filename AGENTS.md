@@ -213,6 +213,7 @@ Match verification to the risk. Do not run the full unit or E2E suite after ever
 - Do not use this section as a task diary.
 
 - Treat a Figma frame width as viewport context: catalog tables fill the available workspace, while only their content columns keep Figma dimensions.
+- Interpret requested catalog header spacing as the total inset from the workspace edge, including wrapper padding.
 
 ## Definition of done
 
