@@ -1064,10 +1064,15 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).toBeInTheDocument();
   });
 
-  it("does not expose table reorder controls for all positions", () => {
+  it("keeps table reorder controls disabled for all positions", () => {
     renderCatalog();
 
-    expect(screen.queryByRole("button", { name: /Изменить порядок позиции/ })).not.toBeInTheDocument();
+    const handles = screen.getAllByRole("button", { name: /Изменить порядок позиции/ });
+    expect(handles.length).toBeGreaterThan(0);
+    handles.forEach((handle) => {
+      expect(handle).toHaveAttribute("aria-disabled", "true");
+      expect(handle).toHaveClass("opacity-40", "cursor-not-allowed");
+    });
   });
 
   it("exposes leaf reorder controls and keeps explicit move destination observable", async () => {

@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, forwardRef, useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
@@ -914,27 +914,38 @@ const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
   canDrag: boolean;
   ariaLabel: string;
   dragProps: Record<string, unknown>;
-}>(({ canDrag, ariaLabel, dragProps }, ref) => {
-  if (!canDrag) return null;
-
-  return (
-    <Tooltip label={ariaLabel} side="top" delayDuration={250}>
-      <button
-        ref={ref}
-        type="button"
-        data-composition-dnd-handle
-        data-catalog-dnd-handle
-        {...dragProps}
-        disabled={!canDrag}
-        aria-label={ariaLabel}
-        tabIndex={0}
-        className="absolute left-[4px] top-1/2 z-10 flex h-7 w-[14px] -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing cursor-grab"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <DotsSixVertical size={13} weight="bold" />
-      </button>
-    </Tooltip>
+  disabledTooltip: string;
+}>(({ canDrag, ariaLabel, dragProps, disabledTooltip }, ref) => {
+  const handle = (
+    <button
+      ref={ref}
+      type="button"
+      data-composition-dnd-handle
+      data-catalog-dnd-handle
+      data-reorder-disabled={!canDrag || undefined}
+      {...(canDrag ? dragProps : {
+        onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+          event.preventDefault();
+          event.stopPropagation();
+        },
+      })}
+      aria-label={ariaLabel}
+      aria-disabled={!canDrag}
+      tabIndex={canDrag ? 0 : -1}
+      className={cn(
+        "absolute left-[4px] top-1/2 z-10 flex h-7 w-[14px] -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition",
+        canDrag
+          ? "cursor-grab hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing"
+          : "cursor-not-allowed opacity-40",
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <DotsSixVertical size={13} weight="bold" />
+    </button>
   );
+
+  if (canDrag) return handle;
+  return <Tooltip label={disabledTooltip} side="top" delayDuration={250}>{handle}</Tooltip>;
 });
 
 CatalogTableRowDragHandle.displayName = "CatalogTableRowDragHandle";
@@ -1429,6 +1440,7 @@ type AuditDishRowProps = {
   highlighted?: boolean;
   active?: boolean;
   reorderEnabled?: boolean;
+  reorderDisabledReason?: string;
   actionsSticky?: boolean;
 };
 
@@ -1481,6 +1493,7 @@ function AuditDishRowContent({
   highlighted,
   active,
   reorderEnabled = false,
+  reorderDisabledReason,
   actionsSticky = true,
   resolvedTags,
   resolvedSticker,
@@ -1575,6 +1588,7 @@ function AuditDishRowContent({
                   canDrag={reorderEnabled}
                   ariaLabel={`Изменить порядок позиции ${item.title}`}
                   dragProps={{ ...reorderAttributes, ...reorderListeners }}
+                  disabledTooltip={reorderDisabledReason ?? "Изменение порядка недоступно"}
                 />
                 <span data-no-dnd className="flex size-4 items-center justify-center">
                   <TableCheckbox
@@ -1784,6 +1798,7 @@ export function VirtualizedAuditRows({
   highlightItemId,
   activeItemId,
   reorderEnabled = false,
+  reorderDisabledReason,
   actionsSticky = true,
 }: {
   rows: TableRow<CatalogItem>[];
@@ -1797,6 +1812,7 @@ export function VirtualizedAuditRows({
   highlightItemId?: string | null;
   activeItemId?: string | null;
   reorderEnabled?: boolean;
+  reorderDisabledReason?: string;
   actionsSticky?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -1837,6 +1853,7 @@ export function VirtualizedAuditRows({
               highlighted={highlightItemId != null && item.id === highlightItemId}
               active={activeItemId != null && item.id === activeItemId}
               reorderEnabled={reorderEnabled}
+              reorderDisabledReason={reorderDisabledReason}
               actionsSticky={actionsSticky}
             />
           </div>

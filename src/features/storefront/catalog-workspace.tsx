@@ -8135,6 +8135,23 @@ function OverviewWorkspace({
     && visible.length > 1
     && visible.every((item) => item.sectionId === scopeSection?.id),
   );
+  const tableReorderDisabledReason = canReorderTable
+    ? undefined
+    : isCreateDraftOpen
+      ? "Завершите создание позиции, чтобы изменить порядок"
+      : workspaceQuery.trim()
+        ? "Очистите поиск, чтобы изменить порядок"
+        : activeFilterId != null || tagFilter != null || stickerFilter != null
+          ? "Сбросьте фильтры, чтобы изменить порядок"
+          : workspaceColumnSort != null
+            ? "Сбросьте сортировку, чтобы изменить порядок"
+            : mandatoryFilterId
+              ? "Изменение порядка недоступно в текущем режиме"
+              : !scopeSection || !scopeIsLeafSection
+                ? "Выберите раздел без подразделов, чтобы изменить порядок"
+                : visible.length <= 1
+                  ? "Для изменения порядка нужны минимум две позиции"
+                  : "Изменение порядка недоступно";
   const catalogTable = useReactTable({
     data: visible,
     columns: CATALOG_TABLE_COLUMN_DEFS,
@@ -9505,6 +9522,7 @@ function OverviewWorkspace({
                             highlightItemId={tableHighlightId}
                             activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
+                            reorderDisabledReason={tableReorderDisabledReason}
                             actionsSticky={!isCreateDraftOpen}
                           />
                         </SortableContext>

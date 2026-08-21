@@ -393,7 +393,7 @@ test("keeps column header click and repeated pointer reordering compatible acros
 });
 
 test("keeps row handles visible in reorderable state and supports repeated pointer reordering", async ({ page }) => {
-  test.setTimeout(30_000);
+  test.setTimeout(45_000);
   await page.setViewportSize({ width: 1280, height: 760 });
   await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
 
@@ -402,6 +402,9 @@ test("keeps row handles visible in reorderable state and supports repeated point
   await expect(handles.first()).toHaveCSS("position", "absolute");
   await expect(handles.first()).toHaveCSS("opacity", "1");
   await expect(handles).toHaveCount(await page.locator("[data-catalog-table-row]").count());
+  await handles.first().hover();
+  await page.waitForTimeout(350);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
 
   const initialOrder = await getCatalogRowOrder(page);
   await pointerDrag(
@@ -423,11 +426,38 @@ test("keeps row handles visible in reorderable state and supports repeated point
   const priceHeader = page.locator('[data-catalog-column-menu-trigger="price"]');
   await priceHeader.click();
   await page.getByRole("menuitemradio", { name: "По убыванию" }).click();
-  await expect(handles).toHaveCount(0);
+  await expect(handles).toHaveCount(await page.locator("[data-catalog-table-row]").count());
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "true");
+  await expect(handles.first()).toHaveCSS("opacity", "0.4");
+  await handles.first().hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Сбросьте сортировку, чтобы изменить порядок");
   await priceHeader.click();
   await page.getByRole("menuitem", { name: "Сбросить сортировку" }).click();
   await expect(handles.first()).toBeVisible();
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "false");
   await expect.poll(() => getCatalogRowOrder(page)).toEqual(secondExpected);
+
+  const search = page.getByRole("textbox", { name: "Найти позицию" });
+  await search.fill("Омлет");
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "true");
+  await expect(handles.first()).toHaveCSS("opacity", "0.4");
+  await handles.first().hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Очистите поиск, чтобы изменить порядок");
+  const filteredOrder = await getCatalogRowOrder(page);
+  await pointerDrag(page, handles.first(), handles.nth(1));
+  await expect.poll(() => getCatalogRowOrder(page)).toEqual(filteredOrder);
+  await search.fill("");
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "false");
+
+  await page.getByRole("button", { name: "Фильтр таблицы: Все" }).click();
+  await page.getByRole("menuitem", { name: /^По расписанию/ }).click();
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "true");
+  await handles.first().hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Сбросьте фильтры, чтобы изменить порядок");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Фильтр таблицы: По расписанию" }).click();
+  await page.getByRole("menuitem", { name: /^Все позиции/ }).click();
+  await expect(handles.first()).toHaveAttribute("aria-disabled", "false");
 
   await preserveLocalStorageOnReload(page);
   await page.reload();
