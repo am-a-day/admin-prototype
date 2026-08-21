@@ -240,6 +240,7 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   await firstRow.hover();
   await expect(firstMore).toHaveCSS("opacity", "1");
   await expect(firstMore).toHaveCSS("pointer-events", "auto");
+  await expect(firstMore).toHaveClass(/bg-stone-50/);
   expect(await geometry(firstRow)).toEqual(defaultGeometry);
 
   await secondRow.hover();
@@ -273,6 +274,7 @@ test("shows row More only for hover, focus, and an open menu without shifting th
   await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
   await firstSubsection.hover();
   await expect(firstSubsectionMore).toHaveCSS("opacity", "1");
+  await expect(firstSubsectionMore).toHaveClass(/bg-stone-50/);
   await secondSubsection.hover();
   await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
   await expect(secondSubsectionMore).toHaveCSS("opacity", "1");

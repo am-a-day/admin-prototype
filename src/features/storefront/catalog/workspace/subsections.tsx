@@ -183,7 +183,7 @@ export function SubsectionRow({
                   data-catalog-row-more
                   aria-label={`Действия с подразделом ${section.name}`}
                   className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-lg text-black transition hover:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    "flex h-7 w-7 items-center justify-center rounded-lg bg-stone-50 text-black transition hover:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
                     CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
                   )}
                 >
