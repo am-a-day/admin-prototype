@@ -204,7 +204,7 @@ test("uses one aligned workspace header and toolbar for every catalog table stat
   });
   const expectSharedChrome = (chrome: Awaited<ReturnType<typeof readChrome>>) => {
     expect(chrome.header).toBeTruthy();
-    expect(chrome.header!.height).toBe(62);
+    expect(chrome.header!.height).toBe(54);
     expect(chrome.gap!.height).toBe(5);
     expect(chrome.title!.left - chrome.header!.left).toBe(16);
     expect(chrome.header!.right - chrome.create!.right).toBe(16);
@@ -221,22 +221,22 @@ test("uses one aligned workspace header and toolbar for every catalog table stat
   await page.getByRole("button", { name: /^Раздел Завтраки/ }).click();
   const leaf = await readChrome();
   expectSharedChrome(leaf);
-  expect(leaf.tableHeader!.top).toBe(leaf.toolbar!.bottom);
+  expect(leaf.tableHeader!.top - leaf.toolbar!.bottom).toBe(6);
 
   await page.getByRole("button", { name: /^Раздел Кухня/ }).click();
   const parent = await readChrome();
   expectSharedChrome(parent);
-  expect(parent.tableHeader!.top).toBe(parent.toolbar!.bottom);
+  expect(parent.tableHeader!.top - parent.toolbar!.bottom).toBe(6);
 
   await page.getByRole("button", { name: /^Раздел Повреждение имущества/ }).click();
   const empty = await readChrome();
   expectSharedChrome(empty);
-  expect(empty.emptyScaffold!.top).toBe(empty.toolbar!.bottom);
+  expect(empty.emptyScaffold!.top - empty.toolbar!.bottom).toBe(6);
 
   await page.getByRole("button", { name: /^Все позиции \d+$/ }).click();
   const overview = await readChrome();
   expectSharedChrome(overview);
-  expect(overview.tableHeader!.top).toBe(overview.toolbar!.bottom);
+  expect(overview.tableHeader!.top - overview.toolbar!.bottom).toBe(6);
   await expect(page.locator("[data-catalog-overview-header-trigger]")).toContainText("Все позиции");
   await expect(page.locator("[data-position-create-button]")).toContainText("Новая позиция");
 });

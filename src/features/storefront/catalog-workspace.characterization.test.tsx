@@ -253,7 +253,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(within(sectionTree as HTMLElement).getByText("Кухня", { exact: true }));
     expect(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Новый подраздел" })).toBeInTheDocument();
-    expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveClass("h-[62px]", "px-[16px]");
+    expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveClass("h-[54px]", "px-[16px]", "pb-[12px]", "pt-[14px]");
     expect(document.querySelector("[data-catalog-workspace-table-gap]")).toHaveClass("h-[5px]", "-mx-6");
     expect(document.querySelector("[data-catalog-table-filter-cell]")).toHaveClass("w-[60px]", "pl-[16px]");
     expect(document.querySelector("[data-catalog-table-header]")).toHaveTextContent("Название");
@@ -688,11 +688,11 @@ describe("catalog observable behavior baseline", () => {
     expect(localHeader).toBeNull();
     const toolbar = document.querySelector("[data-catalog-table-toolbar]");
     expect(toolbar).not.toBeNull();
-    expect(toolbar).toHaveClass("sticky", "top-0", "bg-white");
+    expect(toolbar).toHaveClass("sticky", "top-0", "mb-[6px]", "bg-white");
     expect(within(toolbar as HTMLElement).getByText("Все", { exact: true })).toBeInTheDocument();
     expect(within(toolbar as HTMLElement).getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     const tableHeader = document.querySelector("[data-catalog-table-header]");
-    expect(tableHeader).toHaveClass("sticky", "top-[38px]", "bg-[#fafaf9]");
+    expect(tableHeader).toHaveClass("sticky", "top-[44px]", "bg-[#fafaf9]");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
     expect((tableHeader?.firstElementChild?.firstElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
