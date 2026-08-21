@@ -2482,7 +2482,7 @@ function SectionEditor({
         )}
       >
         <div className="flex min-h-full w-full min-w-0 flex-col">
-          <CatalogWorkspaceTableHeader endAction={headerAction}>
+          <CatalogWorkspaceTableHeader endAction={headerAction} showTableGap={showSubsectionList}>
             <div className="flex min-h-[30px] min-w-0 flex-1 items-center gap-1.5">
               <Tooltip label={section.imageUrl ? "Изменить иконку" : "Добавить иконку"} side="top">
                 <button

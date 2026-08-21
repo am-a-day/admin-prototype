@@ -254,6 +254,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Новый подраздел" })).toBeInTheDocument();
     expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveClass("h-[62px]", "px-[16px]");
+    expect(document.querySelector("[data-catalog-workspace-table-gap]")).toHaveClass("h-[5px]", "-mx-6");
     expect(document.querySelector("[data-catalog-table-filter-cell]")).toHaveClass("w-[60px]", "pl-[16px]");
     expect(document.querySelector("[data-catalog-table-header]")).toHaveTextContent("Название");
     const subsectionSearch = screen.getByRole("textbox", { name: "Найти подраздел" });

@@ -192,6 +192,7 @@ test("uses one aligned workspace header and toolbar for every catalog table stat
     const emptyScaffold = document.querySelector("[data-empty-section-scaffold]");
     return {
       header: rect(document.querySelector("[data-catalog-workspace-table-header]")),
+      gap: rect(document.querySelector("[data-catalog-workspace-table-gap]")),
       title: rect(document.querySelector("[data-catalog-workspace-table-title]")),
       create: rect(document.querySelector("[data-position-create-button], [data-subsection-create-button]")),
       toolbar: rect(document.querySelector("[data-catalog-table-toolbar]")),
@@ -204,11 +205,15 @@ test("uses one aligned workspace header and toolbar for every catalog table stat
   const expectSharedChrome = (chrome: Awaited<ReturnType<typeof readChrome>>) => {
     expect(chrome.header).toBeTruthy();
     expect(chrome.header!.height).toBe(62);
+    expect(chrome.gap!.height).toBe(5);
     expect(chrome.title!.left - chrome.header!.left).toBe(16);
     expect(chrome.header!.right - chrome.create!.right).toBe(16);
+    expect(chrome.gap!.left).toBe(chrome.header!.left);
+    expect(chrome.gap!.right).toBe(chrome.header!.right);
+    expect(chrome.gap!.top).toBe(chrome.header!.bottom);
     expect(chrome.toolbar!.left).toBe(chrome.header!.left);
     expect(chrome.toolbar!.right).toBe(chrome.header!.right);
-    expect(chrome.toolbar!.top).toBe(chrome.header!.bottom);
+    expect(chrome.toolbar!.top).toBe(chrome.gap!.bottom);
     expect(chrome.filter!.left - chrome.toolbar!.left).toBe(16);
     expect(chrome.serviceCell!.width).toBe(60);
   };
