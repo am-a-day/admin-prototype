@@ -1027,7 +1027,7 @@ function CatalogAvailabilityStatusButton({
   if (status === "archive") {
     return (
       <Tooltip label={statusMeta.label} side="top">
-        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] transition-colors hover:bg-[#efefea]">
           <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
         </span>
       </Tooltip>
@@ -1054,7 +1054,7 @@ function CatalogAvailabilityStatusButton({
             aria-label={`Настроить доступность: ${statusMeta.label}`}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors hover:bg-[#efefea] focus-visible:bg-[#efefea] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
           >
             <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
           </button>

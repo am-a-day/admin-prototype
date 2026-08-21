@@ -151,9 +151,9 @@ async function createAndOpenEmptySection(user: ReturnType<typeof userEvent.setup
 async function chooseCatalogTableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
   await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
   const filterMenu = screen.getByRole("menu");
-  const groupLabel = ["Без фото и видео", "Без описания", "Без рекомендаций"].includes(label)
+  const groupLabel = ["Без фото и видео", "Без описания", "Без рекомендаций", "Без КБЖУ", "Без перевода"].includes(label)
     ? "Не заполнено"
-    : ["С рекомендациями", "С тегами", "Со скидкой", "Со стикером"].includes(label)
+    : ["Рекомендации", "Теги", "Скидка", "Стикеры"].includes(label)
       ? "Содержит"
       : "Вид";
   await user.click(within(filterMenu).getByRole("menuitem", { name: groupLabel }));
@@ -553,7 +553,7 @@ describe("catalog observable behavior baseline", () => {
 
     const sectionTree = await openSectionTreeSearch(user);
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
-    await chooseCatalogTableFilter(user, "Со скидкой");
+    await chooseCatalogTableFilter(user, "Скидка");
 
     expect(document.querySelector("[data-catalog-filtered-empty-state]")).toBeInTheDocument();
     expect(document.querySelectorAll("[data-catalog-table-row]")).toHaveLength(0);

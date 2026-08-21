@@ -221,6 +221,19 @@ test("reserves toolbar space for the selected filter label", async ({ page }) =>
   expect((await readGeometry()).cell.width).toBe(60);
 });
 
+test("uses a 28px status hit area with a visible hover surface", async ({ page }) => {
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  const statusTrigger = page.locator("[data-catalog-availability-trigger]").first();
+  await expect(statusTrigger).toBeVisible();
+  await expect(statusTrigger).toHaveCSS("width", "28px");
+  await expect(statusTrigger).toHaveCSS("height", "28px");
+
+  await statusTrigger.hover();
+  await expect(statusTrigger).toHaveCSS("background-color", "rgb(239, 239, 234)");
+  await expect(page.getByRole("tooltip")).toBeVisible();
+});
+
 test("shows row More only for hover, focus, and an open menu without shifting the table", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/?editorNav=unified");
