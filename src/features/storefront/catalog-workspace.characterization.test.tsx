@@ -693,7 +693,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(toolbar as HTMLElement).getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     const tableHeader = document.querySelector("[data-catalog-table-header]");
     expect(tableHeader).toHaveClass("sticky", "top-[44px]", "bg-white");
-    expect(tableHeader?.firstElementChild).toHaveClass("border-t", "border-stone-100", "bg-white");
+    expect(tableHeader?.firstElementChild).toHaveClass("border-t", "border-stone-200", "bg-white");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
     expect((tableHeader?.firstElementChild?.firstElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
