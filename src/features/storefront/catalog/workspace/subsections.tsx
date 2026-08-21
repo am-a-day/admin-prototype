@@ -27,7 +27,6 @@ import {
   CATALOG_TABLE_HEADER_SURFACE_CLASS,
   CATALOG_TABLE_ROW_HEIGHT_CLASS,
   CATALOG_TABLE_SELECTION_COLUMN_WIDTH,
-  CATALOG_TABLE_TOOLBAR_CLASS,
 } from "../ui/catalog-layout";
 
 function TruncatedText({
@@ -156,7 +155,7 @@ export function SubsectionRow({
               onChange={(checked) => onSelectedChange(section.id, checked)}
             />
           </span>
-          <div className="flex min-w-0 flex-1 items-center gap-[7px] pl-[6px] pr-[12px] text-left">
+          <div className="flex min-w-0 flex-1 items-center gap-[7px] pl-[8px] pr-[12px] text-left">
             <CatalogThumbnail src={section.imageUrl} kind="section" className={CATALOG_TABLE_ROW_THUMBNAIL_CLASS} />
             <TruncatedText className="flex-1 whitespace-nowrap text-[13px] font-normal leading-4 text-[#44403b] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
               {section.name}
@@ -238,7 +237,7 @@ function SubsectionTableHeader({
             onChange={onSelectAll}
           />
         </span>
-        <span className="flex h-full min-w-0 flex-1 items-center pl-[6px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]">
+        <span className="flex h-full min-w-0 flex-1 items-center pl-[8px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]">
           Название подраздела
         </span>
         <span style={{ width: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH }} className="flex h-full shrink-0" aria-hidden="true" />
@@ -310,47 +309,54 @@ export function SubsectionList({
       <div className="min-w-0 flex-1 bg-[#f5f5f4]">
         <div data-catalog-section-table-gap className={CATALOG_SECTION_TO_TABLE_GAP_CLASS} aria-hidden="true" />
         {isEmpty ? (
-          <>
-            <div data-catalog-table-toolbar className={CATALOG_TABLE_TOOLBAR_CLASS} />
-            <div data-empty-section-scaffold className="w-full border-b border-[#e7e5e4]">
-              <div className="flex h-[34px] w-full items-center bg-[#fafaf9]">
-                <span className="flex h-full w-[45px] shrink-0 items-center justify-center border-b border-[#eeeeec] text-black" aria-hidden="true">
-                  <CircleDashed size={16} weight="regular" />
-                </span>
-                <p className="flex h-full min-w-0 flex-1 items-center border-b border-r border-[#eeeeec] pl-[8px] pr-[3px] text-[13px] font-normal leading-[1.5] text-[#79716b]">
-                  В разделе пока ничего нет
-                </p>
-              </div>
-              {onAddPosition && (
-                <div className="flex h-[36px] w-full items-center border-b border-[#f5f5f4] bg-white">
-                  <span className="flex h-full w-[45px] shrink-0 items-center justify-center" aria-hidden="true">
-                    <span className="flex size-7 items-center justify-center rounded-[6.462px] border border-[#e7e5e4] bg-white text-black">
-                      <FilePlus size={16} weight="regular" />
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={onAddPosition}
-                    disabled={addPositionDisabled}
-                    data-empty-position-create
-                    className="flex h-full min-w-0 flex-1 items-center pl-[8px] pr-[12px] text-left text-[13px] font-normal leading-4 text-[#292524] transition-colors hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
-                  >
-                    Добавить позицию
-                  </button>
-                </div>
-              )}
-              {onStartDraft && onCreateDraft && onCancelDraft && (
-                <CatalogStructureInlineCreateRow
-                  entity="subsection"
-                  active={draftActive}
-                  variant="empty"
-                  onStart={onStartDraft}
-                  onCreate={onCreateDraft}
-                  onCancel={onCancelDraft}
-                />
-              )}
+          <div data-empty-section-scaffold className="w-full border-b border-[#e7e5e4]">
+            <div data-empty-section-row="message" className="flex h-[34px] w-full items-center bg-[#fafaf9]">
+              <span
+                data-catalog-utility-cell
+                style={{ width: CATALOG_TABLE_SELECTION_COLUMN_WIDTH }}
+                className="flex h-full shrink-0 items-center justify-center border-b border-[#eeeeec] text-black"
+                aria-hidden="true"
+              >
+                <CircleDashed size={16} weight="regular" />
+              </span>
+              <p className="flex h-full min-w-0 flex-1 items-center border-b border-r border-[#eeeeec] pl-[8px] pr-[3px] text-[13px] font-normal leading-[1.5] text-[#79716b]">
+                В разделе пока ничего нет
+              </p>
             </div>
-          </>
+            {onAddPosition && (
+              <div data-empty-section-row="position" className="flex h-[38px] w-full items-center border-b border-[#f5f5f4] bg-white">
+                <span
+                  data-catalog-utility-cell
+                  style={{ width: CATALOG_TABLE_SELECTION_COLUMN_WIDTH }}
+                  className="flex h-full shrink-0 items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <span className="flex size-7 items-center justify-center rounded-[6.462px] border border-[#e7e5e4] bg-white text-black">
+                    <FilePlus size={16} weight="regular" />
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onAddPosition}
+                  disabled={addPositionDisabled}
+                  data-empty-position-create
+                  className="flex h-full min-w-0 flex-1 items-center pl-[8px] pr-[12px] text-left text-[13px] font-normal leading-4 text-[#292524] transition-colors hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
+                >
+                  Добавить позицию
+                </button>
+              </div>
+            )}
+            {onStartDraft && onCreateDraft && onCancelDraft && (
+              <CatalogStructureInlineCreateRow
+                entity="subsection"
+                active={draftActive}
+                variant="empty"
+                onStart={onStartDraft}
+                onCreate={onCreateDraft}
+                onCancel={onCancelDraft}
+              />
+            )}
+          </div>
         ) : (
           <>
             <CatalogTableToolbarShell
@@ -393,7 +399,7 @@ export function SubsectionList({
               />
             ))}
             {visibleChildSections.length === 0 && (
-              <div className="flex h-[38px] items-center border-b border-[#eeeeec] pl-[57px] pr-[33px] text-[13px] leading-5 text-[#78716c]">
+              <div className="flex h-[38px] items-center border-b border-[#eeeeec] pl-[68px] pr-[33px] text-[13px] leading-5 text-[#78716c]">
                 Поиск не дал результатов
               </div>
             )}

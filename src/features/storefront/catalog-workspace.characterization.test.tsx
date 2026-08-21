@@ -207,6 +207,16 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Вернуться к разделам" })).not.toBeInTheDocument();
 
+    const emptyScaffold = document.querySelector<HTMLElement>("[data-empty-section-scaffold]");
+    expect(emptyScaffold?.previousElementSibling).toHaveAttribute("data-catalog-section-table-gap");
+    expect(emptyScaffold?.parentElement?.querySelector(":scope > [data-catalog-table-toolbar]")).toBeNull();
+    const emptyRows = [...document.querySelectorAll<HTMLElement>("[data-empty-section-row], [data-empty-section-scaffold] > [data-catalog-structure-create-row]")];
+    expect(emptyRows).toHaveLength(3);
+    expect(emptyRows[0]).toHaveClass("h-[34px]");
+    expect(emptyRows[1]).toHaveClass("h-[38px]");
+    expect(emptyRows[2]).toHaveClass("h-[38px]");
+    expect([...emptyScaffold!.querySelectorAll<HTMLElement>("[data-catalog-utility-cell]")].every((cell) => cell.style.width === "60px")).toBe(true);
+
     const emptyCreateButton = document.querySelector("[data-empty-position-create]");
     expect(emptyCreateButton).not.toBeNull();
     expect(emptyCreateButton).toHaveTextContent("Добавить позицию");
@@ -262,6 +272,7 @@ describe("catalog observable behavior baseline", () => {
     const header = document.querySelector("[data-catalog-table-header]");
     expect(header).toHaveTextContent("Название подраздела");
     expect(header?.firstElementChild).toHaveClass("h-[34px]");
+    expect((header?.firstElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
 
     const rows = [...document.querySelectorAll<HTMLElement>("[data-subsection-row]")];
     expect(rows.length).toBeGreaterThan(0);
@@ -272,6 +283,7 @@ describe("catalog observable behavior baseline", () => {
     const addRow = document.querySelector<HTMLElement>("[data-catalog-structure-create-row]");
     expect(addRow).toHaveTextContent("Добавить подраздел...");
     expect(addRow).toHaveClass("h-[36px]");
+    expect(addRow?.querySelector<HTMLElement>("[data-catalog-utility-cell]")?.style.width).toBe("60px");
     expect(addRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
     expect(addRow?.parentElement?.lastElementChild).toBe(addRow?.nextElementSibling);
   });
@@ -340,7 +352,7 @@ describe("catalog observable behavior baseline", () => {
     expect(document.querySelector("[data-empty-position-create]")).toHaveTextContent("Добавить позицию");
     expect(screen.getByRole("button", { name: "Новый подраздел" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Добавить подраздел..." }));
+    await user.click(screen.getByRole("button", { name: "Добавить подраздел" }));
     const input = screen.getByPlaceholderText("Название подраздела...");
     expect(input).toHaveFocus();
     expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
@@ -352,6 +364,20 @@ describe("catalog observable behavior baseline", () => {
     await user.click(document.querySelector("[data-catalog-tree-root]") as HTMLElement);
     expect(screen.queryByPlaceholderText("Название подраздела...")).not.toBeInTheDocument();
     expect(within(sectionTree).queryByText("Не сохранять", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("keeps a truly empty section compact when a previous section left a search query", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = await openSectionTreeSearch(user);
+    await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+    await user.type(screen.getByPlaceholderText("Поиск по названию"), "несуществующая позиция");
+    await user.click(within(sectionTree as HTMLElement).getByText("Повреждение имущества", { exact: true }));
+
+    expect(document.querySelector("[data-empty-section-scaffold]")).not.toBeNull();
+    expect(document.querySelector("[data-catalog-table-toolbar]")).toBeNull();
+    expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
   });
 
   it("opens position creation in a side peek from a leaf section", async () => {
@@ -641,6 +667,7 @@ describe("catalog observable behavior baseline", () => {
     const tableHeader = document.querySelector("[data-catalog-table-header]");
     expect(tableHeader).toHaveClass("sticky", "top-[38px]", "bg-[#fafaf9]");
     expect(within(tableHeader as HTMLElement).getByText("Название", { exact: true })).toBeInTheDocument();
+    expect((tableHeader?.firstElementChild?.firstElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
     expect(within(tableHeader as HTMLElement).queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
     const tableBody = document.querySelector("[data-catalog-table-body]");
     expect(tableBody).not.toBeNull();
@@ -650,7 +677,8 @@ describe("catalog observable behavior baseline", () => {
     const positionCreateRow = document.querySelector<HTMLElement>("[data-catalog-position-create-row]");
     expect(positionCreateRow).toHaveTextContent("Добавить позицию");
     expect(positionCreateRow).toHaveClass("h-[36px]");
-    expect(positionCreateRow?.querySelector('[data-catalog-table-content-cell="position"]')).toHaveClass("pl-[6px]");
+    expect((positionCreateRow?.firstElementChild as HTMLElement | null)?.style.width).toBe("60px");
+    expect(positionCreateRow?.querySelector('[data-catalog-table-content-cell="position"]')).toHaveClass("pl-[8px]");
     expect(positionCreateRow?.querySelector('[data-catalog-table-actions]')).toBeEmptyDOMElement();
     expect(positionCreateRow?.nextElementSibling).toHaveAttribute("data-catalog-table-trailing-space");
     expect(positionCreateRow?.nextElementSibling).toHaveClass("bg-[#f5f5f4]");

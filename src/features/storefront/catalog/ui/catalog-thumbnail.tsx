@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 const CATALOG_THUMBNAIL_CLASS = "h-5 w-5 rounded-[5px]";
 
-export const CATALOG_SECTION_HEADER_THUMBNAIL_CLASS = "h-6 w-6 rounded-[6px]";
+export const CATALOG_SECTION_HEADER_THUMBNAIL_CLASS = "h-7 w-7 rounded-[7.368px]";
 export const CATALOG_TABLE_ROW_THUMBNAIL_CLASS = "h-7 w-7 rounded-[6.462px] border border-[#e7e5e4] bg-white";
 
 export function CatalogThumbnail({

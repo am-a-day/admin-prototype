@@ -753,7 +753,7 @@ export function TableHeaderRow({
           }
           if (column.id === "position") {
             return (
-              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pl-[6px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
+              <span key={column.id} data-catalog-table-content-cell={column.id} style={getColumnWidthStyle(column.getSize())} className={cn("relative flex h-full shrink-0 items-center truncate pl-[8px] pr-[3px] text-[13px] font-medium leading-5 text-[#939393]", dividerClass)}>
                 Название
                 <ColumnResizeHandle header={header} />
               </span>
@@ -1135,7 +1135,7 @@ function AuditDishRowContent({
             );
           case "position":
             return (
-              <div key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center gap-[7px] pl-[6px] pr-[12px]", dividerClass)}>
+              <div key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center gap-[7px] pl-[8px] pr-[12px]", dividerClass)}>
                 <CatalogThumbnail src={item.thumbnailUrl} kind="item" className={CATALOG_TABLE_ROW_THUMBNAIL_CLASS} />
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#44403b] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
@@ -1421,9 +1421,9 @@ export function CatalogPositionCreateRow({
             data-catalog-table-content-cell={column.id}
             style={getColumnWidthStyle(column.getSize())}
             className={cn(
-              "flex h-full shrink-0 items-center pl-[6px] pr-[12px] text-[13px] font-normal leading-4",
+              "flex h-full shrink-0 items-center pr-[12px] text-[13px] font-normal leading-4",
               dividerClass,
-              column.id === "position" ? "text-[#a6a09b]" : "text-transparent",
+              column.id === "position" ? "pl-[8px] text-[#a6a09b]" : "pl-[6px] text-transparent",
             )}
           >
             {column.id === "position" ? "Добавить позицию" : ""}

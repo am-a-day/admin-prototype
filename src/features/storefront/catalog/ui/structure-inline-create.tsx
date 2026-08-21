@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, FolderPlus, Plus, X } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { CATALOG_TABLE_SELECTION_COLUMN_WIDTH } from "./catalog-layout";
 
 export type CatalogStructureCreateResult = boolean | string | void;
 
@@ -25,7 +26,9 @@ export function CatalogStructureInlineCreateRow({
   const [error, setError] = useState<string | null>(null);
   const normalizedName = name.trim();
   const canSubmit = normalizedName.length > 0;
-  const label = entity === "section" ? "Добавить раздел..." : "Добавить подраздел...";
+  const label = variant === "empty"
+    ? entity === "section" ? "Добавить раздел" : "Добавить подраздел"
+    : entity === "section" ? "Добавить раздел..." : "Добавить подраздел...";
   const placeholder = entity === "section" ? "Название раздела..." : "Название подраздела...";
   const inputLabel = entity === "section" ? "Название раздела" : "Название подраздела";
 
@@ -54,18 +57,20 @@ export function CatalogStructureInlineCreateRow({
     }
   };
 
-  const iconColumnWidth = variant === "empty" ? 45 : 57;
-
   return (
     <div
       ref={rowRef}
       data-catalog-structure-create-row
       data-subsection-create-draft={active ? "true" : undefined}
       data-structure-create-entity={entity}
-      className="flex h-[36px] min-h-[36px] w-full items-center border-b border-[#f5f5f4] bg-white"
+      className={cn(
+        "flex w-full items-center border-b border-[#f5f5f4] bg-white",
+        variant === "empty" ? "h-[38px] min-h-[38px]" : "h-[36px] min-h-[36px]",
+      )}
     >
       <span
-        style={{ width: iconColumnWidth }}
+        data-catalog-utility-cell
+        style={{ width: CATALOG_TABLE_SELECTION_COLUMN_WIDTH }}
         className="flex h-full shrink-0 items-center justify-center"
         aria-hidden="true"
       >

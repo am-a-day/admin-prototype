@@ -2304,6 +2304,7 @@ function SectionEditor({
   section,
   childSections,
   compositionItems,
+  compositionTotalCount,
   compositionQuery,
   scrollTop,
   activeTab,
@@ -2345,6 +2346,7 @@ function SectionEditor({
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
   compositionItems: CatalogItem[];
+  compositionTotalCount: number;
   compositionQuery: string;
   scrollTop: number;
   activeTab: SectionEditorTab;
@@ -2389,7 +2391,7 @@ function SectionEditor({
   const archived = section.status === "archive";
   const status = getSectionStatusMeta(section);
   const hasChildSections = childSections.length > 0;
-  const sectionIsCompletelyEmpty = !hasChildSections && compositionItems.length === 0 && !compositionQuery.trim();
+  const sectionIsCompletelyEmpty = !hasChildSections && compositionTotalCount === 0;
   const showSubsectionList = hasChildSections || sectionIsCompletelyEmpty || subsectionDraftActive;
   const canCreateSubsection = !archived && !subsectionCreateDisabledReason && Boolean(onStartSubsectionCreation);
   const [selectedSubsectionIds, setSelectedSubsectionIds] = useState<Set<string>>(() => new Set());
@@ -6029,6 +6031,7 @@ function PopulatedWorkspace({
       childSections={directChildSections}
       highlightItemId={highlightItemId}
       compositionItems={sectionTableItems}
+      compositionTotalCount={sectionTableBaseItems.length}
       compositionQuery={sectionTableQuery}
       scrollTop={sectionEditorScrollTop}
       activeTab={sectionEditorTab}
@@ -6195,6 +6198,7 @@ function PopulatedWorkspace({
               childSections={directChildSections}
               highlightItemId={highlightItemId}
               compositionItems={sectionTableItems}
+              compositionTotalCount={sectionTableBaseItems.length}
               compositionQuery={sectionTableQuery}
               scrollTop={sectionEditorScrollTop}
               activeTab={sectionEditorTab}
