@@ -337,13 +337,8 @@ test("opens column actions from the full header cell and keeps sorting and visib
   const descriptionHeader = page.getByRole("button", { name: "Настройки колонки «Описание»", exact: true });
   await descriptionHeader.click({ position: { x: 8, y: 16 } });
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
-  await expect(page.getByRole("menuitemradio", { name: /Сначала/ })).toHaveCount(0);
-  await page.getByRole("menuitemradio", { name: "Показать без описания" }).click();
-  await expect(page.getByRole("button", { name: "Фильтр таблицы: Без описания" })).toBeVisible();
-  await descriptionHeader.click();
-  await expect(page.getByRole("menuitemradio", { name: "Показать без описания" })).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("menuitem", { name: "Сбросить фильтр" }).click();
-  await expect(page.getByRole("button", { name: "Фильтр таблицы: Все" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Добавить колонку" }).click();
   await page.getByRole("menuitem", { name: "Скидка", exact: true }).click();
@@ -351,10 +346,8 @@ test("opens column actions from the full header cell and keeps sorting and visib
   await discountHeader.click();
   await expect(page.getByRole("menuitemradio", { name: "Сначала меньшая скидка" })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: "Сначала большая скидка" })).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "Показать со скидкой" }).click();
-  await expect(page.getByRole("button", { name: "Фильтр таблицы: Со скидкой" })).toBeVisible();
-  await discountHeader.click();
-  await page.getByRole("menuitem", { name: "Сбросить фильтр" }).click();
+  await expect(page.getByRole("menuitemradio", { name: /Показать/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("keeps column header click and repeated pointer reordering compatible across rerenders", async ({ page }) => {
@@ -373,12 +366,12 @@ test("keeps column header click and repeated pointer reordering compatible acros
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
   await expect(page.locator("[data-catalog-column-drag-preview]")).toHaveCount(0);
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
-  await expect(page.getByRole("menuitem", { name: "Переместить левее" })).toHaveAttribute("data-disabled");
-  await page.getByRole("menuitem", { name: "Переместить правее" }).click();
+  await expect(page.getByRole("menuitem", { name: "Сдвинуть влево" })).toHaveAttribute("data-disabled");
+  await page.getByRole("menuitem", { name: "Сдвинуть вправо" }).click();
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
   await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["price", "weight"]);
   await weightHeader.click();
-  await page.getByRole("menuitem", { name: "Переместить левее" }).click();
+  await page.getByRole("menuitem", { name: "Сдвинуть влево" }).click();
   await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
   await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["weight", "price"]);
 

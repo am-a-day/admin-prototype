@@ -434,15 +434,14 @@ describe("catalog observable behavior baseline", () => {
     expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
     const nameHeader = screen.getByRole("button", { name: "Настройки колонки «Название»" });
     await user.click(nameHeader);
-    expect(screen.queryByRole("menuitemradio", { name: "Сначала дешевле" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitemradio", { name: "Показать без фото и видео" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(nameHeader).not.toHaveAttribute("data-sort-direction");
     expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
 
     await user.click(screen.getByRole("button", { name: "Настройки колонки «Вес или объём»" }));
     expect(screen.queryByRole("menuitemradio", { name: /Сначала/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Переместить правее" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Сдвинуть вправо" })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Скрыть колонку" }));
     expect(screen.queryByRole("button", { name: "Настройки колонки «Вес или объём»" })).not.toBeInTheDocument();
 

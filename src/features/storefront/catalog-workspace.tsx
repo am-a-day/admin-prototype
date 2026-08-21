@@ -9391,8 +9391,6 @@ function OverviewWorkspace({
                   onSelectAll={setVisibleSelected}
                   sort={workspaceColumnSort}
                   onSortChange={setWorkspaceColumnSort}
-                  activeFilterId={activeFilterId}
-                  onActiveFilterChange={setWorkspaceActiveFilter}
                   table={catalogTable}
                   offsetForLocalHeader={false}
                   horizontalScrollLeft={tableHorizontalScrollLeft}
