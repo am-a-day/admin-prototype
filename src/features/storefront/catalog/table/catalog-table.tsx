@@ -1051,7 +1051,12 @@ export function TableHeaderRow({
           }
           if (column.id === "add-column") {
             return (
-              <span key={column.id} style={getColumnWidthStyle(column.getSize())} className="flex h-full shrink-0 items-center justify-center">
+              <span
+                key={column.id}
+                data-catalog-add-column-header-cell
+                style={getColumnWidthStyle(column.getSize())}
+                className="relative z-40 flex h-full shrink-0 items-center justify-center"
+              >
                 <CatalogAddColumnMenu table={table} />
               </span>
             );
