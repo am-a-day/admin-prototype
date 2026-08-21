@@ -766,10 +766,10 @@ const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
         disabled={!canDrag}
         aria-label={ariaLabel}
         tabIndex={0}
-        className="absolute left-[5px] top-1/2 z-10 flex h-7 w-6 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing cursor-grab"
+        className="absolute left-[4px] top-1/2 z-10 flex h-7 w-[14px] -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none transition hover:bg-[#f0f0ea] hover:text-[#79716b] focus-visible:bg-[#f0f0ea] focus-visible:text-[#57534d] focus-visible:ring-2 focus-visible:ring-[#292524]/15 active:cursor-grabbing cursor-grab"
         onClick={(event) => event.stopPropagation()}
       >
-        <DotsSixVertical size={15} weight="bold" />
+        <DotsSixVertical size={13} weight="bold" />
       </button>
     </Tooltip>
   );
@@ -1019,7 +1019,7 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[76px]")}
+      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, "mt-[6px]", offsetForLocalHeader && "top-[76px]")}
       data-catalog-table-header
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
