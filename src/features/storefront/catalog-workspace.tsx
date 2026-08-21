@@ -162,6 +162,7 @@ import { SubsectionList } from "./catalog/workspace/subsections";
 import {
   CATALOG_PAGE_HEADER_CLASS,
   CATALOG_SECTION_TO_TABLE_GAP_CLASS,
+  CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
 } from "./catalog/ui/catalog-layout";
 import { CatalogTableTrailingSpace } from "./catalog/ui/catalog-table-trailing-space";
 import {
@@ -6560,7 +6561,11 @@ function AuditRowActionsMenu({
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          data-catalog-row-more
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-lg text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
+          )}
           aria-label={`Действия для ${item.title}`}
         >
           <DotsThreeVertical size={16} weight="regular" />

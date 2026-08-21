@@ -108,6 +108,75 @@ test("keeps catalog add and table controls compact and aligned", async ({ page }
   await expect(languageSettings.locator("svg")).toHaveAttribute("width", "15");
 });
 
+test("shows row More only for hover, focus, and an open menu without shifting the table", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/?editorNav=unified");
+  await page.getByText("Завтраки", { exact: true }).first().click();
+
+  const rows = page.locator("[data-catalog-table-row]");
+  const firstRow = rows.first();
+  const secondRow = rows.nth(1);
+  const firstMore = firstRow.locator("[data-catalog-row-more]");
+  const secondMore = secondRow.locator("[data-catalog-row-more]");
+  const geometry = (row: typeof firstRow) => row.evaluate((element) => {
+    const rect = (target: Element | null) => {
+      if (!target) return null;
+      const box = target.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    };
+    return {
+      row: rect(element),
+      title: rect(element.querySelector("[data-catalog-table-content-cell=position]")),
+      actions: rect(element.querySelector("[data-catalog-table-actions]")),
+      more: rect(element.querySelector("[data-catalog-row-more]")),
+    };
+  });
+
+  await expect(firstMore).toHaveCSS("opacity", "0");
+  await expect(firstMore).toHaveCSS("pointer-events", "none");
+  const defaultGeometry = await geometry(firstRow);
+  expect(defaultGeometry.row?.height).toBe(38);
+  expect(defaultGeometry.actions?.width).toBe(33);
+
+  await firstRow.hover();
+  await expect(firstMore).toHaveCSS("opacity", "1");
+  await expect(firstMore).toHaveCSS("pointer-events", "auto");
+  expect(await geometry(firstRow)).toEqual(defaultGeometry);
+
+  await secondRow.hover();
+  await expect(firstMore).toHaveCSS("opacity", "0");
+  await expect(secondMore).toHaveCSS("opacity", "1");
+
+  await secondMore.click();
+  await expect(secondMore).toHaveAttribute("data-state", "open");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.getByRole("menu").hover();
+  await expect(secondMore).toHaveCSS("opacity", "1");
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("textbox", { name: "Найти позицию" }).focus();
+  await expect(secondMore).toHaveCSS("opacity", "0");
+  await firstRow.focus();
+  await expect(firstMore).toHaveCSS("opacity", "1");
+  await firstMore.focus();
+  await expect(firstMore).toHaveCSS("opacity", "1");
+  expect(await geometry(firstRow)).toEqual(defaultGeometry);
+
+  await page.getByText("Кухня", { exact: true }).first().click();
+  const subsectionRows = page.locator("[data-subsection-row]");
+  const firstSubsection = subsectionRows.first();
+  const secondSubsection = subsectionRows.nth(1);
+  const firstSubsectionMore = firstSubsection.locator("[data-catalog-row-more]");
+  const secondSubsectionMore = secondSubsection.locator("[data-catalog-row-more]");
+  await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
+  await firstSubsection.hover();
+  await expect(firstSubsectionMore).toHaveCSS("opacity", "1");
+  await secondSubsection.hover();
+  await expect(firstSubsectionMore).toHaveCSS("opacity", "0");
+  await expect(secondSubsectionMore).toHaveCSS("opacity", "1");
+});
+
 test("stretches the table across the available workspace while panels change", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });

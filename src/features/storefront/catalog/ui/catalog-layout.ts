@@ -8,3 +8,5 @@ export const CATALOG_TABLE_HEADER_SURFACE_CLASS = "flex h-[34px] min-w-0 items-c
 export const CATALOG_TABLE_ROW_HEIGHT_CLASS = "h-[38px] min-h-[38px] max-h-[38px]";
 export const CATALOG_TABLE_SELECTION_COLUMN_WIDTH = 60;
 export const CATALOG_TABLE_ACTIONS_COLUMN_WIDTH = 33;
+export const CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS =
+  "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100";

@@ -25,6 +25,7 @@ import {
   CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
   CATALOG_TABLE_HEADER_STICKY_CLASS,
   CATALOG_TABLE_HEADER_SURFACE_CLASS,
+  CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
   CATALOG_TABLE_ROW_HEIGHT_CLASS,
   CATALOG_TABLE_SELECTION_COLUMN_WIDTH,
 } from "../ui/catalog-layout";
@@ -180,8 +181,12 @@ export function SubsectionRow({
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
+                  data-catalog-row-more
                   aria-label={`Действия с подразделом ${section.name}`}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-black transition hover:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-lg text-black transition hover:bg-[#efefea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                    CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
+                  )}
                 >
                   <DotsThreeVertical size={16} weight="regular" />
                 </button>
