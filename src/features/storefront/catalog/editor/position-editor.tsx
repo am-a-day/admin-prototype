@@ -3657,6 +3657,7 @@ export function PositionEditor({
     const stopDisplayMode: CatalogStopDisplayMode = unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
     return (
       <DropdownMenu.Root
+        modal={false}
         open={fixture?.positionActionsOpen ? true : positionActionsOpen}
         onOpenChange={(nextOpen) => {
           setPositionActionsOpen(nextOpen);
@@ -3669,6 +3670,7 @@ export function PositionEditor({
         <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
         <DropdownContent
           align="start"
+          preventFocusOutsideDismiss
           preventOutsideDismiss={(event) => (
             positionScheduleEditorPinned
             || (positionStopEditorPinned
@@ -3686,7 +3688,7 @@ export function PositionEditor({
             weeklySchedule={weeklySchedule}
             archiveDisabled={isArchived}
             onRename={startTitleEditing}
-            onMove={(event) => onMoveItem(item, getMovePopoverAnchor(event))}
+            onMove={(event) => onMoveItem(item, getMovePopoverAnchor(event, "right"))}
             onDuplicate={onDuplicateItem ? () => onDuplicateItem(item) : undefined}
             onAvailabilityChange={(value) => {
               if (value === "available") onSetAvailabilityMode(item, "always");

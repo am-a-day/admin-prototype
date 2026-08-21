@@ -58,6 +58,7 @@ export function MoveToSectionPopover({
   const [createError, setCreateError] = useState("");
   const [creating, setCreating] = useState(false);
   const [loadingTarget, setLoadingTarget] = useState<string | null | undefined>(undefined);
+  const nestedPlacement = anchor.placement === "right";
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(true, onClose);
   const flatSections = useMemo(() => flattenSections(buildLocalSectionTree(sections)), [sections]);
@@ -143,12 +144,13 @@ export function MoveToSectionPopover({
     : null;
 
   useEffect(() => {
+    if (nestedPlacement) return;
     const frame = window.requestAnimationFrame(() => {
       if (createMode) createInputRef.current?.focus();
       else searchRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [createMode]);
+  }, [createMode, nestedPlacement]);
 
   const chooseTarget = async (targetSectionId: string | null, disabledReason: string | null, destination?: TreeSection) => {
     if (disabledReason || busy) return;
@@ -223,7 +225,8 @@ export function MoveToSectionPopover({
             sideOffset={5}
             alignOffset={-6}
             collisionPadding={12}
-            className="z-[100006] min-w-[220px] max-w-[320px] rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)] outline-none"
+            data-move-to-section-nested-menu
+            className="scrollbar-subtle z-[100006] max-h-[min(340px,calc(100vh-24px))] min-w-[220px] max-w-[320px] overflow-y-auto overscroll-contain rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)] outline-none"
           >
             {!disabledReason && (
               <DropdownMenu.Item
@@ -261,8 +264,9 @@ export function MoveToSectionPopover({
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="start"
-          side="bottom"
-          sideOffset={6}
+          side={nestedPlacement ? "right" : "bottom"}
+          sideOffset={nestedPlacement ? 5 : 6}
+          alignOffset={nestedPlacement ? -6 : 0}
           collisionPadding={12}
           onCloseAutoFocus={(event) => event.preventDefault()}
           onEscapeKeyDown={(event) => {
@@ -288,6 +292,7 @@ export function MoveToSectionPopover({
         >
           {marker}
           <div
+            data-move-to-section-menu
             role="dialog"
             aria-label={operation === "section" || operation === "sections" ? "Переместить раздел" : "Переместить в раздел"}
             className="flex w-[320px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"

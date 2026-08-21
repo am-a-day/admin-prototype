@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
@@ -630,7 +630,7 @@ type EntityMenuProps = {
   archiveDisabled?: boolean;
   onChangeIcon?: (event: Event) => void;
   onRename: (event: Event) => void;
-  onMove: (event: Event) => void;
+  onMove: (event: Event | ReactPointerEvent<HTMLElement>) => void;
   onDuplicate?: () => void;
   onAvailabilityChange: (value: CatalogMenuAvailability) => void;
   onStopDisplayModeChange: (value: CatalogStopDisplayMode) => void;
@@ -690,7 +690,19 @@ export function CatalogContextMenuContent({
         </MenuItem>
       )}
       <DropdownActionItem icon={NotePencil} onSelect={onRename}>Переименовать</DropdownActionItem>
-      <DropdownActionItem icon={ArrowElbowUpRight} onSelect={onMove}>Переместить</DropdownActionItem>
+      <DropdownMenu.Item
+        aria-haspopup="menu"
+        onPointerEnter={onMove}
+        onSelect={(event) => {
+          event.preventDefault();
+          onMove(event);
+        }}
+        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+      >
+        <ArrowElbowUpRight size={15} weight="regular" className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate">Переместить</span>
+        <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+      </DropdownMenu.Item>
       {entity === "item" && onDuplicate && <DropdownActionItem icon={Copy} onSelect={onDuplicate}>Создать копию</DropdownActionItem>}
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
       {showAvailability && !itemAvailability && (

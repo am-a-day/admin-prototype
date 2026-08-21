@@ -149,6 +149,7 @@ function SectionTreeDropdown({
       <DropdownMenu.Content
         align="end"
         sideOffset={6}
+        onFocusOutside={(event) => event.preventDefault()}
         onCloseAutoFocus={preventTriggerFocus ? (event) => event.preventDefault() : undefined}
         className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
       >
@@ -477,7 +478,7 @@ export function UnifiedCatalogTreePanel({
                 <PlusCircle size={14} weight="regular" />
               </button>
             )}
-            <DropdownMenu.Root>
+            <DropdownMenu.Root modal={false}>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"

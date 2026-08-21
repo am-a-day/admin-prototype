@@ -1091,8 +1091,10 @@ describe("catalog observable behavior baseline", () => {
     expect((await screen.findAllByRole("button", { name: /Изменить порядок позиции/ })).length).toBeGreaterThan(1);
 
     await user.click(screen.getAllByRole("button", { name: /Действия для/ })[0]);
-    await user.click(screen.getByRole("menuitem", { name: "Переместить" }));
+    const moveItem = screen.getByRole("menuitem", { name: "Переместить" });
+    await user.hover(moveItem);
     const moveDialog = screen.getByRole("dialog", { name: "Переместить в раздел" });
+    expect(moveItem).toBeVisible();
     expect(within(moveDialog).getByPlaceholderText("Найти раздел...")).toBeInTheDocument();
     expect(moveDialog.querySelector("img")).not.toBeNull();
     await user.type(within(moveDialog).getByPlaceholderText("Найти раздел..."), "Выпечка");

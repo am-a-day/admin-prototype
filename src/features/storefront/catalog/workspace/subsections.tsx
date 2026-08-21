@@ -176,7 +176,7 @@ export function SubsectionRow({
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            <DropdownMenu.Root>
+            <DropdownMenu.Root modal={false}>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
@@ -191,7 +191,7 @@ export function SubsectionRow({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
-                <DropdownMenu.Content align="end" sideOffset={6} className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+                <DropdownMenu.Content onFocusOutside={(event) => event.preventDefault()} align="end" sideOffset={6} className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
                   {renderActions(section, (action, anchor, schedule) => onAction(section, action, anchor, schedule))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>

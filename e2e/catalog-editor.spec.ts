@@ -70,9 +70,12 @@ async function openDirectCreateDraft(page: Page) {
 async function openRowMoveMenu(page: Page, row: ReturnType<Page["locator"]>) {
   await row.hover();
   await row.locator("[data-catalog-row-more]").click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  const moveItem = page.getByRole("menuitem", { name: "Переместить", exact: true });
+  await moveItem.hover();
   const dialog = page.getByRole("dialog", { name: "Переместить в раздел" });
   await expect(dialog).toBeVisible();
+  await expect(moveItem).toBeVisible();
+  await expect(dialog.locator("xpath=..")).toHaveAttribute("data-side", /^(left|right)$/);
   return dialog;
 }
 
@@ -562,6 +565,14 @@ test("keeps nested move menus open through three levels and applies the deep tar
   await page.getByText("Завтраки", { exact: true }).first().click();
   const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
   const moveDialog = await openRowMoveMenu(page, sourceRow);
+  await moveDialog.getByRole("menuitem", { name: "Кухня", exact: true }).hover();
+  const scrollableNestedMenu = page.locator("[data-move-to-section-nested-menu]").last();
+  await expect(scrollableNestedMenu).toHaveCSS("overflow-y", "auto");
+  const nestedMenuSize = await scrollableNestedMenu.boundingBox();
+  expect(nestedMenuSize).not.toBeNull();
+  expect(nestedMenuSize!.height).toBeLessThanOrEqual(340);
+  await expect.poll(async () => scrollableNestedMenu.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
   const kitchenTarget = moveDialog.getByRole("menuitem", { name: "E2E корень", exact: true });
   await kitchenTarget.hover();
   const breakfastTarget = page.getByRole("menuitem", { name: "E2E корень / E2E уровень 2", exact: true });
@@ -638,9 +649,11 @@ test("creates a destination while moving a bulk selection", async ({ page }) => 
 test("creates a destination while moving a section", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  await expect(moveDialog).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Переместить", exact: true })).toBeVisible();
   await moveDialog.getByRole("menuitem", { name: "Создать раздел…" }).click();
   await page.getByLabel("Название нового раздела").fill("E2E назначение раздела");
   await page.getByRole("button", { name: "Создать и переместить" }).click();
@@ -1399,7 +1412,7 @@ test("uses the position title chevron for actions and preserves queue plus destr
   await expect(page.getByRole("menuitem", { name: "Архивировать", exact: true })).toHaveCount(0);
 
   await actionTrigger.click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
   await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Переместить в раздел" })).toHaveCount(0);
@@ -1817,7 +1830,7 @@ test("records explicit subsection move parent/order and current reload behavior"
   await page.getByRole("button", { name: "Раскрыть раздел Бар", exact: true }).click();
 
   await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
   await moveDialog.getByRole("menuitem", { name: "Бар", exact: true }).hover();
@@ -1837,13 +1850,13 @@ test("records explicit subsection move parent/order and current reload behavior"
 test("keeps current section and descendants disabled as explicit move targets", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByRole("button", { name: "Действия с разделом Кухня", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
   await expect(moveDialog.getByRole("menuitem", { name: "Основное меню" })).toHaveCount(0);
   await expect(moveDialog.getByPlaceholder("Найти раздел...")).toBeVisible();
   await expect(moveDialog.locator("img").first()).toBeVisible();
-  await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(top|bottom)$/);
+  await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(left|right)$/);
   await moveDialog.getByRole("menuitem", { name: "Кухня", exact: true }).hover();
   await expect(page.getByRole("menuitem", { name: "Кухня / Завтраки" })).toBeDisabled();
   await expect(page.getByRole("menuitem", { name: "Переместить сюда", exact: true })).toHaveCount(0);

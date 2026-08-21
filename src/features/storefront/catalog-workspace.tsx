@@ -2083,7 +2083,7 @@ function SectionItemList({
                 Добавить подраздел
               </button>
             )}
-            <DropdownMenu.Root>
+            <DropdownMenu.Root modal={false}>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
@@ -2093,7 +2093,7 @@ function SectionItemList({
                   <CaretDown size={13} weight="bold" />
                 </button>
               </DropdownMenu.Trigger>
-              <DropdownContent align="end">
+              <DropdownContent align="end" preventFocusOutsideDismiss>
                 {section && <SectionActionMenuContent section={section} allowPositionCreation={!isArchivedSection} onAction={onSectionAction} />}
               </DropdownContent>
             </DropdownMenu.Root>
@@ -2508,7 +2508,7 @@ function SectionEditor({
                   </span>
                 </>
               )}
-              <DropdownMenu.Root>
+              <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
                   <button
                     type="button"
@@ -2520,6 +2520,7 @@ function SectionEditor({
                 </DropdownMenu.Trigger>
                 <DropdownContent
                   align="start"
+                  preventFocusOutsideDismiss
                   onCloseAutoFocus={(event) => {
                     if (!preserveInlineCreateFocusRef.current) return;
                     event.preventDefault();
@@ -2782,7 +2783,7 @@ function UnifiedSectionTableHeader({
           </button>
         </Tooltip>
       </span>
-      <DropdownMenu.Root>
+      <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
@@ -2801,7 +2802,7 @@ function UnifiedSectionTableHeader({
             <CaretDown size={12} className="shrink-0 text-[#57534d]" />
           </button>
         </DropdownMenu.Trigger>
-        <DropdownContent align="start">
+        <DropdownContent align="start" preventFocusOutsideDismiss>
           <SectionActionMenuContent
             section={section}
             allowPositionCreation={allowPositionCreation}
@@ -3097,7 +3098,7 @@ function SectionPositionNav({
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-          <DropdownMenu.Root>
+          <DropdownMenu.Root modal={false}>
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
@@ -3107,7 +3108,7 @@ function SectionPositionNav({
                 <DotsThreeVertical size={17} weight="bold" />
               </button>
             </DropdownMenu.Trigger>
-            <DropdownContent align="end">
+            <DropdownContent align="end" preventFocusOutsideDismiss>
               {activeSection ? (
                 <SectionActionMenuContent
                   section={activeSection}
@@ -6545,7 +6546,7 @@ function SectionActionMenuContent({
         weeklySchedule={section.weeklySchedule ?? createDefaultWeeklySchedule()}
         onChangeIcon={(event) => onAction("Сменить иконку", getMovePopoverAnchor(event))}
         onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
-        onMove={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event))}
+        onMove={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event, "right"))}
         onAvailabilityChange={(value) => {
           if (value === "available") onAction("availability:available");
           if (value === "scheduled") onAction("availability:schedule");
@@ -6580,6 +6581,7 @@ function AuditRowActionsMenu({
   const stopDisplayMode: CatalogStopDisplayMode = item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
   return (
     <DropdownMenu.Root
+      modal={false}
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
@@ -6603,6 +6605,7 @@ function AuditRowActionsMenu({
         </button>
       </DropdownMenu.Trigger>
       <DropdownContent
+        preventFocusOutsideDismiss
         preventOutsideDismiss={(event) => (
           scheduleEditorPinned
           || (stopEditorPinned
@@ -6620,7 +6623,7 @@ function AuditRowActionsMenu({
           weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
           archiveDisabled={item.status === "archive"}
           onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
-          onMove={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event))}
+          onMove={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event, "right"))}
           onDuplicate={() => onAction("Создать копию")}
           onAvailabilityChange={(value) => {
             if (value === "available") onAction("availability:available");

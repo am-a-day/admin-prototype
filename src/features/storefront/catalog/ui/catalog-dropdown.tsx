@@ -19,12 +19,14 @@ export function DropdownContent({
   align = "end",
   className,
   preventOutsideDismiss = false,
+  preventFocusOutsideDismiss = false,
   onCloseAutoFocus,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
   preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
+  preventFocusOutsideDismiss?: boolean;
   onCloseAutoFocus?: (event: CatalogDropdownCloseAutoFocusEvent) => void;
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
@@ -47,6 +49,9 @@ export function DropdownContent({
           if (shouldPreventOutsideDismiss(event)) {
             event.preventDefault();
           }
+        }}
+        onFocusOutside={(event) => {
+          if (preventFocusOutsideDismiss) event.preventDefault();
         }}
         onCloseAutoFocus={onCloseAutoFocus}
       >
