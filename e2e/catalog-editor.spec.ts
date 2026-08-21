@@ -40,6 +40,19 @@ async function revealEditorQueueNavigation(page: Page) {
   await page.locator("[data-position-editor-controls]").hover();
 }
 
+async function openPositionEditorTab(page: Page, pane: Locator, label: string) {
+  const tab = pane.getByRole("button", { name: label, exact: true });
+  if (await tab.isVisible()) {
+    await tab.click();
+    return tab;
+  }
+
+  await pane.getByRole("button", { name: /^Еще \d+$/ }).click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+  await expect(tab).toBeVisible();
+  return tab;
+}
+
 async function openStructureCreateDraft(page: Page) {
   await page.goto(`/?editorNav=entity&sectionId=${breakfastSectionId}`);
   await page.getByRole("button", { name: "Добавить позицию", exact: true }).last().click();
@@ -889,11 +902,10 @@ test("keeps price-volume order and renders optional fields inline in the side pe
   expect(discount!.y).toBeGreaterThanOrEqual(optionalFieldsBox!.y);
   await expect(optionalFields).toContainText("КБЖУ");
 
-  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  await openPositionEditorTab(page, pane, "Доступность");
   const availabilityEditor = pane.getByRole("radiogroup", { name: "Доступность позиции" });
   await expect(availabilityEditor).toBeVisible();
   await availabilityEditor.getByRole("radio", { name: /На стопе/ }).click();
-  await expect(availabilityEditor.getByRole("radio", { name: /На стопе/ })).toBeChecked();
   await expect(availabilityEditor.getByRole("radio", { name: /На стопе/ })).toBeChecked();
 
   await availabilityEditor.getByRole("radio", { name: "По расписанию", exact: true }).click();
@@ -915,7 +927,7 @@ test("adapts position availability blocks and edits an individual day schedule",
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  await openPositionEditorTab(page, pane, "Доступность");
   const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
 
   await modes.getByRole("radio", { name: "Доступно", exact: true }).click();
@@ -965,22 +977,41 @@ test("adapts position availability blocks and edits an individual day schedule",
   await expect(pane.getByRole("region", { name: "Расписание доступности" }).getByLabel("Среда: начало")).toHaveValue("10:00");
 });
 
+test("updates the availability tab icon with the current position status", async ({ page }) => {
+  await openItemFromLeaf(page);
+
+  const pane = page.locator("[data-position-editor-pane]");
+  const availabilityTab = await openPositionEditorTab(page, pane, "Доступность");
+  const availabilityTabIcon = availabilityTab.locator("[data-position-availability-tab-icon]");
+  const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
+
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "available");
+  await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "stopped");
+  await modes.getByRole("radio", { name: "По расписанию", exact: true }).click();
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "schedule");
+});
+
 test("restores the previous stopped availability mode after archiving", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: "Доступность", exact: true }).click();
+  const availabilityTab = await openPositionEditorTab(page, pane, "Доступность");
+  const availabilityTabIcon = availabilityTab.locator("[data-position-availability-tab-icon]");
   const modes = pane.getByRole("radiogroup", { name: "Доступность позиции" });
   await modes.getByRole("radio", { name: "На стопе", exact: true }).click();
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "stopped");
   const display = pane.getByRole("region", { name: "Отображение в меню" });
   await display.getByRole("radio", { name: "Показывать без возможности заказа", exact: true }).click();
 
   await pane.getByRole("button", { name: /Действия с позицией/ }).click();
   await page.getByRole("menuitem", { name: "Архивировать", exact: true }).click();
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "archive");
   await expect(pane.getByText("Эти настройки недоступны для архивной позиции", { exact: true })).toBeVisible();
   await pane.getByRole("button", { name: "Вернуть из архива", exact: true }).click();
 
   await expect(pane.getByRole("radio", { name: "На стопе", exact: true })).toBeChecked();
+  await expect(availabilityTabIcon).toHaveAttribute("data-position-availability-tab-icon", "stopped");
   await expect(pane.getByRole("region", { name: "Отображение в меню" }).getByRole("radio", { name: "Показывать без возможности заказа", exact: true })).toBeChecked();
 });
 
@@ -988,7 +1019,7 @@ test("configures card display with an instant mini and live preview", async ({ p
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: "Вид", exact: true }).click();
+  await openPositionEditorTab(page, pane, "Вид");
 
   const configurator = pane.locator("[data-position-display-configurator]");
   const miniCard = configurator.locator("[data-position-card-preview]");
@@ -1222,6 +1253,21 @@ test("uses the wider responsive side-peek default from 1400px", async ({ page })
   await expect(page.locator("[data-position-editor-pane]")).toHaveCSS("width", "470px");
 });
 
+test("supports the 310px side-peek minimum with responsive tab overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto("/?editorNav=unified");
+  await page.evaluate(() => window.localStorage.setItem("tasko.catalog.positionSidePeek.width.v1", "310"));
+  await page.getByText("Завтраки", { exact: true }).first().click();
+  await page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).click();
+
+  const pane = page.locator("[data-position-editor-pane]");
+  await expect(pane).toHaveCSS("width", "310px");
+  await expect(page.getByRole("separator", { name: "Изменить ширину редактора" })).toHaveAttribute("aria-valuemin", "310");
+  const tabs = pane.locator("[data-workspace-local-tabs]");
+  await expect(tabs).toHaveCSS("height", "41px");
+  await expect(tabs.getByRole("button", { name: /^Еще \d+$/ })).toBeVisible();
+});
+
 test("returns from an all-positions editor with the same search context", async ({ page }) => {
   await openItemFromAllPositions(page);
 
@@ -1293,6 +1339,7 @@ test("live-updates preview and swaps autosave status for hover navigation", asyn
 
 test("persists the complete basic position editor record across reload", async ({ page }) => {
   await openEntityItem(page);
+  const pane = page.locator("[data-position-editor-pane]");
 
   await page.getByLabel("Цена позиции").fill("2450");
   await page.getByLabel("Цена позиции").blur();
@@ -1304,10 +1351,10 @@ test("persists the complete basic position editor record across reload", async (
   await page.getByLabel("Цена после скидки").blur();
   await page.getByRole("button", { name: "Добавить КБЖУ" }).click();
   await page.getByLabel("Калорийность").fill("560");
-  await page.getByRole("button", { name: "Вид" }).click();
+  await openPositionEditorTab(page, pane, "Вид");
   await page.getByRole("switch", { name: "Показывать кнопку «Добавить»" }).click();
   await page.waitForTimeout(700);
-  await page.getByRole("button", { name: "Основное" }).click();
+  await openPositionEditorTab(page, pane, "Основное");
   const expectedDiscountValue = await page.evaluate((itemId) => {
     const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}");
     return String(records[itemId]?.priceWithSale ?? "");
@@ -1325,7 +1372,7 @@ test("persists the complete basic position editor record across reload", async (
   await expect(discountTrigger).toContainText("−");
   await discountTrigger.click();
   await expect.poll(async () => (await page.getByLabel("Цена после скидки").inputValue()).replace(/\s/g, "")).toBe(expectedDiscountValue);
-  await page.getByRole("button", { name: "Вид" }).click();
+  await openPositionEditorTab(page, page.locator("[data-position-editor-pane]"), "Вид");
   await expect(page.getByRole("switch", { name: "Показывать кнопку «Добавить»" })).not.toBeChecked();
 });
 
@@ -1367,6 +1414,7 @@ test("uses the position title chevron for actions and preserves queue plus destr
 
 test("restores structured promo, options, and availability editor state", async ({ page }) => {
   await openEntityItem(page);
+  const pane = page.locator("[data-position-editor-pane]");
 
   await page.getByRole("button", { name: "Рекомендации" }).click();
   await page.getByRole("button", { name: "Добавить стикер", exact: true }).click();
@@ -1381,13 +1429,13 @@ test("restores structured promo, options, and availability editor state", async 
   }
   await expect(page.locator("[data-position-editor-pane]").getByText("Хит", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Опции" }).click();
+  await openPositionEditorTab(page, pane, "Опции");
   await page.getByRole("button", { name: "Добавить опцию", exact: true }).click();
   await page.getByLabel("Название опции").fill("Размер порции");
   await page.keyboard.press("Escape");
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Доступность" }).click();
+  await openPositionEditorTab(page, pane, "Доступность");
   const schedule = page.getByRole("radio", { name: /По расписанию/ });
   await schedule.click();
   const availability = page.getByRole("region", { name: "Расписание доступности" });
@@ -1405,9 +1453,9 @@ test("restores structured promo, options, and availability editor state", async 
   await expect(reloadedPane).toBeVisible();
   await reloadedPane.getByRole("button", { name: "Рекомендации", exact: true }).click();
   await expect(reloadedPane.getByText("Хит", { exact: true }).first()).toBeVisible();
-  await reloadedPane.getByRole("button", { name: /Опции/ }).click();
+  await openPositionEditorTab(page, reloadedPane, "Опции");
   await expect(page.getByText("Размер порции", { exact: true })).toBeVisible();
-  await reloadedPane.getByRole("button", { name: "Доступность", exact: true }).click();
+  await openPositionEditorTab(page, reloadedPane, "Доступность");
   await expect(page.getByRole("radio", { name: /По расписанию/ })).toBeChecked();
   await expect(page.getByRole("region", { name: "Расписание доступности" }).getByLabel("Понедельник: начало")).toHaveValue("10:00");
   await expect(page.getByRole("region", { name: "Расписание доступности" }).getByLabel("Понедельник: конец")).toHaveValue("19:00");
@@ -1417,7 +1465,7 @@ test("edits option groups in compact option popovers", async ({ page }) => {
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: /Опции/ }).click();
+  await openPositionEditorTab(page, pane, "Опции");
   await pane.getByRole("button", { name: "Добавить опцию", exact: true }).click();
 
   const optionPopover = page.locator("[data-option-popover]");
@@ -1487,7 +1535,7 @@ test("keeps option variants editable, reorderable, and scrollable", async ({ pag
   await openItemFromLeaf(page);
 
   const pane = page.locator("[data-position-editor-pane]");
-  await pane.getByRole("button", { name: /Опции/ }).click();
+  await openPositionEditorTab(page, pane, "Опции");
   await pane.getByRole("button", { name: "Добавить опцию", exact: true }).click();
 
   const optionPopover = page.locator("[data-option-popover]");

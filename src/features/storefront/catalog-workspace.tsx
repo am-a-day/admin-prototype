@@ -3220,7 +3220,7 @@ function makeDraftItem(section: { id: string; name: string } | null): CatalogIte
 }
 
 const POSITION_SIDE_PEEK_WIDTH_KEY = catalogStorageKey("positionSidePeek.width.v1");
-const POSITION_SIDE_PEEK_MIN_WIDTH = 380;
+const POSITION_SIDE_PEEK_MIN_WIDTH = 310;
 const POSITION_SIDE_PEEK_MAX_WIDTH = 600;
 const POSITION_SIDE_PEEK_VISIBLE_TABLE_WIDTH = 160;
 const CATALOG_COMPACT_BREAKPOINT = 1212;

@@ -1014,6 +1014,7 @@ describe("catalog observable behavior baseline", () => {
     expect(header).toHaveClass("flex");
     expect(document.querySelector("[data-position-title-region]")).toHaveClass("min-w-0", "flex-1");
     expect(header?.querySelector("[data-position-availability-status]")).toHaveTextContent("Доступно");
+    expect(document.querySelector("[data-position-availability-tab-icon]")).toHaveAttribute("data-position-availability-tab-icon", "available");
     ["Основное", "Доступность", "Допродажа", "Опции", "Вид"].forEach((label) => {
       expect(screen.getByRole("button", { name: new RegExp(`^${label}`) })).toBeInTheDocument();
     });
@@ -1024,6 +1025,7 @@ describe("catalog observable behavior baseline", () => {
     await user.click(within(availability).getByRole("radio", { name: "На стопе" }));
     expect(within(availability).getByRole("radio", { name: "На стопе" })).toBeChecked();
     expect(header?.querySelector("[data-position-availability-status]")).toHaveTextContent("На стопе");
+    expect(document.querySelector("[data-position-availability-tab-icon]")).toHaveAttribute("data-position-availability-tab-icon", "stopped");
     const stopDisplay = screen.getByRole("radiogroup", { name: "Отображение в меню" });
     expect(within(stopDisplay).getByRole("radio", { name: "Скрывать из меню" })).toBeChecked();
     expect(within(stopDisplay).getByRole("radio", { name: "Показывать без возможности заказа" })).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -58,7 +58,7 @@ import { DropdownActionItem, DropdownContent } from "../ui/catalog-dropdown";
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "../ui/move-anchor";
 import { DND_TRANSITION, restrictTableSortToVerticalAxis, usePrefersReducedMotion } from "../workspace/dnd";
 import { descriptionHasContent, type EditorFocusAnchor, type EditorTab } from "./editor-queue";
-import { WorkspaceLocalTabs } from "./editor-tabs";
+import { WorkspaceLocalTabs, type WorkspaceLocalTab } from "./editor-tabs";
 import { readLegacyCatalogTitleTranslations } from "../persistence";
 import { readJsonRecord } from "../storage";
 import { usePositionSidePeek, usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "./side-peek-context";
@@ -222,6 +222,36 @@ const EDITOR_TABS = [
   { id: "options", label: "Опции", icon: <ListDashes size={16} aria-hidden="true" /> },
   { id: "display", label: "Вид", icon: <Layout size={16} aria-hidden="true" /> },
 ] satisfies readonly { id: EditorTab; label: string; icon: ReactNode }[];
+
+function getPositionEditorTabs(item: CatalogItem): readonly WorkspaceLocalTab<EditorTab>[] {
+  const availabilityState = item.status === "archive"
+    ? "archive"
+    : item.status === "stopped" || item.status === "coming-soon"
+      ? "stopped"
+      : item.scheduled
+        ? "schedule"
+        : "available";
+  const AvailabilityIcon = availabilityState === "archive"
+    ? XCircle
+    : availabilityState === "stopped"
+      ? LockLaminated
+      : availabilityState === "schedule"
+        ? CalendarDots
+        : CheckCircle;
+
+  return EDITOR_TABS.map((tab) => tab.id === "availability"
+    ? {
+        ...tab,
+        icon: (
+          <AvailabilityIcon
+            size={16}
+            aria-hidden="true"
+            data-position-availability-tab-icon={availabilityState}
+          />
+        ),
+      }
+    : tab);
+}
 const editorTabByItem = new Map<string, EditorTab>();
 
 type PositionOptionSelection = "single" | "multiple";
@@ -3258,6 +3288,7 @@ function PositionAvailabilityTab({
 }
 
 function PositionEditorBody({
+  tabs,
   activeTab,
   onTabChange,
   detailPane,
@@ -3267,6 +3298,7 @@ function PositionEditorBody({
   displayContent,
   availabilityContent,
 }: {
+  tabs: readonly WorkspaceLocalTab<EditorTab>[];
   activeTab: EditorTab;
   onTabChange: (tab: EditorTab) => void;
   detailPane?: boolean;
@@ -3290,7 +3322,7 @@ function PositionEditorBody({
     <div data-position-editor-body>
       <div className={detailPane ? "-mx-4" : undefined}>
         <WorkspaceLocalTabs
-          tabs={EDITOR_TABS}
+          tabs={tabs}
           value={activeTab}
           onValueChange={onTabChange}
         />
@@ -3381,6 +3413,10 @@ export function PositionEditor({
   forceBasicTabOnItemChange?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>(() => editorTabByItem.get(item.id) ?? "basic");
+  const editorTabs = useMemo(
+    () => getPositionEditorTabs(item),
+    [item.scheduled, item.status],
+  );
   const editorScrollRef = useRef<HTMLDivElement | null>(null);
   const [media, setMedia] = useState<MediaEntry[]>(() => getInitialMedia(item));
   const [basePriceText, setBasePriceText] = useState(item.price ? formatMoneyInput(item.price) : "");
@@ -4015,6 +4051,7 @@ export function PositionEditor({
           )}
 
           <PositionEditorBody
+            tabs={editorTabs}
             activeTab={activeTab}
             onTabChange={selectEditorTab}
             detailPane={detailPane}
