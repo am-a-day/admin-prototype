@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, DotsThree, DotsThreeVertical, DotsSixVertical, ImageBroken, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, Coin, DotsThree, DotsThreeVertical, DotsSixVertical, HouseSimple, ImageBroken, Layout, ListDashes, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
@@ -215,13 +215,13 @@ function PositionSaveStatus({
   );
 }
 
-const EDITOR_TABS: { id: EditorTab; label: string }[] = [
-  { id: "basic", label: "Основное" },
-  { id: "promo", label: "Рекомендации" },
-  { id: "options", label: "Опции" },
-  { id: "availability", label: "Доступность" },
-  { id: "display", label: "Вид" },
-];
+const EDITOR_TABS = [
+  { id: "basic", label: "Основное", icon: <HouseSimple size={18} aria-hidden="true" /> },
+  { id: "availability", label: "Доступность", icon: <CalendarDots size={16} aria-hidden="true" /> },
+  { id: "promo", label: "Допродажа", icon: <Coin size={16} aria-hidden="true" /> },
+  { id: "options", label: "Опции", icon: <ListDashes size={16} aria-hidden="true" /> },
+  { id: "display", label: "Вид", icon: <Layout size={16} aria-hidden="true" /> },
+] satisfies readonly { id: EditorTab; label: string; icon: ReactNode }[];
 const editorTabByItem = new Map<string, EditorTab>();
 
 type PositionOptionSelection = "single" | "multiple";
@@ -1633,11 +1633,11 @@ function PositionAvailabilityStatus({
         role="status"
         data-position-availability-status={state}
         className={cn(
-          "inline-flex h-5 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] font-semibold leading-5",
+          "inline-flex h-4 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] font-semibold leading-5",
           state === "archive" && "bg-[#f1f5f9] text-[#475569]",
           state === "stopped" && "bg-[#ffedd4] text-[#9a3412]",
           state === "coming-soon" && "bg-[#dbeafe] text-[#1d4ed8]",
-          state === "schedule" && "bg-[#dbeafe] text-[#1d4ed8]",
+          state === "schedule" && "bg-[#f5f5f4] text-[#78716c]",
           state === "unavailable" && "bg-[#fef3c7] text-[#854d0e]",
           state === "available" && "bg-[#eef7f1] text-[#3f6b52]",
         )}
@@ -3260,6 +3260,7 @@ function PositionAvailabilityTab({
 function PositionEditorBody({
   activeTab,
   onTabChange,
+  detailPane,
   basicContent,
   promoContent,
   optionsContent,
@@ -3268,6 +3269,7 @@ function PositionEditorBody({
 }: {
   activeTab: EditorTab;
   onTabChange: (tab: EditorTab) => void;
+  detailPane?: boolean;
   basicContent: ReactNode;
   promoContent: ReactNode;
   optionsContent: ReactNode;
@@ -3286,11 +3288,13 @@ function PositionEditorBody({
 
   return (
     <div data-position-editor-body>
-      <WorkspaceLocalTabs
-        tabs={EDITOR_TABS}
-        value={activeTab}
-        onValueChange={onTabChange}
-      />
+      <div className={detailPane ? "-mx-4" : undefined}>
+        <WorkspaceLocalTabs
+          tabs={EDITOR_TABS}
+          value={activeTab}
+          onValueChange={onTabChange}
+        />
+      </div>
       <div className="pt-2">{activeContent}</div>
     </div>
   );
@@ -3763,7 +3767,7 @@ export function PositionEditor({
             <div
               data-position-editor-header
               data-position-create-pane-header={creationPane || undefined}
-              className="group/side-peek-header relative sticky top-0 z-30 -mx-4 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-4"
+              className="group/side-peek-header relative sticky top-0 z-30 -mx-4 flex h-[49px] min-w-0 items-center justify-between gap-3 border-b border-[#f5f5f4] bg-white px-3"
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2">
                 {titleEditing ? (
@@ -3800,9 +3804,9 @@ export function PositionEditor({
                     <CaretDown size={13} weight="bold" className="shrink-0 text-[#79716b]" aria-hidden="true" />
                   </button>,
                 )}
-                {positionHeaderStatus}
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-3">
+                {positionHeaderStatus}
                 <div className={cn(
                   "transition-opacity duration-150",
                   headerMeta && "group-hover/side-peek-header:pointer-events-none group-hover/side-peek-header:opacity-0 group-focus-within/side-peek-header:pointer-events-none group-focus-within/side-peek-header:opacity-0",
@@ -3902,6 +3906,7 @@ export function PositionEditor({
           <PositionEditorBody
             activeTab={activeTab}
             onTabChange={selectEditorTab}
+            detailPane={detailPane}
             basicContent={(
               <BasicTab
                 item={item}

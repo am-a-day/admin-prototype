@@ -123,6 +123,10 @@ body {
   transition: opacity 150ms ease-out;
 }
 
+[data-workspace-local-tab-measure-label]::before {
+  content: attr(data-workspace-local-tab-measure-label);
+}
+
 [data-catalog-tree-toggle-target] {
   flex: 0 0 0;
   width: 0;
