@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const firstItemTitle = "Омлет с томатами и сыром";
 const firstItemId = "669204cd-0d0d-4782-8784-27df185f169e";
@@ -76,6 +76,53 @@ async function preserveLocalStorageOnReload(page: Page) {
     );
     window.sessionStorage.setItem("catalog-e2e-local-storage-snapshot", JSON.stringify(values));
   });
+}
+
+async function pointerDrag(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  onActivated?: () => Promise<void>,
+) {
+  const [sourceBox, targetBox] = await Promise.all([source.boundingBox(), target.boundingBox()]);
+  if (!sourceBox || !targetBox) throw new Error("Drag source or target is outside the viewport");
+  const start = { x: sourceBox.x + sourceBox.width / 2, y: sourceBox.y + sourceBox.height / 2 };
+  const end = { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2 };
+  const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+  const activation = {
+    x: start.x + (horizontal ? Math.sign(end.x - start.x || 1) * 10 : 0),
+    y: start.y + (horizontal ? 0 : Math.sign(end.y - start.y || 1) * 10),
+  };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(activation.x, activation.y, { steps: 2 });
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await onActivated?.();
+  } finally {
+    await page.mouse.up();
+  }
+}
+
+async function getVisibleUserColumnOrder(page: Page) {
+  return page.locator("[data-catalog-table-header] [data-catalog-draggable-column-header]").evaluateAll((headers) =>
+    headers.map((header) => header.getAttribute("data-catalog-draggable-column-header")),
+  );
+}
+
+async function getFirstRowUserColumnOrder(page: Page) {
+  return page.locator("[data-catalog-table-row]").first().locator("[data-catalog-table-content-cell]").evaluateAll((cells) =>
+    cells
+      .map((cell) => cell.getAttribute("data-catalog-table-content-cell"))
+      .filter((id) => id && id !== "position"),
+  );
+}
+
+async function getCatalogRowOrder(page: Page) {
+  return page.locator("[data-catalog-table-row]").evaluateAll((rows) =>
+    rows.map((row) => row.getAttribute("data-catalog-table-row")),
+  );
 }
 
 async function getSubsectionOrder(page: Page) {
@@ -223,6 +270,10 @@ test("opens column actions from the full header cell and keeps sorting and visib
   });
   expect(prices).toEqual([...prices].sort((left, right) => right - left));
 
+  await priceHeader.click();
+  await page.getByRole("menuitem", { name: "Сбросить сортировку" }).click();
+  await expect(priceHeader).not.toHaveAttribute("data-sort-direction");
+
   const weightHeader = page.getByRole("button", { name: "Настройки колонки «Вес или объём»", exact: true });
   await weightHeader.click({ position: { x: 8, y: 16 } });
   await page.getByRole("menuitem", { name: "Скрыть колонку" }).click();
@@ -236,6 +287,103 @@ test("opens column actions from the full header cell and keeps sorting and visib
   await descriptionHeader.click({ position: { x: 8, y: 16 } });
   await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
   await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+});
+
+test("keeps column header click and repeated pointer reordering compatible across rerenders", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  const weightHeader = page.locator('[data-catalog-column-menu-trigger="weight"]');
+  const priceHeader = page.locator('[data-catalog-column-menu-trigger="price"]');
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+
+  await weightHeader.click();
+  await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
+  await expect(page.locator("[data-catalog-column-drag-preview]")).toHaveCount(0);
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await page.getByRole("menuitem", { name: "Скрыть колонку" }).press("Escape");
+
+  await pointerDrag(page, weightHeader, priceHeader, async () => {
+    await expect(page.locator("[data-catalog-column-drag-preview]")).toBeVisible();
+    await expect(page.locator("[data-catalog-column-drop-indicator]")).toBeVisible();
+    await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  });
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await priceHeader.click();
+  await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Скрыть колонку" }).press("Escape");
+  await pointerDrag(page, priceHeader, weightHeader);
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await weightHeader.click();
+  await page.getByRole("menuitem", { name: "Скрыть колонку" }).click();
+  await expect(weightHeader).toHaveCount(0);
+  await page.getByRole("button", { name: "Настроить колонки" }).click();
+  await page.getByRole("button", { name: "Показать колонку «Вес или объём»" }).click();
+  await page.getByLabel("Поиск по колонкам").press("Escape");
+  await expect(weightHeader).toBeVisible();
+
+  await pointerDrag(page, weightHeader, priceHeader);
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect.poll(() => getFirstRowUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await priceHeader.click();
+  await expect(page.getByRole("menuitem", { name: "Скрыть колонку" })).toBeVisible();
+});
+
+test("keeps row handles visible in reorderable state and supports repeated pointer reordering", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  const handles = page.locator('[data-catalog-table-row] [data-catalog-dnd-handle]');
+  await expect(handles.first()).toBeVisible();
+  await expect(handles.first()).toHaveCSS("position", "absolute");
+  await expect(handles.first()).toHaveCSS("opacity", "1");
+  await expect(handles).toHaveCount(await page.locator("[data-catalog-table-row]").count());
+
+  const initialOrder = await getCatalogRowOrder(page);
+  await pointerDrag(
+    page,
+    page.locator(`[data-catalog-table-row="${initialOrder[0]}"] [data-catalog-dnd-handle]`),
+    page.locator(`[data-catalog-table-row="${initialOrder[1]}"] [data-catalog-dnd-handle]`),
+  );
+  const firstExpected = [initialOrder[1], initialOrder[0], ...initialOrder.slice(2)];
+  await expect.poll(() => getCatalogRowOrder(page)).toEqual(firstExpected);
+
+  await pointerDrag(
+    page,
+    page.locator(`[data-catalog-table-row="${firstExpected[2]}"] [data-catalog-dnd-handle]`),
+    page.locator(`[data-catalog-table-row="${firstExpected[0]}"] [data-catalog-dnd-handle]`),
+  );
+  const secondExpected = [firstExpected[2], firstExpected[0], firstExpected[1], ...firstExpected.slice(3)];
+  await expect.poll(() => getCatalogRowOrder(page)).toEqual(secondExpected);
+
+  const priceHeader = page.locator('[data-catalog-column-menu-trigger="price"]');
+  await priceHeader.click();
+  await page.getByRole("menuitemradio", { name: "По убыванию" }).click();
+  await expect(handles).toHaveCount(0);
+  await priceHeader.click();
+  await page.getByRole("menuitem", { name: "Сбросить сортировку" }).click();
+  await expect(handles.first()).toBeVisible();
+  await expect.poll(() => getCatalogRowOrder(page)).toEqual(secondExpected);
+
+  await preserveLocalStorageOnReload(page);
+  await page.reload();
+  await expect(handles.first()).toBeVisible();
+  await expect.poll(() => getCatalogRowOrder(page)).toEqual(secondExpected);
+  await expect(priceHeader).not.toHaveAttribute("data-sort-direction");
 });
 
 test("keeps the More column in normal flow only while position creation is active", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, forwardRef, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, type DragEndEvent, type DragOverEvent, type DragStartEvent, useSensor, useSensors } from "@dnd-kit/core";
 import type { ColumnDef, ColumnSizingState, Header, Row as TableRow, Table as TanStackTable, VisibilityState } from "@tanstack/react-table";
@@ -715,6 +715,20 @@ function ColumnResizeHandle({ header }: { header?: Header<CatalogItem, unknown> 
   );
 }
 
+type CatalogColumnHeaderDragInteraction = {
+  dragProps: Record<string, unknown>;
+  setActivatorNodeRef: (node: HTMLElement | null) => void;
+  isDragging: boolean;
+  isReorderable: boolean;
+};
+
+const CatalogColumnHeaderDragContext = createContext<CatalogColumnHeaderDragInteraction>({
+  dragProps: {},
+  setActivatorNodeRef: () => {},
+  isDragging: false,
+  isReorderable: false,
+});
+
 function CatalogColumnHeaderMenu({
   column,
   sort,
@@ -734,15 +748,66 @@ function CatalogColumnHeaderMenu({
   const hideable = column.getCanHide();
   const currentDirection = sort?.columnId === column.id ? sort.direction : null;
   const label = getCatalogColumnLabel(column.id);
+  const { dragProps, setActivatorNodeRef, isDragging, isReorderable } = useContext(CatalogColumnHeaderDragContext);
+  const [open, setOpen] = useState(false);
+  const dragStartedRef = useRef(false);
+  const {
+    onPointerDown: sortablePointerDown,
+    onKeyDown: sortableKeyDown,
+    ...restDragProps
+  } = dragProps as Record<string, unknown> & {
+    onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+    onKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+    dragStartedRef.current = true;
+    setOpen(false);
+  }, [isDragging]);
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen && dragStartedRef.current) return;
+        setOpen(nextOpen);
+      }}
+    >
       <DropdownMenu.Trigger asChild>
         <button
+          ref={setActivatorNodeRef}
           type="button"
           data-catalog-column-menu-trigger={column.id}
           data-sort-direction={currentDirection ?? undefined}
+          data-catalog-column-dragging={isDragging || undefined}
           aria-label={`Настройки колонки «${label}»`}
+          {...restDragProps}
+          onPointerDown={(event) => {
+            dragStartedRef.current = false;
+            sortablePointerDown?.(event);
+            if (event.button === 0 && !event.ctrlKey) event.preventDefault();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === " " && isReorderable) {
+              sortableKeyDown?.(event);
+              event.preventDefault();
+              return;
+            }
+            if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+          onClick={(event) => {
+            if (dragStartedRef.current) {
+              dragStartedRef.current = false;
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            setOpen((current) => !current);
+          }}
           className={cn(
             "flex h-full w-full min-w-0 items-center transition hover:bg-[#f5f5f4] data-[state=open]:bg-[#f1f1ea] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20",
             currentDirection ? "text-[#57534d]" : "text-[#939393]",
@@ -779,6 +844,15 @@ function CatalogColumnHeaderMenu({
               <DropdownMenu.ItemIndicator><Check size={14} weight="bold" /></DropdownMenu.ItemIndicator>
             </DropdownMenu.RadioItem>
           </DropdownMenu.RadioGroup>
+        )}
+        {sortable && currentDirection && (
+          <DropdownMenu.Item
+            onSelect={() => onSortChange(null)}
+            className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <XCircle size={16} weight="regular" className="shrink-0 text-[#79716b]" />
+            <span>Сбросить сортировку</span>
+          </DropdownMenu.Item>
         )}
         {sortable && hideable && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
         {hideable && (
@@ -976,12 +1050,17 @@ function CatalogDraggableHeaderCell({
   children: ReactNode;
 }) {
   const isReorderable = (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
     disabled: !isReorderable,
   });
-  const sortablePointerDown = listeners?.onPointerDown;
   const indicator = dropTarget?.id === column.id && activeColumnId !== column.id ? dropTarget.side : null;
+  const dragInteraction = useMemo<CatalogColumnHeaderDragInteraction>(() => ({
+    dragProps: isReorderable ? { ...attributes, ...listeners } : {},
+    setActivatorNodeRef,
+    isDragging,
+    isReorderable,
+  }), [attributes, isDragging, isReorderable, listeners, setActivatorNodeRef]);
 
   return (
     <span
@@ -999,17 +1078,10 @@ function CatalogDraggableHeaderCell({
         isReorderable && "cursor-grab hover:bg-[#f5f5f4] active:cursor-grabbing",
         isDragging && "z-20 cursor-grabbing bg-white shadow-[0_4px_12px_rgba(41,37,36,0.12)]",
       )}
-      {...(isReorderable ? attributes : {})}
-      {...(isReorderable ? listeners : {})}
-      onPointerDown={(event) => {
-        if ((event.target as HTMLElement | null)?.closest("[data-catalog-column-resize-handle]")) {
-          event.stopPropagation();
-          return;
-        }
-        sortablePointerDown?.(event);
-      }}
     >
-      {children}
+      <CatalogColumnHeaderDragContext.Provider value={dragInteraction}>
+        {children}
+      </CatalogColumnHeaderDragContext.Provider>
       <ColumnResizeHandle header={header} />
       {indicator && (
         <span
