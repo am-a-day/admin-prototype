@@ -1,4 +1,4 @@
-export const CATALOG_PAGE_HEADER_CLASS = "flex w-full items-center gap-3 pt-[18px]";
+export const CATALOG_PAGE_HEADER_CLASS = "flex w-full items-center gap-3 px-[14px] pt-[18px]";
 export const CATALOG_SECTION_TO_TABLE_GAP_CLASS = "pt-[5px]";
 export const CATALOG_TABLE_TOOLBAR_CLASS = "sticky top-0 z-20 flex h-[38px] min-w-0 items-center justify-between border-b border-[#e7e5e4] bg-white pl-1 pr-4 py-[6px]";
 export const CATALOG_TABLE_TOOLBAR_GROUP_CLASS = "flex min-w-0 flex-1 items-center gap-3";
