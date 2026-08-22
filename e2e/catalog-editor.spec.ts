@@ -599,8 +599,12 @@ test("keeps nested move menus open through three levels and applies the deep tar
   const moveDialog = await openRowMoveMenu(page, sourceRow);
   await expect(moveDialog).toHaveCSS("width", "264px");
   await expect(moveDialog).toHaveCSS("border-radius", "12px");
-  await expect(moveDialog.getByPlaceholder("Переместить позицию в...").locator("xpath=..")).toHaveCSS("height", "32px");
-  await expect(moveDialog.getByRole("menuitem", { name: "Создать раздел", exact: true })).toHaveCSS("height", "28px");
+  const searchField = moveDialog.getByPlaceholder("Найти раздел...");
+  await expect(searchField.locator("xpath=..")).toHaveCSS("height", "32px");
+  const searchBox = await searchField.locator("xpath=..").boundingBox();
+  const destinationHeadingBox = await moveDialog.locator("[data-move-destinations-hint]").boundingBox();
+  expect(searchBox && destinationHeadingBox).toBeTruthy();
+  expect(destinationHeadingBox!.y - (searchBox!.y + searchBox!.height)).toBe(8);
   const destinationHint = moveDialog.locator("[data-move-destinations-hint]");
   await destinationHint.hover();
   const destinationTooltip = page.getByRole("tooltip");
@@ -686,7 +690,7 @@ test("keeps an unavailable parent visible beside valid search results", async ({
 
   const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
   const moveDialog = await openRowMoveMenu(page, sourceRow);
-  await moveDialog.getByPlaceholder("Переместить позицию в...").fill("Кухня");
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("Кухня");
 
   await expect(moveDialog.getByRole("menuitem", { name: "Кухня / Выпечка", exact: true })).toBeVisible();
   const unavailableParent = moveDialog.locator("[data-move-unavailable-search-result]").filter({ hasText: "Кухня" }).first();
@@ -695,71 +699,26 @@ test("keeps an unavailable parent visible beside valid search results", async ({
   await expect(unavailableParent).toHaveAttribute("aria-disabled", "true");
 });
 
-test("creates a destination while moving one position", async ({ page }) => {
-  test.setTimeout(30_000);
+test("does not offer section creation in the move picker, nested menus, or empty search", async ({ page }) => {
   await page.goto("/?editorNav=unified");
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const firstRow = page.locator("[data-catalog-table-row]").first();
-  const firstTitle = (await firstRow.locator("[data-catalog-table-content-cell=position]").innerText()).trim();
-  let moveDialog = await openRowMoveMenu(page, firstRow);
-  await moveDialog.getByRole("menuitem", { name: "Создать раздел", exact: true }).click();
-  await page.getByLabel("Название нового раздела").fill("E2E перенос одной");
-  await page.getByRole("button", { name: "Создать и переместить" }).click();
-  await expect(page.getByText("E2E перенос одной", { exact: true })).toBeVisible();
-  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstTitle })).toHaveCount(0);
-  await page.getByText("E2E перенос одной", { exact: true }).first().click();
-  await expect(page.locator("[data-catalog-table-row]").filter({ hasText: firstTitle })).toBeVisible();
-});
-
-test("creates a destination while moving a bulk selection", async ({ page }) => {
-  test.setTimeout(30_000);
-  await page.goto("/?editorNav=unified");
-  await page.getByText("Завтраки", { exact: true }).first().click();
-
-  const bulkRows = page.locator("[data-catalog-table-row]");
-  const bulkTitles = [
-    (await bulkRows.nth(0).locator("[data-catalog-table-content-cell=position]").innerText()).trim(),
-    (await bulkRows.nth(1).locator("[data-catalog-table-content-cell=position]").innerText()).trim(),
-  ];
-  await bulkRows.nth(0).getByRole("checkbox").check();
-  await bulkRows.nth(1).getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Переместить", exact: true }).click();
-  const moveDialog = page.getByRole("dialog", { name: "Переместить в раздел" });
+  const moveDialog = await openRowMoveMenu(page, firstRow);
   await expect(moveDialog).toBeVisible();
-  await moveDialog.getByRole("menuitem", { name: "Создать раздел", exact: true }).click();
-  await page.getByLabel("Название нового раздела").fill("E2E bulk перенос");
-  await page.getByRole("button", { name: "Создать и переместить" }).click();
-  await expect(page.locator("[data-catalog-selection-toolbar]")).toHaveCount(0);
-  await expect(page.getByText("E2E bulk перенос", { exact: true })).toBeVisible();
-  for (const title of bulkTitles) {
-    await expect(page.locator("[data-catalog-table-row]").filter({ hasText: title })).toHaveCount(0);
-  }
-  await page.getByText("E2E bulk перенос", { exact: true }).first().click();
-  for (const title of bulkTitles) {
-    await expect(page.locator("[data-catalog-table-row]").filter({ hasText: title })).toBeVisible();
-  }
-});
+  await expect(moveDialog.getByText("Создать раздел", { exact: true })).toHaveCount(0);
+  await expect(moveDialog.getByText("Создать подраздел", { exact: true })).toHaveCount(0);
 
-test("creates a destination while moving a section", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
-  await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
+  const kitchenTarget = moveDialog.getByRole("menuitem", { name: "Кухня", exact: true });
+  await kitchenTarget.hover();
+  const nestedMenu = page.locator("[data-move-to-section-nested-menu]").last();
+  await expect(nestedMenu).toBeVisible();
+  await expect(nestedMenu.getByText("Создать раздел", { exact: true })).toHaveCount(0);
+  await expect(nestedMenu.getByText("Создать подраздел", { exact: true })).toHaveCount(0);
 
-  const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
-  await expect(moveDialog).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Переместить", exact: true })).toBeVisible();
-  await moveDialog.getByRole("menuitem", { name: "Создать раздел", exact: true }).click();
-  await page.getByLabel("Название нового раздела").fill("E2E назначение раздела");
-  await page.getByRole("button", { name: "Создать и переместить" }).click();
-  await expect(page.getByText("Раздел перемещён в «E2E назначение раздела»", { exact: true })).toBeVisible();
-
-  const destinationRow = page.getByRole("button", { name: "Раздел E2E назначение раздела", exact: true });
-  await expect(destinationRow).toBeVisible();
-  const destinationId = await destinationRow.getAttribute("data-tree-section-id");
-  expect(destinationId).not.toBeNull();
-  const breakfastParent = page.locator(`[data-tree-section-id="${breakfastSectionId}"]`).locator("xpath=ancestor::*[@data-section-parent-id][1]");
-  await expect(breakfastParent).toHaveAttribute("data-section-parent-id", destinationId!);
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("E2E несуществующий раздел");
+  await expect(moveDialog.getByText("Разделы не найдены", { exact: true })).toBeVisible();
+  await expect(moveDialog.getByText(/Создать (раздел|подраздел)/)).toHaveCount(0);
 });
 
 test("uses one aligned workspace header and toolbar for every catalog table state", async ({ page }) => {
@@ -1924,7 +1883,7 @@ test("records explicit position move parent/order and current reload behavior", 
 
   const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
   const moveDialog = await openRowMoveMenu(page, sourceRow);
-  await moveDialog.getByPlaceholder("Переместить позицию в...").fill("Выпечка");
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("Выпечка");
   await moveDialog.getByRole("menuitem", { name: "Кухня / Выпечка" }).click();
   await expect(page.getByText("Позиция перемещена в «Выпечка»", { exact: true })).toBeVisible();
 
@@ -1965,7 +1924,7 @@ test("shows only valid section move targets and explains an unavailable search m
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
   await expect(moveDialog.getByRole("menuitem", { name: "Основное меню" })).toHaveCount(0);
-  await expect(moveDialog.getByPlaceholder("Переместить раздел в...")).toBeVisible();
+  await expect(moveDialog.getByPlaceholder("Найти раздел...")).toBeVisible();
   await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(left|right)$/);
 
   const hint = moveDialog.locator("[data-move-destinations-hint]");
@@ -1976,13 +1935,13 @@ test("shows only valid section move targets and explains an unavailable search m
 
   await expect(moveDialog.getByRole("menuitem", { name: "Кухня", exact: true })).toHaveCount(0);
   await expect(moveDialog.getByRole("menuitem", { name: "Рыба и морепродукты", exact: true })).toHaveCount(0);
-  await moveDialog.getByPlaceholder("Переместить раздел в...").fill("Завтраки");
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("Завтраки");
   const unavailableResult = moveDialog.locator("[data-move-unavailable-search-result]").filter({ hasText: "Кухня / Завтраки" });
   await expect(unavailableResult).toBeVisible();
   await expect(unavailableResult).toContainText("Нельзя переместить раздел в его подраздел");
   await expect(unavailableResult).toHaveAttribute("aria-disabled", "true");
 
-  await moveDialog.getByPlaceholder("Переместить раздел в...").fill("Рыба и морепродукты");
+  await moveDialog.getByPlaceholder("Найти раздел...").fill("Рыба и морепродукты");
   const occupiedResult = moveDialog.locator("[data-move-unavailable-search-result]").filter({ hasText: "Рыба и морепродукты" });
   await expect(occupiedResult).toBeVisible();
   await expect(occupiedResult).toContainText("Внутри уже находятся позиции");

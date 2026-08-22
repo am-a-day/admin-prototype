@@ -4372,12 +4372,6 @@ function PopulatedWorkspace({
     return true;
   };
 
-  const createSectionForMove = (name: string, parentId: string | null) => {
-    const result = commitSectionCreation(name, parentId, "table");
-    if (typeof result === "string") setFeedback(result);
-    return result;
-  };
-
   const handleTreeSelectSection = (id: string) => {
     openSectionEditor(id);
   };
@@ -5947,7 +5941,6 @@ function PopulatedWorkspace({
           onFeedback={setFeedback}
           onRequestPermanentDelete={requestPermanentDelete}
           structureSections={allSections}
-          onCreateSectionForMove={createSectionForMove}
         />
       </PositionEditorDialogShell>
     );
@@ -6334,7 +6327,6 @@ function PopulatedWorkspace({
             anchor={moveRequest.anchor}
             onClose={() => setMoveRequest(null)}
             onMove={performMoveRequest}
-            onCreateSection={createSectionForMove}
             onError={() => setFeedback("Не удалось переместить. Попробуйте ещё раз")}
           />
         )}
@@ -7737,8 +7729,6 @@ function OverviewWorkspace({
     itemOrderBySection,
     setActiveEditorItemId,
     revision: catalogRevision,
-    activeMenuId,
-    addSection,
     mutations: catalogMutations,
   } = useCatalogStore();
   const {
@@ -8008,44 +7998,6 @@ function OverviewWorkspace({
     setSelectedIds(new Set());
   };
   const availableScopeSections = structureSections ?? catalogSections;
-  const createSectionForMove = (name: string, parentId: string | null): TreeSection | string => {
-    const parent = parentId ? availableScopeSections.find((candidate) => candidate.id === parentId) ?? null : null;
-    if (parentId && !parent) return "Родительский раздел не найден. Обновите список и повторите попытку.";
-    const normalizedName = name.trim();
-    if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") return "Введите название раздела";
-    const duplicate = availableScopeSections.some((candidate) =>
-      (candidate.parentId ?? null) === (parent?.id ?? null)
-      && candidate.name.trim().toLocaleLowerCase("ru") === normalizedName.toLocaleLowerCase("ru"),
-    );
-    if (duplicate) return "Раздел с таким названием уже существует здесь.";
-    const siblings = availableScopeSections
-      .filter((candidate) => (candidate.parentId ?? null) === (parent?.id ?? null))
-      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.name.localeCompare(right.name, "ru"));
-    const created: TreeSection = {
-      id: createRealSectionId(),
-      parentId: parent?.id ?? null,
-      name: normalizedName,
-      imageUrl: null,
-      emoji: "🍽️",
-      sortOrder: (siblings.at(-1)?.sortOrder ?? 0) + 1,
-      status: "active",
-    };
-    addSection({
-      id: created.id,
-      parentId: created.parentId ?? null,
-      name: created.name,
-      imageUrl: null,
-      sortOrder: created.sortOrder ?? 0,
-    });
-    if (activeMenuId === "primary") {
-      writeCreatedCatalogSections([
-        ...readCreatedCatalogSections().filter((section) => section.id !== created.id),
-        created,
-      ]);
-    }
-    registerChange("catalog");
-    return created;
-  };
   const scopeSection = useMemo(
     () => availableScopeSections.find((section) => section.id === workspaceSectionScopeId) ?? null,
     [availableScopeSections, workspaceSectionScopeId],
@@ -9187,7 +9139,6 @@ function OverviewWorkspace({
                 onClose={returnToOrigin}
                 onFeedback={showFeedback}
                 structureSections={structureSections}
-                onCreateSectionForMove={createSectionForMove}
                 onRevealItem={(item) => {
                   setActiveFilterId(null);
                   setWorkspaceFilterId("quick:all");
@@ -9560,7 +9511,6 @@ function OverviewWorkspace({
                       sections={structureSections ?? catalogSections}
                       anchor={moveRequest.anchor}
                       onClose={() => setMoveRequest(null)}
-                      onCreateSection={createSectionForMove}
                       onMove={async (targetSectionId, destinationOverride) => {
                         if (!targetSectionId) return;
                         const destination = destinationOverride ?? (structureSections ?? catalogSections).find((section) => section.id === targetSectionId);
@@ -9728,7 +9678,6 @@ function OverviewWorkspace({
               onClose={returnToOrigin}
               onFeedback={showFeedback}
               structureSections={structureSections}
-              onCreateSectionForMove={createSectionForMove}
               onRevealItem={(item) => {
                 setActiveFilterId(null);
                 setWorkspaceFilterId("quick:all");
