@@ -9396,6 +9396,7 @@ function OverviewWorkspace({
                   onSortChange={setWorkspaceColumnSort}
                   table={catalogTable}
                   offsetForLocalHeader={false}
+                  isScrolled={(editorFirstEnabled ? editorFirstTableScrollTop : overviewScrollTop) > 0}
                   horizontalScrollLeft={tableHorizontalScrollLeft}
                 />
               )}

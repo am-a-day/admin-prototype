@@ -766,6 +766,23 @@ test("uses one aligned workspace header and toolbar for every catalog table stat
   await expect(page.locator("[data-position-create-button]")).toContainText("Новая позиция");
 });
 
+test("removes the sticky gap between the toolbar and table header while scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await page.goto("/?editorNav=unified");
+
+  const scrollContainer = page.locator("[data-catalog-results-scroll]");
+  const gapBetweenToolbarAndHeader = () => page.evaluate(() => {
+    const toolbar = document.querySelector("[data-catalog-table-toolbar]")?.getBoundingClientRect();
+    const tableHeader = document.querySelector("[data-catalog-table-header]")?.getBoundingClientRect();
+    return toolbar && tableHeader ? tableHeader.top - toolbar.bottom : null;
+  });
+
+  await expect.poll(gapBetweenToolbarAndHeader).toBe(6);
+  await scrollContainer.evaluate((element) => { element.scrollTop = 200; });
+  await expect.poll(async () => scrollContainer.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(gapBetweenToolbarAndHeader).toBe(0);
+});
+
 test("stretches the table across the available workspace while panels change", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });

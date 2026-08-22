@@ -60,6 +60,7 @@ import { CATALOG_TABLE_ROW_THUMBNAIL_CLASS, CatalogThumbnail } from "../ui/catal
 import { CatalogTableFilterTrigger, CatalogTableToolbarShell } from "../ui/catalog-table-controls";
 import {
   CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
+  CATALOG_TABLE_HEADER_SCROLLED_STICKY_CLASS,
   CATALOG_TABLE_HEADER_STICKY_CLASS,
   CATALOG_TABLE_HEADER_SURFACE_CLASS,
   CATALOG_TABLE_ROW_HEIGHT_CLASS,
@@ -1180,6 +1181,7 @@ export function TableHeaderRow({
   onSortChange,
   table,
   offsetForLocalHeader = false,
+  isScrolled = false,
   horizontalScrollLeft = 0,
 }: {
   checked: boolean;
@@ -1189,6 +1191,7 @@ export function TableHeaderRow({
   onSortChange: (sort: CatalogTableSort) => void;
   table: TanStackTable<CatalogItem>;
   offsetForLocalHeader?: boolean;
+  isScrolled?: boolean;
   horizontalScrollLeft?: number;
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
@@ -1250,7 +1253,13 @@ export function TableHeaderRow({
 
   return (
     <div
-      className={cn(CATALOG_TABLE_HEADER_STICKY_CLASS, offsetForLocalHeader && "top-[76px]")}
+      className={
+        offsetForLocalHeader
+          ? cn(CATALOG_TABLE_HEADER_STICKY_CLASS, "top-[76px]")
+          : isScrolled
+            ? CATALOG_TABLE_HEADER_SCROLLED_STICKY_CLASS
+            : CATALOG_TABLE_HEADER_STICKY_CLASS
+      }
       data-catalog-table-header
     >
       <div className={CATALOG_TABLE_HEADER_SURFACE_CLASS}>
