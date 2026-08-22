@@ -5739,15 +5739,15 @@ function PopulatedWorkspace({
     showPlaceholderFeedback(`${action}: ${selectedLabel}`);
   };
 
-  const moveForbiddenTargets = useMemo(() => {
-    if (moveRequest?.operation !== "section" && moveRequest?.operation !== "sections") return {};
-    return Object.fromEntries(allSections.flatMap((target) => {
-      if (allItems.some((item) => item.sectionId === target.id)) {
-        return [[target.id, "Нельзя переместить сюда — здесь находятся позиции"]];
-      }
-      return [];
-    }));
+  const movePositionOccupiedTargetIds = useMemo<string[]>(() => {
+    if (moveRequest?.operation !== "section" && moveRequest?.operation !== "sections") return [];
+    const occupiedSectionIds = new Set(allItems.map((item) => item.sectionId));
+    return allSections.filter((target) => occupiedSectionIds.has(target.id)).map((target) => target.id);
   }, [allItems, allSections, moveRequest?.operation]);
+  const moveForbiddenTargets = useMemo(
+    () => Object.fromEntries(movePositionOccupiedTargetIds.map((id) => [id, "Содержит позиции"])),
+    [movePositionOccupiedTargetIds],
+  );
 
   const performMoveRequest = async (targetSectionId: string | null, destinationOverride?: TreeSection) => {
     if (!moveRequest) return;
@@ -6324,6 +6324,7 @@ function PopulatedWorkspace({
             movingSectionId={moveRequest.movingSectionId}
             sections={allSections}
             forbiddenTargets={moveForbiddenTargets}
+            positionOccupiedTargetIds={movePositionOccupiedTargetIds}
             anchor={moveRequest.anchor}
             onClose={() => setMoveRequest(null)}
             onMove={performMoveRequest}

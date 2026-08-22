@@ -602,6 +602,7 @@ test("keeps nested move menus open through three levels and applies the deep tar
   const searchField = moveDialog.getByPlaceholder("Найти раздел...");
   await expect(searchField.locator("xpath=..")).toHaveCSS("height", "32px");
   await expect(moveDialog.getByText("Доступны для перемещения", { exact: true })).toHaveCount(0);
+  await expect(moveDialog.getByText(/Содержат позиции · \d+/)).toHaveCount(0);
   const searchBox = await searchField.locator("xpath=..").boundingBox();
   const kitchenNavigationTarget = moveDialog.getByRole("menuitem", { name: "Кухня", exact: true });
   const firstDestinationBox = await moveDialog.getByRole("menuitem").first().boundingBox();
@@ -1883,12 +1884,33 @@ test("records explicit subsection move parent/order and current reload behavior"
   await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
   const moveDialog = page.getByRole("dialog", { name: "Переместить раздел" });
+  const occupiedSummary = moveDialog.getByRole("button", { name: "Содержат позиции · 53", exact: true });
+  await expect(occupiedSummary).toBeVisible();
+  await expect(occupiedSummary.locator("span")).toHaveCSS("border-bottom-style", "dashed");
+  await expect(occupiedSummary.locator("xpath=..")).toHaveCSS("border-top-style", "solid");
+  await occupiedSummary.hover();
+  const occupiedTooltip = page.getByRole("tooltip");
+  await expect(occupiedTooltip).toHaveText("В эти разделы нельзя переместить раздел: один раздел может содержать либо позиции, либо подразделы.");
+  const tooltipLayer = await occupiedTooltip.evaluate((element) => {
+    const wrapper = element.closest("[data-radix-popper-content-wrapper]");
+    const moveMenu = document.querySelector("[data-move-to-section-menu]");
+    return {
+      portalToBody: wrapper?.parentElement === document.body,
+      outsideMoveMenu: !moveMenu?.contains(element),
+      zIndex: Number(wrapper ? getComputedStyle(wrapper).zIndex : 0),
+    };
+  });
+  expect(tooltipLayer.portalToBody).toBe(true);
+  expect(tooltipLayer.outsideMoveMenu).toBe(true);
+
   const navigableParent = moveDialog.getByRole("menuitem", { name: "Барное меню", exact: true });
   await expect(navigableParent).toHaveAttribute("aria-haspopup", "menu");
   await navigableParent.hover();
   const navigableSubmenu = page.locator("[data-move-to-section-nested-menu]").last();
   await expect(navigableSubmenu.getByRole("menuitem", { name: "Переместить в «Барное меню»", exact: true })).toBeVisible();
   await expect(navigableSubmenu.getByRole("menuitem", { name: "Барное меню › .", exact: true })).toBeVisible();
+  expect(tooltipLayer.zIndex)
+    .toBeGreaterThan(Number(await navigableSubmenu.evaluate((element) => getComputedStyle(element).zIndex)));
 
   const barTarget = moveDialog.getByRole("menuitem", { name: "Бар", exact: true });
   await expect(barTarget).toHaveAttribute("aria-haspopup", "menu");
@@ -1919,6 +1941,7 @@ test("shows only valid section move targets and explains an unavailable search m
   await expect(moveDialog.locator("xpath=..")).toHaveAttribute("data-side", /^(left|right)$/);
 
   await expect(moveDialog.getByText("Доступны для перемещения", { exact: true })).toHaveCount(0);
+  await expect(moveDialog.getByRole("button", { name: "Содержат позиции · 39", exact: true })).toBeVisible();
 
   await expect(moveDialog.getByRole("menuitem", { name: "Кухня", exact: true })).toHaveCount(0);
   await expect(moveDialog.getByRole("menuitem", { name: "Рыба и морепродукты", exact: true })).toHaveCount(0);
@@ -1931,7 +1954,7 @@ test("shows only valid section move targets and explains an unavailable search m
   await moveDialog.getByPlaceholder("Найти раздел...").fill("Рыба и морепродукты");
   const occupiedResult = moveDialog.locator("[data-move-unavailable-search-result]").filter({ hasText: "Рыба и морепродукты" });
   await expect(occupiedResult).toBeVisible();
-  await expect(occupiedResult).toContainText("Нельзя переместить сюда — здесь находятся позиции");
+  await expect(occupiedResult).toContainText("Содержит позиции");
 });
 
 test("keeps bulk selection commands in the sticky local header without shifting table rows", async ({ page }) => {
