@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretRight, CircleNotch, FolderPlus, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretRight, CircleNotch, FolderPlus, Image as ImageIcon, MagnifyingGlass } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { CatalogThumbnail } from "./catalog-thumbnail";
 import {
   buildCatalogTree as buildLocalSectionTree,
   flattenCatalogTree as flattenSections,
   getSectionSubtreeIds,
-  getSectionTreeDepth,
-  MAX_CATALOG_SECTION_DEPTH,
   type CatalogTreeSection,
 } from "../model/tree";
 import { usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
@@ -35,7 +32,32 @@ export type MoveToSectionPopoverProps = {
   onError?: () => void;
 };
 
-const MOVE_MENU_ITEM_CLASS = "flex h-[34px] w-full cursor-pointer select-none items-center gap-2 rounded-[7px] px-2 text-left text-[13px] leading-4 text-[#44403b] outline-none transition data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 focus-visible:ring-2 focus-visible:ring-[#292524]/10";
+const MOVE_MENU_ITEM_CLASS = "flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[4px] py-1 pl-[6px] pr-2 text-left text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45";
+const MOVE_MENU_SURFACE_CLASS = "w-[264px] max-w-[calc(100vw-24px)] rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] outline-none";
+// Keep the three portaled layers adjacent in the established catalog overlay stack.
+const MOVE_MENU_LAYER_CLASS = "z-[100005]";
+const MOVE_SUBMENU_LAYER_CLASS = "z-[100006]";
+const MOVE_TOOLTIP_LAYER_CLASS = "z-[100007]";
+
+function MoveDestinationThumbnail({ src }: { src?: string | null }) {
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-[4.615px] border-[0.714px] border-[#e7e5e4] bg-white text-[#79716b]">
+      {src ? (
+        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        <ImageIcon size={11} weight="regular" aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+function CreateSectionIcon() {
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-[4.615px] border-[0.714px] border-[#e7e5e4] bg-white text-[#44403b]">
+      <FolderPlus size={12} weight="regular" aria-hidden="true" />
+    </span>
+  );
+}
 
 export function MoveToSectionPopover({
   operation,
@@ -62,6 +84,7 @@ export function MoveToSectionPopover({
   const nestedPlacement = anchor.placement === "right";
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   usePositionSidePeekOverlay(true, onClose);
+
   const flatSections = useMemo(() => flattenSections(buildLocalSectionTree(sections)), [sections]);
   const sectionById = useMemo(() => new Map(flatSections.map((section) => [section.id, section])), [flatSections]);
   const childSectionsByParent = useMemo(() => {
@@ -82,20 +105,8 @@ export function MoveToSectionPopover({
     }
     return ids;
   }, [entityIds, flatSections, movingSectionId, operation]);
-  const movingSubtreeHeight = useMemo(() => {
-    const movingIds = movingSectionId ? [movingSectionId] : operation === "sections" ? entityIds : [];
-    if (movingIds.length === 0) return 0;
-    return Math.max(0, ...movingIds.map((id) => {
-      const baseDepth = getSectionTreeDepth(id, flatSections);
-      return Math.max(
-        0,
-        ...flatSections
-          .filter((section) => getSectionSubtreeIds(id, flatSections).has(section.id))
-          .map((section) => getSectionTreeDepth(section.id, flatSections) - baseDepth),
-      );
-    }));
-  }, [entityIds, flatSections, movingSectionId, operation]);
   const busy = loadingTarget !== undefined || creating;
+  const movesSections = operation === "section" || operation === "sections";
 
   const pathFor = useCallback((section: TreeSection) => {
     const names: string[] = [section.name];
@@ -112,13 +123,10 @@ export function MoveToSectionPopover({
   }, [sectionById]);
 
   const disabledReasonFor = useCallback((section: TreeSection): string | null => {
-    if (operation === "section" || operation === "sections") {
+    if (movesSections) {
       if (section.id === movingSectionId || entityIds.includes(section.id)) return "Нельзя переместить раздел внутрь самого себя";
       if (movingSubtreeIds.has(section.id)) return "Нельзя переместить раздел в его подраздел";
       if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
-      if (getSectionTreeDepth(section.id, flatSections) + 1 + movingSubtreeHeight > MAX_CATALOG_SECTION_DEPTH) {
-        return "Достигнута максимальная глубина";
-      }
       if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
       if (section.status === "archive") return "Архивный раздел нельзя выбрать";
       return null;
@@ -126,11 +134,11 @@ export function MoveToSectionPopover({
     if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
     if (section.status === "archive") return "Архивный раздел нельзя выбрать";
     if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
-    if ((childSectionsByParent.get(section.id)?.length ?? 0) > 0) return "В разделе уже есть подразделы";
+    if ((childSectionsByParent.get(section.id)?.length ?? 0) > 0) return "Внутри есть подразделы";
     return null;
-  }, [childSectionsByParent, entityIds, flatSections, forbiddenTargets, movingSectionId, movingSubtreeHeight, movingSubtreeIds, operation, uniqueCurrentSectionIds]);
+  }, [childSectionsByParent, entityIds, forbiddenTargets, movesSections, movingSectionId, movingSubtreeIds, uniqueCurrentSectionIds]);
 
-  const rootDisabledReason = (operation === "section" || operation === "sections") && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
+  const rootDisabledReason = movesSections && uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"
     ? "Текущее расположение"
     : forbiddenTargets.__root__ ?? null;
   const availableSections = useMemo(
@@ -162,17 +170,13 @@ export function MoveToSectionPopover({
     [disabledReasonFor, matchingSearchSections],
   );
   const unavailableSearchSections = useMemo(
-    () => visibleSearchSections.length === 0
-      ? matchingSearchSections.filter((section) => Boolean(disabledReasonFor(section)))
-      : [],
-    [disabledReasonFor, matchingSearchSections, visibleSearchSections.length],
+    () => matchingSearchSections.filter((section) => Boolean(disabledReasonFor(section))),
+    [disabledReasonFor, matchingSearchSections],
   );
-  const destinationHint = operation === "section" || operation === "sections"
-    ? "Показаны разделы без позиций — только в них можно перемещать другие разделы."
-    : "Показаны разделы без подразделов — только в них можно перемещать позиции.";
-  const createDisabledReason = (operation === "section" || operation === "sections") && movingSubtreeHeight + 1 > MAX_CATALOG_SECTION_DEPTH
-    ? "Достигнута максимальная глубина"
-    : null;
+  const destinationHint = movesSections
+    ? "Раздел может содержать либо позиции, либо подразделы. Поэтому раздел можно переместить только туда, где нет позиций."
+    : "Раздел может содержать либо позиции, либо подразделы. Поэтому позицию можно переместить только в раздел без подразделов.";
+  const searchPlaceholder = movesSections ? "Переместить раздел в..." : "Переместить позицию в...";
 
   useEffect(() => {
     if (nestedPlacement) return;
@@ -198,7 +202,7 @@ export function MoveToSectionPopover({
 
   const createAndMove = async () => {
     const normalizedName = createName.trim();
-    if (!normalizedName || !onCreateSection || creating || createDisabledReason) return;
+    if (!normalizedName || !onCreateSection || creating) return;
     setCreating(true);
     setCreateError("");
     try {
@@ -233,7 +237,7 @@ export function MoveToSectionPopover({
         }}
         className={MOVE_MENU_ITEM_CLASS}
       >
-        <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 rounded-[5px]" />
+        <MoveDestinationThumbnail src={section.imageUrl} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {loading && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
       </DropdownMenu.Item>
@@ -241,40 +245,32 @@ export function MoveToSectionPopover({
   };
 
   const renderTreeTarget = (section: TreeSection): ReactNode => {
+    const disabledReason = disabledReasonFor(section);
     const children = (childSectionsByParent.get(section.id) ?? [])
       .filter((child) => visibleTreeSectionIds.has(child.id));
-    if (children.length === 0) return renderMoveItem(section);
-    const disabledReason = disabledReasonFor(section);
+
+    if (!disabledReason) return renderMoveItem(section);
+    if (children.length === 0) return null;
+
     return (
       <DropdownMenu.Sub key={section.id}>
         <DropdownMenu.SubTrigger aria-label={pathFor(section)} disabled={busy} className={MOVE_MENU_ITEM_CLASS}>
-          <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 rounded-[5px]" />
+          <MoveDestinationThumbnail src={section.imageUrl} />
           <span className="min-w-0 flex-1 truncate">{section.name}</span>
-          <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+          <CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#79716b]" />
         </DropdownMenu.SubTrigger>
         <DropdownMenu.Portal>
           <DropdownMenu.SubContent
             sideOffset={5}
-            alignOffset={-6}
+            alignOffset={-4}
             collisionPadding={12}
             data-move-to-section-nested-menu
-            className="scrollbar-subtle z-[100006] max-h-[min(340px,calc(100vh-24px))] min-w-[220px] max-w-[320px] overflow-y-auto overscroll-contain rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)] outline-none"
-          >
-            {!disabledReason && (
-              <DropdownMenu.Item
-                disabled={busy}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void chooseTarget(section.id, null, section);
-                }}
-                className={cn(MOVE_MENU_ITEM_CLASS, "font-medium text-[#292524]")}
-              >
-                <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 rounded-[5px]" />
-                <span className="min-w-0 flex-1 truncate">Переместить сюда</span>
-                {loadingTarget === section.id && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
-              </DropdownMenu.Item>
+            className={cn(
+              MOVE_MENU_SURFACE_CLASS,
+              MOVE_SUBMENU_LAYER_CLASS,
+              "scrollbar-subtle max-h-[min(340px,calc(100vh-24px))] overflow-y-auto overscroll-contain p-1",
             )}
-            {!disabledReason && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
+          >
             {children.map(renderTreeTarget)}
           </DropdownMenu.SubContent>
         </DropdownMenu.Portal>
@@ -298,7 +294,7 @@ export function MoveToSectionPopover({
           align="start"
           side={nestedPlacement ? "right" : "bottom"}
           sideOffset={nestedPlacement ? 5 : 6}
-          alignOffset={nestedPlacement ? -6 : 0}
+          alignOffset={nestedPlacement ? -4 : 0}
           collisionPadding={12}
           onCloseAutoFocus={(event) => event.preventDefault()}
           onEscapeKeyDown={(event) => {
@@ -320,20 +316,20 @@ export function MoveToSectionPopover({
           onInteractOutside={(event) => {
             if (shouldPreventOverlayDismissal(event)) event.preventDefault();
           }}
-          className="z-[100005] bg-transparent p-0 outline-none"
+          className={cn(MOVE_MENU_LAYER_CLASS, "bg-transparent p-0 outline-none")}
         >
           {marker}
           <div
             data-move-to-section-menu
             role="dialog"
-            aria-label={operation === "section" || operation === "sections" ? "Переместить раздел" : "Переместить в раздел"}
-            className="flex w-[320px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[11px] border border-[#e7e5e4] bg-white p-1.5 shadow-[0_14px_36px_rgba(41,37,36,0.16)]"
+            aria-label={movesSections ? "Переместить раздел" : "Переместить в раздел"}
+            className={cn(MOVE_MENU_SURFACE_CLASS, "flex flex-col overflow-hidden pt-1")}
           >
             {createMode ? (
-              <div className="p-1">
-                <div className="flex items-center gap-2 px-1 pb-2 pt-0.5">
-                  <FolderPlus size={16} weight="regular" className="shrink-0 text-[#57534d]" />
-                  <span className="text-[13px] font-medium text-[#292524]">Создать раздел</span>
+              <div className="p-2">
+                <div className="flex items-center gap-2 px-1 pb-2">
+                  <CreateSectionIcon />
+                  <span className="text-[13px] font-medium leading-4 text-[#292524]">Создать раздел</span>
                 </div>
                 <Input
                   ref={createInputRef}
@@ -378,8 +374,7 @@ export function MoveToSectionPopover({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={!createName.trim() || creating || Boolean(createDisabledReason)}
-                    title={createDisabledReason ?? undefined}
+                    disabled={!createName.trim() || creating}
                     onClick={() => void createAndMove()}
                     className="h-8 bg-[#4f39f6] px-3 text-[13px] text-white hover:bg-[#4030d4]"
                   >
@@ -390,90 +385,102 @@ export function MoveToSectionPopover({
               </div>
             ) : (
               <>
-                <div className="px-2 pb-2 pt-1">
-                  <Tooltip label={destinationHint} side="top" delayDuration={250}>
-                    <button
-                      type="button"
-                      data-move-destinations-hint
-                      className="cursor-help border-b border-dashed border-stone-400 pb-px text-left text-[12px] font-medium leading-4 text-stone-600 outline-none focus-visible:border-indigo-500 focus-visible:text-stone-900"
-                    >
-                      Можно переместить в
-                    </button>
-                  </Tooltip>
-                </div>
-                <label className="mb-1.5 flex h-8 items-center gap-2 rounded-[7px] bg-[#f5f5f4] px-2.5 ring-1 ring-inset ring-[#eceae7] focus-within:bg-white focus-within:ring-[#a8a29e]">
-                  <MagnifyingGlass size={14} className="shrink-0 text-[#79716b]" />
-                  <input
-                    ref={searchRef}
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    placeholder="Найти раздел..."
-                    className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-[#292524] outline-none placeholder:text-[#a8a29e]"
-                  />
-                </label>
-                <div className="scrollbar-subtle max-h-[340px] overflow-y-auto overscroll-contain">
-                  {(operation === "section" || operation === "sections") && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
-                    <DropdownMenu.Item
-                      aria-label="Основное меню"
-                      disabled={busy}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        void chooseTarget(null, null);
-                      }}
-                      className={MOVE_MENU_ITEM_CLASS}
-                    >
-                      <CatalogThumbnail kind="section" className="h-5 w-5 rounded-[5px]" />
-                      <span className="min-w-0 flex-1 truncate">Основное меню</span>
-                      {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
-                    </DropdownMenu.Item>
-                  )}
-                  {normalizedQuery
-                    ? visibleSearchSections.map((section) => renderMoveItem(section, pathFor(section)))
-                    : (childSectionsByParent.get(null) ?? [])
-                      .filter((section) => visibleTreeSectionIds.has(section.id))
-                      .map(renderTreeTarget)}
-                  {normalizedQuery && unavailableSearchSections.map((section) => (
-                    <div
-                      key={section.id}
-                      data-move-unavailable-search-result={section.id}
-                      className="rounded-[7px] bg-stone-50 px-2 py-2"
-                    >
-                      <div className="flex min-w-0 items-center gap-2 text-[13px] leading-4 text-stone-600">
-                        <CatalogThumbnail src={section.imageUrl} kind="section" className="h-5 w-5 shrink-0 rounded-[5px]" />
-                        <span className="min-w-0 flex-1 truncate">{pathFor(section)}</span>
-                      </div>
-                      <p className="mt-1 pl-7 text-[11px] leading-4 text-stone-400">
-                        {disabledReasonFor(section)}
-                      </p>
+                <div className="flex flex-col gap-1">
+                  <div className="px-1">
+                    <label className="flex h-8 items-center gap-[6px] rounded-[6px] bg-[#f5f5f4] px-[7px] py-[6px]">
+                      <MagnifyingGlass size={14} weight="regular" className="shrink-0 text-[#79716b]" />
+                      <input
+                        ref={searchRef}
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        placeholder={searchPlaceholder}
+                        className="min-w-0 flex-1 bg-transparent text-[13px] leading-4 text-[#44403b] outline-none placeholder:text-[#79716b]"
+                      />
+                    </label>
+                  </div>
+                  {onCreateSection && (
+                    <div className="border-b border-[#e7e5e4] p-1">
+                      <DropdownMenu.Item
+                        disabled={busy}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          setCreateMode(true);
+                          setCreateName("");
+                          setCreateError("");
+                        }}
+                        className={MOVE_MENU_ITEM_CLASS}
+                      >
+                        <CreateSectionIcon />
+                        <span className="min-w-0 flex-1 truncate">Создать раздел</span>
+                      </DropdownMenu.Item>
                     </div>
-                  ))}
-                  {normalizedQuery && visibleSearchSections.length === 0 && unavailableSearchSections.length === 0 && (
-                    <div className="flex h-16 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
                   )}
-                  {!normalizedQuery && availableSections.length === 0 && (
-                    <div className="flex h-16 items-center justify-center px-3 text-[13px] text-[#79716b]">Нет подходящих разделов</div>
-                  )}
+                  {!onCreateSection && <div className="h-px bg-[#e7e5e4]" />}
                 </div>
-                {onCreateSection && (
-                  <>
-                    <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-                    <DropdownMenu.Item
-                      disabled={busy || Boolean(createDisabledReason)}
-                      title={createDisabledReason ?? undefined}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        setCreateMode(true);
-                        setCreateName("");
-                        setCreateError("");
-                      }}
-                      className={cn(MOVE_MENU_ITEM_CLASS, "font-medium text-[#292524]")}
+
+                <div className="flex flex-col gap-1 pt-2">
+                  <div className="flex items-center pl-3">
+                    <Tooltip
+                      label={destinationHint}
+                      side="top"
+                      delayDuration={250}
+                      contentClassName={cn(MOVE_TOOLTIP_LAYER_CLASS, "max-w-[320px] px-2 py-1.5 text-[12px] leading-4")}
                     >
-                      <FolderPlus size={16} weight="regular" className="shrink-0 text-[#57534d]" />
-                      <span className="min-w-0 flex-1">Создать раздел…</span>
-                    </DropdownMenu.Item>
-                  </>
-                )}
+                      <button
+                        type="button"
+                        data-move-destinations-hint
+                        className="cursor-help border-b border-dashed border-[#a8a29e] text-left text-[12px] font-medium leading-4 text-[#78716c] outline-none focus-visible:border-indigo-500 focus-visible:text-[#44403b]"
+                      >
+                        Доступны для перемещения
+                      </button>
+                    </Tooltip>
+                  </div>
+
+                  <div className="scrollbar-subtle max-h-[340px] overflow-y-auto overscroll-contain p-1">
+                    {movesSections && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
+                      <DropdownMenu.Item
+                        aria-label="Основное меню"
+                        disabled={busy}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          void chooseTarget(null, null);
+                        }}
+                        className={MOVE_MENU_ITEM_CLASS}
+                      >
+                        <MoveDestinationThumbnail />
+                        <span className="min-w-0 flex-1 truncate">Основное меню</span>
+                        {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+                      </DropdownMenu.Item>
+                    )}
+                    {normalizedQuery
+                      ? visibleSearchSections.map((section) => renderMoveItem(section, pathFor(section)))
+                      : (childSectionsByParent.get(null) ?? [])
+                        .filter((section) => visibleTreeSectionIds.has(section.id))
+                        .map(renderTreeTarget)}
+                    {normalizedQuery && unavailableSearchSections.map((section) => (
+                      <DropdownMenu.Item
+                        key={section.id}
+                        disabled
+                        aria-label={`${pathFor(section)}. ${disabledReasonFor(section)}`}
+                        data-move-unavailable-search-result={section.id}
+                        className="flex min-h-10 w-full select-none items-start gap-2 rounded-[4px] px-1.5 py-1.5 text-left outline-none data-[disabled]:opacity-100"
+                      >
+                        <MoveDestinationThumbnail src={section.imageUrl} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] leading-4 text-[#44403b]">{pathFor(section)}</span>
+                          <span className="mt-0.5 block truncate text-[11px] leading-4 text-[#a8a29e]">{disabledReasonFor(section)}</span>
+                        </span>
+                      </DropdownMenu.Item>
+                    ))}
+                    {normalizedQuery && visibleSearchSections.length === 0 && unavailableSearchSections.length === 0 && (
+                      <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+                    )}
+                    {!normalizedQuery && availableSections.length === 0 && !(movesSections && !rootDisabledReason) && (
+                      <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Нет подходящих разделов</div>
+                    )}
+                  </div>
+                </div>
                 {busy && <span className="sr-only" role="status">Перемещение выполняется</span>}
               </>
             )}
