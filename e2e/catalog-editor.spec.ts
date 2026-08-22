@@ -577,7 +577,7 @@ test("renders More above row content without reserving a table column", async ({
 test("keeps nested move menus open through three levels and applies the deep target", async ({ page }) => {
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 1280, height: 820 });
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
 
   await page.getByRole("button", { name: "Добавить раздел", exact: true }).click();
   await page.getByLabel("Название раздела").fill("E2E корень");
@@ -637,7 +637,7 @@ test("keeps nested move menus open through three levels and applies the deep tar
 
 test("creates a destination while moving one position", async ({ page }) => {
   test.setTimeout(30_000);
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const firstRow = page.locator("[data-catalog-table-row]").first();
@@ -654,7 +654,7 @@ test("creates a destination while moving one position", async ({ page }) => {
 
 test("creates a destination while moving a bulk selection", async ({ page }) => {
   test.setTimeout(30_000);
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const bulkRows = page.locator("[data-catalog-table-row]");
@@ -682,7 +682,7 @@ test("creates a destination while moving a bulk selection", async ({ page }) => 
 });
 
 test("creates a destination while moving a section", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
   await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
@@ -1450,7 +1450,9 @@ test("persists the complete basic position editor record across reload", async (
 });
 
 test("uses the position title chevron for actions and preserves queue plus destructive semantics", async ({ page }) => {
-  await openEntityItem(page);
+  await page.goto(`/?editorNav=entity&movePicker=popup&sectionId=${breakfastSectionId}`);
+  await page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle }).click();
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toBeVisible();
 
   const actionTrigger = page.getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` });
   await expect(actionTrigger).toBeVisible();
@@ -1791,7 +1793,7 @@ test("opens compact section rename and icon overlays from the section chevron", 
 });
 
 test("uses the shared compact bulk toolbar for subsection selection", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByText("Кухня", { exact: true }).first().click();
 
   const breakfastCheckbox = page.getByRole("checkbox", { name: "Выбрать подраздел Завтраки" });
@@ -1859,7 +1861,7 @@ test("maps section availability choices to the current status badge", async ({ p
 });
 
 test("records explicit position move parent/order and current reload behavior", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByText("Завтраки", { exact: true }).first().click();
 
   const sourceRow = page.locator("[data-catalog-table-row]").filter({ hasText: firstItemTitle }).first();
@@ -1878,7 +1880,7 @@ test("records explicit position move parent/order and current reload behavior", 
 });
 
 test("records explicit subsection move parent/order and current reload behavior", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByRole("button", { name: "Раскрыть раздел Бар", exact: true }).click();
 
   await page.getByRole("button", { name: "Действия с разделом Завтраки", exact: true }).click();
@@ -1899,7 +1901,7 @@ test("records explicit subsection move parent/order and current reload behavior"
 });
 
 test("shows only valid section move targets and explains an unavailable search match", async ({ page }) => {
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
   await page.getByRole("button", { name: "Действия с разделом Кухня", exact: true }).click();
   await page.getByRole("menuitem", { name: "Переместить", exact: true }).hover();
 
@@ -1924,7 +1926,7 @@ test("shows only valid section move targets and explains an unavailable search m
 
 test("keeps bulk selection commands in the sticky local header without shifting table rows", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 640 });
-  await page.goto("/?editorNav=unified");
+  await page.goto("/?editorNav=unified&movePicker=popup");
 
   const scrollContainer = page.locator("[data-catalog-results-scroll]");
   const localHeader = page.locator("[data-catalog-local-header]");

@@ -647,6 +647,7 @@ type EntityMenuProps = {
   onDelete: () => void;
   positionAvailability?: CatalogPositionAvailabilityMenuProps;
   sectionAvailability?: CatalogSectionAvailabilityMenuProps;
+  movePresentation?: "submenu" | "action";
 };
 
 export function CatalogContextMenuContent({
@@ -672,6 +673,7 @@ export function CatalogContextMenuContent({
   onDelete,
   positionAvailability,
   sectionAvailability,
+  movePresentation = "submenu",
 }: EntityMenuProps) {
   const itemAvailability = entity === "item" && showAvailability ? positionAvailability : undefined;
 
@@ -697,17 +699,17 @@ export function CatalogContextMenuContent({
       )}
       <DropdownActionItem icon={NotePencil} onSelect={onRename}>Переименовать</DropdownActionItem>
       <DropdownMenu.Item
-        aria-haspopup="menu"
-        onPointerEnter={onMove}
+        aria-haspopup={movePresentation === "submenu" ? "menu" : undefined}
+        onPointerEnter={movePresentation === "submenu" ? onMove : undefined}
         onSelect={(event) => {
-          event.preventDefault();
+          if (movePresentation === "submenu") event.preventDefault();
           onMove(event);
         }}
         className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
       >
         <ArrowElbowUpRight size={15} weight="regular" className="shrink-0" />
         <span className="min-w-0 flex-1 truncate">Переместить</span>
-        <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+        {movePresentation === "submenu" && <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />}
       </DropdownMenu.Item>
       {entity === "item" && onDuplicate && <DropdownActionItem icon={Copy} onSelect={onDuplicate}>Создать копию</DropdownActionItem>}
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />

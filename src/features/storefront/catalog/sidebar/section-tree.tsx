@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretDoubleLeft, CaretRight, DotsThreeVertical, MagnifyingGlass, PlusCircle, X } from "@phosphor-icons/react";
+import { Asterisk, CaretDoubleLeft, CaretRight, CircleNotch, DotsThreeVertical, MagnifyingGlass, PlusCircle, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -59,6 +59,22 @@ type SectionTreeActionOptions = {
   allowSubsectionCreation: boolean;
 };
 
+export type CatalogTreeMoveDestinationState = {
+  available: boolean;
+  hasAvailableDescendant: boolean;
+  reason: string | null;
+};
+
+export type CatalogTreeMoveMode = {
+  entityLabel: string;
+  destinations: Record<string, CatalogTreeMoveDestinationState>;
+  rootDestination?: CatalogTreeMoveDestinationState;
+  pendingTargetId?: string | null;
+  onMoveToSection: (section: CatalogTreeSection) => void;
+  onMoveToRoot?: () => void;
+  onCancel: () => void;
+};
+
 type UnifiedCatalogTreePanelProps = {
   sections: CatalogTreeSection[];
   items: CatalogItem[];
@@ -88,6 +104,7 @@ type UnifiedCatalogTreePanelProps = {
   menuSwitcher?: ReactNode;
   onCollapseSections: () => void;
   onReorderSections: (parentId: string | null, activeId: string, overId: string) => void;
+  moveMode?: CatalogTreeMoveMode;
 };
 
 class SectionTreePointerSensor extends PointerSensor {
@@ -184,6 +201,7 @@ export function UnifiedCatalogTreePanel({
   menuSwitcher,
   onCollapseSections,
   onReorderSections,
+  moveMode,
 }: UnifiedCatalogTreePanelProps) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -279,6 +297,17 @@ export function UnifiedCatalogTreePanel({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [flatSections, renamingSectionId]);
+
+  useEffect(() => {
+    if (!moveMode) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      moveMode.onCancel();
+    };
+    window.addEventListener("keydown", handleEscape, true);
+    return () => window.removeEventListener("keydown", handleEscape, true);
+  }, [moveMode]);
 
   const cancelDraft = () => {
     setDraftClosing(true);
@@ -378,19 +407,31 @@ export function UnifiedCatalogTreePanel({
     if (normalizedQuery && !visibleIds.has(section.id)) return null;
     const hasChildren = (section.children?.length ?? 0) > 0;
     const isExpanded = normalizedQuery ? true : Boolean(expanded[section.id]);
-    const active = sectionEditingEnabled && selectedSectionId === section.id;
+    const active = !moveMode && sectionEditingEnabled && selectedSectionId === section.id;
     const isArchived = section.status === "archive";
     const hasDirectSubsections = hasChildren;
     const hasDirectPositions = items.some((item) => item.sectionId === section.id && (includeArchived || item.status !== "archive"));
     const reachedMaxDepth = getSectionTreeDepth(section.id, sections) >= MAX_CATALOG_SECTION_DEPTH;
     const allowSubsectionCreation = !isArchived && !reachedMaxDepth && (hasDirectSubsections || !hasDirectPositions);
     const allowPositionCreation = positionCreationEnabled && !isArchived && !hasDirectSubsections;
+    const moveDestination = moveMode?.destinations[section.id];
+    const fullyUnavailableMoveTarget = Boolean(
+      moveDestination && !moveDestination.available && !moveDestination.hasAvailableDescendant,
+    );
+    const sectionName = (
+      <span className={cn(
+        "ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]",
+        active ? "text-[#292524]" : isArchived || fullyUnavailableMoveTarget ? "text-[#a8a29e]" : "text-[#79716b]",
+      )}>
+        {section.name}
+      </span>
+    );
     return (
       <SortableSectionNode
         key={section.id}
         id={section.id}
         parentId={section.parentId ?? null}
-        disabled={Boolean(normalizedQuery)}
+        disabled={Boolean(normalizedQuery) || Boolean(moveMode)}
       >
         {({ setNodeRef, dragProps, isDragging, sortableStyle }) => (
           <>
@@ -455,10 +496,28 @@ export function UnifiedCatalogTreePanel({
               }}
               className="ml-2 min-w-0 flex-1 bg-transparent text-[13px] font-medium leading-[18px] text-[#292524] outline-none"
             />
-          ) : (
-            <span className={cn("ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]")}>{section.name}</span>
-          )}
+          ) : fullyUnavailableMoveTarget && moveDestination?.reason ? (
+            <Tooltip label={moveDestination.reason} side="right" delayDuration={300}>
+              {sectionName}
+            </Tooltip>
+          ) : sectionName}
           {isArchived && <span className="mr-1 shrink-0 text-[10px] text-[#a8a29e]">В архиве</span>}
+          {moveMode && moveDestination?.available ? (
+            <button
+              type="button"
+              data-no-dnd
+              data-catalog-tree-move-target={section.id}
+              aria-label={`Переместить сюда: ${section.name}`}
+              disabled={moveMode.pendingTargetId !== undefined}
+              onClick={(event) => {
+                event.stopPropagation();
+                moveMode.onMoveToSection(section);
+              }}
+              className="ml-1 inline-flex h-6 shrink-0 items-center justify-center rounded-[7px] px-2 text-[12px] font-medium text-[#4f39f6] transition hover:bg-[#eeecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/25 disabled:opacity-55"
+            >
+              {moveMode.pendingTargetId === section.id ? <CircleNotch size={13} weight="bold" className="animate-spin" /> : "Сюда"}
+            </button>
+          ) : !moveMode ? (
           <span className="relative ml-1 flex h-5 min-w-5 shrink-0 items-center justify-end">
             <span className="text-[11px] tabular-nums text-[#a8a29e] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
               {countBySection.get(section.id) ?? 0}
@@ -510,6 +569,7 @@ export function UnifiedCatalogTreePanel({
               </SectionTreeDropdown>
             </DropdownMenu.Root>
           </span>
+          ) : null}
         </div>
         {(hasChildren && isExpanded || draftParentId === section.id) && renderSectionList(section.children ?? [], section.id, depth + 1)}
           </>
@@ -532,6 +592,44 @@ export function UnifiedCatalogTreePanel({
 
   return (
     <aside className="relative flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white pt-3">
+      {moveMode ? (
+        <div data-catalog-tree-move-mode className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3">
+          <div className="flex min-w-0 items-start gap-2 px-2">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[14px] font-medium leading-5 text-[#292524]">Куда переместить?</h2>
+              <p className="mt-0.5 truncate text-[12px] leading-4 text-[#79716b]">{moveMode.entityLabel}</p>
+            </div>
+            <Tooltip label="Отменить перемещение" side="top" delayDuration={250}>
+              <button
+                type="button"
+                aria-label="Отменить перемещение"
+                onClick={moveMode.onCancel}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] transition hover:bg-[#f3f3ed] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+              >
+                <X size={16} weight="regular" />
+              </button>
+            </Tooltip>
+          </div>
+          {moveMode.rootDestination && (
+            <div className="mt-2 flex h-8 items-center gap-2 rounded-[8px] px-2 hover:bg-[#f3f3ed]">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5.263px] bg-[#e6e6db] text-[#57534d]"><Asterisk size={13} weight="bold" /></span>
+              <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", moveMode.rootDestination.available ? "text-[#79716b]" : "text-[#a8a29e]")}>Основное меню</span>
+              {moveMode.rootDestination.available && moveMode.onMoveToRoot && (
+                <button
+                  type="button"
+                  data-catalog-tree-move-root
+                  aria-label="Переместить в корень каталога"
+                  disabled={moveMode.pendingTargetId !== undefined}
+                  onClick={moveMode.onMoveToRoot}
+                  className="inline-flex h-6 shrink-0 items-center justify-center rounded-[7px] px-2 text-[12px] font-medium text-[#4f39f6] transition hover:bg-[#eeecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/25 disabled:opacity-55"
+                >
+                  {moveMode.pendingTargetId === null ? <CircleNotch size={13} weight="bold" className="animate-spin" /> : "Сюда"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="shrink-0 border-b border-[#e7e5e4] px-3 pb-3">
         <div className="flex min-w-0 items-center gap-1">
           <div className="min-w-0 flex-1">{menuSwitcher ?? <span className="inline-flex h-8 items-center px-2 text-[14px] text-[#292524]">Основное меню</span>}</div>
@@ -560,6 +658,7 @@ export function UnifiedCatalogTreePanel({
           <span className="min-w-4 shrink-0 text-right text-[12px] tabular-nums text-[#a6a09b]">{items.length}</span>
         </button>
       </div>
+      )}
       <div className="shrink-0 px-3 pt-3">
         <div ref={searchControlRef}>
           <div className="flex h-8 items-center gap-1">
@@ -574,7 +673,7 @@ export function UnifiedCatalogTreePanel({
                 {searchOpen ? <X size={16} weight="regular" /> : <MagnifyingGlass size={16} weight="regular" />}
               </button>
             </Tooltip>
-            <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
+            {!moveMode && <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
               <button
                 type="button"
                 ref={createSectionButtonRef}
@@ -584,7 +683,7 @@ export function UnifiedCatalogTreePanel({
               >
                 <PlusCircle size={16} weight="regular" />
               </button>
-            </Tooltip>
+            </Tooltip>}
           </div>
           {searchOpen && (
             <label className="mt-1 flex h-8 w-full items-center gap-1.5 rounded-[8px] bg-[rgba(241,241,234,0.69)] px-[7px] py-1.5 text-[#79716b] focus-within:ring-2 focus-within:ring-[#292524]/10">

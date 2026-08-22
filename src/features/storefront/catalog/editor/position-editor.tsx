@@ -3341,6 +3341,7 @@ export function PositionEditor({
   onArchiveItem,
   onRestoreItem,
   onMoveItem,
+  movePresentation = "submenu",
   onSetAvailabilityMode,
   unavailableDisplayMode,
   outsideScheduleMode,
@@ -3381,6 +3382,7 @@ export function PositionEditor({
   onArchiveItem: (item: CatalogItem) => void;
   onRestoreItem: (item: CatalogItem) => void;
   onMoveItem: (item: CatalogItem, anchor: MovePopoverAnchor) => void;
+  movePresentation?: "submenu" | "action";
   onSetAvailabilityMode: (item: CatalogItem, mode: AvailabilityMode) => void;
   unavailableDisplayMode: UnavailableDisplayMode;
   outsideScheduleMode: OutsideScheduleMode;
@@ -3687,6 +3689,7 @@ export function PositionEditor({
             outsideScheduleMode={outsideScheduleMode}
             weeklySchedule={weeklySchedule}
             archiveDisabled={isArchived}
+            movePresentation={movePresentation}
             onRename={startTitleEditing}
             onMove={(event) => onMoveItem(item, getMovePopoverAnchor(event, "right"))}
             onDuplicate={onDuplicateItem ? () => onDuplicateItem(item) : undefined}
