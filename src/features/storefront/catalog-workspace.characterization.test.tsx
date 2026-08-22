@@ -1095,12 +1095,12 @@ describe("catalog observable behavior baseline", () => {
     await user.hover(moveItem);
     const moveDialog = screen.getByRole("dialog", { name: "Переместить в раздел" });
     expect(moveItem).toBeVisible();
-    expect(within(moveDialog).getByRole("button", { name: "Доступны для перемещения" })).toHaveClass("border-dashed");
+    expect(within(moveDialog).queryByText("Доступны для перемещения", { exact: true })).not.toBeInTheDocument();
     expect(within(moveDialog).getByPlaceholderText("Найти раздел...")).toBeInTheDocument();
     expect(moveDialog.querySelector("img")).not.toBeNull();
     await user.type(within(moveDialog).getByPlaceholderText("Найти раздел..."), "Выпечка");
-    expect(within(moveDialog).getByText("Кухня / Выпечка", { exact: true })).toBeInTheDocument();
-    await user.click(within(moveDialog).getByRole("menuitem", { name: "Кухня / Выпечка" }));
+    expect(within(moveDialog).getByText("Кухня › Выпечка", { exact: true })).toBeInTheDocument();
+    await user.click(within(moveDialog).getByRole("menuitem", { name: "Кухня › Выпечка" }));
 
     await waitFor(() => {
       expect(screen.getByText("Позиция перемещена в «Выпечка»", { exact: true })).toBeInTheDocument();

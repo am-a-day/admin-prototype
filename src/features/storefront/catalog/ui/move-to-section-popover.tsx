@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { CaretRight, CircleNotch, Image as ImageIcon, MagnifyingGlass } from "@phosphor-icons/react";
-import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   buildCatalogTree as buildLocalSectionTree,
@@ -31,10 +30,9 @@ export type MoveToSectionPopoverProps = {
 
 const MOVE_MENU_ITEM_CLASS = "flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[4px] py-1 pl-[6px] pr-2 text-left text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45";
 const MOVE_MENU_SURFACE_CLASS = "w-[264px] max-w-[calc(100vw-24px)] rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] outline-none";
-// Keep the three portaled layers adjacent in the established catalog overlay stack.
+// Keep the portaled menu layers adjacent in the established catalog overlay stack.
 const MOVE_MENU_LAYER_CLASS = "z-[100005]";
 const MOVE_SUBMENU_LAYER_CLASS = "z-[100006]";
-const MOVE_TOOLTIP_LAYER_CLASS = "z-[100007]";
 
 function MoveDestinationThumbnail({ src }: { src?: string | null }) {
   return (
@@ -102,7 +100,7 @@ export function MoveToSectionPopover({
       names.unshift(parent.name);
       parentId = parent.parentId ?? null;
     }
-    return names.join(" / ");
+    return names.join(" › ");
   }, [sectionById]);
 
   const disabledReasonFor = useCallback((section: TreeSection): string | null => {
@@ -117,7 +115,7 @@ export function MoveToSectionPopover({
     if (forbiddenTargets[section.id]) return forbiddenTargets[section.id];
     if (section.status === "archive") return "Архивный раздел нельзя выбрать";
     if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === section.id) return "Текущее расположение";
-    if ((childSectionsByParent.get(section.id)?.length ?? 0) > 0) return "Внутри есть подразделы";
+    if ((childSectionsByParent.get(section.id)?.length ?? 0) > 0) return "Выберите один из подразделов";
     return null;
   }, [childSectionsByParent, entityIds, forbiddenTargets, movesSections, movingSectionId, movingSubtreeIds, uniqueCurrentSectionIds]);
 
@@ -148,17 +146,6 @@ export function MoveToSectionPopover({
       : [],
     [flatSections, normalizedQuery, pathFor],
   );
-  const visibleSearchSections = useMemo(
-    () => matchingSearchSections.filter((section) => !disabledReasonFor(section)),
-    [disabledReasonFor, matchingSearchSections],
-  );
-  const unavailableSearchSections = useMemo(
-    () => matchingSearchSections.filter((section) => Boolean(disabledReasonFor(section))),
-    [disabledReasonFor, matchingSearchSections],
-  );
-  const destinationHint = movesSections
-    ? "Раздел может содержать либо позиции, либо подразделы. Поэтому раздел можно переместить только туда, где нет позиций."
-    : "Раздел может содержать либо позиции, либо подразделы. Поэтому позицию можно переместить только в раздел без подразделов.";
   const searchPlaceholder = "Найти раздел...";
 
   useEffect(() => {
@@ -206,11 +193,12 @@ export function MoveToSectionPopover({
 
   const renderTreeTarget = (section: TreeSection): ReactNode => {
     const disabledReason = disabledReasonFor(section);
-    const children = (childSectionsByParent.get(section.id) ?? [])
+    const allChildren = childSectionsByParent.get(section.id) ?? [];
+    const children = allChildren
       .filter((child) => visibleTreeSectionIds.has(child.id));
+    const canChooseSectionParent = movesSections && !disabledReason && allChildren.length > 0;
 
-    if (!disabledReason) return renderMoveItem(section);
-    if (children.length === 0) return null;
+    if (children.length === 0 && !canChooseSectionParent) return disabledReason ? null : renderMoveItem(section);
 
     return (
       <DropdownMenu.Sub key={section.id}>
@@ -231,10 +219,49 @@ export function MoveToSectionPopover({
               "scrollbar-subtle max-h-[min(340px,calc(100vh-24px))] overflow-y-auto overscroll-contain p-1",
             )}
           >
+            {canChooseSectionParent && (
+              <>
+                <DropdownMenu.Item
+                  aria-label={`Переместить в «${section.name}»`}
+                  data-move-to-section-parent-target={section.id}
+                  disabled={busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void chooseTarget(section.id, null, section);
+                  }}
+                  className={cn(MOVE_MENU_ITEM_CLASS, "px-[10px]")}
+                >
+                  <span className="min-w-0 flex-1 truncate">Переместить в «{section.name}»</span>
+                  {loadingTarget === section.id && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+                </DropdownMenu.Item>
+                {children.length > 0 && <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-[#e7e5e4]" />}
+              </>
+            )}
             {children.map(renderTreeTarget)}
           </DropdownMenu.SubContent>
         </DropdownMenu.Portal>
       </DropdownMenu.Sub>
+    );
+  };
+
+  const renderSearchResult = (section: TreeSection): ReactNode => {
+    const disabledReason = disabledReasonFor(section);
+    if (!disabledReason) return renderMoveItem(section, pathFor(section));
+
+    return (
+      <DropdownMenu.Item
+        key={section.id}
+        disabled
+        aria-label={`${pathFor(section)}. ${disabledReason}`}
+        data-move-unavailable-search-result={section.id}
+        className="flex min-h-10 w-full select-none items-start gap-2 rounded-[4px] px-1.5 py-1.5 text-left outline-none data-[disabled]:opacity-100"
+      >
+        <MoveDestinationThumbnail src={section.imageUrl} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] leading-4 text-[#44403b]">{pathFor(section)}</span>
+          <span className="mt-0.5 block truncate text-[11px] leading-4 text-[#a8a29e]">{disabledReason}</span>
+        </span>
+      </DropdownMenu.Item>
     );
   };
 
@@ -295,67 +322,33 @@ export function MoveToSectionPopover({
               </label>
             </div>
 
-            <div className="flex flex-col gap-1 pt-2">
-              <div className="flex items-center pl-3">
-                <Tooltip
-                  label={destinationHint}
-                  side="top"
-                  delayDuration={250}
-                  contentClassName={cn(MOVE_TOOLTIP_LAYER_CLASS, "max-w-[320px] px-2 py-1.5 text-[12px] leading-4")}
+            <div className="scrollbar-subtle max-h-[340px] overflow-y-auto overscroll-contain p-1">
+              {movesSections && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
+                <DropdownMenu.Item
+                  aria-label="Основное меню"
+                  disabled={busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void chooseTarget(null, null);
+                  }}
+                  className={MOVE_MENU_ITEM_CLASS}
                 >
-                  <button
-                    type="button"
-                    data-move-destinations-hint
-                    className="cursor-help border-b border-dashed border-[#a8a29e] text-left text-[12px] font-medium leading-4 text-[#78716c] outline-none focus-visible:border-indigo-500 focus-visible:text-[#44403b]"
-                  >
-                    Доступны для перемещения
-                  </button>
-                </Tooltip>
-              </div>
-
-              <div className="scrollbar-subtle max-h-[340px] overflow-y-auto overscroll-contain p-1">
-                {movesSections && !rootDisabledReason && (!normalizedQuery || "основное меню".includes(normalizedQuery)) && (
-                  <DropdownMenu.Item
-                    aria-label="Основное меню"
-                    disabled={busy}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      void chooseTarget(null, null);
-                    }}
-                    className={MOVE_MENU_ITEM_CLASS}
-                  >
-                    <MoveDestinationThumbnail />
-                    <span className="min-w-0 flex-1 truncate">Основное меню</span>
-                    {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
-                  </DropdownMenu.Item>
-                )}
-                {normalizedQuery
-                  ? visibleSearchSections.map((section) => renderMoveItem(section, pathFor(section)))
-                  : (childSectionsByParent.get(null) ?? [])
-                    .filter((section) => visibleTreeSectionIds.has(section.id))
-                    .map(renderTreeTarget)}
-                {normalizedQuery && unavailableSearchSections.map((section) => (
-                  <DropdownMenu.Item
-                    key={section.id}
-                    disabled
-                    aria-label={`${pathFor(section)}. ${disabledReasonFor(section)}`}
-                    data-move-unavailable-search-result={section.id}
-                    className="flex min-h-10 w-full select-none items-start gap-2 rounded-[4px] px-1.5 py-1.5 text-left outline-none data-[disabled]:opacity-100"
-                  >
-                    <MoveDestinationThumbnail src={section.imageUrl} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] leading-4 text-[#44403b]">{pathFor(section)}</span>
-                      <span className="mt-0.5 block truncate text-[11px] leading-4 text-[#a8a29e]">{disabledReasonFor(section)}</span>
-                    </span>
-                  </DropdownMenu.Item>
-                ))}
-                {normalizedQuery && visibleSearchSections.length === 0 && unavailableSearchSections.length === 0 && (
-                  <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
-                )}
-                {!normalizedQuery && availableSections.length === 0 && !(movesSections && !rootDisabledReason) && (
-                  <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Нет подходящих разделов</div>
-                )}
-              </div>
+                  <MoveDestinationThumbnail />
+                  <span className="min-w-0 flex-1 truncate">Основное меню</span>
+                  {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+                </DropdownMenu.Item>
+              )}
+              {normalizedQuery
+                ? matchingSearchSections.map(renderSearchResult)
+                : (childSectionsByParent.get(null) ?? [])
+                  .filter((section) => visibleTreeSectionIds.has(section.id))
+                  .map(renderTreeTarget)}
+              {normalizedQuery && matchingSearchSections.length === 0 && (
+                <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Разделы не найдены</div>
+              )}
+              {!normalizedQuery && availableSections.length === 0 && !(movesSections && !rootDisabledReason) && (
+                <div className="flex h-14 items-center justify-center px-3 text-[13px] text-[#79716b]">Нет подходящих разделов</div>
+              )}
             </div>
             {busy && <span className="sr-only" role="status">Перемещение выполняется</span>}
           </div>

@@ -5743,7 +5743,7 @@ function PopulatedWorkspace({
     if (moveRequest?.operation !== "section" && moveRequest?.operation !== "sections") return {};
     return Object.fromEntries(allSections.flatMap((target) => {
       if (allItems.some((item) => item.sectionId === target.id)) {
-        return [[target.id, "Внутри уже находятся позиции"]];
+        return [[target.id, "Нельзя переместить сюда — здесь находятся позиции"]];
       }
       return [];
     }));
