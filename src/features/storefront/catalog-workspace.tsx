@@ -126,7 +126,6 @@ import {
   getParentAvailability,
   getSectionSubtreeIds,
   getSectionTreeDepth,
-  MAX_CATALOG_SECTION_DEPTH,
   type CatalogAvailabilityMode,
   type CatalogTreeSection,
 } from "./catalog/model/tree";
@@ -138,7 +137,6 @@ import {
 import {
   CatalogTreeThumbnail,
   UnifiedCatalogTreePanel,
-  type CatalogTreeMoveDestinationState,
 } from "./catalog/sidebar/section-tree";
 import { CatalogMenuSwitcher } from "./catalog/sidebar/catalog-menu-switcher";
 import { CatalogActionButton } from "./catalog/ui/catalog-action-button";
@@ -637,13 +635,6 @@ function plural(count: number, one: string, few: string, many: string) {
 
 type AuditQueueFilterId = OverviewFilterId;
 type StructureReturnContext = Extract<CatalogReturnContext, { tab: "sections" }>;
-type CatalogTreeMoveRequest = {
-  operation: MoveOperation;
-  entityIds: string[];
-  currentSectionIds: string[];
-  movingSectionId?: string;
-  anchor: MovePopoverAnchor;
-};
 
 function getCatalogSectionPath(sectionId: string | null): CatalogSectionCrumb[] {
   return getCatalogSectionPathFromSections(sectionId, catalogSections);
@@ -2346,7 +2337,6 @@ function SectionEditor({
   onStartSubsectionCreation,
   onCreateSubsection,
   onCancelSubsectionCreation,
-  movePresentation = "submenu",
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -2389,7 +2379,6 @@ function SectionEditor({
   onStartSubsectionCreation?: () => void;
   onCreateSubsection?: (name: string) => boolean | string | void;
   onCancelSubsectionCreation?: () => void;
-  movePresentation?: "submenu" | "action";
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2542,7 +2531,6 @@ function SectionEditor({
                     section={section}
                     allowPositionCreation={allowPositionCreation}
                     allowSubsectionCreation={canCreateSubsection}
-                    movePresentation={movePresentation}
                     onAction={(action, anchor, schedule) => {
                       if (action === "Добавить подраздел") {
                         preserveInlineCreateFocusRef.current = true;
@@ -2637,7 +2625,6 @@ function SectionEditor({
                         section={subsection}
                         allowPositionCreation={canCreateInSubsection && !hasNestedSubsections}
                         allowSubsectionCreation={canCreateInSubsection && (hasNestedSubsections || !hasDirectPositions)}
-                        movePresentation={movePresentation}
                         onAction={onAction}
                       />
                     );
@@ -2764,7 +2751,6 @@ function UnifiedSectionTableHeader({
   onAction,
   allowPositionCreation = true,
   allowSubsectionCreation = true,
-  movePresentation = "submenu",
   treeHidden,
   onShowSections,
 }: {
@@ -2773,7 +2759,6 @@ function UnifiedSectionTableHeader({
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
   allowPositionCreation?: boolean;
   allowSubsectionCreation?: boolean;
-  movePresentation?: "submenu" | "action";
   treeHidden: boolean;
   onShowSections: () => void;
 }) {
@@ -2822,7 +2807,6 @@ function UnifiedSectionTableHeader({
             section={section}
             allowPositionCreation={allowPositionCreation}
             allowSubsectionCreation={allowSubsectionCreation}
-            movePresentation={movePresentation}
             onAction={onAction}
           />
         </DropdownContent>
@@ -4152,12 +4136,14 @@ function PopulatedWorkspace({
   const [stopBusyIds] = useState<Set<string>>(() => new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
-  const [moveRequest, setMoveRequest] = useState<CatalogTreeMoveRequest | null>(null);
-  const [treeMovePendingTargetId, setTreeMovePendingTargetId] = useState<string | null | undefined>(undefined);
+  const [moveRequest, setMoveRequest] = useState<{
+    operation: MoveOperation;
+    entityIds: string[];
+    currentSectionIds: string[];
+    movingSectionId?: string;
+    anchor: MovePopoverAnchor;
+  } | null>(null);
   const [treeMoveUndo, setTreeMoveUndo] = useState<CatalogTreeMoveUndoState>(null);
-  const treeMoveExperimentEnabled = (editorNavMode === "entity" || editorNavMode === "unified")
-    && (typeof window === "undefined" || new URLSearchParams(window.location.search).get("movePicker") !== "popup");
-  const treeMoveModeActive = treeMoveExperimentEnabled && moveRequest != null;
   const previousResetSignalRef = useRef(resetSignal);
 
   useEffect(() => {
@@ -4260,7 +4246,7 @@ function PopulatedWorkspace({
   const compactEditing = sidePeekOpen
     && catalogContainerWidth !== null
     && catalogContainerWidth < CATALOG_COMPACT_BREAKPOINT;
-  const treeHidden = treeMoveModeActive ? false : userCollapsedSections || compactEditing;
+  const treeHidden = userCollapsedSections || compactEditing;
   const showSections = useCallback(() => {
     setUserCollapsedSections(false);
     sidePeekCloseRef.current?.();
@@ -5769,82 +5755,6 @@ function PopulatedWorkspace({
     }));
   }, [allItems, allSections, moveRequest?.operation]);
 
-  const treeMoveMode = useMemo(() => {
-    if (!treeMoveModeActive || !moveRequest) return null;
-    const sectionById = new Map(allSections.map((candidate) => [candidate.id, candidate]));
-    const childSectionsByParent = new Map<string | null, TreeSection[]>();
-    allSections.forEach((candidate) => {
-      const parentId = candidate.parentId ?? null;
-      childSectionsByParent.set(parentId, [...(childSectionsByParent.get(parentId) ?? []), candidate]);
-    });
-    const uniqueCurrentSectionIds = [...new Set(moveRequest.currentSectionIds)];
-    const movingSectionIds = moveRequest.operation === "section"
-      ? moveRequest.movingSectionId ? [moveRequest.movingSectionId] : []
-      : moveRequest.operation === "sections" ? moveRequest.entityIds : [];
-    const movingSubtreeIds = new Set<string>();
-    movingSectionIds.forEach((id) => getSectionSubtreeIds(id, allSections).forEach((subtreeId) => movingSubtreeIds.add(subtreeId)));
-    const movingSubtreeHeight = movingSectionIds.length === 0 ? 0 : Math.max(0, ...movingSectionIds.map((id) => {
-      const baseDepth = getSectionTreeDepth(id, allSections);
-      return Math.max(
-        0,
-        ...allSections
-          .filter((candidate) => getSectionSubtreeIds(id, allSections).has(candidate.id))
-          .map((candidate) => getSectionTreeDepth(candidate.id, allSections) - baseDepth),
-      );
-    }));
-    const disabledReasonFor = (target: TreeSection): string | null => {
-      if (moveRequest.operation === "section" || moveRequest.operation === "sections") {
-        if (movingSectionIds.includes(target.id)) return "Нельзя переместить раздел внутрь самого себя";
-        if (movingSubtreeIds.has(target.id)) return "Нельзя переместить раздел в его подраздел";
-        if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === target.id) return "Текущее расположение";
-        if (getSectionTreeDepth(target.id, allSections) + 1 + movingSubtreeHeight > MAX_CATALOG_SECTION_DEPTH) {
-          return "Достигнута максимальная глубина";
-        }
-        if (moveForbiddenTargets[target.id]) return "Здесь уже находятся позиции";
-        if (target.status === "archive") return "Архивный раздел нельзя выбрать";
-        return null;
-      }
-      if (target.status === "archive") return "Архивный раздел нельзя выбрать";
-      if (uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === target.id) return "Текущее расположение";
-      if ((childSectionsByParent.get(target.id)?.length ?? 0) > 0) return "Здесь есть подразделы";
-      return null;
-    };
-    const directStates = new Map<string, CatalogTreeMoveDestinationState>(allSections.map((candidate) => {
-      const reason = disabledReasonFor(candidate);
-      return [candidate.id, { available: reason == null, hasAvailableDescendant: false, reason }];
-    }));
-    const ancestorsWithAvailableDescendants = new Set<string>();
-    allSections.forEach((candidate) => {
-      if (!directStates.get(candidate.id)?.available) return;
-      const seen = new Set<string>();
-      let parentId = candidate.parentId ?? null;
-      while (parentId && !seen.has(parentId)) {
-        seen.add(parentId);
-        ancestorsWithAvailableDescendants.add(parentId);
-        parentId = sectionById.get(parentId)?.parentId ?? null;
-      }
-    });
-    const destinations = Object.fromEntries(allSections.map((candidate) => {
-      const direct = directStates.get(candidate.id)!;
-      return [candidate.id, { ...direct, hasAvailableDescendant: ancestorsWithAvailableDescendants.has(candidate.id) }];
-    }));
-    const rootDestination = moveRequest.operation === "section" || moveRequest.operation === "sections"
-      ? {
-          available: !(uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__"),
-          hasAvailableDescendant: false,
-          reason: uniqueCurrentSectionIds.length === 1 && uniqueCurrentSectionIds[0] === "__root__" ? "Текущее расположение" : null,
-        }
-      : undefined;
-    const entityLabel = moveRequest.operation === "position"
-      ? `Позиция «${allItems.find((candidate) => candidate.id === moveRequest.entityIds[0])?.title ?? "Без названия"}»`
-      : moveRequest.operation === "bulk"
-        ? `${moveRequest.entityIds.length} ${plural(moveRequest.entityIds.length, "позиция", "позиции", "позиций")}`
-        : moveRequest.operation === "section"
-          ? `Раздел «${allSections.find((candidate) => candidate.id === moveRequest.movingSectionId)?.name ?? "Без названия"}»`
-          : `${moveRequest.entityIds.length} ${plural(moveRequest.entityIds.length, "раздел", "раздела", "разделов")}`;
-    return { destinations, rootDestination, entityLabel };
-  }, [allItems, allSections, moveForbiddenTargets, moveRequest, treeMoveModeActive]);
-
   const performMoveRequest = async (targetSectionId: string | null, destinationOverride?: TreeSection) => {
     if (!moveRequest) return;
     const snapshot = captureTreeMoveSnapshot();
@@ -5913,19 +5823,6 @@ function PopulatedWorkspace({
     } catch (error) {
       restoreTreeMoveSnapshot(snapshot);
       throw error;
-    }
-  };
-
-  const chooseTreeMoveDestination = async (targetSectionId: string | null, destination?: TreeSection) => {
-    if (!moveRequest || treeMovePendingTargetId !== undefined) return;
-    setTreeMovePendingTargetId(targetSectionId);
-    try {
-      await performMoveRequest(targetSectionId, destination);
-      setMoveRequest(null);
-    } catch {
-      setFeedback("Не удалось переместить. Попробуйте ещё раз");
-    } finally {
-      setTreeMovePendingTargetId(undefined);
     }
   };
 
@@ -6051,14 +5948,6 @@ function PopulatedWorkspace({
           onRequestPermanentDelete={requestPermanentDelete}
           structureSections={allSections}
           onCreateSectionForMove={createSectionForMove}
-          onRequestMove={treeMoveExperimentEnabled ? (target, anchor) => {
-            setMoveRequest({
-              operation: "position",
-              entityIds: [target.id],
-              currentSectionIds: [target.sectionId],
-              anchor,
-            });
-          } : undefined}
         />
       </PositionEditorDialogShell>
     );
@@ -6111,7 +6000,6 @@ function PopulatedWorkspace({
       onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
       allowSubsectionCreation={!subsectionDisabledReason && sectionTableBaseItems.length === 0}
-      movePresentation={treeMoveExperimentEnabled ? "action" : "submenu"}
       treeHidden={treeHidden}
       onShowSections={showSections}
     />
@@ -6166,7 +6054,6 @@ function PopulatedWorkspace({
       titleOverride={titleOverride}
       overviewContextStorageKey={overviewContextStorageKey}
       onFirstItemCreated={onFirstItemCreated}
-      onRequestTreeMove={treeMoveExperimentEnabled ? setMoveRequest : undefined}
     />
   );
 
@@ -6222,7 +6109,6 @@ function PopulatedWorkspace({
       onStartSubsectionCreation={() => openSectionCreation(section.id, "table")}
       onCreateSubsection={(name) => createSectionFromDialog(name, section.id)}
       onCancelSubsectionCreation={closeSectionCreation}
-      movePresentation={treeMoveExperimentEnabled ? "action" : "submenu"}
     />
   ) : unifiedOverviewWorkspace;
 
@@ -6269,7 +6155,6 @@ function PopulatedWorkspace({
                   section={section}
                   allowPositionCreation={options.allowPositionCreation}
                   allowSubsectionCreation={options.allowSubsectionCreation}
-                  movePresentation={treeMoveExperimentEnabled ? "action" : "submenu"}
                   onAction={onAction}
                 />
               )}
@@ -6278,15 +6163,6 @@ function PopulatedWorkspace({
               menuSwitcher={menuSwitcher}
               onCollapseSections={() => setUserCollapsedSections(true)}
               onReorderSections={reorderTreeSectionsWithinParent}
-              moveMode={treeMoveMode ? {
-                entityLabel: treeMoveMode.entityLabel,
-                destinations: treeMoveMode.destinations,
-                rootDestination: treeMoveMode.rootDestination,
-                pendingTargetId: treeMovePendingTargetId,
-                onMoveToSection: (target) => { void chooseTreeMoveDestination(target.id, target); },
-                onMoveToRoot: () => { void chooseTreeMoveDestination(null); },
-                onCancel: () => setMoveRequest(null),
-              } : undefined}
             />
           </div>
         ) : editing ? (
@@ -6400,7 +6276,6 @@ function PopulatedWorkspace({
               onStartSubsectionCreation={() => openSectionCreation(section.id, "table")}
               onCreateSubsection={(name) => createSectionFromDialog(name, section.id)}
               onCancelSubsectionCreation={closeSectionCreation}
-              movePresentation={treeMoveExperimentEnabled ? "action" : "submenu"}
             />
           ) : (
             <UnifiedCatalogSelectionState />
@@ -6448,7 +6323,7 @@ function PopulatedWorkspace({
         </DragOverlay>
         </DndContext>
         </div>
-        {moveRequest && !treeMoveModeActive && (
+        {moveRequest && (
           <MoveToSectionPopover
             operation={moveRequest.operation}
             entityIds={moveRequest.entityIds}
@@ -6627,13 +6502,11 @@ function SectionActionMenuContent({
   section,
   allowPositionCreation = true,
   allowSubsectionCreation = true,
-  movePresentation = "submenu",
   onAction,
 }: {
   section: TreeSection;
   allowPositionCreation?: boolean;
   allowSubsectionCreation?: boolean;
-  movePresentation?: "submenu" | "action";
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
   if (section.status === "archive") {
@@ -6671,7 +6544,6 @@ function SectionActionMenuContent({
         stopDisplayMode={section.visibility === "hidden" ? "hidden" : "comingSoon"}
         outsideScheduleMode={section.outsideScheduleMode ?? "hidden"}
         weeklySchedule={section.weeklySchedule ?? createDefaultWeeklySchedule()}
-        movePresentation={movePresentation}
         onChangeIcon={(event) => onAction("Сменить иконку", getMovePopoverAnchor(event))}
         onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
         onMove={(event) => onAction("Переместить раздел", getMovePopoverAnchor(event, "right"))}
@@ -6694,11 +6566,9 @@ function SectionActionMenuContent({
 function AuditRowActionsMenu({
   item,
   onAction,
-  movePresentation = "submenu",
 }: {
   item: CatalogItem;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
-  movePresentation?: "submenu" | "action";
 }) {
   const [open, setOpen] = useState(false);
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
@@ -6752,7 +6622,6 @@ function AuditRowActionsMenu({
           outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
           weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
           archiveDisabled={item.status === "archive"}
-          movePresentation={movePresentation}
           onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
           onMove={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event, "right"))}
           onDuplicate={() => onAction("Создать копию")}
@@ -7826,7 +7695,6 @@ function OverviewWorkspace({
   titleOverride,
   overviewContextStorageKey = OVERVIEW_WORKSPACE_CONTEXT_STORAGE_KEY,
   onFirstItemCreated,
-  onRequestTreeMove,
 }: {
   navigation: CatalogNavigationBoundary;
   filterId: OverviewFilterId;
@@ -7861,7 +7729,6 @@ function OverviewWorkspace({
   titleOverride?: string;
   overviewContextStorageKey?: string;
   onFirstItemCreated?: () => void;
-  onRequestTreeMove?: (request: CatalogTreeMoveRequest) => void;
 }) {
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
@@ -7978,20 +7845,6 @@ function OverviewWorkspace({
   const [feedback, setFeedback] = useState("");
   const [moveRequest, setMoveRequest] = useState<{ operation: "position" | "bulk"; itemIds: string[]; anchor: MovePopoverAnchor } | null>(null);
   const [moveUndo, setMoveUndo] = useState<{ previous: Array<{ id: string; sectionId: string; sectionName: string }>; message: string } | null>(null);
-  const requestPositionMove = (operation: "position" | "bulk", itemIds: string[], anchor: MovePopoverAnchor) => {
-    if (onRequestTreeMove) {
-      onRequestTreeMove({
-        operation,
-        entityIds: itemIds,
-        currentSectionIds: itemIds
-          .map((id) => items.find((candidate) => candidate.id === id)?.sectionId)
-          .filter((id): id is string => Boolean(id)),
-        anchor,
-      });
-      return;
-    }
-    setMoveRequest({ operation, itemIds, anchor });
-  };
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(readTableColumnVisibility);
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(readTableColumnOrder);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(readTableColumnSizing);
@@ -8683,7 +8536,7 @@ function OverviewWorkspace({
   }, [pendingOpen]);
   const prepareRowAction = (item: CatalogItem, action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => {
     if (action === "Переместить в раздел" && anchor) {
-      requestPositionMove("position", [item.id], anchor);
+      setMoveRequest({ operation: "position", itemIds: [item.id], anchor });
       return;
     }
     if (action === "Открыть в разделе") {
@@ -9267,9 +9120,8 @@ function OverviewWorkspace({
                 onArchiveItem={archiveQueueItem}
                 onRestoreItem={restoreQueueItem}
                 onMoveItem={(target, anchor) => {
-                  if (queueCreationCommitted) requestPositionMove("position", [target.id], anchor);
+                  if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
                 }}
-                movePresentation={onRequestTreeMove ? "action" : "submenu"}
                 onSetAvailabilityMode={setCreateAvailabilityMode}
                 unavailableDisplayMode={currentItem.unavailableDisplayMode ?? (currentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
                 outsideScheduleMode={currentItem.outsideScheduleMode ?? "hidden"}
@@ -9336,7 +9188,6 @@ function OverviewWorkspace({
                 onFeedback={showFeedback}
                 structureSections={structureSections}
                 onCreateSectionForMove={createSectionForMove}
-                onRequestMove={onRequestTreeMove ? (target, anchor) => requestPositionMove("position", [target.id], anchor) : undefined}
                 onRevealItem={(item) => {
                   setActiveFilterId(null);
                   setWorkspaceFilterId("quick:all");
@@ -9514,7 +9365,7 @@ function OverviewWorkspace({
                     onScheduleChange={setSelectedSchedule}
                     discountItem={selectedItems[0] ?? null}
                     onApplyDiscount={applySelectedDiscount}
-                    onMove={(anchor) => requestPositionMove("bulk", [...selectedIds], anchor)}
+                    onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
                     onOpenDelete={() => setBulkDialog({ type: "delete" })}
                     onArchive={archiveSelectedItems}
                     onRestoreArchive={restoreSelectedItems}
@@ -9671,13 +9522,7 @@ function OverviewWorkspace({
                             scrollParentRef={scrollContainerRef}
                             onSelectedChange={setItemSelected}
                             onAction={prepareRowAction}
-                            renderActions={(item, onAction) => (
-                              <AuditRowActionsMenu
-                                item={item}
-                                onAction={onAction}
-                                movePresentation={onRequestTreeMove ? "action" : "submenu"}
-                              />
-                            )}
+                            renderActions={(item, onAction) => <AuditRowActionsMenu item={item} onAction={onAction} />}
                             highlightItemId={tableHighlightId}
                             activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
@@ -9836,9 +9681,8 @@ function OverviewWorkspace({
             onArchiveItem={archiveQueueItem}
             onRestoreItem={restoreQueueItem}
             onMoveItem={(target, anchor) => {
-              if (queueCreationCommitted) requestPositionMove("position", [target.id], anchor);
+              if (queueCreationCommitted) setMoveRequest({ operation: "position", itemIds: [target.id], anchor });
             }}
-            movePresentation={onRequestTreeMove ? "action" : "submenu"}
             onSetAvailabilityMode={setCreateAvailabilityMode}
             unavailableDisplayMode={queueCurrentItem.unavailableDisplayMode ?? (queueCurrentItem.status === "coming-soon" ? "comingSoon" : "hidden")}
             outsideScheduleMode={queueCurrentItem.outsideScheduleMode ?? "hidden"}
@@ -9885,7 +9729,6 @@ function OverviewWorkspace({
               onFeedback={showFeedback}
               structureSections={structureSections}
               onCreateSectionForMove={createSectionForMove}
-              onRequestMove={onRequestTreeMove ? (target, anchor) => requestPositionMove("position", [target.id], anchor) : undefined}
               onRevealItem={(item) => {
                 setActiveFilterId(null);
                 setWorkspaceFilterId("quick:all");

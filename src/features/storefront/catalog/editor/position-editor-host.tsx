@@ -56,7 +56,6 @@ export function PositionEditorHost({
   onRequestPermanentDelete,
   onRevealItem,
   onCreateSectionForMove,
-  onRequestMove,
   structureSections = catalogSections,
   presentation = "pane",
 }: {
@@ -67,7 +66,6 @@ export function PositionEditorHost({
   onRequestPermanentDelete?: (item: CatalogItem) => void;
   onRevealItem?: (item: CatalogItem) => void;
   onCreateSectionForMove?: (name: string, parentId: string | null) => TreeSection | string;
-  onRequestMove?: (item: CatalogItem, anchor: MovePopoverAnchor) => void;
   structureSections?: TreeSection[];
   presentation?: "pane" | "dialog";
 }) {
@@ -243,11 +241,7 @@ export function PositionEditorHost({
         });
         onFeedback?.("Позиция восстановлена");
       }}
-      onMoveItem={(target, anchor) => {
-        if (onRequestMove) onRequestMove(target, anchor);
-        else setMoveRequest({ itemId: target.id, anchor });
-      }}
-      movePresentation={onRequestMove ? "action" : "submenu"}
+      onMoveItem={(target, anchor) => setMoveRequest({ itemId: target.id, anchor })}
       onSetAvailabilityMode={setAvailability}
       unavailableDisplayMode={item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")}
       outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}

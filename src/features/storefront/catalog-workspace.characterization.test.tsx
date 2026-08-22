@@ -1080,7 +1080,7 @@ describe("catalog observable behavior baseline", () => {
     });
   });
 
-  it("exposes leaf reorder controls and keeps explicit tree move destination observable", async () => {
+  it("exposes leaf reorder controls and keeps explicit move destination observable", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
@@ -1092,13 +1092,15 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(screen.getAllByRole("button", { name: /Действия для/ })[0]);
     const moveItem = screen.getByRole("menuitem", { name: "Переместить" });
-    await user.click(moveItem);
-    const moveMode = document.querySelector("[data-catalog-tree-move-mode]");
-    expect(moveMode).not.toBeNull();
-    expect(within(moveMode as HTMLElement).getByText("Куда переместить?", { exact: true })).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Переместить в раздел" })).not.toBeInTheDocument();
-    expect(within(sectionTree as HTMLElement).queryByRole("button", { name: "Переместить сюда: Кухня" })).not.toBeInTheDocument();
-    await user.click(within(sectionTree as HTMLElement).getByRole("button", { name: "Переместить сюда: Выпечка" }));
+    await user.hover(moveItem);
+    const moveDialog = screen.getByRole("dialog", { name: "Переместить в раздел" });
+    expect(moveItem).toBeVisible();
+    expect(within(moveDialog).getByRole("button", { name: "Можно переместить в" })).toHaveClass("border-dashed");
+    expect(within(moveDialog).getByPlaceholderText("Найти раздел...")).toBeInTheDocument();
+    expect(moveDialog.querySelector("img")).not.toBeNull();
+    await user.type(within(moveDialog).getByPlaceholderText("Найти раздел..."), "Выпечка");
+    expect(within(moveDialog).getByText("Кухня / Выпечка", { exact: true })).toBeInTheDocument();
+    await user.click(within(moveDialog).getByRole("menuitem", { name: "Кухня / Выпечка" }));
 
     await waitFor(() => {
       expect(screen.getByText("Позиция перемещена в «Выпечка»", { exact: true })).toBeInTheDocument();
