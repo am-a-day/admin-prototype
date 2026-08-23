@@ -68,6 +68,18 @@ describe("MoveToSectionPopover section destinations", () => {
     expect(leaf).not.toHaveAttribute("aria-haspopup");
     expect(deadBranch).not.toHaveAttribute("aria-haspopup");
     expect(branch).toHaveAttribute("aria-haspopup", "menu");
+    const directAffordance = leaf.querySelector("[data-move-direct-destination-icon]");
+    expect(directAffordance).toHaveAttribute("width", "13");
+    expect(directAffordance).toHaveAttribute("height", "13");
+    expect(directAffordance).toHaveClass("opacity-0", "group-data-[highlighted]:opacity-100");
+    expect(branch.querySelector("[data-move-direct-destination-icon]")).not.toBeInTheDocument();
+    expect(branch.querySelector("[data-move-submenu-chevron]")).toHaveAttribute("width", "12");
+
+    await user.hover(leaf);
+    expect(leaf).toHaveAttribute("data-highlighted");
+    await user.hover(branch);
+    expect(branch).toHaveAttribute("data-highlighted");
+    expect(branch.querySelector("[data-move-submenu-chevron]")).toBeInTheDocument();
 
     await user.click(deadBranch);
     await waitFor(() => expect(onMove).toHaveBeenCalledWith("dead-branch", expect.objectContaining({ id: "dead-branch" })));

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretRight, CircleNotch, Image as ImageIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { ArrowElbowUpRight, CaretRight, CircleNotch, Image as ImageIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { cn } from "@/lib/utils";
 import {
@@ -31,7 +31,7 @@ export type MoveToSectionPopoverProps = {
   onError?: () => void;
 };
 
-const MOVE_MENU_ITEM_CLASS = "flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[4px] py-1 pl-[6px] pr-2 text-left text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45";
+const MOVE_MENU_ITEM_CLASS = "group flex h-7 w-full cursor-pointer select-none items-center gap-2 rounded-[4px] py-1 pl-[6px] pr-2 text-left text-[13px] font-normal leading-4 text-[#44403b] outline-none transition-colors data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45";
 const MOVE_MENU_SURFACE_CLASS = "max-w-[calc(100vw-24px)] rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] outline-none";
 // Keep the portaled menu layers adjacent in the established catalog overlay stack.
 const MOVE_MENU_LAYER_CLASS = "z-[100005]";
@@ -201,7 +201,17 @@ export function MoveToSectionPopover({
       >
         <MoveDestinationThumbnail src={section.imageUrl} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {loading && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+        {loading ? (
+          <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />
+        ) : movesSections ? (
+          <ArrowElbowUpRight
+            size={13}
+            weight="regular"
+            aria-hidden="true"
+            data-move-direct-destination-icon
+            className="shrink-0 text-[#79716b] opacity-0 group-data-[highlighted]:opacity-100"
+          />
+        ) : null}
       </DropdownMenu.Item>
     );
   };
@@ -219,7 +229,13 @@ export function MoveToSectionPopover({
         <DropdownMenu.SubTrigger aria-label={pathFor(section)} disabled={busy} className={MOVE_MENU_ITEM_CLASS}>
           <MoveDestinationThumbnail src={section.imageUrl} />
           <span className="min-w-0 flex-1 truncate">{section.name}</span>
-          <CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#79716b]" />
+          <CaretRight
+            size={12}
+            weight="bold"
+            aria-hidden="true"
+            data-move-submenu-chevron
+            className="shrink-0 text-[#79716b]"
+          />
         </DropdownMenu.SubTrigger>
         <DropdownMenu.Portal>
           <DropdownMenu.SubContent
@@ -379,7 +395,17 @@ export function MoveToSectionPopover({
                 >
                   <MoveDestinationThumbnail />
                   <span className="min-w-0 flex-1 truncate">Основное меню</span>
-                  {loadingTarget === null && <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />}
+                  {loadingTarget === null ? (
+                    <CircleNotch size={14} weight="bold" className="shrink-0 animate-spin text-[#57534d]" />
+                  ) : (
+                    <ArrowElbowUpRight
+                      size={13}
+                      weight="regular"
+                      aria-hidden="true"
+                      data-move-direct-destination-icon
+                      className="shrink-0 text-[#79716b] opacity-0 group-data-[highlighted]:opacity-100"
+                    />
+                  )}
                 </DropdownMenu.Item>
               )}
               {normalizedQuery
