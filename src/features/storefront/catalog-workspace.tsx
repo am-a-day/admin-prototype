@@ -37,12 +37,14 @@ import {
   ArrowsOut,
   ArrowsOutCardinal,
   ArrowCounterClockwise,
+  CalendarDots,
   CaretDoubleRight,
   ArrowLeft,
   CaretDown,
   CaretRight,
   Check,
   CameraSlash,
+  Clock,
   DotsThree,
   DotsThreeVertical,
   DotsSixVertical,
@@ -52,6 +54,7 @@ import {
   FunnelSimple,
   ImageBroken,
   List,
+  LockLaminated,
   MagnifyingGlass,
   PencilSimple,
   PlusCircle,
@@ -6484,7 +6487,7 @@ function readTableColumnVisibility(): VisibilityState {
 }
 
 function normalizeTableColumnOrder(input: readonly string[]): ColumnOrderState {
-  const defaultManagedOrder = DEFAULT_TABLE_COLUMN_ORDER.slice(2, -1);
+  const defaultManagedOrder = DEFAULT_TABLE_COLUMN_ORDER.slice(2);
   const managedIds = new Set(defaultManagedOrder);
   const nextManagedOrder = input.filter((columnId) => managedIds.has(columnId));
   return [
@@ -6492,7 +6495,6 @@ function normalizeTableColumnOrder(input: readonly string[]): ColumnOrderState {
     "selection",
     ...nextManagedOrder,
     ...defaultManagedOrder.filter((columnId) => !nextManagedOrder.includes(columnId)),
-    "actions",
   ];
 }
 
@@ -6630,80 +6632,105 @@ function AuditRowActionsMenu({
       ? "scheduled"
       : "available";
   const stopDisplayMode: CatalogStopDisplayMode = item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
+  const statusMeta = item.status === "archive"
+    ? { key: "archive", label: "В архиве", icon: Archive, className: "text-[#94a3b8]" }
+    : item.status === "stopped" || item.status === "coming-soon"
+      ? item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon"
+        ? { key: "soon", label: "Скоро будет", icon: Clock, className: "text-[#2b7fff]" }
+        : { key: "stopped", label: "На стопе", icon: LockLaminated, className: "text-[#f54900]" }
+      : item.scheduled
+        ? { key: "scheduled", label: "По расписанию", icon: CalendarDots, className: "text-[#2b7fff]" }
+        : null;
+  const StatusIcon = statusMeta?.icon;
   return (
-    <DropdownMenu.Root
-      modal={false}
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) {
-          setScheduleEditorPinned(false);
-          setStopEditorPinned(false);
-        }
-      }}
-    >
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          data-catalog-row-more
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-lg bg-stone-50 text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-            CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
-          )}
-          aria-label={`Действия для ${item.title}`}
-        >
-          <DotsThreeVertical size={16} weight="regular" />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownContent
-        preventFocusOutsideDismiss
-        preventOutsideDismiss={(event) => (
-          scheduleEditorPinned
-          || (stopEditorPinned
-            && event.target instanceof Element
-            && Boolean(event.target.closest("[data-catalog-stop-popover]")))
-        )}
-        className="min-w-[208px] rounded-[6px] border-[#e2e8f0] shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
+    <div className="relative size-7">
+      {StatusIcon && !open && (
+        <Tooltip label={statusMeta.label} side="top">
+          <span
+            data-catalog-position-status={statusMeta.key}
+            aria-label={statusMeta.label}
+            className="absolute inset-0 inline-flex items-center justify-center transition-opacity group-hover:pointer-events-none group-hover:opacity-0 group-focus-within:pointer-events-none group-focus-within:opacity-0"
+          >
+            <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
+          </span>
+        </Tooltip>
+      )}
+      <DropdownMenu.Root
+        modal={false}
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) {
+            setScheduleEditorPinned(false);
+            setStopEditorPinned(false);
+          }
+        }}
       >
-        <CatalogContextMenuContent
-          entity="item"
-          scheduleId={`item-${item.id}`}
-          availability={availability}
-          stopDisplayMode={stopDisplayMode}
-          outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
-          weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
-          archiveDisabled={item.status === "archive"}
-          onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
-          onMove={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event, "right"))}
-          onDuplicate={() => onAction("Создать копию")}
-          onAvailabilityChange={(value) => {
-            if (value === "available") onAction("availability:available");
-            if (value === "scheduled") onAction("availability:schedule");
-          }}
-          onStopDisplayModeChange={(value) => onAction(`availability:${value === "comingSoon" ? "stop-soon" : "stop-hidden"}`)}
-          onOutsideScheduleModeChange={(value) => onAction(`availability:outside:${value}`)}
-          onWeeklyScheduleChange={(schedule) => onAction("availability:schedule-change", undefined, schedule)}
-          onResetSchedule={() => onAction("availability:reset-schedule")}
-          onArchive={() => onAction("Архивировать")}
-          onDelete={() => onAction("Удалить")}
-          positionAvailability={{
-            scheduleId: `item-${item.id}`,
-            manualStopped: item.status === "stopped" || item.status === "coming-soon",
-            hasSchedule: item.scheduled,
-            weeklySchedule: item.weeklySchedule ?? createDefaultWeeklySchedule(),
-            stopDisplayMode,
-            outsideScheduleMode: item.outsideScheduleMode ?? "hidden",
-            onManualStopChange: (stopped) => onAction(stopped ? "availability:manual-stop" : "availability:manual-resume"),
-            onScheduleChange: (nextSchedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, nextSchedule),
-            onScheduleDelete: () => onAction("availability:schedule-delete"),
-            onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
-            onScheduleEditorPinnedChange: setScheduleEditorPinned,
-            onStopEditorPinnedChange: setStopEditorPinned,
-            onMenuClose: () => setOpen(false),
-          }}
-        />
-      </DropdownContent>
-    </DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            data-catalog-row-more
+            className={cn(
+              "absolute inset-0 flex size-7 items-center justify-center rounded-lg bg-stone-50 text-[#57534d] transition hover:bg-[#efefea] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              CATALOG_TABLE_ROW_CONTEXT_ACTION_CLASS,
+            )}
+            aria-label={`Действия для ${item.title}`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <DotsThreeVertical size={16} weight="regular" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownContent
+          preventFocusOutsideDismiss
+          preventOutsideDismiss={(event) => (
+            scheduleEditorPinned
+            || (stopEditorPinned
+              && event.target instanceof Element
+              && Boolean(event.target.closest("[data-catalog-stop-popover]")))
+          )}
+          className="min-w-[208px] rounded-[6px] border-[#e2e8f0] shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
+        >
+          <CatalogContextMenuContent
+            entity="item"
+            scheduleId={`item-${item.id}`}
+            availability={availability}
+            stopDisplayMode={stopDisplayMode}
+            outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
+            weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
+            archiveDisabled={item.status === "archive"}
+            onRename={(event) => onAction("Переименовать", getMovePopoverAnchor(event))}
+            onMove={(event) => onAction("Переместить в раздел", getMovePopoverAnchor(event, "right"))}
+            onDuplicate={() => onAction("Создать копию")}
+            onAvailabilityChange={(value) => {
+              if (value === "available") onAction("availability:available");
+              if (value === "scheduled") onAction("availability:schedule");
+            }}
+            onStopDisplayModeChange={(value) => onAction(`availability:${value === "comingSoon" ? "stop-soon" : "stop-hidden"}`)}
+            onOutsideScheduleModeChange={(value) => onAction(`availability:outside:${value}`)}
+            onWeeklyScheduleChange={(schedule) => onAction("availability:schedule-change", undefined, schedule)}
+            onResetSchedule={() => onAction("availability:reset-schedule")}
+            onArchive={() => onAction("Архивировать")}
+            onDelete={() => onAction("Удалить")}
+            positionAvailability={{
+              scheduleId: `item-${item.id}`,
+              manualStopped: item.status === "stopped" || item.status === "coming-soon",
+              hasSchedule: item.scheduled,
+              weeklySchedule: item.weeklySchedule ?? createDefaultWeeklySchedule(),
+              stopDisplayMode,
+              outsideScheduleMode: item.outsideScheduleMode ?? "hidden",
+              onManualStopChange: (stopped) => onAction(stopped ? "availability:manual-stop" : "availability:manual-resume"),
+              onScheduleChange: (nextSchedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, nextSchedule),
+              onScheduleDelete: () => onAction("availability:schedule-delete"),
+              onStopDisplayModeChange: (mode) => onAction(`availability:behavior:${mode}`),
+              onScheduleEditorPinnedChange: setScheduleEditorPinned,
+              onStopEditorPinnedChange: setStopEditorPinned,
+              onMenuClose: () => setOpen(false),
+            }}
+          />
+        </DropdownContent>
+      </DropdownMenu.Root>
+    </div>
   );
 }
 
@@ -9537,7 +9564,6 @@ function OverviewWorkspace({
                             activeItemId={externalActiveItemId ?? queue?.currentId ?? null}
                             reorderEnabled={canReorderTable}
                             reorderDisabledReason={tableReorderDisabledReason}
-                            actionsSticky={!isCreateDraftOpen}
                           />
                         </SortableContext>
                       </DndContext>

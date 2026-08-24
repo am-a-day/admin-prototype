@@ -405,7 +405,9 @@ describe("catalog observable behavior baseline", () => {
     const sidePeek = await screen.findByRole("complementary", { name: "Новая позиция" });
     expect(sidePeek).toHaveAttribute("data-position-create-pane", "true");
     expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("absolute", "right-0");
+    const tableRow = document.querySelector("[data-catalog-table-row]");
+    expect(tableRow?.querySelector("[data-catalog-table-actions]")).not.toBeInTheDocument();
+    expect(tableRow?.querySelector('[data-catalog-table-content-cell="position"] [data-catalog-position-trailing-slot]')).toHaveClass("size-7", "shrink-0");
     expect(document.querySelector("[data-catalog-position-create-row] [data-catalog-table-actions]")).not.toBeInTheDocument();
     await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
 
@@ -720,7 +722,9 @@ describe("catalog observable behavior baseline", () => {
     expect(tableBody).not.toBeNull();
     expect(tableBody).toHaveClass("w-full", "bg-[#f5f5f4]");
     expect(document.querySelector("[data-catalog-table-header] [data-catalog-table-actions]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-catalog-table-row] [data-catalog-table-actions]")).toHaveClass("sticky", "right-0");
+    const firstTableRow = document.querySelector("[data-catalog-table-row]");
+    expect(firstTableRow?.querySelector("[data-catalog-table-actions]")).not.toBeInTheDocument();
+    expect(firstTableRow?.querySelector('[data-catalog-table-content-cell="position"] [data-catalog-position-trailing-slot]')).toHaveClass("size-7", "shrink-0");
     const positionCreateRow = document.querySelector<HTMLElement>("[data-catalog-position-create-row]");
     expect(positionCreateRow).toHaveTextContent("Добавить позицию");
     expect(positionCreateRow).toHaveClass("h-[36px]");
@@ -1108,6 +1112,47 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.queryByRole("menuitem", { name: "Поставить на стоп" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Скрывать из меню" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Как «скоро будет»" })).toBeInTheDocument();
+  });
+
+  it("uses one fixed name-cell slot for status and row actions", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const title = screen.getByText(firstItemTitle, { exact: true });
+    const row = title.closest("[data-catalog-table-row]") as HTMLElement;
+    const positionCell = row.querySelector('[data-catalog-table-content-cell="position"]') as HTMLElement;
+    const slot = positionCell.querySelector("[data-catalog-position-trailing-slot]") as HTMLElement;
+    const more = within(slot).getByRole("button", { name: `Действия для ${firstItemTitle}` });
+
+    expect(row.querySelector("[data-catalog-table-actions]")).not.toBeInTheDocument();
+    expect(slot).toHaveClass("size-7", "shrink-0");
+    expect(slot.querySelector("[data-catalog-position-status]")).not.toBeInTheDocument();
+    expect(more).toHaveClass(
+      "pointer-events-none",
+      "opacity-0",
+      "group-hover:pointer-events-auto",
+      "group-hover:opacity-100",
+      "group-focus-within:pointer-events-auto",
+      "group-focus-within:opacity-100",
+      "data-[state=open]:opacity-100",
+    );
+
+    more.focus();
+    expect(more).toHaveFocus();
+    await user.click(more);
+    expect(more).toHaveAttribute("data-state", "open");
+    expect(screen.getByRole("menuitem", { name: "Доступно" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("menuitem", { name: "Доступно" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "На стопе" }));
+    await user.keyboard("{Escape}{Escape}{Escape}");
+
+    await waitFor(() => {
+      expect(within(slot).getByLabelText("На стопе")).toHaveAttribute("data-catalog-position-status", "stopped");
+    });
+    const stoppedStatus = within(slot).getByLabelText("На стопе");
+    expect(stoppedStatus).toHaveClass("group-hover:opacity-0", "group-focus-within:opacity-0");
+    expect(within(slot).getByRole("button", { name: `Действия для ${firstItemTitle}` })).toBeInTheDocument();
   });
 
   it("keeps table reorder controls disabled for all positions", () => {

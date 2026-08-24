@@ -20,7 +20,6 @@ import {
   CheckCircle,
   CircleDashed,
   CircleHalf,
-  Clock,
   Dot,
   DotsSixVertical,
   DotsThree,
@@ -59,7 +58,6 @@ import type { OverviewFilterId } from "../model/types";
 import { CATALOG_TABLE_ROW_THUMBNAIL_CLASS, CatalogThumbnail } from "../ui/catalog-thumbnail";
 import { CatalogTableFilterTrigger, CatalogTableToolbarShell } from "../ui/catalog-table-controls";
 import {
-  CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
   CATALOG_TABLE_HEADER_SCROLLED_STICKY_CLASS,
   CATALOG_TABLE_HEADER_STICKY_CLASS,
   CATALOG_TABLE_HEADER_SURFACE_CLASS,
@@ -69,7 +67,7 @@ import {
 import { CATALOG_DROPDOWN_CONTENT_CLASS, CATALOG_DROPDOWN_ITEM_CLASS, type CatalogDropdownOutsideDismiss, type CatalogDropdownOutsideEvent } from "../ui/catalog-dropdown";
 import { CatalogPositionAvailabilityMenu, type CatalogStopDisplayMode } from "../ui/catalog-context-menu";
 import { DiscountBlock, calculateDiscountPercent } from "../editor/position-editor";
-import { createDefaultWeeklySchedule, type WeeklySchedule } from "../ui/catalog-schedule-editor";
+import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import type { CatalogSectionActionAnchor } from "../sidebar/section-tree";
 import {
   getCatalogLabelText,
@@ -87,19 +85,6 @@ function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): Mov
   const target = event.currentTarget as HTMLElement;
   const rect = target.getBoundingClientRect();
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-}
-
-type CatalogRowAvailability = "available" | "archive" | "stopped" | "scheduled" | "soon";
-
-function getPrimaryRowAvailability(item: CatalogItem): CatalogRowAvailability {
-  if (item.status === "archive") return "archive";
-  if (item.status === "stopped" || item.status === "coming-soon") {
-    return item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon" ? "soon" : "stopped";
-  }
-  if (item.scheduled) {
-    return "scheduled";
-  }
-  return "available";
 }
 
 function getDescriptionPreview(description: string) {
@@ -138,7 +123,6 @@ const TABLE_COLUMN_WIDTHS = {
   stickers: 140,
   upsells: 100,
   lastModified: 154,
-  actions: CATALOG_TABLE_ACTIONS_COLUMN_WIDTH,
   addColumn: 36,
 } as const;
 
@@ -263,7 +247,6 @@ export const DEFAULT_TABLE_COLUMN_ORDER = [
   "position",
   ...MANAGEABLE_TABLE_COLUMN_IDS.filter((id) => id !== "position"),
   "add-column",
-  "actions",
 ] as string[];
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   position: true,
@@ -296,7 +279,6 @@ export const CATALOG_TABLE_COLUMN_DEFS: ColumnDef<CatalogItem>[] = [
   { id: "upsells", accessorKey: "recommendationsCount", size: DEFAULT_TABLE_COLUMN_SIZING.upsells, minSize: TABLE_COLUMN_MIN_SIZES.upsells, maxSize: TABLE_COLUMN_MAX_SIZES.upsells },
   { id: "lastModified", accessorKey: "lastModifiedAt", size: DEFAULT_TABLE_COLUMN_SIZING.lastModified, minSize: TABLE_COLUMN_MIN_SIZES.lastModified, maxSize: TABLE_COLUMN_MAX_SIZES.lastModified },
   { id: "add-column", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.addColumn, minSize: TABLE_COLUMN_WIDTHS.addColumn, maxSize: TABLE_COLUMN_WIDTHS.addColumn },
-  { id: "actions", enableHiding: false, enableResizing: false, size: TABLE_COLUMN_WIDTHS.actions, minSize: TABLE_COLUMN_WIDTHS.actions, maxSize: TABLE_COLUMN_WIDTHS.actions },
 ];
 
 export type CatalogLastModifiedSortDirection = "none" | "asc" | "desc";
@@ -409,7 +391,6 @@ function setUserTableColumnOrder(table: TanStackTable<CatalogItem>, nextVisibleU
     ...nextVisibleUserOrder,
     ...hiddenUserOrder,
     "add-column",
-    "actions",
   ]);
 }
 
@@ -1008,98 +989,6 @@ const CatalogTableRowDragHandle = forwardRef<HTMLButtonElement, {
 
 CatalogTableRowDragHandle.displayName = "CatalogTableRowDragHandle";
 
-function CatalogAvailabilityStatusButton({
-  item,
-  onAction,
-}: {
-  item: CatalogItem;
-  onAction: AuditDishRowProps["onAction"];
-}) {
-  const [open, setOpen] = useState(false);
-  const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
-  const [stopEditorPinned, setStopEditorPinned] = useState(false);
-  const status = getPrimaryRowAvailability(item);
-
-  const statusMeta: { label: string; icon: PhosphorIcon; className: string } = {
-    available: { label: "Доступно", icon: CheckCircle, className: "text-[#56826a]" },
-    archive: { label: "В архиве", icon: Archive, className: "text-[#94a3b8]" },
-    stopped: { label: "На стопе", icon: LockLaminated, className: "text-[#f54900]" },
-    scheduled: { label: "По расписанию", icon: CalendarDots, className: "text-[#2b7fff]" },
-    soon: { label: "Скоро будет", icon: Clock, className: "text-[#2b7fff]" },
-  }[status];
-  const StatusIcon = statusMeta.icon;
-  const availableVisibilityClass = status === "available"
-    ? "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-    : "";
-  if (status === "archive") {
-    return (
-      <Tooltip label={statusMeta.label} side="top">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] transition-colors hover:bg-[#efefea]">
-          <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
-        </span>
-      </Tooltip>
-    );
-  }
-  const manualStopped = item.status === "stopped" || item.status === "coming-soon";
-
-  return (
-    <DropdownMenu.Root
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) {
-          setScheduleEditorPinned(false);
-          setStopEditorPinned(false);
-        }
-      }}
-    >
-      <Tooltip label={statusMeta.label} side="top">
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            data-catalog-availability-trigger={item.id}
-            aria-label={`Настроить доступность: ${statusMeta.label}`}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors hover:bg-[#efefea] focus-visible:bg-[#efefea] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
-              availableVisibilityClass,
-            )}
-          >
-            <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
-          </button>
-        </DropdownMenu.Trigger>
-      </Tooltip>
-      <DropdownContent
-        align="start"
-        onClick={(event) => event.stopPropagation()}
-        preventOutsideDismiss={(event) => (
-          scheduleEditorPinned
-          || (stopEditorPinned
-            && event.target instanceof Element
-            && Boolean(event.target.closest("[data-catalog-stop-popover]")))
-        )}
-      >
-        <CatalogPositionAvailabilityMenu
-          scheduleId={`item-${item.id}`}
-          manualStopped={manualStopped}
-          hasSchedule={item.scheduled}
-          direct
-          weeklySchedule={item.weeklySchedule ?? createDefaultWeeklySchedule()}
-          stopDisplayMode={item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden")}
-          outsideScheduleMode={item.outsideScheduleMode ?? "hidden"}
-          onManualStopChange={(stopped) => onAction(item, stopped ? "availability:manual-stop" : "availability:manual-resume")}
-          onScheduleChange={(schedule, outsideScheduleMode) => onAction(item, `availability:schedule-save:${outsideScheduleMode}`, undefined, schedule)}
-          onScheduleDelete={() => onAction(item, "availability:schedule-delete")}
-          onStopDisplayModeChange={(mode) => onAction(item, `availability:behavior:${mode}`)}
-          onScheduleEditorPinnedChange={setScheduleEditorPinned}
-          onStopEditorPinnedChange={setStopEditorPinned}
-        />
-      </DropdownContent>
-    </DropdownMenu.Root>
-  );
-}
-
 function AuditDot({ state, title }: { state: "filled" | "partial" | "missing"; title: string }) {
   return (
     <span className="flex items-center justify-center" title={title}>
@@ -1196,10 +1085,9 @@ export function TableHeaderRow({
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const tableWidth = visibleColumns
-    .filter((column) => column.id !== "actions")
     .reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
-    .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
+    .filter((column) => column.id !== "selection" && column.id !== "add-column")
     .map((column) => column.id);
   const visibleUserColumns = visibleColumns.filter((column) =>
     (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id),
@@ -1276,7 +1164,7 @@ export function TableHeaderRow({
               className="flex h-full w-full shrink-0 items-center"
               style={{ minWidth: tableWidth, transform: `translateX(-${horizontalScrollLeft}px)` }}
             >
-        {visibleColumns.filter((column) => column.id !== "actions").map((column) => {
+        {visibleColumns.map((column) => {
           if (!column.getIsVisible()) return null;
           const header = table.getFlatHeaders().find((candidate) => candidate.column.id === column.id);
           const dividerClass = getTableContentDividerClass(column.id, visibleContentColumnIds);
@@ -1520,7 +1408,6 @@ type AuditDishRowProps = {
   active?: boolean;
   reorderEnabled?: boolean;
   reorderDisabledReason?: string;
-  actionsSticky?: boolean;
 };
 
 function SharedAuditDishRow(props: AuditDishRowProps) {
@@ -1573,7 +1460,6 @@ function AuditDishRowContent({
   active,
   reorderEnabled = false,
   reorderDisabledReason,
-  actionsSticky = true,
   resolvedTags,
   resolvedSticker,
 }: AuditDishRowProps & { resolvedTags: string[]; resolvedSticker: string }) {
@@ -1604,14 +1490,11 @@ function AuditDishRowContent({
   const discountPercent = item.hasDiscount && item.priceWithSale != null
     ? Math.round((1 - item.priceWithSale / Math.max(item.price, 1)) * 100)
     : null;
-  const primaryStatus = getPrimaryRowAvailability(item);
   const visibleCells = row.getVisibleCells().filter((cell) => cell.column.getIsVisible());
   const visibleContentColumnIds = visibleCells
-    .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "actions" && cell.column.id !== "add-column")
+    .filter((cell) => cell.column.id !== "reorder" && cell.column.id !== "selection" && cell.column.id !== "add-column")
     .map((cell) => cell.column.id);
-  const actionCell = visibleCells.find((cell) => cell.column.id === "actions");
   const rowWidth = visibleCells
-    .filter((cell) => cell.column.id !== "actions")
     .reduce((total, cell) => total + cell.column.getSize(), 0);
 
   return (
@@ -1648,7 +1531,7 @@ function AuditDishRowContent({
         isReordering && "relative cursor-grabbing bg-white shadow-[0_8px_24px_rgba(41,37,36,0.14)]",
       )}
     >
-      {visibleCells.filter((cell) => cell.column.id !== "actions").map((cell) => {
+      {visibleCells.map((cell) => {
         const dividerClass = getTableContentDividerClass(cell.column.id, visibleContentColumnIds);
         switch (cell.column.id) {
           case "reorder":
@@ -1687,8 +1570,16 @@ function AuditDishRowContent({
                   <span data-catalog-position-title className="block min-w-0 flex-1 truncate text-left text-[13px] font-normal leading-4 text-[#44403b] transition-colors group-hover:text-[#292524] group-hover:underline group-hover:decoration-[#d6d3d1] group-hover:underline-offset-2">
                     {itemTitle}
                   </span>
-                  {primaryStatus && (
-                    <CatalogAvailabilityStatusButton item={item} onAction={onAction} />
+                  {renderActions && (
+                    <span
+                      data-catalog-position-trailing-slot
+                      data-no-dnd
+                      className="relative flex size-7 shrink-0 items-center justify-center"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      {renderActions(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
+                    </span>
                   )}
                 </div>
               </div>
@@ -1818,23 +1709,6 @@ function AuditDishRowContent({
         }
       })}
       <span data-catalog-table-filler aria-hidden="true" className="h-full min-w-0 flex-1" />
-      {actionCell && (
-        <span
-          data-catalog-table-actions
-          data-no-dnd
-          style={actionsSticky
-            ? { ...getColumnWidthStyle(actionCell.column.getSize()), marginLeft: -actionCell.column.getSize() }
-            : getColumnWidthStyle(actionCell.column.getSize())}
-          className={cn(
-            "pointer-events-none z-[2] flex h-full shrink-0 items-center justify-center",
-            actionsSticky ? "sticky right-0" : "absolute inset-y-0 right-0",
-          )}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          {renderActions?.(item, (action, anchor, schedule) => onAction(item, action, anchor, schedule))}
-        </span>
-      )}
     </div>
   );
 }
@@ -1878,7 +1752,6 @@ export function VirtualizedAuditRows({
   activeItemId,
   reorderEnabled = false,
   reorderDisabledReason,
-  actionsSticky = true,
 }: {
   rows: TableRow<CatalogItem>[];
   selectedIds: Set<string>;
@@ -1892,7 +1765,6 @@ export function VirtualizedAuditRows({
   activeItemId?: string | null;
   reorderEnabled?: boolean;
   reorderDisabledReason?: string;
-  actionsSticky?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollMargin = useVirtualScrollMargin(scrollParentRef, listRef, [rows.length, selectionMode]);
@@ -1933,7 +1805,6 @@ export function VirtualizedAuditRows({
               active={activeItemId != null && item.id === activeItemId}
               reorderEnabled={reorderEnabled}
               reorderDisabledReason={reorderDisabledReason}
-              actionsSticky={actionsSticky}
             />
           </div>
         );
@@ -1953,10 +1824,9 @@ export function CatalogPositionCreateRow({
 }) {
   const visibleColumns = table.getVisibleLeafColumns().filter((column) => column.id !== "reorder");
   const rowWidth = visibleColumns
-    .filter((column) => column.id !== "actions")
     .reduce((total, column) => total + column.getSize(), 0);
   const visibleContentColumnIds = visibleColumns
-    .filter((column) => column.id !== "selection" && column.id !== "actions" && column.id !== "add-column")
+    .filter((column) => column.id !== "selection" && column.id !== "add-column")
     .map((column) => column.id);
 
   return (
@@ -1970,7 +1840,7 @@ export function CatalogPositionCreateRow({
       style={{ minWidth: rowWidth }}
       className="group flex h-[36px] min-h-[36px] w-full items-center border-b border-[#f5f5f4] bg-white text-left transition-colors hover:bg-[#fafaf9] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10"
     >
-      {visibleColumns.filter((column) => column.id !== "actions").map((column) => {
+      {visibleColumns.map((column) => {
         if (column.id === "selection") {
           return (
             <span
