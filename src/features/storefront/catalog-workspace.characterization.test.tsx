@@ -695,14 +695,14 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(within(schedulePopover).getByRole("button", { name: "Режим вне расписания" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Показывать как «скоро будет»$/ }));
-    expect(within(schedulePopover).getByText("Как «скоро будет»", { exact: true })).toBeInTheDocument();
+    expect(within(schedulePopover).getByText("«Скоро будет»", { exact: true })).toBeInTheDocument();
 
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
     expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument();
     expect(screen.getByText("Расписание применено к выбранным позициям", { exact: true })).toBeInTheDocument();
 
-    await user.click(within(schedulePopover).getByRole("button", { name: "Закрыть расписание" }));
+    await user.click(within(schedulePopover).getByRole("button", { name: "Готово" }));
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toBeInTheDocument();
   });
@@ -933,7 +933,7 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
   });
 
-  it("autosaves cascade schedule changes and closes from its explicit x", async () => {
+  it("autosaves cascade schedule changes and closes from its explicit done button", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
@@ -948,21 +948,34 @@ describe("catalog observable behavior baseline", () => {
     expect(within(schedulePopover).queryByRole("menuitem", { name: "Включить расписание" })).not.toBeInTheDocument();
     await user.click(within(schedulePopover).getByRole("button", { name: "Режим вне расписания" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Показывать как «скоро будет»$/ }));
+    fireEvent.change(within(schedulePopover).getByLabelText("Понедельник: начало интервала"), { target: { value: "10:00" } });
+    fireEvent.change(within(schedulePopover).getByLabelText("Понедельник: конец интервала"), { target: { value: "19:00" } });
 
-    expect(within(schedulePopover).getByText("Как «скоро будет»", { exact: true })).toBeInTheDocument();
+    expect(within(schedulePopover).getByText("«Скоро будет»", { exact: true })).toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Отмена" })).not.toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Сохранить" })).not.toBeInTheDocument();
     expect(within(schedulePopover).getByText("Расписание доступности", { exact: true })).toBeInTheDocument();
-    expect(within(schedulePopover).getByRole("button", { name: "Закрыть расписание" })).toBeInTheDocument();
+    expect(within(schedulePopover).getByRole("button", { name: "Готово" })).toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Убрать расписание" })).not.toBeInTheDocument();
 
-    await user.click(within(schedulePopover).getByRole("button", { name: "Закрыть расписание" }));
+    await user.click(within(schedulePopover).getByRole("button", { name: "Готово" }));
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
     expect(screen.getByRole("menuitem", { name: "По расписанию" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "true");
 
     await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
-    expect(document.querySelector("[data-catalog-schedule-popover]")).toBeInTheDocument();
+    const reopenedSchedulePopover = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
+    expect(within(reopenedSchedulePopover).getByLabelText("Понедельник: начало интервала")).toHaveValue("10:00");
+    expect(within(reopenedSchedulePopover).getByLabelText("Понедельник: конец интервала")).toHaveValue("19:00");
+    expect(within(reopenedSchedulePopover).getByText("«Скоро будет»", { exact: true })).toBeInTheDocument();
+
+    fireEvent.change(within(reopenedSchedulePopover).getByLabelText("Понедельник: начало интервала"), { target: { value: "11:00" } });
+    await user.click(screen.getByRole("menuitemradio", { name: "Доступно" }));
+    await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("menuitemradio", { name: "По расписанию" }));
+    const scheduleAfterStatusSwitch = document.querySelector("[data-catalog-schedule-popover]") as HTMLElement;
+    expect(within(scheduleAfterStatusSwitch).getByLabelText("Понедельник: начало интервала")).toHaveValue("11:00");
+
     await user.keyboard("{Escape}");
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
     expect(screen.getByRole("menuitem", { name: "По расписанию" })).toBeInTheDocument();
@@ -1027,7 +1040,7 @@ describe("catalog observable behavior baseline", () => {
     expect(schedulePopover.querySelector("[data-weekly-schedule-id]")).not.toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("button", { name: "Назад к Доступности" })).not.toBeInTheDocument();
     expect(within(schedulePopover).getByText("Расписание доступности", { exact: true })).toBeInTheDocument();
-    expect(within(schedulePopover).getByRole("button", { name: "Закрыть расписание" })).toBeInTheDocument();
+    expect(within(schedulePopover).getByRole("button", { name: "Готово" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "По расписанию" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitem", { name: "По расписанию" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
@@ -1065,7 +1078,7 @@ describe("catalog observable behavior baseline", () => {
     expect(within(schedulePopover).queryByRole("menuitem", { name: "Включить расписание" })).not.toBeInTheDocument();
     expect(within(schedulePopover).queryByRole("button", { name: "Убрать расписание" })).not.toBeInTheDocument();
 
-    await user.click(within(schedulePopover).getByRole("button", { name: "Закрыть расписание" }));
+    await user.click(within(schedulePopover).getByRole("button", { name: "Готово" }));
     await waitFor(() => expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeInTheDocument());
     await user.click(screen.getByRole("menuitemradio", { name: "Доступно" }));
     expect(document.querySelector("[data-position-editor-surface]")).toBeInTheDocument();

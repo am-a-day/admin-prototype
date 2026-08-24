@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle, XCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretUpDown, Clock, Copy, Eye, MinusCircle } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import type {
   CatalogAvailabilityScheduleMode,
   CatalogScheduleDay,
@@ -203,44 +204,49 @@ function WeeklyScheduleRows({
               <div className={cn("flex shrink-0 items-center justify-end", day.mode === "custom" ? "w-[162px] gap-1" : "w-[120px]")}>
                 {timeRange ? (
                   <>
-                    <div className={cn("relative shrink-0", compactAvailability ? "w-[60px]" : "w-[52px]")}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={timeRange.start}
-                        aria-label={`${label}: начало интервала`}
-                        aria-invalid={errors.length > 0}
-                        onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, start: event.target.value } })}
-                        className={cn(
-                          "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
-                          compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
-                          errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
-                        )}
-                      />
-                      {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
-                    </div>
-                    <span className="px-0.5 text-[14px] leading-none text-[#79716b]">–</span>
-                    <div className={cn("relative shrink-0", compactAvailability ? "w-[66px]" : "w-[52px]")}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={timeRange.end}
-                        aria-label={`${label}: конец интервала`}
-                        aria-invalid={errors.length > 0}
-                        onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, end: event.target.value } })}
-                        className={cn(
-                          "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
-                          compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
-                          errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
-                        )}
-                      />
-                      {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
+                    <div className={cn("flex items-center", compactAvailability ? "gap-1" : "gap-1.5")}>
+                      <div className={cn("relative shrink-0", compactAvailability ? "w-[60px]" : "w-[52px]")}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={timeRange.start}
+                          aria-label={`${label}: начало интервала`}
+                          aria-invalid={errors.length > 0}
+                          onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, start: event.target.value } })}
+                          className={cn(
+                            "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
+                            compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
+                            errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
+                          )}
+                        />
+                        {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
+                      </div>
+                      <span className="text-[14px] leading-none text-[#79716b]">–</span>
+                      <div className={cn("relative shrink-0", compactAvailability ? "w-[66px]" : "w-[52px]")}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={timeRange.end}
+                          aria-label={`${label}: конец интервала`}
+                          aria-invalid={errors.length > 0}
+                          onChange={(event) => updateDay(key, { mode: "custom", timeRange: { ...timeRange, end: event.target.value } })}
+                          className={cn(
+                            "h-7 w-full rounded-[9px] border bg-white text-[13px] leading-5 text-[#44403b] outline-none transition focus:border-[#c7c2bd] focus:ring-2 focus:ring-[#292524]/5",
+                            compactAvailability ? "pl-2 pr-6 text-left" : "px-1 text-center",
+                            errors.length > 0 ? "border-[#b42318]" : "border-[#e7e5e4]",
+                          )}
+                        />
+                        {compactAvailability && <Clock size={14} className="pointer-events-none absolute right-1.5 top-1.5 text-[#79716b]" aria-hidden="true" />}
+                      </div>
                     </div>
                     <DropdownMenu.Trigger asChild>
                       <button
                         type="button"
                         aria-label={`${label}: режим расписания`}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                        className={cn(
+                          "flex shrink-0 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+                          compactAvailability ? "size-6" : "size-4",
+                        )}
                       >
                         <CaretUpDown size={16} className="shrink-0" />
                       </button>
@@ -564,10 +570,10 @@ export function CatalogSchedulePopover({
       open={outsideMenuOpen}
       onOpenChange={setOutsideMenuOpen}
     >
-      <div className={cn("flex h-[42px] items-center bg-white px-3", cascadeLayout ? "gap-2" : "gap-3")}>
+      <div className="flex h-[42px] items-center gap-3 bg-white px-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className={cn("flex shrink-0 items-center justify-center", cascadeLayout ? "size-[18px]" : "size-4")}>
-            <Eye size={cascadeLayout ? 18 : 16} className="text-[#1c1917]" />
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            <Eye size={16} className="text-[#1c1917]" />
           </span>
           <span className="truncate text-[13px] leading-5 text-[#1c1917]">Вне расписания</span>
         </div>
@@ -577,13 +583,13 @@ export function CatalogSchedulePopover({
             aria-label="Режим вне расписания"
             className={cn(
               "flex h-8 shrink-0 items-center justify-end gap-2 rounded-[8px] text-[13px] leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-              cascadeLayout ? "w-[144px]" : "w-[120px]",
+              "w-[120px]",
               "text-[#57534d] hover:bg-[#f5f5f4]",
             )}
           >
             <span>
               {outsideScheduleMode === "comingSoon"
-                ? cascadeLayout ? "Как «скоро будет»" : "Показывать"
+                ? cascadeLayout ? "«Скоро будет»" : "Показывать"
                 : "Скрывать"}
             </span>
             <CaretUpDown size={16} className="shrink-0 text-[#79716b]" />
@@ -641,24 +647,27 @@ export function CatalogSchedulePopover({
       className={cn(
         CATALOG_DROPDOWN_CONTENT_CLASS,
         "max-w-[calc(100vw-24px)] overflow-hidden border-[#e7e5e4] p-0",
-        cascadeLayout ? "w-[328px] rounded-[12px] bg-[#f5f5f4]" : "w-[314px] rounded-[11px]",
+        cascadeLayout ? "w-[328px] rounded-[12px] bg-[#f5f5f4] shadow-none" : "w-[314px] rounded-[11px]",
       )}
     >
       {onClose && (
-        <div className="flex h-[42px] items-center border-b border-[#e7e5e4] bg-white px-3">
-          {cascadeLayout && (
-            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5 text-[#1c1917]">
-              Расписание доступности
-            </span>
-          )}
-          <button
-            type="button"
-            aria-label={cascadeLayout ? "Закрыть расписание" : "Закрыть меню"}
-            onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-[7px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <XCircle size={16} weight="bold" aria-hidden="true" />
-          </button>
+        <div className="border-b border-[#e7e5e4] bg-white">
+          <div className="flex h-[52px] items-center px-3">
+            {cascadeLayout && (
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5 text-[#1c1917]">
+                Расписание доступности
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onClose}
+              className="h-7 rounded-[8px] bg-[#f5f5f4] px-3 py-0 text-[13px] font-medium leading-5 text-[#57534d] shadow-none hover:bg-[#e7e5e4] hover:text-[#57534d] focus-visible:ring-[#a8a29e]/30"
+            >
+              Готово
+            </Button>
+          </div>
         </div>
       )}
       {cascadeLayout ? (
