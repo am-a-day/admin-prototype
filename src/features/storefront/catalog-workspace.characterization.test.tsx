@@ -449,9 +449,27 @@ describe("catalog observable behavior baseline", () => {
 
     await user.click(screen.getByRole("button", { name: "Настроить колонки" }));
     const columnMenu = screen.getByRole("menu");
+    expect(columnMenu).toHaveClass("w-[200px]", "!min-w-[200px]", "!rounded-[12px]");
+    expect(within(columnMenu).queryByLabelText("Поиск по колонкам")).not.toBeInTheDocument();
+    expect(columnMenu.querySelectorAll("[data-catalog-column-setting]")).toHaveLength(8);
+    expect(columnMenu.querySelector("[data-catalog-column-setting='position']")).not.toBeInTheDocument();
     expect(within(columnMenu).getByText("Описание")).toBeInTheDocument();
+    expect(within(columnMenu).getByText("Стикер")).toBeInTheDocument();
     expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ })).toBeInTheDocument();
     expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Вес или объём»/ })).toBeInTheDocument();
+    expect(within(columnMenu).getByRole("button", { name: /Скрыть колонку «Базовая цена»/ })).toHaveClass("text-[#44403b]");
+    expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ })).toHaveClass("text-[#a8a29e]");
+
+    await user.click(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-column-menu-trigger='description']")).toBeInTheDocument();
+    expect(within(columnMenu).getByRole("button", { name: /Скрыть колонку «Описание»/ })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(within(columnMenu).getByRole("menuitem", { name: "Вернуть по умолчанию" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-column-menu-trigger='description']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-column-menu-trigger='weight']")).toBeInTheDocument();
+    expect(within(columnMenu).getByRole("button", { name: /Показать колонку «Описание»/ })).toHaveAttribute("aria-pressed", "false");
     await user.keyboard("{Escape}");
 
     const rowCheckbox = document.querySelector("[data-catalog-table-row] input[type='checkbox']");

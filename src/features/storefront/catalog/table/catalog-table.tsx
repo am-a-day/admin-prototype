@@ -27,9 +27,7 @@ import {
   EyeSlash,
   FunnelSimple,
   Layout,
-  Lock,
   LockLaminated,
-  MagnifyingGlass,
   Minus,
   Plus,
   SquareSplitHorizontalIcon,
@@ -39,7 +37,6 @@ import {
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -236,6 +233,16 @@ const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, stri
   upsells: "Рекомендации",
   lastModified: "Последнее изменение",
 };
+const COLUMN_SETTINGS_COLUMN_IDS = [
+  "description",
+  "weight",
+  "discount",
+  "price",
+  "upsells",
+  "stickers",
+  "tags",
+  "kbju",
+] as const;
 export const MANAGEABLE_TABLE_COLUMN_IDS = [
   "position",
   ...CATALOG_INFORMATION_COLUMN_IDS.filter((id) => id !== "lastModified"),
@@ -245,7 +252,10 @@ export const DEFAULT_TABLE_COLUMN_ORDER = [
   "reorder",
   "selection",
   "position",
-  ...MANAGEABLE_TABLE_COLUMN_IDS.filter((id) => id !== "position"),
+  "section",
+  ...COLUMN_SETTINGS_COLUMN_IDS,
+  "translation",
+  "lastModified",
   "add-column",
 ] as string[];
 export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
@@ -373,6 +383,10 @@ function getCatalogColumnLabel(columnId: string) {
 }
 
 const USER_REORDERABLE_TABLE_COLUMN_IDS = MANAGEABLE_TABLE_COLUMN_IDS.filter((id) => id !== "position");
+function getColumnSettingsLabel(columnId: string) {
+  if (columnId === "stickers") return "Стикер";
+  return getCatalogColumnLabel(columnId);
+}
 
 function getTableColumnOrder(table: TanStackTable<CatalogItem>) {
   return table.getAllLeafColumns().map((column) => column.id);
@@ -392,6 +406,14 @@ function setUserTableColumnOrder(table: TanStackTable<CatalogItem>, nextVisibleU
     ...hiddenUserOrder,
     "add-column",
   ]);
+}
+
+function setColumnSettingsOrder(table: TanStackTable<CatalogItem>, nextSettingsOrder: string[]) {
+  let settingsIndex = 0;
+  table.setColumnOrder(getTableColumnOrder(table).map((columnId) => {
+    if (!(COLUMN_SETTINGS_COLUMN_IDS as readonly string[]).includes(columnId)) return columnId;
+    return nextSettingsOrder[settingsIndex++] ?? columnId;
+  }));
 }
 
 export function DropdownContent({
@@ -491,18 +513,14 @@ function ToolbarDropdown({
 function SortableColumnSetting({
   id,
   visible,
-  canHide,
-  draggable = true,
   onToggle,
 }: {
   id: string;
   visible: boolean;
-  canHide: boolean;
-  draggable?: boolean;
   onToggle: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !draggable });
-  const label = getCatalogColumnLabel(id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const label = getColumnSettingsLabel(id);
 
   return (
     <div
@@ -510,15 +528,14 @@ function SortableColumnSetting({
       data-catalog-column-setting={id}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex h-8 items-center gap-1 rounded-[8px] px-1 text-[13px] text-[#44403b]",
-        isDragging ? "relative z-10 bg-[#f5f5f4] shadow-[0_5px_14px_rgba(41,37,36,0.12)]" : "",
+        "flex h-7 items-center gap-2 rounded-[8px] py-1.5 pl-1 pr-2 text-[13px] leading-4 text-[#44403b] transition-colors hover:bg-[#f5f5f4]",
+        isDragging && "relative z-10 bg-[#f5f5f4] shadow-[0_5px_14px_rgba(41,37,36,0.12)]",
       )}
     >
       <button
         type="button"
         aria-label={`Изменить порядок колонки «${label}»`}
-        disabled={!draggable}
-        className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[6px] text-[#a8a29e] outline-none hover:bg-[#f5f5f4] hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing disabled:cursor-default disabled:text-[#c7c2bd]"
+        className="flex h-4 w-4 shrink-0 cursor-grab items-center justify-center rounded-[4px] text-[#a8a29e] outline-none hover:text-[#79716b] focus-visible:ring-2 focus-visible:ring-[#292524]/10 active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
@@ -527,13 +544,15 @@ function SortableColumnSetting({
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <button
         type="button"
-        disabled={!canHide}
-        aria-label={canHide ? `${visible ? "Скрыть" : "Показать"} колонку «${label}»` : `Колонка «${label}» обязательна`}
+        aria-label={`${visible ? "Скрыть" : "Показать"} колонку «${label}»`}
         aria-pressed={visible}
         onClick={onToggle}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
+        className={cn(
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          visible ? "text-[#44403b]" : "text-[#a8a29e]",
+        )}
       >
-        {canHide ? (visible ? <Eye size={16} weight="regular" /> : <EyeSlash size={16} weight="regular" />) : <Lock size={14} weight="regular" />}
+        <Eye size={14} weight="regular" />
       </button>
     </div>
   );
@@ -546,33 +565,25 @@ export function CatalogColumnSettingsMenu({
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
 }) {
-  const [search, setSearch] = useState("");
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const manageableColumns = table.getAllLeafColumns().filter((column) =>
-    (MANAGEABLE_TABLE_COLUMN_IDS as readonly string[]).includes(column.id),
+    (COLUMN_SETTINGS_COLUMN_IDS as readonly string[]).includes(column.id),
   );
-  const normalizedSearch = search.trim().toLocaleLowerCase("ru");
-  const filteredColumns = normalizedSearch
-    ? manageableColumns.filter((column) => getCatalogColumnLabel(column.id).toLocaleLowerCase("ru").includes(normalizedSearch))
-    : manageableColumns;
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    const managedOrder = table.getAllLeafColumns()
-      .map((column) => column.id)
-      .filter((id) => (USER_REORDERABLE_TABLE_COLUMN_IDS as readonly string[]).includes(id));
+    const managedOrder = manageableColumns.map((column) => column.id);
     const activeIndex = managedOrder.indexOf(String(active.id));
     const overIndex = managedOrder.indexOf(String(over.id));
     if (activeIndex < 0 || overIndex < 0) return;
-    const nextOrder = arrayMove(managedOrder, activeIndex, overIndex);
-    setUserTableColumnOrder(table, nextOrder);
+    setColumnSettingsOrder(table, arrayMove(managedOrder, activeIndex, overIndex));
   };
 
   return (
-    <DropdownMenu.Root onOpenChange={(open) => { if (!open) setSearch(""); }}>
+    <DropdownMenu.Root>
       <Tooltip label="Настроить колонки" side="top">
         <DropdownMenu.Trigger asChild>
           <button
@@ -585,48 +596,36 @@ export function CatalogColumnSettingsMenu({
           </button>
         </DropdownMenu.Trigger>
       </Tooltip>
-      <DropdownContent align="end">
-        <div data-catalog-column-settings className="w-[296px] max-w-[calc(100vw-24px)]">
-          <div className="px-1 pb-2 pt-0.5">
-            <label className="flex h-8 items-center gap-1.5 rounded-[7px] bg-[#f7f6f2] px-2 text-[#a8a29e] focus-within:ring-2 focus-within:ring-[#292524]/10">
-              <MagnifyingGlass size={14} className="shrink-0" />
-              <Input
-                size="compact"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Escape") event.stopPropagation();
-                }}
-                placeholder="Поиск по колонкам"
-                aria-label="Поиск по колонкам"
-                className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-[13px] focus:border-0"
-              />
-            </label>
-          </div>
-          <div className="scrollbar-subtle max-h-[360px] overflow-y-auto pr-0.5">
+      <DropdownContent
+        align="end"
+        className="w-[200px] !min-w-[200px] overflow-hidden !rounded-[12px] !border-[#e7e5e4] !p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)]"
+      >
+        <div data-catalog-column-settings className="w-full">
+          <div className="p-1">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={filteredColumns.map((column) => column.id)} strategy={verticalListSortingStrategy}>
-                {filteredColumns.map((column) => (
+              <SortableContext items={manageableColumns.map((column) => column.id)} strategy={verticalListSortingStrategy}>
+                {manageableColumns.map((column) => (
                   <SortableColumnSetting
                     key={column.id}
                     id={column.id}
                     visible={column.getIsVisible()}
-                    canHide={column.getCanHide()}
-                    draggable={column.id !== "position"}
                     onToggle={() => column.toggleVisibility(!column.getIsVisible())}
                   />
                 ))}
               </SortableContext>
             </DndContext>
-            {filteredColumns.length === 0 && <p className="px-2 py-3 text-[12px] text-[#a6a09b]">Колонки не найдены</p>}
           </div>
-          <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-          <DropdownMenu.Item
-            onSelect={onResetColumns}
-            className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2 text-[13px] font-medium text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]"
-          >
-            Сбросить колонки
-          </DropdownMenu.Item>
+          <div className="border-t border-[#e7e5e4] p-1">
+            <DropdownMenu.Item
+              onSelect={(event) => {
+                event.preventDefault();
+                onResetColumns();
+              }}
+              className="flex h-7 cursor-pointer select-none items-center justify-center rounded-[8px] px-2 py-1.5 text-[13px] font-normal leading-4 text-[#44403b] outline-none data-[highlighted]:bg-[#f5f5f4]"
+            >
+              Вернуть по умолчанию
+            </DropdownMenu.Item>
+          </div>
         </div>
       </DropdownContent>
     </DropdownMenu.Root>
@@ -2412,7 +2411,7 @@ export function CatalogTableFilterBar({
               onSelect={onResetColumns}
               className="flex h-8 cursor-pointer select-none items-center rounded-[8px] px-2.5 text-[13px] font-medium text-[#57534d] outline-none transition data-[highlighted]:bg-[#f5f5f4]"
             >
-              Сбросить колонки
+              Вернуть по умолчанию
             </DropdownMenu.Item>
           </DropdownContent>
         </DropdownMenu.Root>

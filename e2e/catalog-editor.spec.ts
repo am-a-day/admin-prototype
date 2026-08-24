@@ -380,7 +380,7 @@ test("opens column actions from the full header cell and keeps sorting and visib
   await page.getByRole("button", { name: "Настроить колонки" }).click();
   await expect(page.getByRole("button", { name: "Показать колонку «Вес или объём»" })).toBeVisible();
   await page.getByRole("button", { name: "Показать колонку «Описание»" }).click();
-  await page.getByLabel("Поиск по колонкам").press("Escape");
+  await page.keyboard.press("Escape");
 
   const descriptionHeader = page.getByRole("button", { name: "Настройки колонки «Описание»", exact: true });
   await descriptionHeader.click({ position: { x: 8, y: 16 } });
@@ -396,6 +396,63 @@ test("opens column actions from the full header cell and keeps sorting and visib
   await expect(page.getByRole("menuitemradio", { name: "Сначала большая скидка" })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: /Показать/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
+});
+
+test("keeps the compact column manager synchronized while toggling, reordering, and resetting", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  await page.getByRole("button", { name: "Настроить колонки" }).click();
+  const menu = page.getByRole("menu");
+  const settings = menu.locator("[data-catalog-column-settings]");
+  const rows = settings.locator("[data-catalog-column-setting]");
+  await expect(menu).toHaveCSS("width", "200px");
+  await expect(menu).toHaveCSS("border-radius", "12px");
+  await expect(rows).toHaveCount(8);
+  await expect(rows.first()).toHaveCSS("height", "28px");
+  await expect(menu.getByLabel("Поиск по колонкам")).toHaveCount(0);
+  await expect(settings.locator('[data-catalog-column-setting="position"]')).toHaveCount(0);
+  const menuHeightBeforeToggle = await menu.evaluate((element) => element.getBoundingClientRect().height);
+
+  const visiblePriceToggle = menu.getByRole("button", { name: "Скрыть колонку «Базовая цена»" });
+  const hiddenDescriptionToggle = menu.getByRole("button", { name: "Показать колонку «Описание»" });
+  await expect(visiblePriceToggle).toHaveCSS("color", "rgb(68, 64, 59)");
+  await expect(hiddenDescriptionToggle).toHaveCSS("color", "rgb(168, 162, 158)");
+
+  const orderBeforeToggle = await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-catalog-column-setting")));
+  await hiddenDescriptionToggle.click();
+  await expect(menu).toBeVisible();
+  await expect(page.locator('[data-catalog-column-menu-trigger="description"]')).toBeVisible();
+  await menu.getByRole("button", { name: "Скрыть колонку «Описание»" }).click();
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.getBoundingClientRect().height)).toBe(menuHeightBeforeToggle);
+  await expect(page.locator('[data-catalog-column-menu-trigger="description"]')).toHaveCount(0);
+  await expect.poll(() => rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-catalog-column-setting")))).toEqual(orderBeforeToggle);
+
+  const weightHandle = menu.getByRole("button", { name: "Изменить порядок колонки «Вес или объём»" });
+  const priceRow = settings.locator('[data-catalog-column-setting="price"]');
+  await pointerDrag(page, weightHandle, priceRow);
+  await expect(menu).toBeVisible();
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["price", "weight"]);
+  await expect.poll(async () => {
+    const order = await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-catalog-column-setting")));
+    return order.indexOf("price") < order.indexOf("weight");
+  }).toBe(true);
+
+  await menu.getByRole("menuitem", { name: "Вернуть по умолчанию" }).click();
+  await expect(menu).toBeVisible();
+  await expect.poll(() => getVisibleUserColumnOrder(page)).toEqual(["weight", "price"]);
+  await expect.poll(() => rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-catalog-column-setting")))).toEqual([
+    "description",
+    "weight",
+    "discount",
+    "price",
+    "upsells",
+    "stickers",
+    "tags",
+    "kbju",
+  ]);
+  await expect(menu.getByRole("button", { name: "Показать колонку «Описание»" })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("keeps column header click and repeated pointer reordering compatible across rerenders", async ({ page }) => {
@@ -446,7 +503,7 @@ test("keeps column header click and repeated pointer reordering compatible acros
   await expect(weightHeader).toHaveCount(0);
   await page.getByRole("button", { name: "Настроить колонки" }).click();
   await page.getByRole("button", { name: "Показать колонку «Вес или объём»" }).click();
-  await page.getByLabel("Поиск по колонкам").press("Escape");
+  await page.keyboard.press("Escape");
   await expect(weightHeader).toBeVisible();
 
   await pointerDrag(page, weightHeader, priceHeader);
