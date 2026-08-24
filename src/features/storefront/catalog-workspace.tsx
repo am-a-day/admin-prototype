@@ -215,6 +215,7 @@ import {
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "./catalog/ui/move-anchor";
 import { MoveToSectionPopover } from "./catalog/ui/move-to-section-popover";
 import type { MoveOperation } from "./catalog/ui/move-to-section-popover";
+import { DeleteConfirmationDialog } from "./catalog/ui/delete-confirmation-dialog";
 import { getCatalogSectionPathFromSections, type CatalogSectionCrumb } from "./catalog/model/section-path";
 import {
   PositionEditor,
@@ -1059,11 +1060,6 @@ function findTreeSectionName(sections: TreeSection[], id?: string | null): strin
   }
   return null;
 }
-
-type SectionDeleteSummary = {
-  positionCount: number;
-  subsectionCount: number;
-};
 
 type SectionCreationResult = boolean | string | void;
 type SectionCreationSource = "tree" | "table";
@@ -3566,70 +3562,6 @@ function PositionEditorDialogShell({
   );
 }
 
-function getLinkedEntitiesCount(item: CatalogItem) {
-  return item.recommendationsCount + item.optionsCount + item.modifiersCount;
-}
-
-function PermanentDeleteDialog({
-  item,
-  onCancel,
-  onConfirm,
-}: {
-  item: CatalogItem;
-  onCancel: () => void;
-  onConfirm: (item: CatalogItem) => void;
-}) {
-  const linkedCount = getLinkedEntitiesCount(item);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="permanent-delete-title"
-        className="w-full max-w-[380px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)]"
-      >
-        <h2 id="permanent-delete-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
-          Удалить позицию навсегда?
-        </h2>
-        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
-          Позицию нельзя будет восстановить. Она будет удалена из архива, рекомендаций и связанных настроек.
-        </p>
-        {linkedCount > 0 && (
-          <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
-            Связанные настройки: {linkedCount}. Они будут очищены вместе с позицией.
-          </p>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-8 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(item)}
-            className="h-8 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20"
-          >
-            Удалить навсегда
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 function CreateDiscardDialog({
   onContinue,
   onDiscard,
@@ -3721,134 +3653,6 @@ function CreateDiscardDialog({
           >
             Продолжить редактирование
           </Button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-type SectionDeleteDialogState = {
-  section: TreeSection;
-  archived: boolean;
-  summary: SectionDeleteSummary;
-};
-
-function SectionDeleteDialog({
-  state,
-  onCancel,
-  onArchive,
-  onConfirm,
-}: {
-  state: SectionDeleteDialogState;
-  onCancel: () => void;
-  onArchive: (section: TreeSection) => void | Promise<void>;
-  onConfirm: (section: TreeSection) => void | Promise<void>;
-}) {
-  const [pendingAction, setPendingAction] = useState<"archive" | "delete" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [failedAction, setFailedAction] = useState<"archive" | "delete" | null>(null);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const hasContents = state.summary.positionCount > 0 || state.summary.subsectionCount > 0;
-  const title = state.archived
-    ? `Удалить раздел «${state.section.name}» навсегда?`
-    : `Удалить раздел «${state.section.name}»?`;
-  const description = hasContents
-    ? `В разделе и его подразделах ${state.summary.positionCount} ${plural(state.summary.positionCount, "позиция", "позиции", "позиций")} и ${state.summary.subsectionCount} ${plural(state.summary.subsectionCount, "подраздел", "подраздела", "подразделов")}. После удаления восстановить их будет нельзя.`
-    : "Восстановить раздел после удаления не получится.";
-
-  const runAction = async (action: "archive" | "delete") => {
-    if (pendingAction) return;
-    setPendingAction(action);
-    setError(null);
-    setFailedAction(null);
-    try {
-      await Promise.resolve(action === "archive" ? onArchive(state.section) : onConfirm(state.section));
-    } catch (cause) {
-      setFailedAction(action);
-      setError(cause instanceof Error ? cause.message : "Не удалось выполнить действие. Попробуйте ещё раз.");
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  useEffect(() => {
-    dialogRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pendingAction) onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel, pendingAction]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !pendingAction) onCancel();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="section-delete-title"
-        tabIndex={-1}
-        onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-[560px] rounded-[16px] border border-[#e7e5e4] bg-white p-5 shadow-[0_24px_80px_rgba(41,37,36,0.22)] outline-none"
-      >
-        <h2 id="section-delete-title" className="text-[16px] font-semibold leading-6 text-[#292524]">
-          {title}
-        </h2>
-        <p className="mt-2 text-[13px] leading-5 text-[#79716b]">
-          {description}
-        </p>
-        {hasContents && !state.archived && (
-          <div className="mt-4 rounded-[10px] border border-[#e7e5e4] bg-[#fafaf9] px-3 py-2.5 text-[12px] leading-5 text-[#57534d]">
-            Безопаснее сначала архивировать раздел: содержимое останется доступно для восстановления.
-          </div>
-        )}
-        {error && (
-          <div className="mt-3 flex items-center justify-between gap-3 text-[12px] leading-5 text-[#9f3a31]">
-            <p role="alert">{error}</p>
-            {failedAction && (
-              <button
-                type="button"
-                onClick={() => void runAction(failedAction)}
-                className="shrink-0 rounded-[7px] px-2 py-1 font-medium text-[#9f3a31] transition hover:bg-[#fff7f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f3a31]/20"
-              >
-                Повторить
-              </button>
-            )}
-          </div>
-        )}
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={Boolean(pendingAction)}
-            className="h-9 rounded-[9px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Отмена
-          </button>
-          {hasContents && !state.archived && (
-            <button
-              type="button"
-              onClick={() => void runAction("archive")}
-              disabled={Boolean(pendingAction)}
-              className="h-9 rounded-[9px] border border-[#d8d5d0] bg-white px-3 text-[13px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {pendingAction === "archive" ? "Архивирование…" : "Архивировать"}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void runAction("delete")}
-            disabled={Boolean(pendingAction)}
-            className="h-9 rounded-[9px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9f1239]/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {pendingAction === "delete" ? "Удаление…" : state.archived || hasContents ? "Удалить навсегда" : "Удалить"}
-          </button>
         </div>
       </div>
     </div>,
@@ -4146,7 +3950,7 @@ function PopulatedWorkspace({
   );
   const [deletedSectionIds, setDeletedSectionIds] = useState<Set<string>>(new Set());
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<CatalogItem | null>(null);
-  const [pendingSectionDelete, setPendingSectionDelete] = useState<SectionDeleteDialogState | null>(null);
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<TreeSection | null>(null);
   const [pendingSectionBulkDelete, setPendingSectionBulkDelete] = useState<TreeSection[] | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sectionArchiveOpen, setSectionArchiveOpen] = useState(false);
@@ -5262,16 +5066,7 @@ function PopulatedWorkspace({
   };
 
   const requestSectionDelete = (target: TreeSection) => {
-    const subtreeIds = getSectionSubtreeIds(target.id, allSections);
-    const positionCount = allItems.filter((item) => subtreeIds.has(item.sectionId)).length;
-    setPendingSectionDelete({
-      section: target,
-      archived: target.status === "archive",
-      summary: {
-        positionCount,
-        subsectionCount: Math.max(0, subtreeIds.size - 1),
-      },
-    });
+    setPendingSectionDelete(target);
   };
 
   const confirmDeleteSection = (target: TreeSection) => {
@@ -6420,24 +6215,29 @@ function PopulatedWorkspace({
           </div>
         )}
         {pendingPermanentDelete && (
-          <PermanentDeleteDialog
-            item={pendingPermanentDelete}
-            onCancel={() => setPendingPermanentDelete(null)}
-            onConfirm={confirmPermanentDelete}
+          <DeleteConfirmationDialog
+            kind="position"
+            open
+            title={`Удалить позицию «${pendingPermanentDelete.title}» навсегда?`}
+            description="После удаления восстановить позицию будет нельзя."
+            onOpenChange={(open) => {
+              if (!open) setPendingPermanentDelete(null);
+            }}
+            onConfirm={() => confirmPermanentDelete(pendingPermanentDelete)}
           />
         )}
         {pendingSectionDelete && (
-          <SectionDeleteDialog
-            state={pendingSectionDelete}
-            onCancel={() => setPendingSectionDelete(null)}
-            onArchive={async (target) => {
-              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-              archiveSection(target);
-              setPendingSectionDelete(null);
+          <DeleteConfirmationDialog
+            kind="section"
+            open
+            title={`Удалить раздел «${pendingSectionDelete.name}» навсегда?`}
+            description="Вместе с ним удалятся все позиции и подразделы внутри. Восстановить их будет нельзя."
+            onOpenChange={(open) => {
+              if (!open) setPendingSectionDelete(null);
             }}
-            onConfirm={async (target) => {
+            onConfirm={async () => {
               await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-              confirmDeleteSection(target);
+              confirmDeleteSection(pendingSectionDelete);
             }}
           />
         )}
@@ -6924,39 +6724,50 @@ function SectionCompositionList({
 type BulkDialog =
   | { type: "schedule" }
   | { type: "placeholder"; title: string; text: string }
-  | { type: "delete" };
+  | { type: "delete"; itemIds: string[] };
 
 function BulkDialogModal({
   dialog,
-  count,
   onClose,
   onConfirmDelete,
 }: {
   dialog: BulkDialog;
-  count: number;
   onClose: () => void;
-  onConfirmDelete: () => void;
+  onConfirmDelete: (itemIds: string[]) => void | Promise<void>;
 }) {
   useEffect(() => {
+    if (dialog.type === "delete") return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [dialog.type, onClose]);
+
+  if (dialog.type === "delete") {
+    const count = dialog.itemIds.length;
+    return (
+      <DeleteConfirmationDialog
+        kind="bulk"
+        open
+        title={`Удалить ${count} ${plural(count, "позицию", "позиции", "позиций")} навсегда?`}
+        description="После удаления восстановить эти позиции будет нельзя."
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+        onConfirm={() => onConfirmDelete(dialog.itemIds)}
+      />
+    );
+  }
 
   const title =
     dialog.type === "schedule"
       ? "Расписание доступности"
-      : dialog.type === "delete"
-        ? `Удалить ${count} ${plural(count, "позицию", "позиции", "позиций")}?`
-        : dialog.title;
+      : dialog.title;
   const text =
     dialog.type === "schedule"
       ? "Здесь должен быть виджет расписания"
-      : dialog.type === "delete"
-        ? "Для прототипа это действие можно отменить только перезагрузкой данных."
-        : dialog.text;
+      : dialog.text;
 
   return createPortal(
     <div data-catalog-bulk-modal className="fixed inset-0 z-[100003] flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
@@ -6974,17 +6785,8 @@ function BulkDialogModal({
             onClick={onClose}
             className="h-8 rounded-[10px] px-3 text-[13px] font-medium text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
           >
-            {dialog.type === "schedule" || dialog.type === "placeholder" ? "Закрыть" : "Отмена"}
+            Закрыть
           </button>
-          {dialog.type === "delete" && (
-            <button
-              type="button"
-              onClick={onConfirmDelete}
-              className="h-8 rounded-[10px] bg-[#9f1239] px-3 text-[13px] font-medium text-white transition hover:bg-[#881337]"
-            >
-              Удалить
-            </button>
-          )}
         </div>
       </div>
     </div>,
@@ -7915,6 +7717,7 @@ function OverviewWorkspace({
   const [additionalColumnSort, setAdditionalColumnSort] = useState<CatalogTableSort>(null);
   const [overviewScrollTop, setOverviewScrollTop] = useState(initialOverviewContext.scrollTop);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [pendingPositionDelete, setPendingPositionDelete] = useState<CatalogItem | null>(null);
   const [itemRenameRequest, setItemRenameRequest] = useState<{ itemId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [recentPositionIds, setRecentPositionIds] = useState<string[]>(() => readRecentPositionIds(items));
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
@@ -8467,12 +8270,51 @@ function OverviewWorkspace({
     }), clamped > 0 ? "Скидка применена" : "Скидка убрана");
     setBulkDialog(null);
   };
-  const deleteSelectedItems = () => {
-    const selectedCreatedIds = new Set(readCreatedCatalogItems().filter((item) => selectedIds.has(item.id)).map((item) => item.id));
+  const deletePosition = (target: CatalogItem) => {
+    if (readCreatedCatalogItems().some((item) => item.id === target.id)) {
+      removeCreatedCatalogItems([target.id]);
+    }
+    deleteItems([target.id]);
+    registerChange("catalog");
+    setPendingPositionDelete(null);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(target.id);
+      return next;
+    });
+    setRecentPositionIds((current) => current.filter((id) => id !== target.id));
+
+    if (creationItemId === target.id) cancelDirectCreate();
+    if (queue?.currentId === target.id) {
+      const currentIndex = Math.max(0, queue.snapshot.itemIds.indexOf(target.id));
+      const remainingIds = queue.snapshot.itemIds.filter((id) => (
+        id !== target.id && items.some((item) => item.id === id)
+      ));
+      const replacementId = remainingIds[Math.min(currentIndex, remainingIds.length - 1)] ?? null;
+      if (replacementId) {
+        setQueue({
+          ...queue,
+          currentId: replacementId,
+          snapshot: { ...queue.snapshot, itemIds: remainingIds },
+        });
+        setActivePositionId(replacementId);
+        setActiveEditorItemId(replacementId);
+      } else {
+        setQueue(null);
+        setActivePositionId(null);
+        setActiveEditorItemId(null);
+        if (editorFirstEnabled) setEditorFirstView("table");
+      }
+    }
+    showFeedback("Позиция удалена навсегда");
+  };
+  const deleteSelectedItems = (itemIds: string[]) => {
+    const deletedIds = new Set(itemIds);
+    const selectedCreatedIds = new Set(readCreatedCatalogItems().filter((item) => deletedIds.has(item.id)).map((item) => item.id));
     if (selectedCreatedIds.size > 0) {
       removeCreatedCatalogItems(selectedCreatedIds);
     }
-    deleteItems(selectedIds);
+    deleteItems(deletedIds);
     setBulkDialog(null);
     clearSelection();
     showFeedback("Позиции удалены из прототипа");
@@ -8673,8 +8515,7 @@ function OverviewWorkspace({
     if (action === "Убрать со стопа" || action === "Восстановить") updateItems(ids, (current) => ({ ...current, status: "active" }));
     if (action === "В архив" || action === "Архивировать") updateItems(ids, (current) => ({ ...current, status: "archive" }));
     if (action === "Удалить") {
-      setSelectedIds(new Set([item.id]));
-      setBulkDialog({ type: "delete" });
+      setPendingPositionDelete(item);
       return;
     }
     if (action === "Задать скидку") {
@@ -8980,6 +8821,7 @@ function OverviewWorkspace({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (bulkDialog || pendingPositionDelete || moveRequest) return;
         if (isCreateDraftOpen) {
           event.preventDefault();
           cancelCreateDraft();
@@ -8991,7 +8833,7 @@ function OverviewWorkspace({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cancelCreateDraft, isCreateDraftOpen]);
+  }, [bulkDialog, cancelCreateDraft, isCreateDraftOpen, moveRequest, pendingPositionDelete]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -9099,6 +8941,18 @@ function OverviewWorkspace({
     },
     revision: catalogRevision,
   } : null;
+  const positionDeleteDialog = pendingPositionDelete ? (
+    <DeleteConfirmationDialog
+      kind="position"
+      open
+      title={`Удалить позицию «${pendingPositionDelete.title}» навсегда?`}
+      description="После удаления восстановить позицию будет нельзя."
+      onOpenChange={(open) => {
+        if (!open) setPendingPositionDelete(null);
+      }}
+      onConfirm={() => deletePosition(pendingPositionDelete)}
+    />
+  ) : null;
 
   if (queue && (!editorFirstEnabled || editorFirstView === "editor") && !embedded) {
     const currentItem = queueCurrentItem;
@@ -9169,9 +9023,7 @@ function OverviewWorkspace({
                 onWeeklyScheduleChange={(weeklySchedule) => updateCreationItem({ weeklySchedule })}
                 onRequestPermanentDelete={(target) => {
                   if (!queueCreationCommitted) return;
-                  deleteItems([target.id]);
-                  registerChange("catalog");
-                  cancelCreateDraft();
+                  setPendingPositionDelete(target);
                 }}
                 forcedEditorTab={editorContext.tab}
                 focusAnchor={editorContext.anchor}
@@ -9224,6 +9076,7 @@ function OverviewWorkspace({
                 onCurrentIdChange={selectQueueItem}
                 onClose={returnToOrigin}
                 onFeedback={showFeedback}
+                onRequestPermanentDelete={setPendingPositionDelete}
                 structureSections={structureSections}
                 onRevealItem={(item) => {
                   setActiveFilterId(null);
@@ -9240,6 +9093,7 @@ function OverviewWorkspace({
           )}
           </div>
           {feedback && <SelectionFeedback message={feedback} />}
+          {positionDeleteDialog}
           {discardDialogOpen && (
             <CreateDiscardDialog
               onContinue={() => {
@@ -9278,6 +9132,7 @@ function OverviewWorkspace({
             <EditorFirstPositionEmptyState />
           </div>
         </div>
+        {positionDeleteDialog}
       </main>
     );
   }
@@ -9403,7 +9258,7 @@ function OverviewWorkspace({
                     discountItem={selectedItems[0] ?? null}
                     onApplyDiscount={applySelectedDiscount}
                     onMove={(anchor) => setMoveRequest({ operation: "bulk", itemIds: [...selectedIds], anchor })}
-                    onOpenDelete={() => setBulkDialog({ type: "delete" })}
+                    onOpenDelete={() => setBulkDialog({ type: "delete", itemIds: [...selectedIds] })}
                     onArchive={archiveSelectedItems}
                     onRestoreArchive={restoreSelectedItems}
                     hasArchivedItems={selectedHasArchivedItems}
@@ -9582,7 +9437,6 @@ function OverviewWorkspace({
                   {bulkDialog && (
                     <BulkDialogModal
                       dialog={bulkDialog}
-                      count={selectedIds.size}
                       onClose={() => setBulkDialog(null)}
                       onConfirmDelete={deleteSelectedItems}
                     />
@@ -9727,9 +9581,7 @@ function OverviewWorkspace({
             onWeeklyScheduleChange={(weeklySchedule) => updateCreationItem({ weeklySchedule })}
             onRequestPermanentDelete={(target) => {
               if (!queueCreationCommitted) return;
-              deleteItems([target.id]);
-              registerChange("catalog");
-              cancelCreateDraft();
+              setPendingPositionDelete(target);
             }}
             forcedEditorTab={queueEditorContext?.tab}
             focusAnchor={queueEditorContext?.anchor}
@@ -9762,6 +9614,7 @@ function OverviewWorkspace({
               onCurrentIdChange={selectQueueItem}
               onClose={returnToOrigin}
               onFeedback={showFeedback}
+              onRequestPermanentDelete={setPendingPositionDelete}
               structureSections={structureSections}
               onRevealItem={(item) => {
                 setActiveFilterId(null);
@@ -9775,6 +9628,7 @@ function OverviewWorkspace({
           ) : null}
         </PositionEditorDialogShell>
       )}
+      {positionDeleteDialog}
     </main>
   );
 }

@@ -1473,15 +1473,69 @@ test("uses the position title chevron for actions and preserves queue plus destr
   await expect.poll(async () => page.getByRole("button", { name: /Действия с позицией «/ }).count()).toBe(1);
   await page.getByRole("button", { name: /Действия с позицией «/ }).click();
   await page.getByRole("menuitem", { name: "Удалить навсегда", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Удалить позицию навсегда?" })).toBeVisible();
+  await expect(page.getByRole("alertdialog", { name: `Удалить позицию «${firstItemTitle}» навсегда?` })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Удалить позицию навсегда?" })).toHaveCount(0);
+  await expect(page.getByRole("alertdialog", { name: `Удалить позицию «${firstItemTitle}» навсегда?` })).toHaveCount(0);
 
   await openItemFromLeaf(page);
   await revealEditorQueueNavigation(page);
   await expect(page.getByRole("button", { name: "Предыдущая позиция в выборке" })).toBeVisible();
   await page.getByRole("button", { name: "Следующая позиция в выборке" }).click();
   await expect(page.getByRole("button", { name: /Действия с позицией «/ })).toHaveCount(1);
+});
+
+test("confirms and completes permanent deletion for a position", async ({ page }) => {
+  await openEntityItem(page);
+
+  await page.getByRole("button", { name: `Действия с позицией «${firstItemTitle}»` }).click();
+  await page.getByRole("menuitem", { name: "Удалить", exact: true }).click();
+
+  const dialog = page.getByRole("alertdialog", { name: `Удалить позицию «${firstItemTitle}» навсегда?` });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("После удаления восстановить позицию будет нельзя.");
+  await dialog.getByRole("button", { name: "Удалить навсегда" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator("[data-composition-title=true]").filter({ hasText: firstItemTitle })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toHaveCount(0);
+});
+
+test("deletes the exact bulk position selection after confirmation", async ({ page }) => {
+  await page.goto(`/?editorNav=unified&sectionId=${breakfastSectionId}`);
+
+  const rows = page.locator("[data-catalog-table-row]");
+  const deletedIds = [await rows.nth(0).getAttribute("data-catalog-table-row"), await rows.nth(1).getAttribute("data-catalog-table-row")]
+    .filter((id): id is string => Boolean(id));
+  expect(deletedIds).toHaveLength(2);
+  for (const id of deletedIds) {
+    await page.locator(`[data-catalog-table-row="${id}"]`).getByRole("checkbox").check();
+  }
+
+  await page.getByRole("button", { name: "Ещё действия" }).click();
+  await page.getByRole("menuitem", { name: "Удалить", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Удалить 2 позиции навсегда?" });
+  await expect(dialog).toContainText("После удаления восстановить эти позиции будет нельзя.");
+  await dialog.getByRole("button", { name: "Удалить навсегда" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  for (const id of deletedIds) await expect(page.locator(`[data-catalog-table-row="${id}"]`)).toHaveCount(0);
+  await expect(page.locator("[data-catalog-selection-toolbar]")).toHaveCount(0);
+});
+
+test("cascades section deletion through nested sections and positions", async ({ page }) => {
+  await page.goto(`/?editorNav=entity&sectionId=${kitchenSectionId}`);
+
+  await page.getByRole("button", { name: "Действия с разделом «Кухня»" }).click();
+  await page.getByRole("menuitem", { name: "Удалить", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Удалить раздел «Кухня» навсегда?" });
+  await expect(dialog).toContainText("Вместе с ним удалятся все позиции и подразделы внутри. Восстановить их будет нельзя.");
+  await dialog.getByRole("button", { name: "Удалить навсегда" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(`[data-tree-section-id="${kitchenSectionId}"]`)).toHaveCount(0);
+  await expect(page.locator(`[data-tree-section-id="${breakfastSectionId}"]`)).toHaveCount(0);
+  await expect(page.locator(`[data-tree-section-id="${bakerySectionId}"]`)).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: firstItemTitle })).toHaveCount(0);
 });
 
 test("restores structured promo, options, and availability editor state", async ({ page }) => {

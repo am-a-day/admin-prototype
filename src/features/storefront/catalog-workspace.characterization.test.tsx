@@ -621,6 +621,31 @@ describe("catalog observable behavior baseline", () => {
     expect(document.querySelector("[data-catalog-selection-toolbar]")).not.toBeInTheDocument();
   });
 
+  it("confirms bulk deletion with the selected count and clears selection only after confirmation", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /Выбрать (?!все)/ });
+    await user.click(rowCheckboxes[0]);
+    await user.click(rowCheckboxes[1]);
+    await user.click(screen.getByRole("button", { name: "Ещё действия" }));
+    await user.click(screen.getByRole("menuitem", { name: "Удалить" }));
+
+    expect(screen.getByRole("alertdialog", { name: "Удалить 2 позиции навсегда?" })).toBeInTheDocument();
+    expect(screen.getByText("После удаления восстановить эти позиции будет нельзя.")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-selection-toolbar]")).toHaveTextContent("2 выбрано");
+    await user.click(screen.getByRole("button", { name: "Ещё действия" }));
+    await user.click(screen.getByRole("menuitem", { name: "Удалить" }));
+    await user.click(screen.getByRole("button", { name: "Удалить навсегда" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(document.querySelector("[data-catalog-selection-toolbar]")).not.toBeInTheDocument();
+    expect(screen.getByText("Позиции удалены из прототипа", { exact: true })).toBeInTheDocument();
+  });
+
   it("leaves all bulk availability statuses unselected for mixed positions", async () => {
     const user = userEvent.setup();
     renderCatalog();
