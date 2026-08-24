@@ -71,7 +71,6 @@ import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode, CatalogTranslations } from "@/data/catalog";
-import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { useCatalogStore, type CatalogSaveStatus } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
@@ -202,6 +201,7 @@ import {
   writeCreatedCatalogItems,
 } from "./catalog/persistence";
 import { DropdownActionItem, DropdownContent } from "./catalog/ui/catalog-dropdown";
+import { CatalogInlineNameEditor } from "./catalog/ui/catalog-inline-name-editor";
 import { isWeeklyScheduleOrderable, type AvailabilityScheduleMode } from "./catalog/ui/catalog-schedule-editor";
 import {
   CatalogContextMenuContent,
@@ -1485,68 +1485,6 @@ function SectionPopoverFrame({
   );
 }
 
-function SectionRenamePopover({
-  section,
-  anchor,
-  onChange,
-  onClose,
-}: {
-  section: TreeSection;
-  anchor?: MovePopoverAnchor;
-  onChange: (translations: CatalogTranslations) => void;
-  onClose: () => void;
-}) {
-  const { account } = useMockAuth();
-  const languages = useMemo(() => {
-    const enabled = new Set((account?.workspace.languages ?? []).filter((language) => language.visible !== false).map((language) => language.code));
-    const available = LANGUAGES.filter((language) => enabled.has(language.code));
-    return available.length > 0 ? available : [LANGUAGES[0]];
-  }, [account?.workspace.languages]);
-  const [translations, setTranslations] = useState<CatalogTranslations>(() => ({
-    ru: section.name,
-    ...section.nameTranslations,
-  }));
-
-  useEffect(() => {
-    setTranslations({ ru: section.name, ...section.nameTranslations });
-  }, [section.id, section.name, section.nameTranslations]);
-
-  const updateTranslation = (language: LanguageCode, value: string) => {
-    const next = { ...translations, [language]: value };
-    setTranslations(next);
-    onChange(next);
-  };
-
-  return (
-    <SectionPopoverFrame anchor={anchor} label="Переименовать раздел" onClose={onClose}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-[14px] font-semibold leading-5 text-[#292524]">Название раздела</h2>
-          <p className="mt-0.5 text-[11px] leading-4 text-[#a8a29e]">Изменения сохраняются автоматически</p>
-        </div>
-        <button type="button" aria-label="Закрыть переименование" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] leading-none text-[#a8a29e] transition hover:bg-[#f5f5f4] hover:text-[#292524]">×</button>
-      </div>
-      <div className="mt-3 space-y-2.5">
-        {languages.map((language) => (
-          <label key={language.code} className="block">
-            <span className="mb-1 block text-[12px] font-medium text-[#57534d]">{language.label}</span>
-            <input
-              value={translations[language.code] ?? ""}
-              aria-label={`Название раздела на ${language.label}`}
-              onChange={(event) => updateTranslation(language.code, event.target.value)}
-              placeholder="Введите название"
-              className="h-8 w-full rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 text-[13px] text-[#292524] outline-none transition focus:border-[#a8a29e] focus:ring-2 focus:ring-[#292524]/5"
-            />
-          </label>
-        ))}
-      </div>
-      <div className="mt-3 flex justify-end">
-        <button type="button" onClick={onClose} className="h-8 rounded-[8px] bg-[#292524] px-3 text-[12px] font-medium text-white transition hover:bg-[#44403b]">Готово</button>
-      </div>
-    </SectionPopoverFrame>
-  );
-}
-
 function ItemRenamePopover({
   item,
   anchor,
@@ -2093,7 +2031,7 @@ function SectionItemList({
                   <CaretDown size={13} weight="bold" />
                 </button>
               </DropdownMenu.Trigger>
-              <DropdownContent align="end" preventFocusOutsideDismiss>
+              <DropdownContent align="end" preventFocusOutsideDismiss variant="section-action">
                 {section && <SectionActionMenuContent section={section} allowPositionCreation={!isArchivedSection} onAction={onSectionAction} />}
               </DropdownContent>
             </DropdownMenu.Root>
@@ -2337,6 +2275,8 @@ function SectionEditor({
   onStartSubsectionCreation,
   onCreateSubsection,
   onCancelSubsectionCreation,
+  renaming = false,
+  onRenameEnd,
 }: {
   section: TreeSection;
   childSections: Array<{ section: TreeSection; itemCount: number }>;
@@ -2379,8 +2319,11 @@ function SectionEditor({
   onStartSubsectionCreation?: () => void;
   onCreateSubsection?: (name: string) => boolean | string | void;
   onCancelSubsectionCreation?: () => void;
+  renaming?: boolean;
+  onRenameEnd?: () => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const preserveInlineCreateFocusRef = useRef(false);
   const archived = section.status === "archive";
@@ -2390,6 +2333,27 @@ function SectionEditor({
   const showSubsectionList = hasChildSections || sectionIsCompletelyEmpty || subsectionDraftActive;
   const canCreateSubsection = !archived && !subsectionCreateDisabledReason && Boolean(onStartSubsectionCreation);
   const [selectedSubsectionIds, setSelectedSubsectionIds] = useState<Set<string>>(() => new Set());
+  const [renameName, setRenameName] = useState(section.name);
+
+  useEffect(() => {
+    if (!renaming) return;
+    setRenameName(section.name);
+    const frame = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [renaming, section.id, section.name]);
+
+  const commitRename = () => {
+    const name = renameName.trim();
+    if (!name || name.toLocaleLowerCase("ru") === "без названия") {
+      renameInputRef.current?.focus();
+      return;
+    }
+    onNameChange(name);
+    onRenameEnd?.();
+  };
 
   useEffect(() => {
     setSelectedSubsectionIds((current) => {
@@ -2499,7 +2463,22 @@ function SectionEditor({
                   </span>
                 </button>
               </Tooltip>
-              <h2 className="min-w-0 truncate text-[14px] font-normal leading-7 text-[#1c1917]">{section.name}</h2>
+              {renaming ? (
+                <CatalogInlineNameEditor
+                  ref={renameInputRef}
+                  value={renameName}
+                  ariaLabel="Название раздела"
+                  onChange={(event) => setRenameName(event.target.value)}
+                  onCommit={commitRename}
+                  onCancel={() => onRenameEnd?.()}
+                  cancelLabel="Отменить переименование"
+                  commitLabel="Подтвердить переименование"
+                  className="h-7 min-w-[180px] max-w-[320px] flex-1 px-1"
+                  inputClassName="text-[14px] font-normal leading-7"
+                />
+              ) : (
+                <h2 className="min-w-0 truncate text-[14px] font-normal leading-7 text-[#1c1917]">{section.name}</h2>
+              )}
               {showSubsectionList && (
                 <>
                   <span className="shrink-0 text-[12px] leading-5 text-[#a8a29e]" aria-hidden="true">•</span>
@@ -2521,6 +2500,7 @@ function SectionEditor({
                 <DropdownContent
                   align="start"
                   preventFocusOutsideDismiss
+                  variant="section-action"
                   onCloseAutoFocus={(event) => {
                     if (!preserveInlineCreateFocusRef.current) return;
                     event.preventDefault();
@@ -2753,6 +2733,9 @@ function UnifiedSectionTableHeader({
   allowSubsectionCreation = true,
   treeHidden,
   onShowSections,
+  renaming = false,
+  onRename,
+  onRenameEnd,
 }: {
   section: TreeSection;
   itemCount: number;
@@ -2761,9 +2744,35 @@ function UnifiedSectionTableHeader({
   allowSubsectionCreation?: boolean;
   treeHidden: boolean;
   onShowSections: () => void;
+  renaming?: boolean;
+  onRename?: (name: string) => void;
+  onRenameEnd?: () => void;
 }) {
   const status = getSectionStatusMeta(section);
   const statusLabel = getSectionTreeStatusLabel(section);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const [renameName, setRenameName] = useState(section.name);
+
+  useEffect(() => {
+    if (!renaming) return;
+    setRenameName(section.name);
+    const frame = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [renaming, section.id, section.name]);
+
+  const commitRename = () => {
+    const name = renameName.trim();
+    if (!name || name.toLocaleLowerCase("ru") === "без названия") {
+      renameInputRef.current?.focus();
+      return;
+    }
+    onRename?.(name);
+    onRenameEnd?.();
+  };
+
   return (
     <div className="flex min-w-0 items-center gap-0">
       <span
@@ -2783,6 +2792,20 @@ function UnifiedSectionTableHeader({
           </button>
         </Tooltip>
       </span>
+      {renaming ? (
+        <CatalogInlineNameEditor
+          ref={renameInputRef}
+          value={renameName}
+          ariaLabel="Название раздела"
+          onChange={(event) => setRenameName(event.target.value)}
+          onCommit={commitRename}
+          onCancel={() => onRenameEnd?.()}
+          cancelLabel="Отменить переименование"
+          commitLabel="Подтвердить переименование"
+          className="h-7 w-[min(320px,calc(100vw-360px))] min-w-[180px] px-1"
+          inputClassName="text-[14px] font-normal leading-5"
+        />
+      ) : (
       <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
           <button
@@ -2802,7 +2825,7 @@ function UnifiedSectionTableHeader({
             <CaretDown size={12} className="shrink-0 text-[#57534d]" />
           </button>
         </DropdownMenu.Trigger>
-        <DropdownContent align="start" preventFocusOutsideDismiss>
+        <DropdownContent align="start" preventFocusOutsideDismiss variant="section-action">
           <SectionActionMenuContent
             section={section}
             allowPositionCreation={allowPositionCreation}
@@ -2811,6 +2834,7 @@ function UnifiedSectionTableHeader({
           />
         </DropdownContent>
       </DropdownMenu.Root>
+      )}
     </div>
   );
 }
@@ -3108,7 +3132,7 @@ function SectionPositionNav({
                 <DotsThreeVertical size={17} weight="bold" />
               </button>
             </DropdownMenu.Trigger>
-            <DropdownContent align="end" preventFocusOutsideDismiss>
+            <DropdownContent align="end" preventFocusOutsideDismiss variant="section-action">
               {activeSection ? (
                 <SectionActionMenuContent
                   section={activeSection}
@@ -4063,7 +4087,7 @@ function PopulatedWorkspace({
   const [sectionCreationDraftParentId, setSectionCreationDraftParentId] = useState<string | null | undefined>(undefined);
   const [sectionCreationSource, setSectionCreationSource] = useState<SectionCreationSource>("tree");
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
-  const [sectionRenameRequest, setSectionRenameRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
+  const [sectionRenameInHeader, setSectionRenameInHeader] = useState(false);
   const [sectionIconRequest, setSectionIconRequest] = useState<{ sectionId: string; anchor?: MovePopoverAnchor } | null>(null);
   const [, setRevealSectionId] = useState<string | null>(initialSelectedSectionId);
   const createSectionButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -4373,6 +4397,8 @@ function PopulatedWorkspace({
   };
 
   const handleTreeSelectSection = (id: string) => {
+    setRenamingSectionId(null);
+    setSectionRenameInHeader(false);
     openSectionEditor(id);
   };
 
@@ -5416,7 +5442,10 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Переименовать") {
-      if (section) setSectionRenameRequest({ sectionId: section.id, anchor });
+      if (section) {
+        setSectionRenameInHeader(true);
+        setRenamingSectionId(section.id);
+      }
       return;
     }
     if (action === "Сменить иконку") {
@@ -5508,6 +5537,7 @@ function PopulatedWorkspace({
       return;
     }
     if (action === "Переименовать") {
+      setSectionRenameInHeader(false);
       setRenamingSectionId(target.id);
       return;
     }
@@ -5599,6 +5629,15 @@ function PopulatedWorkspace({
       return;
     }
     showPlaceholderFeedback(`${action}: placeholder`);
+  };
+
+  const handleSectionHeaderAction = (target: TreeSection, action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => {
+    if (action === "Переименовать") {
+      setSectionRenameInHeader(true);
+      setRenamingSectionId(target.id);
+      return;
+    }
+    handleUnifiedSectionAction(target, action, anchor, schedule);
   };
 
   const handleUnifiedSectionBulkAction = (sectionIds: string[], action: string, anchor?: MovePopoverAnchor) => {
@@ -5990,7 +6029,13 @@ function PopulatedWorkspace({
     <UnifiedSectionTableHeader
       section={section}
       itemCount={allItems.filter((item) => item.sectionId === section.id && item.status !== "archive").length}
-      onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
+      onAction={(action, anchor, schedule) => handleSectionHeaderAction(section, action, anchor, schedule)}
+      renaming={sectionRenameInHeader && renamingSectionId === section.id}
+      onRename={(name) => updateSectionDraft(section.id, { name })}
+      onRenameEnd={() => {
+        setRenamingSectionId(null);
+        setSectionRenameInHeader(false);
+      }}
       allowPositionCreation={allowPositionCreation && directChildSections.length === 0}
       allowSubsectionCreation={!subsectionDisabledReason && sectionTableBaseItems.length === 0}
       treeHidden={treeHidden}
@@ -6091,7 +6136,12 @@ function PopulatedWorkspace({
       onScrollTopChange={setSectionEditorScrollTop}
       onArchive={() => archiveSection(section)}
       onRestore={() => restoreSection(section)}
-      onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
+      onAction={(action, anchor, schedule) => handleSectionHeaderAction(section, action, anchor, schedule)}
+      renaming={sectionRenameInHeader && renamingSectionId === section.id}
+      onRenameEnd={() => {
+        setRenamingSectionId(null);
+        setSectionRenameInHeader(false);
+      }}
       onItemAction={handlePositionContextAction}
       showOpenInPositions={false}
       forcePositionsLabel
@@ -6131,16 +6181,23 @@ function PopulatedWorkspace({
               onCreateSection={createSectionFromDialog}
               onCancelCreateSection={closeSectionCreation}
               draftParentId={sectionCreationSource === "tree" ? sectionCreationDraftParentId : undefined}
-              renamingSectionId={renamingSectionId}
-              onStartRenameSection={setRenamingSectionId}
+              renamingSectionId={sectionRenameInHeader ? null : renamingSectionId}
+              onStartRenameSection={(sectionId) => {
+                setSectionRenameInHeader(false);
+                setRenamingSectionId(sectionId);
+              }}
               onRenameSection={(sectionId, name) => {
                 const normalizedName = name.trim();
                 if (!normalizedName || normalizedName.toLocaleLowerCase("ru") === "без названия") return "Введите название";
                 updateSectionDraft(sectionId, { name: normalizedName });
                 setRenamingSectionId(null);
+                setSectionRenameInHeader(false);
                 return true;
               }}
-              onCancelRenameSection={() => setRenamingSectionId(null)}
+              onCancelRenameSection={() => {
+                setRenamingSectionId(null);
+                setSectionRenameInHeader(false);
+              }}
               createSectionButtonRef={createSectionButtonRef}
               onSectionAction={handleUnifiedSectionAction}
               renderSectionActions={(section, options, onAction) => (
@@ -6263,7 +6320,12 @@ function PopulatedWorkspace({
               onScrollTopChange={setSectionEditorScrollTop}
               onArchive={() => archiveSection(section)}
               onRestore={() => restoreSection(section)}
-              onAction={(action, anchor, schedule) => handleUnifiedSectionAction(section, action, anchor, schedule)}
+              onAction={(action, anchor, schedule) => handleSectionHeaderAction(section, action, anchor, schedule)}
+              renaming={sectionRenameInHeader && renamingSectionId === section.id}
+              onRenameEnd={() => {
+                setRenamingSectionId(null);
+                setSectionRenameInHeader(false);
+              }}
               onItemAction={handlePositionContextAction}
               subsectionDraftActive={sectionCreationSource === "table" && sectionCreationDraftParentId === section.id}
               onStartSubsectionCreation={() => openSectionCreation(section.id, "table")}
@@ -6383,21 +6445,6 @@ function PopulatedWorkspace({
             onConfirm={() => confirmDeleteSections(pendingSectionBulkDelete)}
           />
         )}
-        {sectionRenameRequest && allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId) && (
-          <SectionRenamePopover
-            section={allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId)!}
-            anchor={sectionRenameRequest.anchor}
-            onChange={(translations) => {
-              const target = allSections.find((candidate) => candidate.id === sectionRenameRequest.sectionId);
-              if (!target) return;
-              updateSectionDraft(target.id, {
-                name: translations.ru?.trim() || target.name,
-                nameTranslations: translations,
-              });
-            }}
-            onClose={() => setSectionRenameRequest(null)}
-          />
-        )}
         {sectionIconRequest && allSections.find((candidate) => candidate.id === sectionIconRequest.sectionId) && (
           <SectionIconPopover
             section={allSections.find((candidate) => candidate.id === sectionIconRequest.sectionId)!}
@@ -6504,14 +6551,20 @@ function SectionActionMenuContent({
 }) {
   if (section.status === "archive") {
     return (
-      <>
-        {allowPositionCreation && <DropdownActionItem icon={FilePlus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
-        {allowSubsectionCreation && <DropdownActionItem icon={FolderPlus} onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>}
-        {(allowPositionCreation || allowSubsectionCreation) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-        <DropdownActionItem icon={ArrowCounterClockwise} onSelect={() => onAction("Восстановить раздел")}>Восстановить раздел</DropdownActionItem>
-        <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
-        <DropdownActionItem icon={Trash} tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
-      </>
+      <div data-catalog-section-actions>
+        {(allowPositionCreation || allowSubsectionCreation) && (
+          <div className="p-1">
+            {allowPositionCreation && <DropdownActionItem icon={FilePlus} iconSize={16} variant="section-action" onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
+            {allowSubsectionCreation && <DropdownActionItem icon={FolderPlus} iconSize={16} variant="section-action" onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>}
+          </div>
+        )}
+        <div className="border-t border-[#e7e5e4] p-1 first:border-t-0">
+          <DropdownActionItem icon={ArrowCounterClockwise} iconSize={16} variant="section-action" onSelect={() => onAction("Восстановить раздел")}>Восстановить раздел</DropdownActionItem>
+        </div>
+        <div className="border-t border-[#e7e5e4] p-1">
+          <DropdownActionItem icon={Trash} iconSize={16} variant="section-action" tone="danger" onSelect={() => onAction("Удалить навсегда")}>Удалить навсегда</DropdownActionItem>
+        </div>
+      </div>
     );
   }
   const sectionAvailability: CatalogSectionAvailabilityMenuProps = {
@@ -6525,11 +6578,7 @@ function SectionActionMenuContent({
     onScheduleDelete: () => onAction("availability:schedule-delete"),
   };
   return (
-    <>
-      {allowPositionCreation && <DropdownActionItem icon={FilePlus} onSelect={() => onAction("Добавить позицию")}>Добавить позицию</DropdownActionItem>}
-      {allowSubsectionCreation && <DropdownActionItem icon={FolderPlus} onSelect={() => onAction("Добавить подраздел")}>Добавить подраздел</DropdownActionItem>}
-      {(allowPositionCreation || allowSubsectionCreation) && <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />}
-      <CatalogContextMenuContent
+    <CatalogContextMenuContent
         entity="section"
         imageUrl={section.imageUrl}
         scheduleId={`section-${section.id}`}
@@ -6551,8 +6600,17 @@ function SectionActionMenuContent({
         onArchive={() => onAction("Архивировать")}
         onDelete={() => onAction("Удалить раздел")}
         sectionAvailability={sectionAvailability}
+        sectionPrimaryAction={allowPositionCreation ? (
+          <DropdownActionItem
+            icon={FilePlus}
+            iconSize={16}
+            variant="section-action"
+            onSelect={() => onAction("Добавить позицию")}
+          >
+            Добавить позицию
+          </DropdownActionItem>
+        ) : undefined}
       />
-    </>
   );
 }
 

@@ -191,7 +191,7 @@ export function SubsectionRow({
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
-                <DropdownMenu.Content onFocusOutside={(event) => event.preventDefault()} align="end" sideOffset={6} className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+                <DropdownMenu.Content onFocusOutside={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()} align="end" sideOffset={6} className="z-[100002] w-[200px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none">
                   {renderActions(section, (action, anchor, schedule) => onAction(section, action, anchor, schedule))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>

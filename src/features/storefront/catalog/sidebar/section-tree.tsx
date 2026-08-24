@@ -18,6 +18,7 @@ import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import { SectionDraftConfirmButton } from "../ui/section-draft-confirm";
+import { CatalogInlineNameEditor } from "../ui/catalog-inline-name-editor";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import {
   countItemsBySection,
@@ -149,9 +150,10 @@ function SectionTreeDropdown({
       <DropdownMenu.Content
         align="end"
         sideOffset={6}
+        onClick={(event) => event.stopPropagation()}
         onFocusOutside={(event) => event.preventDefault()}
         onCloseAutoFocus={preventTriggerFocus ? (event) => event.preventDefault() : undefined}
-        className="z-[100002] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none"
+        className="z-[100002] w-[200px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none"
       >
         {children}
       </DropdownMenu.Content>
@@ -194,7 +196,6 @@ export function UnifiedCatalogTreePanel({
   const [draftClosing, setDraftClosing] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [renameClosing, setRenameClosing] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const root = sections[0]?.id;
     return root ? { [root]: true } : {};
@@ -272,7 +273,6 @@ export function UnifiedCatalogTreePanel({
     const section = flatSections.find((candidate) => candidate.id === renamingSectionId);
     if (!section) return;
     setRenameName(section.name);
-    setRenameClosing(false);
     const frame = window.requestAnimationFrame(() => {
       renameInputRef.current?.focus();
       renameInputRef.current?.select();
@@ -300,7 +300,6 @@ export function UnifiedCatalogTreePanel({
   };
 
   const cancelRename = () => {
-    setRenameClosing(true);
     onCancelRenameSection();
   };
 
@@ -316,7 +315,6 @@ export function UnifiedCatalogTreePanel({
       if (typeof result === "string") renameInputRef.current?.focus();
       return;
     }
-    setRenameClosing(true);
   };
 
   const renderDraftRow = (depth: number) => (
@@ -432,28 +430,19 @@ export function UnifiedCatalogTreePanel({
           </button>
           <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
           {renamingSectionId === section.id ? (
-            <input
+            <CatalogInlineNameEditor
               ref={renameInputRef}
-              data-no-dnd
               value={renameName}
-              aria-label="Название раздела"
+              ariaLabel="Название раздела"
+              onChange={(event) => setRenameName(event.target.value)}
+              onCommit={submitRename}
+              onCancel={cancelRename}
+              cancelLabel="Отменить переименование"
+              commitLabel="Подтвердить переименование"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
-              onChange={(event) => setRenameName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  submitRename();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancelRename();
-                }
-              }}
-              onBlur={() => {
-                if (!renameClosing) submitRename();
-              }}
-              className="ml-2 min-w-0 flex-1 bg-transparent text-[13px] font-medium leading-[18px] text-[#292524] outline-none"
+              className="ml-2 h-7 flex-1 px-1"
+              inputClassName="text-[13px] font-medium leading-[18px]"
             />
           ) : (
             <span className={cn("ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]")}>{section.name}</span>

@@ -64,6 +64,7 @@ import { readJsonRecord } from "../storage";
 import { usePositionSidePeek, usePositionSidePeekOverlay, usePositionSidePeekOverlayLayer } from "./side-peek-context";
 import { usePositionEditorFixture } from "./position-editor-fixture-context";
 import { CatalogLabelControls } from "../labels/catalog-label-controls";
+import { CatalogInlineNameEditor } from "../ui/catalog-inline-name-editor";
 
 export { createDefaultWeeklySchedule, createEmptyWeeklySchedule, isWeeklyScheduleValid } from "../ui/catalog-schedule-editor";
 
@@ -3827,93 +3828,38 @@ export function PositionEditor({
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2">
                 {creationPane && !createCommitted ? (
-                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
-                    <input
-                      ref={titleInputRef}
-                      value={titleDraft}
-                      aria-label="Название позиции"
-                      aria-invalid={Boolean(createNameError)}
-                      autoFocus
-                      onChange={(event) => {
-                        setTitleDraft(event.target.value);
-                        if (event.target.value.trim()) setCreateNameError("");
-                        onDraftChange?.({ title: event.target.value });
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitCreateTitle();
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          (onCancelCreate ?? onBackCreate)?.();
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold leading-7 text-[#292524] outline-none"
-                    />
-                    <Tooltip label="Отменить создание" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Отменить создание"
-                        onClick={onCancelCreate ?? onBackCreate}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
-                      >
-                        <X size={14} weight="regular" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label="Создать позицию" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Создать позицию"
-                        onClick={commitCreateTitle}
-                        disabled={createDisabled || createSubmitting || !titleDraft.trim()}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
-                      >
-                        <Check size={15} weight="bold" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                  </div>
+                  <CatalogInlineNameEditor
+                    ref={titleInputRef}
+                    value={titleDraft}
+                    ariaLabel="Название позиции"
+                    autoFocus
+                    invalid={Boolean(createNameError)}
+                    onChange={(event) => {
+                      setTitleDraft(event.target.value);
+                      if (event.target.value.trim()) setCreateNameError("");
+                      onDraftChange?.({ title: event.target.value });
+                    }}
+                    onCommit={commitCreateTitle}
+                    onCancel={() => (onCancelCreate ?? onBackCreate)?.()}
+                    cancelLabel="Отменить создание"
+                    commitLabel="Создать позицию"
+                    commitDisabled={createDisabled || createSubmitting}
+                    className="flex-1"
+                    inputClassName="font-semibold"
+                  />
                 ) : titleEditing ? (
-                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
-                    <input
-                      ref={titleInputRef}
-                      value={titleDraft}
-                      aria-label="Название позиции"
-                      onChange={(event) => setTitleDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitTitle();
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          cancelTitleEditing();
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold leading-7 text-[#292524] outline-none"
-                    />
-                    <Tooltip label="Отменить переименование" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Отменить переименование"
-                        onClick={cancelTitleEditing}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
-                      >
-                        <X size={14} weight="regular" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label="Подтвердить переименование" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Подтвердить переименование"
-                        onClick={commitTitle}
-                        disabled={!titleDraft.trim()}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
-                      >
-                        <Check size={15} weight="bold" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                  </div>
+                  <CatalogInlineNameEditor
+                    ref={titleInputRef}
+                    value={titleDraft}
+                    ariaLabel="Название позиции"
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                    onCommit={commitTitle}
+                    onCancel={cancelTitleEditing}
+                    cancelLabel="Отменить переименование"
+                    commitLabel="Подтвердить переименование"
+                    className="flex-1"
+                    inputClassName="font-semibold"
+                  />
                 ) : renderPositionActionsMenu(
                   <button
                     type="button"
@@ -3995,46 +3941,18 @@ export function PositionEditor({
             >
               <div data-position-title-region className="flex min-w-0 flex-1 items-center gap-2 text-[14px] font-medium leading-7 text-[#292524]">
                 {titleEditing ? (
-                  <div className="flex min-w-0 flex-1 items-center rounded-lg border border-indigo-600 bg-white px-2 ring-2 ring-indigo-600/15">
-                    <input
-                      ref={titleInputRef}
-                      value={titleDraft}
-                      aria-label="Название позиции"
-                      onChange={(event) => setTitleDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitTitle();
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          cancelTitleEditing();
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-medium leading-7 text-[#292524] outline-none"
-                    />
-                    <Tooltip label="Отменить переименование" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Отменить переименование"
-                        onClick={cancelTitleEditing}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25"
-                      >
-                        <X size={14} weight="regular" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label="Подтвердить переименование" side="bottom" delayDuration={250}>
-                      <button
-                        type="button"
-                        aria-label="Подтвердить переименование"
-                        onClick={commitTitle}
-                        disabled={!titleDraft.trim()}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/25 disabled:cursor-not-allowed disabled:text-[#c7c2bd]"
-                      >
-                        <Check size={15} weight="bold" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                  </div>
+                  <CatalogInlineNameEditor
+                    ref={titleInputRef}
+                    value={titleDraft}
+                    ariaLabel="Название позиции"
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                    onCommit={commitTitle}
+                    onCancel={cancelTitleEditing}
+                    cancelLabel="Отменить переименование"
+                    commitLabel="Подтвердить переименование"
+                    className="flex-1"
+                    inputClassName="font-medium"
+                  />
                 ) : (
                   <div className="min-w-0 flex-1 px-1">
                     <h2 className="truncate text-[14px] font-semibold leading-[18px] text-[#292524]" title={item.title || "Новая позиция"}>

@@ -14,7 +14,6 @@ import {
   DotsThree,
   LockLaminated,
   NotePencil,
-  PlusCircle,
   Prohibit,
   Trash,
 } from "@phosphor-icons/react";
@@ -29,6 +28,9 @@ import {
   CATALOG_DROPDOWN_CONTENT_CLASS,
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
+  CATALOG_SECTION_ACTION_CONTENT_CLASS,
+  CATALOG_SECTION_ACTION_GROUP_CLASS,
+  CATALOG_SECTION_ACTION_ITEM_CLASS,
   DropdownActionItem,
 } from "./catalog-dropdown";
 
@@ -60,20 +62,22 @@ type MenuItemProps = {
   icon?: ReactNode;
   tone?: "default" | "danger";
   disabled?: boolean;
+  trailing?: ReactNode;
 };
 
-function MenuItem({ children, onSelect, icon, tone = "default", disabled = false }: MenuItemProps) {
+function SectionMenuItem({ children, onSelect, icon, tone = "default", disabled = false, trailing }: MenuItemProps) {
   return (
     <DropdownMenu.Item
       disabled={disabled}
       onSelect={onSelect}
       className={cn(
-        CATALOG_DROPDOWN_ITEM_CLASS,
+        CATALOG_SECTION_ACTION_ITEM_CLASS,
         tone === "danger" ? "text-[#c10007]" : "text-[#44403b]",
       )}
     >
       {icon && <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>}
       <span className="min-w-0 flex-1 truncate">{children}</span>
+      {trailing}
     </DropdownMenu.Item>
   );
 }
@@ -87,6 +91,7 @@ type AvailabilityScheduleSubmenuProps = {
   onScheduleDelete: () => void;
   onActionComplete?: () => void;
   label?: string;
+  triggerClassName?: string;
 };
 
 function AvailabilityScheduleSubmenu({
@@ -98,6 +103,7 @@ function AvailabilityScheduleSubmenu({
   onScheduleDelete,
   onActionComplete,
   label,
+  triggerClassName,
 }: AvailabilityScheduleSubmenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -106,7 +112,7 @@ function AvailabilityScheduleSubmenu({
       open={open}
       onOpenChange={setOpen}
     >
-      <DropdownMenu.SubTrigger className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
+      <DropdownMenu.SubTrigger className={cn(triggerClassName ?? CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}>
         <CalendarBlank size={15} className="shrink-0 text-[#57534d]" />
         <span className="min-w-0 flex-1 truncate">{label ?? (hasSchedule ? "Расписание" : "Добавить расписание")}</span>
         <CaretRight size={14} weight="bold" className="shrink-0 text-[#a8a29e]" />
@@ -540,27 +546,61 @@ export function CatalogSectionAvailabilityMenu({
   onScheduleDelete,
   onActionComplete,
 }: CatalogSectionAvailabilityMenuProps) {
+  const [open, setOpen] = useState(false);
+  const availabilityMeta = manualStopped
+    ? { label: "На стопе", icon: <LockLaminated size={16} aria-hidden="true" /> }
+    : hasSchedule
+      ? { label: "По расписанию", icon: <CalendarDots size={16} aria-hidden="true" /> }
+      : { label: "Доступно", icon: <CheckCircle size={16} aria-hidden="true" /> };
+
   return (
-    <>
-      <DropdownMenu.Item
-        onSelect={() => onManualStopChange(!manualStopped)}
-        className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
+    <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
+      <DropdownMenu.SubTrigger
+        onPointerMove={() => setOpen(true)}
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
+        className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
       >
-        {manualStopped
-          ? <ArrowCounterClockwise size={15} className="shrink-0 text-[#57534d]" />
-          : <Prohibit size={15} className="shrink-0 text-[#57534d]" />}
-        <span>{manualStopped ? "Снять со стопа" : "Поставить на стоп"}</span>
-      </DropdownMenu.Item>
-      <AvailabilityScheduleSubmenu
-        scheduleId={scheduleId}
-        hasSchedule={hasSchedule}
-        weeklySchedule={weeklySchedule}
-        outsideScheduleMode={outsideScheduleMode}
-        onScheduleChange={onScheduleChange}
-        onScheduleDelete={onScheduleDelete}
-        onActionComplete={onActionComplete}
-      />
-    </>
+        <span className="flex size-4 shrink-0 items-center justify-center text-[#57534d]">{availabilityMeta.icon}</span>
+        <span className="min-w-0 flex-1 truncate">{availabilityMeta.label}</span>
+        <CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent
+          sideOffset={6}
+          alignOffset={-5}
+          collisionPadding={12}
+          className={cn("z-[100004]", CATALOG_SECTION_ACTION_CONTENT_CLASS)}
+        >
+          <div className="p-1">
+            <DropdownMenu.Item
+              onSelect={() => {
+                onManualStopChange(!manualStopped);
+                onActionComplete?.();
+              }}
+              className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
+            >
+              {manualStopped
+                ? <ArrowCounterClockwise size={16} className="shrink-0 text-[#57534d]" />
+                : <Prohibit size={16} className="shrink-0 text-[#57534d]" />}
+              <span>{manualStopped ? "Снять со стопа" : "Поставить на стоп"}</span>
+            </DropdownMenu.Item>
+            <AvailabilityScheduleSubmenu
+              scheduleId={scheduleId}
+              hasSchedule={hasSchedule}
+              weeklySchedule={weeklySchedule}
+              outsideScheduleMode={outsideScheduleMode}
+              onScheduleChange={onScheduleChange}
+              onScheduleDelete={onScheduleDelete}
+              onActionComplete={onActionComplete}
+              triggerClassName={CATALOG_SECTION_ACTION_ITEM_CLASS}
+            />
+          </div>
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
   );
 }
 
@@ -647,6 +687,7 @@ type EntityMenuProps = {
   onDelete: () => void;
   positionAvailability?: CatalogPositionAvailabilityMenuProps;
   sectionAvailability?: CatalogSectionAvailabilityMenuProps;
+  sectionPrimaryAction?: ReactNode;
 };
 
 export function CatalogContextMenuContent({
@@ -672,8 +713,79 @@ export function CatalogContextMenuContent({
   onDelete,
   positionAvailability,
   sectionAvailability,
+  sectionPrimaryAction,
 }: EntityMenuProps) {
   const itemAvailability = entity === "item" && showAvailability ? positionAvailability : undefined;
+
+  if (entity === "section") {
+    return (
+      <div data-catalog-section-actions>
+        <div className={CATALOG_SECTION_ACTION_GROUP_CLASS}>
+          {sectionPrimaryAction}
+          {onChangeIcon && (
+            <SectionMenuItem
+              onSelect={onChangeIcon}
+              trailing={<CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />}
+              icon={imageUrl ? (
+                <span className="flex size-4 overflow-hidden rounded-[4px]">
+                  <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+                </span>
+              ) : (
+                <span className="size-4 rounded-[4px] border border-dashed border-[#292524]" />
+              )}
+            >
+              {imageUrl ? "Изменить иконку" : "Выбрать иконку"}
+            </SectionMenuItem>
+          )}
+        </div>
+        {showAvailability && (
+          <div className={CATALOG_SECTION_ACTION_GROUP_CLASS}>
+            {sectionAvailability ? (
+              <CatalogSectionAvailabilityMenu {...sectionAvailability} />
+            ) : (
+              <CatalogAvailabilityMenu
+                scheduleId={scheduleId}
+                availability={availability}
+                stopDisplayMode={stopDisplayMode}
+                outsideScheduleMode={outsideScheduleMode}
+                weeklySchedule={weeklySchedule}
+                onAvailabilityChange={onAvailabilityChange}
+                onStopDisplayModeChange={onStopDisplayModeChange}
+                onOutsideScheduleModeChange={onOutsideScheduleModeChange}
+                onWeeklyScheduleChange={onWeeklyScheduleChange}
+                onResetSchedule={onResetSchedule}
+              />
+            )}
+          </div>
+        )}
+        <div className={CATALOG_SECTION_ACTION_GROUP_CLASS}>
+          <SectionMenuItem
+            onSelect={onRename}
+            icon={<img src="/assets/catalog/note-pencil.svg" alt="" className="size-4" />}
+          >
+            Переименовать
+          </SectionMenuItem>
+          <DropdownMenu.Item
+            aria-haspopup="menu"
+            onPointerEnter={onMove}
+            onSelect={(event) => {
+              event.preventDefault();
+              onMove(event);
+            }}
+            className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
+          >
+            <ArrowElbowUpRight size={16} weight="regular" className="shrink-0" />
+            <span className="min-w-0 flex-1 truncate">Переместить</span>
+            <CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
+          </DropdownMenu.Item>
+        </div>
+        <div className={CATALOG_SECTION_ACTION_GROUP_CLASS}>
+          <SectionMenuItem disabled={archiveDisabled} onSelect={onArchive} icon={<Archive size={16} />}>Архивировать</SectionMenuItem>
+          <SectionMenuItem tone="danger" onSelect={onDelete} icon={<Trash size={16} />}>Удалить</SectionMenuItem>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -682,18 +794,6 @@ export function CatalogContextMenuContent({
           <CatalogPositionAvailabilityMenu {...itemAvailability} />
           <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
         </>
-      )}
-      {entity === "section" && onChangeIcon && (
-        <MenuItem
-          onSelect={onChangeIcon}
-          icon={(
-            <span className="flex size-4 items-center justify-center overflow-hidden rounded-[3px] bg-[#f1f5f9] text-[#94a3b8]">
-              {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" /> : <PlusCircle size={12} />}
-            </span>
-          )}
-        >
-          {imageUrl ? "Поменять иконку" : "Добавить иконку"}
-        </MenuItem>
       )}
       <DropdownActionItem icon={NotePencil} onSelect={onRename}>Переименовать</DropdownActionItem>
       <DropdownMenu.Item
@@ -709,14 +809,12 @@ export function CatalogContextMenuContent({
         <span className="min-w-0 flex-1 truncate">Переместить</span>
         <CaretRight size={14} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
       </DropdownMenu.Item>
-      {entity === "item" && onDuplicate && <DropdownActionItem icon={Copy} onSelect={onDuplicate}>Создать копию</DropdownActionItem>}
+      {onDuplicate && <DropdownActionItem icon={Copy} onSelect={onDuplicate}>Создать копию</DropdownActionItem>}
       <DropdownMenu.Separator className={CATALOG_DROPDOWN_SEPARATOR_CLASS} />
       {showAvailability && !itemAvailability && (
         <>
-          {entity === "item" && positionAvailability ? (
+          {positionAvailability ? (
             <CatalogPositionAvailabilityMenu {...positionAvailability} />
-          ) : entity === "section" && sectionAvailability ? (
-            <CatalogSectionAvailabilityMenu {...sectionAvailability} />
           ) : (
             <CatalogAvailabilityMenu
               scheduleId={scheduleId}

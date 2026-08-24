@@ -735,7 +735,7 @@ describe("catalog observable behavior baseline", () => {
     expect(reorderableRow).toHaveAttribute("aria-roledescription", "sortable");
   });
 
-  it("uses the section-title chevron and keeps schedule settings singular", async () => {
+  it("matches the compact section actions popup and keeps availability nested", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
@@ -747,24 +747,65 @@ describe("catalog observable behavior baseline", () => {
     expect(sectionMenuTrigger.querySelector("svg")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Действия с разделом" })).not.toBeInTheDocument();
     await user.click(sectionMenuTrigger);
-    expect(screen.getByRole("menuitem", { name: "Добавить подраздел" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Добавить подраздел" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Добавить позицию" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menu")).toHaveClass("w-[200px]", "rounded-[12px]", "p-0");
     await user.keyboard("{Escape}");
 
     await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
     await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" }));
     expect(screen.queryByRole("menuitem", { name: "Настройки раздела" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Добавить позицию" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Поменять иконку" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Изменить иконку" })).toBeInTheDocument();
+    expect(document.querySelector('[data-catalog-section-actions] img[src="/assets/catalog/note-pencil.svg"]')).not.toBeNull();
+    await user.hover(screen.getByRole("menuitem", { name: "Доступно" }));
+    expect(await screen.findByRole("menuitem", { name: "Поставить на стоп" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Добавить расписание" })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Поставить на стоп" }));
     await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" }));
-    expect(screen.getByRole("menuitem", { name: "Снять со стопа" })).toBeInTheDocument();
+    await user.hover(screen.getByRole("menuitem", { name: "На стопе" }));
+    expect(await screen.findByRole("menuitem", { name: "Снять со стопа" })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Добавить расписание" }));
     expect(document.querySelector("[data-catalog-schedule-popover]")).not.toBeNull();
     expect(screen.getByText("Вне расписания", { exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Отмена" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Сохранить" })).not.toBeInTheDocument();
+  });
+
+  it("renames a section inline with save and cancel controls", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = await openSectionTreeSearch(user);
+    await user.click(within(sectionTree as HTMLElement).getByText("Завтраки", { exact: true }));
+    await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки»" }));
+    await user.click(screen.getByRole("menuitem", { name: "Переименовать" }));
+
+    const input = screen.getByRole("textbox", { name: "Название раздела" }) as HTMLInputElement;
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe("Завтраки".length);
+    await user.clear(input);
+    await user.type(input, "Завтраки обновлённые");
+    await user.click(screen.getByRole("button", { name: "Подтвердить переименование" }));
+    expect(within(sectionTree as HTMLElement).getByText("Завтраки обновлённые", { exact: true })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Действия с разделом «Завтраки обновлённые»" }));
+    await user.click(screen.getByRole("menuitem", { name: "Переименовать" }));
+    const reopenedInput = screen.getByRole("textbox", { name: "Название раздела" });
+    await user.clear(reopenedInput);
+    await user.type(reopenedInput, "Не сохранять");
+    await user.click(screen.getByRole("button", { name: "Отменить переименование" }));
+    expect(within(sectionTree as HTMLElement).getByText("Завтраки обновлённые", { exact: true })).toBeInTheDocument();
+    expect(within(sectionTree as HTMLElement).queryByText("Не сохранять", { exact: true })).not.toBeInTheDocument();
+
+    await user.click(within(sectionTree as HTMLElement).getByRole("button", { name: "Действия с разделом Завтраки обновлённые" }));
+    await user.click(screen.getByRole("menuitem", { name: "Переименовать" }));
+    const treeInput = screen.getByRole("textbox", { name: "Название раздела" });
+    await waitFor(() => expect(treeInput).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Название раздела" })).not.toBeInTheDocument();
   });
 
   it("opens an item from the table and returns to the same table context", async () => {

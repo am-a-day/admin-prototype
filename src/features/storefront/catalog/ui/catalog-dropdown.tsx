@@ -9,6 +9,11 @@ export const CATALOG_DROPDOWN_CONTENT_CLASS =
 export const CATALOG_DROPDOWN_ITEM_CLASS =
   "flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4]";
 export const CATALOG_DROPDOWN_SEPARATOR_CLASS = "my-1 h-px bg-[#e2e8f0]";
+export const CATALOG_SECTION_ACTION_CONTENT_CLASS =
+  "w-[200px] overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white p-0 shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1),0_4px_6px_-1px_rgba(0,0,0,0.1)] outline-none";
+export const CATALOG_SECTION_ACTION_ITEM_CLASS =
+  "flex h-8 cursor-pointer select-none items-center gap-2 rounded-[4px] px-2 text-[13px] font-normal leading-5 outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#f5f5f4] data-[state=open]:bg-[#f5f5f4]";
+export const CATALOG_SECTION_ACTION_GROUP_CLASS = "border-t border-[#e7e5e4] p-1 first:border-t-0";
 
 export type CatalogDropdownOutsideEvent = Parameters<NonNullable<ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onInteractOutside"]>>[0];
 export type CatalogDropdownCloseAutoFocusEvent = Parameters<NonNullable<ComponentPropsWithoutRef<typeof DropdownMenu.Content>["onCloseAutoFocus"]>>[0];
@@ -21,6 +26,7 @@ export function DropdownContent({
   preventOutsideDismiss = false,
   preventFocusOutsideDismiss = false,
   onCloseAutoFocus,
+  variant = "default",
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
@@ -28,6 +34,7 @@ export function DropdownContent({
   preventOutsideDismiss?: CatalogDropdownOutsideDismiss;
   preventFocusOutsideDismiss?: boolean;
   onCloseAutoFocus?: (event: CatalogDropdownCloseAutoFocusEvent) => void;
+  variant?: "default" | "section-action";
 }) {
   const { marker, shouldPreventOverlayDismissal } = usePositionSidePeekOverlayLayer();
   const shouldPreventOutsideDismiss = (event: CatalogDropdownOutsideEvent) => (
@@ -39,7 +46,13 @@ export function DropdownContent({
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
-        className={cn("z-[100002] min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS, className)}
+        className={cn(
+          "z-[100002]",
+          variant === "section-action"
+            ? CATALOG_SECTION_ACTION_CONTENT_CLASS
+            : cn("min-w-[208px]", CATALOG_DROPDOWN_CONTENT_CLASS),
+          className,
+        )}
         onPointerDownOutside={(event) => {
           if (shouldPreventOutsideDismiss(event)) {
             event.preventDefault();
@@ -53,7 +66,10 @@ export function DropdownContent({
         onFocusOutside={(event) => {
           if (preventFocusOutsideDismiss) event.preventDefault();
         }}
-        onCloseAutoFocus={onCloseAutoFocus}
+        onCloseAutoFocus={(event) => {
+          if (variant === "section-action") event.preventDefault();
+          onCloseAutoFocus?.(event);
+        }}
       >
         {marker}
         {children}
@@ -68,23 +84,30 @@ export function DropdownActionItem({
   tone = "default",
   disabled = false,
   icon: Icon,
+  className,
+  iconSize = 15,
+  variant = "default",
 }: {
   children: ReactNode;
   onSelect: (event: Event) => void;
   tone?: "default" | "danger";
   disabled?: boolean;
   icon?: PhosphorIcon;
+  className?: string;
+  iconSize?: number;
+  variant?: "default" | "section-action";
 }) {
   return (
     <DropdownMenu.Item
       disabled={disabled}
       onSelect={onSelect}
       className={cn(
-        CATALOG_DROPDOWN_ITEM_CLASS,
+        variant === "section-action" ? CATALOG_SECTION_ACTION_ITEM_CLASS : CATALOG_DROPDOWN_ITEM_CLASS,
         tone === "danger" ? "text-[#c10007]" : "text-[#44403b]",
+        className,
       )}
     >
-      {Icon && <Icon size={15} weight="regular" className="shrink-0" />}
+      {Icon && <Icon size={iconSize} weight="regular" className="shrink-0" />}
       {children}
     </DropdownMenu.Item>
   );
