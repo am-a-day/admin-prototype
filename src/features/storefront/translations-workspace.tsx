@@ -6,6 +6,7 @@ import {
   Check,
   DotsThreeVertical,
   Eye,
+  FunnelSimple,
   MagnifyingGlass,
   Plus,
   Robot,
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,11 +63,11 @@ type TranslationWorkspaceProps = {
   onOpenOriginal: (material: TranslationMaterial) => void;
 };
 
-const STATUS_META: Record<TranslationStatus, { label: string; className: string }> = {
-  missing: { label: "Не переведено", className: "bg-stone-100 text-stone-600" },
-  machine: { label: "Автоперевод", className: "bg-indigo-50 text-indigo-700" },
-  translated: { label: "Переведено", className: "bg-emerald-50 text-emerald-700" },
-  outdated: { label: "Требует обновления", className: "bg-amber-50 text-amber-800" },
+const STATUS_META: Record<TranslationStatus, { label: string }> = {
+  missing: { label: "Не переведено" },
+  machine: { label: "Автоперевод" },
+  translated: { label: "Переведено" },
+  outdated: { label: "Требует обновления" },
 };
 
 const CATEGORY_META: Array<{ id: TranslationCategory; label: string; group: "catalog" | "online" }> = [
@@ -94,12 +96,35 @@ function languageLabel(language: TranslationLanguageCode) {
   return language === "kk" ? "Қазақша" : language === "en" ? "English" : "Serbian";
 }
 
-function StatusBadge({ status, translating = false }: { status: TranslationStatus; translating?: boolean }) {
+function StatusIndicator({ status, translating = false }: { status: TranslationStatus; translating?: boolean }) {
+  const label = translating ? "Переводится" : STATUS_META[status].label;
   if (translating) {
-    return <span className="inline-flex h-5 items-center gap-1 rounded-[6px] bg-indigo-50 px-1.5 text-[11px] font-medium text-indigo-700"><SpinnerGap size={11} className="animate-spin" />Переводится</span>;
+    return (
+      <Tooltip label={label} side="top">
+        <span role="img" aria-label={label} className="flex size-5 shrink-0 items-center justify-center text-indigo-600"><SpinnerGap size={13} className="animate-spin" /></span>
+      </Tooltip>
+    );
   }
-  const meta = STATUS_META[status];
-  return <span className={cn("inline-flex h-5 items-center rounded-[6px] px-1.5 text-[11px] font-medium", meta.className)}>{meta.label}</span>;
+  if (status === "translated") return null;
+  if (status === "outdated") {
+    return (
+      <Tooltip label={label} side="top">
+        <span role="img" aria-label={label} className="flex size-5 shrink-0 items-center justify-center text-amber-600"><WarningCircle size={13} weight="fill" /></span>
+      </Tooltip>
+    );
+  }
+  if (status === "machine") {
+    return (
+      <Tooltip label={label} side="top">
+        <span role="img" aria-label={label} className="flex size-5 shrink-0 items-center justify-center text-indigo-500"><Sparkle size={12} weight="fill" /></span>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip label={label} side="top">
+      <span role="img" aria-label={label} className="flex size-5 shrink-0 items-center justify-center"><span className="size-1.5 rounded-full bg-stone-300" /></span>
+    </Tooltip>
+  );
 }
 
 function ProgressBar({ value }: { value: number }) {
@@ -260,28 +285,36 @@ function TranslationLeftPanel({ language, bulkMode, selected, onSelectedChange, 
 
   return (
     <aside className="flex min-h-0 w-[292px] shrink-0 flex-col border-r border-[#e7e5e4] bg-white">
-      <div className="space-y-2 border-b border-[#e7e5e4] p-3">
+      <div className="space-y-1.5 border-b border-[#e7e5e4] p-2.5">
         <Select value={activeCategory} onValueChange={(value) => { setActiveCategory(value as TranslationCategory); onSelectedChange(new Set()); onCancelBulk(); }}>
-          <SelectTrigger className="h-8 w-full border-[#e7e5e4] text-[13px] font-medium shadow-none"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full border-[#e7e5e4] text-[13px] font-medium shadow-none"><span className="min-w-0 truncate">{category.label}<span className="font-normal tabular-nums text-stone-400"> · {categoryMaterials.length}</span></span></SelectTrigger>
           <SelectContent>
             <SelectGroup><div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400">Каталог</div>{CATEGORY_META.filter((item) => item.group === "catalog").map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectGroup>
             <SelectGroup><div className="mt-1 border-t border-stone-100 px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Онлайн-меню</div>{CATEGORY_META.filter((item) => item.group === "online").map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectGroup>
           </SelectContent>
         </Select>
-        <div className="relative"><MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" /><Input size="compact" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Поиск: ${category.label.toLocaleLowerCase()}`} className="pl-8" /></div>
-        <div className="flex items-center gap-2"><Select value={filter} onValueChange={(value) => setFilter(value as TranslationFilter)}><SelectTrigger className="h-8 flex-1 shadow-none"><SelectValue /></SelectTrigger><SelectContent>{(Object.keys(FILTER_LABELS) as TranslationFilter[]).map((value) => <SelectItem key={value} value={value}>{FILTER_LABELS[value]}</SelectItem>)}</SelectContent></Select><span className="w-7 text-right text-[11px] tabular-nums text-stone-400">{filtered.length}</span></div>
+        <div className="flex items-center gap-1.5">
+          <div className="relative min-w-0 flex-1"><MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" /><Input size="compact" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск" className="pl-8" /></div>
+          <DropdownMenu>
+            <Tooltip label={`Фильтр: ${FILTER_LABELS[filter]}`} side="top">
+              <DropdownMenuTrigger asChild><button type="button" aria-label={`Фильтр: ${FILTER_LABELS[filter]}`} className={cn("relative flex size-[30px] shrink-0 items-center justify-center rounded-[8px] border border-[#e7e5e4] text-stone-500 transition hover:bg-stone-50 hover:text-stone-800", filter !== "all" && "border-indigo-200 bg-indigo-50/60 text-indigo-700")}><FunnelSimple size={14} />{filter !== "all" && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-indigo-500" />}</button></DropdownMenuTrigger>
+            </Tooltip>
+            <DropdownMenuContent align="end" className="w-52">
+              {(Object.keys(FILTER_LABELS) as TranslationFilter[]).map((value) => <DropdownMenuItem key={value} onSelect={() => setFilter(value)}><span className="flex size-4 items-center justify-center">{filter === value && <Check size={12} weight="bold" />}</span>{FILTER_LABELS[value]}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {bulkMode && <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[#e7e5e4] bg-indigo-50/50 px-3"><span className="text-[11px] font-medium text-stone-700">Выбрано {selected.size}</span><Button size="sm" disabled={selected.size === 0} className="ml-auto h-7 bg-[#4f39f6] px-2 text-[11px] hover:bg-[#4030d4]" onClick={onTranslateSelected}>Перевести</Button><Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={onCancelBulk}>Отмена</Button></div>}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {filtered.map((material) => (
-          <div key={material.id} className={cn("flex min-h-[52px] items-start gap-2 border-b border-stone-100 px-3 py-2.5 transition hover:bg-[#fafaf9]", activeMaterialId === material.id && !bulkMode && "bg-[#f4f3ff] hover:bg-[#f4f3ff]")}>
-            {bulkMode && <span className="pt-0.5"><Checkbox checked={selected.has(material.id)} onCheckedChange={() => toggleSelected(material.id)} aria-label={`Выбрать ${material.title}`} /></span>}
-            <button type="button" onClick={() => bulkMode ? toggleSelected(material.id) : setActiveMaterialId(material.id)} className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13px] font-medium text-[#292524]">{material.title}</span>
-              <span className="mt-1 flex items-center gap-1.5"><StatusBadge status={material.statuses[language]} translating={translatingIds.has(material.id)} /><span className="truncate text-[10px] text-stone-400">{material.typeLabel}</span></span>
-              {material.sourceChangedAt && material.statuses[language] === "outdated" && <span className="mt-1 block text-[10px] text-stone-400">Оригинал изменён: {material.sourceChangedAt}</span>}
+          <div key={material.id} className={cn("flex h-[42px] items-center gap-1.5 border-b border-stone-100/80 px-2.5 transition hover:bg-[#fafaf9] focus-within:bg-[#f4f3ff]", activeMaterialId === material.id && !bulkMode && "bg-[#f4f3ff] hover:bg-[#f4f3ff]")}>
+            {bulkMode && <Checkbox checked={selected.has(material.id)} onCheckedChange={() => toggleSelected(material.id)} aria-label={`Выбрать ${material.title}`} />}
+            <button type="button" onClick={() => bulkMode ? toggleSelected(material.id) : setActiveMaterialId(material.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none">
+              <span className={cn("min-w-0 flex-1 truncate text-[13px] text-[#292524]", activeMaterialId === material.id && !bulkMode ? "font-medium" : "font-normal")}>{material.title}</span>
+              <StatusIndicator status={material.statuses[language]} translating={translatingIds.has(material.id)} />
             </button>
           </div>
         ))}
@@ -298,32 +331,32 @@ function TranslationEditor({ language, onOpenOriginal }: { language: Translation
   const status = material.statuses[language];
   return (
     <section className="flex min-w-[520px] flex-1 flex-col overflow-hidden bg-white">
-      <div className="flex min-h-[58px] shrink-0 items-center justify-between gap-4 border-b border-[#e7e5e4] px-4">
-        <div className="min-w-0"><div className="truncate text-[14px] font-semibold text-[#292524]">{material.title}</div><div className="mt-1 flex items-center gap-2"><StatusBadge status={status} /><span className="text-[10px] text-stone-400">{material.typeLabel}</span></div></div>
-        <div className="flex shrink-0 items-center gap-3">
+      <div className="flex h-[50px] shrink-0 items-center justify-between gap-4 border-b border-[#e7e5e4] px-4">
+        <div className="min-w-0 truncate text-[15px] font-semibold text-[#292524]">{material.title}</div>
+        <div className="flex shrink-0 items-center gap-2">
           {saveState !== "idle" && <span className={cn("text-[11px]", saveState === "error" ? "text-red-600" : "text-stone-500")}>{saveState === "saving" ? "Сохранение…" : saveState === "saved" ? "Сохранено" : "Ошибка сохранения"}</span>}
-          {status === "machine" && <Button size="sm" className="h-8 bg-[#4f39f6] hover:bg-[#4030d4]" onClick={() => confirmMaterial(material.id, language)}><Check size={14} />Подтвердить перевод</Button>}
-          <Button size="sm" variant="ghost" onClick={() => onOpenOriginal(material)}><ArrowSquareOut size={14} />Открыть оригинал</Button>
+          {status === "machine" && <Button size="sm" className="h-7 px-2.5 text-[11px] bg-[#4f39f6] hover:bg-[#4030d4]" onClick={() => confirmMaterial(material.id, language)}><Check size={13} />Подтвердить</Button>}
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] font-medium text-stone-500 hover:text-stone-900" onClick={() => onOpenOriginal(material)}>Открыть оригинал<ArrowSquareOut size={12} /></Button>
         </div>
       </div>
 
       {status === "outdated" && <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] leading-5 text-amber-900"><WarningCircle size={16} className="mt-0.5 shrink-0" /><div><span className="font-medium">Оригинал изменился после перевода.</span><span className="ml-1 text-amber-800/80">Старый перевод сохранён — обновите его в правой колонке.</span></div></div>}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid min-h-9 grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-[#e7e5e4] bg-[#fafaf9] text-[11px] font-medium text-stone-500">
-          <div className="px-3">Поле</div><div className="border-l border-[#e7e5e4] px-3">Русский — основной</div><div className="border-l border-[#e7e5e4] px-3">{languageLabel(language)}</div>
+        <div className="grid h-9 grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-[#e7e5e4] bg-[#fafaf9] text-[11px] font-medium text-stone-500">
+          <div className="px-3">Поле</div><div className="px-3">Русский — основной</div><div className="border-l border-[#e7e5e4] px-3">{languageLabel(language)}</div>
         </div>
         {material.fields.map((field) => {
           const multiline = field.id === "description" || field.source.length > 90;
           return (
-            <div key={field.id} className="grid min-h-[58px] grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#e7e5e4]">
-              <div className="px-3 py-3 text-[11px] font-medium text-stone-500">{field.label}</div>
-              <div className="border-l border-[#e7e5e4] bg-[#fafaf9]/70 px-3 py-2.5 text-[12px] leading-5 text-stone-600">
+            <div key={field.id} className="grid min-h-[50px] grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#e7e5e4]">
+              <div className="px-3 py-3 text-[11px] font-medium text-stone-400">{field.label}</div>
+              <div className="bg-[#fafaf9]/45 px-3 py-2.5 text-[13px] leading-5 text-stone-600">
                 {status === "outdated" && field.previousSource && <div className="mb-2 border-b border-stone-200 pb-2 text-[10px] text-stone-400"><span className="font-medium">Предыдущий оригинал:</span> {field.previousSource}</div>}
                 {field.source}
               </div>
-              <div className="border-l border-[#e7e5e4] px-3 py-2">
-                {multiline ? <Textarea value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="min-h-[76px] resize-y border-[#d6d3d1] text-[12px] leading-5 shadow-none" /> : <Input value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="h-9 border-[#d6d3d1] text-[12px] shadow-none" />}
+              <div className="border-l border-[#e7e5e4] px-1.5 py-1.5">
+                {multiline ? <Textarea value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="h-[68px] min-h-[68px] resize-none rounded-[6px] border-transparent px-2 py-1.5 text-[13px] leading-5 shadow-none transition-colors hover:border-[#e7e5e4] focus-visible:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10" /> : <Input value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="h-9 rounded-[6px] border-transparent px-2 text-[13px] shadow-none transition-colors hover:border-[#e7e5e4] focus:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10" />}
               </div>
             </div>
           );
@@ -342,12 +375,10 @@ function LanguageWorkspace({ onBack, onOpenOriginal }: { onBack: () => void; onO
     languages,
     materials,
     setActiveLanguage,
-    setAutoTranslate,
     startAutoTranslate,
   } = useTranslations();
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingAutoTranslate, setPendingAutoTranslate] = useState<{ materialIds: string[]; source: string } | null>(null);
   const language = languages.find((item) => item.code === activeLanguage) ?? languages[0];
   if (!language) return null;
@@ -365,26 +396,26 @@ function LanguageWorkspace({ onBack, onOpenOriginal }: { onBack: () => void; onO
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white">
-      <header className="shrink-0 border-b border-[#e7e5e4] bg-white px-4 py-3">
-        <div className="flex items-start justify-between gap-5">
+      <header className="flex h-[58px] shrink-0 items-center justify-between gap-5 border-b border-[#e7e5e4] bg-white px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <button type="button" onClick={onBack} className="flex h-7 shrink-0 items-center gap-1 rounded-[7px] px-1.5 text-[11px] text-stone-500 transition hover:bg-stone-50 hover:text-stone-900"><ArrowLeft size={12} />Переводы</button>
+          <span className="h-7 w-px shrink-0 bg-stone-200" />
           <div className="min-w-0">
-            <button type="button" onClick={onBack} className="mb-1 flex items-center gap-1 text-[11px] text-stone-500 hover:text-stone-900"><ArrowLeft size={12} />Переводы</button>
-            <div className="flex items-center gap-2"><span className="text-[13px] font-medium text-stone-500">Русский</span><span className="text-stone-300">→</span><Select value={language.code} onValueChange={(value) => setActiveLanguage(value as TranslationLanguageCode)}><SelectTrigger className="h-8 w-[156px] border-0 px-2 text-[14px] font-semibold shadow-none"><SelectValue /></SelectTrigger><SelectContent>{languages.map((item) => <SelectItem key={item.code} value={item.code}>{item.label}</SelectItem>)}</SelectContent></Select><span className={cn("rounded-[6px] px-2 py-1 text-[10px] font-medium", language.published ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-600")}>{language.published ? "Опубликован" : "Не опубликован"}</span></div>
-            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-stone-500"><span className="font-medium tabular-nums text-stone-700">{progress(language)}% переведено</span><span>{language.missing} не переведено</span><span>{language.outdated} требуют обновления</span></div>
+            <div className="flex h-7 items-center gap-1"><span className="text-[14px] font-semibold text-stone-800">Русский</span><span className="text-stone-300">→</span><Select value={language.code} onValueChange={(value) => setActiveLanguage(value as TranslationLanguageCode)}><SelectTrigger className="h-7 w-[132px] border-0 px-1.5 text-[14px] font-semibold shadow-none"><SelectValue /></SelectTrigger><SelectContent>{languages.map((item) => <SelectItem key={item.code} value={item.code}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="text-[11px] tabular-nums text-stone-400">{progress(language)}% переведено · {language.outdated > 0 ? `${language.outdated} ${language.outdated === 1 ? "требует" : "требуют"} обновления` : `${language.missing} осталось`}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 pt-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="outline" size="sm"><Sparkle size={15} />Автоперевод<CaretDown size={12} /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem disabled={!currentMaterial} onSelect={() => currentMaterial && startAutoTranslate([language.code], [currentMaterial.id], "Текущий материал")}><Robot size={15} />Перевести текущий материал</DropdownMenuItem>
-                <DropdownMenuItem disabled={missingMaterials.length === 0} onSelect={() => confirmMassTranslation(missingMaterials.map((material) => material.id), "Непереведённые материалы")}><Sparkle size={15} />Перевести все непереведённые</DropdownMenuItem>
-                <DropdownMenuItem disabled={missingOrOutdatedMaterials.length === 0} onSelect={() => confirmMassTranslation(missingOrOutdatedMaterials.map((material) => material.id), "Не переведённые и устаревшие")}><WarningCircle size={15} />Не переведённые + требуют обновления</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => { setBulkMode(true); setSelected(new Set()); }}><Check size={15} />Выбрать материалы</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label="Другие действия" className="flex size-8 items-center justify-center rounded-[8px] border border-stone-200 text-stone-500 hover:bg-stone-50"><DotsThreeVertical size={16} /></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setSettingsOpen(true)}><Robot size={14} />Настройки автоперевода</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-          </div>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="sm"><Sparkle size={15} />Автоперевод<CaretDown size={12} /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem disabled={!currentMaterial} onSelect={() => currentMaterial && startAutoTranslate([language.code], [currentMaterial.id], "Текущий материал")}><Robot size={15} />Перевести текущий материал</DropdownMenuItem>
+              <DropdownMenuItem disabled={missingMaterials.length === 0} onSelect={() => confirmMassTranslation(missingMaterials.map((material) => material.id), "Непереведённые материалы")}><Sparkle size={15} />Перевести все непереведённые</DropdownMenuItem>
+              <DropdownMenuItem disabled={missingOrOutdatedMaterials.length === 0} onSelect={() => confirmMassTranslation(missingOrOutdatedMaterials.map((material) => material.id), "Не переведённые и устаревшие")}><WarningCircle size={15} />Не переведённые + требуют обновления</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => { setBulkMode(true); setSelected(new Set()); }}><Check size={15} />Выбрать материалы</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -399,9 +430,6 @@ function LanguageWorkspace({ onBack, onOpenOriginal }: { onBack: () => void; onO
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Настройки автоперевода</AlertDialogTitle><AlertDialogDescription>{language.label}: управление новым и изменённым контентом.</AlertDialogDescription></AlertDialogHeader><label className="flex cursor-pointer items-start justify-between gap-4 rounded-[9px] border border-stone-200 p-3"><span><span className="block text-[13px] font-medium">Автоматически переводить новый и изменённый контент</span><span className="mt-1 block text-[11px] leading-4 text-stone-500">Новые материалы и изменения будут переводиться автоматически.</span></span><Switch checked={language.autoTranslate} onCheckedChange={(checked) => setAutoTranslate(language.code, checked)} /></label><AlertDialogFooter><AlertDialogAction onClick={() => setSettingsOpen(false)}>Готово</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
