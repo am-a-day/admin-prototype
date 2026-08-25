@@ -128,7 +128,7 @@ function renderCatalog(initialPhase: CatalogPhase = "has-items") {
 
 async function openSectionTreeSearch(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Открыть поиск разделов" }));
-  return (await screen.findByPlaceholderText("Поиск по разделам")).closest("aside");
+  return (await screen.findByPlaceholderText("Найти раздел...")).closest("aside");
 }
 
 async function openKitchenSubsectionTable(user: ReturnType<typeof userEvent.setup>) {
@@ -187,7 +187,7 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByText("Начните создавать меню", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("Создайте первый раздел и добавьте в него позиции или импортируйте готовый каталог.", { exact: true })).toBeInTheDocument();
     expect(document.querySelector("[data-catalog-tree-root]")).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("Поиск по разделам")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Найти раздел...")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Поиск по названию")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Импортировать" }));
@@ -202,11 +202,11 @@ describe("catalog observable behavior baseline", () => {
     await user.click(within(createDialog).getByRole("button", { name: "Добавить раздел" }));
 
     await user.click(screen.getByRole("button", { name: "Открыть поиск разделов" }));
-    expect(await screen.findByPlaceholderText("Поиск по разделам")).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("Найти раздел...")).toBeInTheDocument();
     expect(screen.queryByText("Начните создавать меню", { exact: true })).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-tree-root]")).toHaveTextContent("Все позиции");
     expect(document.querySelector("[data-inline-section-create]")).not.toBeInTheDocument();
-    const sectionTree = (await screen.findByPlaceholderText("Поиск по разделам")).closest("aside");
+    const sectionTree = (await screen.findByPlaceholderText("Найти раздел...")).closest("aside");
     await user.click(within(sectionTree as HTMLElement).getByText("Первый раздел", { exact: true }));
     expect(document.querySelector("[data-empty-section-scaffold]")).not.toBeNull();
     expect(screen.getByText("В разделе пока ничего нет", { exact: true })).toBeInTheDocument();
@@ -274,6 +274,75 @@ describe("catalog observable behavior baseline", () => {
     expect(screen.getByPlaceholderText("Поиск по названию")).toBeInTheDocument();
     expect(document.querySelector("[data-catalog-overview-header-trigger]")).toHaveTextContent("Все позиции");
     expect(document.querySelector("[data-position-create-button]")).toHaveTextContent("Новая позиция");
+  });
+
+  it("filters only section names, keeps ancestor context, and restores the tree on close", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = await openSectionTreeSearch(user) as HTMLElement;
+    const search = within(sectionTree).getByPlaceholderText("Найти раздел...");
+    expect(search).toHaveFocus();
+    expect(within(sectionTree).getByText("Все позиции", { exact: true })).toBeInTheDocument();
+
+    await user.type(search, "Завт");
+    expect(within(sectionTree).getByText("Кухня", { exact: true })).toBeInTheDocument();
+    expect(within(sectionTree).getByText("Завтраки", { exact: true })).toBeInTheDocument();
+    expect(within(sectionTree).queryByText("Выпечка", { exact: true })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "точно нет");
+    expect(within(sectionTree).getByText("Разделы не найдены", { exact: true })).toBeInTheDocument();
+    expect(within(sectionTree).getByText("Все позиции", { exact: true })).toBeInTheDocument();
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Закрыть поиск разделов" }));
+    expect(within(sectionTree).queryByPlaceholderText("Найти раздел...")).not.toBeInTheDocument();
+    expect(within(sectionTree).getByText("Выпечка", { exact: true })).toBeInTheDocument();
+  });
+
+  it("uses one inline draft and one action menu for click and context-menu entry points", async () => {
+    const user = userEvent.setup();
+    renderCatalog();
+
+    const sectionTree = await openSectionTreeSearch(user) as HTMLElement;
+    const kitchenRow = within(sectionTree).getByRole("button", { name: "Раздел Кухня" });
+    fireEvent.contextMenu(kitchenRow);
+    expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Действия с разделом Кухня" }));
+    expect(screen.getByRole("menuitem", { name: "Переименовать" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    const disabledAdd = within(sectionTree).getByRole("button", { name: "Добавить подраздел в раздел Завтраки" });
+    expect(disabledAdd).toBeDisabled();
+    await user.hover(disabledAdd);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Нельзя добавить подраздел: в разделе уже есть позиции");
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Добавить раздел" }));
+    let input = within(sectionTree).getByRole("textbox", { name: "Название раздела" });
+    expect(input).toHaveAttribute("placeholder", "Название");
+    expect(within(sectionTree).getByRole("button", { name: "Создать раздел" })).toBeDisabled();
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Добавить подраздел в раздел Кухня" }));
+    expect(within(sectionTree).getAllByRole("textbox", { name: "Название раздела" })).toHaveLength(1);
+    input = within(sectionTree).getByRole("textbox", { name: "Название раздела" });
+    await user.type(input, "Не сохранять");
+    fireEvent.blur(input);
+    expect(input).toHaveValue("Не сохранять");
+    await user.click(within(sectionTree).getByRole("button", { name: "Отменить создание раздела" }));
+    expect(within(sectionTree).queryByText("Не сохранять", { exact: true })).not.toBeInTheDocument();
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Добавить раздел" }));
+    input = within(sectionTree).getByRole("textbox", { name: "Название раздела" });
+    await user.keyboard("{Escape}");
+    expect(input).not.toBeInTheDocument();
+
+    await user.click(within(sectionTree).getByRole("button", { name: "Добавить раздел" }));
+    input = within(sectionTree).getByRole("textbox", { name: "Название раздела" });
+    await user.type(input, "Новый корневой раздел");
+    await user.keyboard("{Enter}");
+    expect(within(sectionTree).getByText("Новый корневой раздел", { exact: true })).toBeInTheDocument();
   });
 
   it("matches the filled subsection table and keeps trailing scroll space after the add row", async () => {

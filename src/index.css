@@ -120,9 +120,9 @@ body {
 }
 
 [data-catalog-tree-shell] {
-  flex: 0 0 250px;
-  width: 250px;
-  max-width: 250px;
+  flex: 0 0 222px;
+  width: 222px;
+  max-width: 222px;
   transition: flex-basis 200ms ease-out, width 200ms ease-out, max-width 200ms ease-out;
 }
 

@@ -1,5 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CaretDown, Check, PlusCircle } from "@phosphor-icons/react";
+import { Check, PlusCircle } from "@phosphor-icons/react";
 import type { CatalogMenu } from "@/contexts/catalog-store-context";
 import { cn } from "@/lib/utils";
 
@@ -18,18 +18,15 @@ export function CatalogMenuSwitcher({
   onSelectMenu,
   onCreateMenu,
 }: CatalogMenuSwitcherProps) {
-  const activeMenu = menus.find((menu) => menu.id === activeMenuId) ?? menus[0];
-
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
           aria-label="Выбрать меню"
-          className="flex h-8 min-w-0 max-w-full items-center gap-1 rounded-[8px] px-2 text-left text-[14px] font-normal leading-[1.4] text-[#292524] outline-none transition hover:bg-[#f3f3ed] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          className="flex h-[18px] min-w-0 max-w-full items-center rounded-[6px] text-left text-[14px] font-normal leading-[18px] text-[#1c1917] outline-none transition hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"
         >
-          <span className="min-w-0 flex-1 truncate">{activeMenu?.name ?? "Меню"}</span>
-          <CaretDown size={14} weight="regular" className="shrink-0 text-[#79716b]" />
+          <span className="min-w-0 flex-1 truncate">Меню</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

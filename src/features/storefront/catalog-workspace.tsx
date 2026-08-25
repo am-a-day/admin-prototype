@@ -4114,6 +4114,8 @@ function PopulatedWorkspace({
       setFeedback("Родительский раздел не найден");
       return;
     }
+    setRenamingSectionId(null);
+    setSectionRenameInHeader(false);
     setSectionCreationSource(source);
     setSectionCreationDraftParentId(parentId);
   };
@@ -5966,7 +5968,7 @@ function PopulatedWorkspace({
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <div
             data-catalog-tree-shell
-            className="relative flex w-[250px] max-w-[250px] shrink-0 overflow-hidden"
+            className="relative flex w-[222px] max-w-[222px] shrink-0 overflow-hidden"
           >
             <UnifiedCatalogTreePanel
               sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
@@ -5983,6 +5985,8 @@ function PopulatedWorkspace({
               draftParentId={sectionCreationSource === "tree" ? sectionCreationDraftParentId : undefined}
               renamingSectionId={sectionRenameInHeader ? null : renamingSectionId}
               onStartRenameSection={(sectionId) => {
+                setSectionCreationDraftParentId(undefined);
+                setSectionCreationSource("tree");
                 setSectionRenameInHeader(false);
                 setRenamingSectionId(sectionId);
               }}
@@ -6008,7 +6012,6 @@ function PopulatedWorkspace({
                   onAction={onAction}
                 />
               )}
-              getSectionPath={(sectionId) => getCatalogSectionPathFromSections(sectionId, allSections).map((crumb) => crumb.name).join(" / ")}
               positionCreationEnabled={allowPositionCreation}
               menuSwitcher={menuSwitcher}
               onCollapseSections={() => setUserCollapsedSections(true)}
