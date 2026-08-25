@@ -30,12 +30,14 @@ export type CatalogNutrition = {
 export type CatalogOptionVariant = {
   id: string;
   name: string;
+  nameTranslations?: CatalogTranslations;
   price: string;
 };
 
 export type CatalogOptionGroup = {
   id: string;
   name: string;
+  nameTranslations?: CatalogTranslations;
   expanded: boolean;
   required: boolean;
   selection: "single" | "multiple";
@@ -104,6 +106,7 @@ export type CatalogItem = {
   displayMode: "full" | "no-button" | "no-price";
   /** Base-language (ru) description text; empty string when unset. */
   description: string;
+  descriptionTranslations?: CatalogTranslations;
   hasDescription: boolean;
   weightLabel: string | null;
   /** Filled nutrition fields out of 4 (kcal, fat, protein, carbs). */

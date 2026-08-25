@@ -162,7 +162,9 @@ export type BannerTag = {
 export type Banner = {
   id: string;
   title: string;
+  titleTranslations?: Partial<Record<"ru" | "kk" | "en" | "sr", string>>;
   subtitle: string;
+  subtitleTranslations?: Partial<Record<"ru" | "kk" | "en" | "sr", string>>;
   tags: BannerTag[];
   accent: string;
   visible: boolean;

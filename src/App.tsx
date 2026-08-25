@@ -38,7 +38,11 @@ import {
   type CatalogDataScenario,
 } from "@/lib/catalog-data-scenarios";
 import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
-import { TranslationsProvider } from "@/contexts/translations-context";
+import {
+  TranslationsProvider,
+  useTranslations,
+  type TranslationMaterial,
+} from "@/contexts/translations-context";
 import { PositionEditorFixtureProvider } from "@/features/storefront/catalog/editor/position-editor-fixture-context";
 import { PositionEditorDesignLab } from "@/design-lab/position-editor-lab";
 import {
@@ -54,11 +58,9 @@ import { WorkspaceSetupScreen } from "@/features/auth/workspace-setup-screen";
 import { Flask, X } from "@phosphor-icons/react";
 import { Bell } from "lucide-react";
 import {
-  banners as seedBanners,
   DEFAULT_RECOMMENDATION_TEXTS,
   RESTAURANT_NAME,
   type AnalyticsTabId,
-  type Banner,
   type ManageTabId,
   type PlanId,
   type PreviewScenario,
@@ -541,6 +543,12 @@ function AuthenticatedShell() {
   const { registerChange } = usePublish();
   const { markVisited, stage } = useVitrineLaunch();
   const { activeEditorItemId, itemsById } = useCatalogStore();
+  const {
+    banners: bannerList,
+    updateBanner,
+    removeBanner: removeSharedBanner,
+    addBanner: addSharedBanner,
+  } = useTranslations();
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
@@ -560,8 +568,7 @@ function AuthenticatedShell() {
   const [trainingQuizActive, setTrainingQuizActive] = useState(false);
   const [trainingActiveSessionKind, setTrainingActiveSessionKind] = useState<TrainingActiveSession | undefined>();
   const [selectedDishId, setSelectedDishId] = useState("pepperoni");
-  const [bannerList, setBannerList] = useState<Banner[]>(seedBanners);
-  const [selectedBannerId, setSelectedBannerId] = useState("hero-1");
+  const [selectedBannerId, setSelectedBannerId] = useState(() => bannerList[0]?.id ?? "");
   const [previewScenario, setPreviewScenario] = useState<PreviewScenario>(null);
   const [recommendationTexts, setRecommendationTexts] = useState<RecommendationTexts>(
     DEFAULT_RECOMMENDATION_TEXTS,
@@ -867,32 +874,13 @@ function AuthenticatedShell() {
     section === "qr" ? qrToolTab :
     null;
 
-  const updateBanner = (id: string, patch: Partial<Banner>) =>
-    setBannerList((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-
-  const removeBanner = (id: string) =>
-    setBannerList((prev) => {
-      const next = prev.filter((b) => b.id !== id);
-      if (id === selectedBannerId && next.length) setSelectedBannerId(next[0].id);
-      return next;
-    });
+  const removeBanner = (id: string) => {
+    const nextSelectedId = removeSharedBanner(id);
+    if (id === selectedBannerId) setSelectedBannerId(nextSelectedId ?? "");
+  };
 
   const addBanner = (imageUrl?: string) => {
-    const id = `hero-${Date.now()}`;
-    setBannerList((prev) => [
-      ...prev,
-      {
-        id,
-        title: "Новый баннер",
-        subtitle: "Заголовок баннера",
-        tags: [],
-        accent: "from-indigo-700 via-blue-500 to-sky-400",
-        visible: true,
-        link: "",
-        ...(imageUrl && { image: imageUrl }),
-      },
-    ]);
-    setSelectedBannerId(id);
+    setSelectedBannerId(addSharedBanner(imageUrl));
   };
 
   const previewBanner =
@@ -987,6 +975,38 @@ function AuthenticatedShell() {
     if (target?.sectionId) url.searchParams.set("sectionId", target.sectionId);
     window.history.pushState(null, "", url);
     setCatalogRouteRevision((revision) => revision + 1);
+  };
+
+  const openOriginalFromTranslations = (material: TranslationMaterial) => {
+    if (material.catalogItemId) {
+      openCatalogItemFromTranslations(material.catalogItemId);
+      return;
+    }
+    if (material.kind === "section") {
+      setSection("storefront");
+      setStoreTab("catalog");
+      setCatalogTab("sections");
+      setCatalogViewMode("sections");
+      setCatalogSectionScopeId(material.entityId);
+      window.history.pushState(null, "", `${STOREFRONT_PATH}/catalog`);
+      return;
+    }
+    if (material.kind === "banner") {
+      setSelectedBannerId(material.entityId);
+      setHomeTab("banners");
+      navigate("storefront", "home");
+      return;
+    }
+    if (material.kind === "about") {
+      navigate("storefront", "about:info");
+      return;
+    }
+    if (material.kind === "tag" || material.kind === "sticker") {
+      setCatalogTab("overview");
+      setCatalogViewMode(material.kind === "tag" ? "quick:with-tags" : "quick:with-labels");
+      setCatalogOverviewFilterId(material.kind === "tag" ? "quick:with-tags" : "quick:with-labels");
+      navigate("storefront", "catalog");
+    }
   };
 
   const handleQuickCreate = (action: QuickCreateAction) => {
@@ -1164,7 +1184,7 @@ function AuthenticatedShell() {
       );
     }
     if (storeTab === "translations") {
-      content = <TranslationsWorkspace onOpenCatalogItem={openCatalogItemFromTranslations} />;
+      content = <TranslationsWorkspace onOpenOriginal={openOriginalFromTranslations} />;
     }
     if (storeTab === "appearance") {
       content = <AppearanceWorkspace />;

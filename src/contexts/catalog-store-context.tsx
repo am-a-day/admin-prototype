@@ -66,6 +66,7 @@ export type CatalogStoreInitialData = {
 
 type CatalogAction =
   | { type: "update-item"; id: string; patch: Partial<CatalogItem>; autosave: boolean }
+  | { type: "update-section"; id: string; patch: Partial<CatalogSection> }
   | { type: "add-item"; item: CatalogItem }
   | { type: "add-section"; section: CatalogSection }
   | { type: "delete-item"; id: string }
@@ -253,6 +254,15 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
       revision: state.revision + 1,
     };
   }
+  if (action.type === "update-section") {
+    const section = state.sectionsById[action.id];
+    if (!section) return state;
+    return {
+      ...state,
+      sectionsById: { ...state.sectionsById, [action.id]: { ...section, ...action.patch } },
+      revision: state.revision + 1,
+    };
+  }
   if (action.type === "add-item") {
     const currentOrder = state.itemOrderBySection[action.item.sectionId] ?? [];
     return {
@@ -347,6 +357,7 @@ type CatalogStoreValue = CatalogState & {
   createMenu: (name: string) => void;
   publishMenu: (id?: string) => void;
   updateItem: (id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => void;
+  updateSection: (id: string, patch: Partial<CatalogSection>) => void;
   addItem: (item: CatalogItem) => void;
   addSection: (section: CatalogSection) => void;
   deleteItem: (id: string) => void;
@@ -477,6 +488,9 @@ export function CatalogStoreProvider({
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
   }, [dispatch]);
+  const updateSection = useCallback((id: string, patch: Partial<CatalogSection>) => {
+    dispatch({ type: "update-section", id, patch });
+  }, [dispatch]);
   const prepareNewItem = useCallback((item: CatalogItem): CatalogItem => {
     const workspace = account?.workspace;
     if (!workspace) return item;
@@ -588,6 +602,7 @@ export function CatalogStoreProvider({
     createMenu,
     publishMenu,
     updateItem,
+    updateSection,
     addItem,
     addSection,
     deleteItem,
@@ -612,6 +627,7 @@ export function CatalogStoreProvider({
     createMenu,
     publishMenu,
     updateItem,
+    updateSection,
     addItem,
     addSection,
     deleteItem,
