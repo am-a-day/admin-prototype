@@ -9,8 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
-import { useMockAuth, type MockWorkspace } from "@/contexts/mock-auth-context";
-import type { CatalogItem, CatalogOptionGroup, CatalogSection } from "@/data/catalog";
+import {
+  DEFAULT_WORKSPACE_ADDRESS,
+  useMockAuth,
+  type MockWorkspace,
+} from "@/contexts/mock-auth-context";
+import type { CatalogItem, CatalogSection, CatalogTranslations } from "@/data/catalog";
 import { banners as seedBanners, type Banner } from "@/data/mock-data";
 import type { LanguageCode } from "@/data/languages";
 import {
@@ -20,16 +24,21 @@ import {
 
 export type TranslationLanguageCode = Exclude<LanguageCode, "ru">;
 export type TranslationStatus = "missing" | "machine" | "translated" | "outdated";
-export type TranslationCategory = "positions" | "sections" | "options" | "tags" | "stickers" | "banners" | "about";
+export type TranslationCategory = "positions" | "sections" | "tags" | "stickers" | "banners" | "about";
 export type TranslationFilter = "all" | TranslationStatus;
 export type TranslationJobStatus = "queued" | "running" | "completed" | "error";
-export type TranslationMaterialKind = "position" | "section" | "option-group" | "tag" | "sticker" | "banner" | "about";
+export type TranslationMaterialKind = "position" | "section" | "tag" | "sticker" | "banner" | "about";
+export type TranslationFieldKind = "standard" | "option-group" | "option" | "banner-tag";
 
 export type TranslationField = {
   id: string;
   label: string;
   source: string;
   previousSource?: string;
+  kind?: TranslationFieldKind;
+  optionGroupId?: string;
+  optionVariantId?: string;
+  bannerTagId?: string;
   values: Partial<Record<TranslationLanguageCode, string>>;
 };
 
@@ -146,6 +155,8 @@ const LABEL_TRANSLATIONS: Record<string, Partial<Record<TranslationLanguageCode,
   "Выбор шефа": { kk: "Шеф таңдауы", en: "Chef’s choice" },
 };
 
+const TRANSLATION_LANGUAGE_CODES: TranslationLanguageCode[] = ["kk", "en", "sr"];
+
 function stripHtml(value: string) {
   return value
     .replace(/<[^>]*>/g, " ")
@@ -180,31 +191,70 @@ function materialStatuses(
   index: number,
   valuesByLanguage?: Partial<Record<TranslationLanguageCode, string[]>>,
 ): Record<TranslationLanguageCode, TranslationStatus> {
+  const allFilled = (values: string[] | undefined) => Boolean(values?.length)
+    && values!.every((value) => Boolean(value.trim()));
   return {
-    kk: valuesByLanguage?.kk?.every(Boolean) ? "translated" : seededStatus(title, index, "kk"),
-    en: valuesByLanguage?.en?.every(Boolean) ? "translated" : seededStatus(title, index, "en"),
-    sr: valuesByLanguage?.sr?.every(Boolean) ? "translated" : "missing",
+    kk: allFilled(valuesByLanguage?.kk) ? "translated" : seededStatus(title, index, "kk"),
+    en: allFilled(valuesByLanguage?.en) ? "translated" : seededStatus(title, index, "en"),
+    sr: allFilled(valuesByLanguage?.sr) ? "translated" : "missing",
   };
+}
+
+function resolveMaterialFields(title: string, index: number, rawFields: TranslationField[]) {
+  const filledSourceFields = rawFields.filter((field) => field.source.trim());
+  const statuses = materialStatuses(title, index, Object.fromEntries(
+    TRANSLATION_LANGUAGE_CODES.map((language) => [
+      language,
+      filledSourceFields.map((field) => field.values[language] ?? ""),
+    ]),
+  ));
+  const fields = rawFields.map((field) => ({
+    ...field,
+    values: Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [
+      language,
+      field.source.trim()
+        ? field.values[language]?.trim() || fallbackTarget(field.source, language, statuses[language])
+        : "",
+    ])),
+  }));
+  return { fields, statuses };
 }
 
 function positionMaterial(item: CatalogItem, index: number): TranslationMaterial {
   const description = stripHtml(item.description);
-  const statuses = materialStatuses(item.title, index, {
-    kk: [item.titleTranslations?.kk ?? "", description ? item.descriptionTranslations?.kk ?? "" : "filled"],
-    en: [item.titleTranslations?.en ?? "", description ? item.descriptionTranslations?.en ?? "" : "filled"],
-    sr: [item.titleTranslations?.sr ?? "", description ? item.descriptionTranslations?.sr ?? "" : "filled"],
-  });
-  const field = (id: "title" | "description", label: string, source: string): TranslationField => ({
-    id,
-    label,
-    source,
-    values: Object.fromEntries((["kk", "en", "sr"] as TranslationLanguageCode[]).map((language) => [
+  const translatedValues = (translations?: CatalogTranslations, seededKey?: "title" | "description") => Object.fromEntries(
+    TRANSLATION_LANGUAGE_CODES.map((language) => [
       language,
-      (id === "title" ? item.titleTranslations?.[language] : item.descriptionTranslations?.[language])
-        || SEEDED_TRANSLATIONS[item.title]?.[language]?.[id]
-        || fallbackTarget(source, language, statuses[language]),
-    ])),
-  });
+      translations?.[language] || (seededKey ? SEEDED_TRANSLATIONS[item.title]?.[language]?.[seededKey] : "") || "",
+    ]),
+  );
+  const rawFields: TranslationField[] = [{
+    id: "title",
+    label: "Название",
+    source: item.title,
+    values: translatedValues(item.titleTranslations, "title"),
+  }, {
+    id: "description",
+    label: "Описание",
+    source: description,
+    values: translatedValues(item.descriptionTranslations, "description"),
+  }, ...(item.optionGroups ?? []).flatMap((group) => [{
+    id: `option-group:${group.id}`,
+    label: `Группа · ${group.name || "Без названия"}`,
+    source: group.name,
+    kind: "option-group" as const,
+    optionGroupId: group.id,
+    values: translatedValues(group.nameTranslations),
+  }, ...group.variants.map((variant) => ({
+    id: `option:${group.id}:${variant.id}`,
+    label: `Опция · ${variant.name || "Без названия"}`,
+    source: variant.name,
+    kind: "option" as const,
+    optionGroupId: group.id,
+    optionVariantId: variant.id,
+    values: translatedValues(variant.nameTranslations),
+  }))])];
+  const { fields, statuses } = resolveMaterialFields(item.title, index, rawFields);
   return {
     id: item.id,
     entityId: item.id,
@@ -214,16 +264,18 @@ function positionMaterial(item: CatalogItem, index: number): TranslationMaterial
     kind: "position",
     category: "positions",
     statuses,
-    fields: [field("title", "Название", item.title), ...(description ? [field("description", "Описание", description)] : [])],
+    fields,
   };
 }
 
 function sectionMaterial(section: CatalogSection, index: number): TranslationMaterial {
-  const statuses = materialStatuses(section.name, index, {
-    kk: [section.nameTranslations?.kk ?? ""],
-    en: [section.nameTranslations?.en ?? ""],
-    sr: [section.nameTranslations?.sr ?? ""],
-  });
+  const rawFields: TranslationField[] = [{
+    id: "name",
+    label: "Название",
+    source: section.name,
+    values: Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [language, section.nameTranslations?.[language] ?? ""])),
+  }];
+  const { fields, statuses } = resolveMaterialFields(section.name, index, rawFields);
   return {
     id: `section:${section.id}`,
     entityId: section.id,
@@ -232,59 +284,23 @@ function sectionMaterial(section: CatalogSection, index: number): TranslationMat
     kind: "section",
     category: "sections",
     statuses,
-    fields: [{
-      id: "name",
-      label: "Название",
-      source: section.name,
-      values: Object.fromEntries((["kk", "en", "sr"] as TranslationLanguageCode[]).map((language) => [
-        language,
-        section.nameTranslations?.[language] || fallbackTarget(section.name, language, statuses[language]),
-      ])),
-    }],
-  };
-}
-
-function optionMaterial(item: CatalogItem, group: CatalogOptionGroup, index: number): TranslationMaterial {
-  const sources = [group.name, ...group.variants.map((variant) => variant.name)].filter(Boolean);
-  const statuses = materialStatuses(group.name, index, {
-    kk: [group.nameTranslations?.kk ?? "", ...group.variants.map((variant) => variant.nameTranslations?.kk ?? "")],
-    en: [group.nameTranslations?.en ?? "", ...group.variants.map((variant) => variant.nameTranslations?.en ?? "")],
-    sr: [group.nameTranslations?.sr ?? "", ...group.variants.map((variant) => variant.nameTranslations?.sr ?? "")],
-  });
-  const buildField = (id: string, label: string, source: string, translations?: Partial<Record<"ru" | TranslationLanguageCode, string>>): TranslationField => ({
-    id,
-    label,
-    source,
-    values: Object.fromEntries((["kk", "en", "sr"] as TranslationLanguageCode[]).map((language) => [
-      language,
-      translations?.[language] || fallbackTarget(source, language, statuses[language]),
-    ])),
-  });
-  return {
-    id: `option:${item.id}:${group.id}`,
-    entityId: group.id,
-    ownerItemId: item.id,
-    catalogItemId: item.id,
-    title: group.name,
-    typeLabel: `Опции · ${item.title}`,
-    kind: "option-group",
-    category: "options",
-    statuses,
-    fields: [
-      buildField("group-name", "Группа", group.name, group.nameTranslations),
-      ...group.variants.map((variant) => buildField(`variant:${variant.id}`, "Опция", variant.name, variant.nameTranslations)),
-    ].filter((field) => sources.includes(field.source)),
+    fields,
   };
 }
 
 function labelMaterial(label: CatalogLabel, index: number): TranslationMaterial {
   const source = label.translations.ru;
   const seed = LABEL_TRANSLATIONS[source] ?? {};
-  const statuses = materialStatuses(source, index, {
-    kk: [label.translations.kk ?? seed.kk ?? ""],
-    en: [label.translations.en ?? seed.en ?? ""],
-    sr: [label.translations.sr ?? seed.sr ?? ""],
-  });
+  const { fields, statuses } = resolveMaterialFields(source, index, [{
+    id: "name",
+    label: "Название",
+    source,
+    values: {
+      kk: label.translations.kk ?? seed.kk ?? "",
+      en: label.translations.en ?? seed.en ?? "",
+      sr: label.translations.sr ?? seed.sr ?? "",
+    },
+  }]);
   return {
     id: label.id,
     entityId: label.id,
@@ -293,29 +309,32 @@ function labelMaterial(label: CatalogLabel, index: number): TranslationMaterial 
     kind: label.type,
     category: label.type === "tag" ? "tags" : "stickers",
     statuses,
-    fields: [{
-      id: "name",
-      label: "Название",
-      source,
-      values: {
-        kk: label.translations.kk ?? seed.kk ?? fallbackTarget(source, "kk", statuses.kk),
-        en: label.translations.en ?? seed.en ?? fallbackTarget(source, "en", statuses.en),
-        sr: label.translations.sr ?? seed.sr ?? "",
-      },
-    }],
+    fields,
   };
 }
 
 function bannerMaterial(banner: Banner, index: number): TranslationMaterial {
-  const fields = [
-    { id: "title", label: "Название", source: banner.title, translations: banner.titleTranslations },
-    { id: "subtitle", label: "Подзаголовок", source: banner.subtitle, translations: banner.subtitleTranslations },
-  ].filter((field) => field.source.trim());
-  const statuses = materialStatuses(banner.title, index, {
-    kk: fields.map((field) => field.translations?.kk ?? ""),
-    en: fields.map((field) => field.translations?.en ?? ""),
-    sr: fields.map((field) => field.translations?.sr ?? ""),
-  });
+  const rawFields: TranslationField[] = [{
+    id: "subtitle",
+    label: "Надпись на баннере",
+    source: banner.subtitle,
+    values: Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [
+      language,
+      banner.subtitleTranslations?.[language] ?? "",
+    ])),
+  }, ...banner.tags.map((tag) => ({
+    id: `tag:${tag.id}`,
+    label: `Тег · ${tag.texts.ru || "Без текста"}`,
+    source: tag.texts.ru,
+    kind: "banner-tag" as const,
+    bannerTagId: tag.id,
+    values: {
+      kk: tag.texts.kz,
+      en: tag.texts.en,
+      sr: tag.texts.sr ?? "",
+    },
+  }))];
+  const { fields, statuses } = resolveMaterialFields(banner.title, index, rawFields);
   return {
     id: `banner:${banner.id}`,
     entityId: banner.id,
@@ -324,19 +343,11 @@ function bannerMaterial(banner: Banner, index: number): TranslationMaterial {
     kind: "banner",
     category: "banners",
     statuses,
-    fields: fields.map((field) => ({
-      id: field.id,
-      label: field.label,
-      source: field.source,
-      values: Object.fromEntries((["kk", "en", "sr"] as TranslationLanguageCode[]).map((language) => [
-        language,
-        field.translations?.[language] || fallbackTarget(field.source, language, statuses[language]),
-      ])),
-    })),
+    fields,
   };
 }
 
-function buildRealMaterials(
+export function buildTranslationMaterials(
   items: CatalogItem[],
   sections: CatalogSection[],
   labels: CatalogLabel[],
@@ -345,23 +356,13 @@ function buildRealMaterials(
 ) {
   const positionMaterials = items.map(positionMaterial);
   const sectionMaterials = sections.map(sectionMaterial);
-  const optionMaterials = items.flatMap((item) => (item.optionGroups ?? []).map((group, index) => optionMaterial(item, group, index)));
   const labelMaterials = labels.map(labelMaterial);
   const bannerMaterials = banners.map(bannerMaterial);
-  const aboutName = workspace?.name?.trim() ?? "";
-  const aboutMaterials: TranslationMaterial[] = aboutName ? [{
-    id: "about:venue",
-    entityId: "venue",
-    title: "О заведении",
-    typeLabel: "Страница",
-    kind: "about",
-    category: "about",
-    statuses: materialStatuses(aboutName, 0, {
-      kk: [workspace?.localizedNames?.kk ?? ""],
-      en: [workspace?.localizedNames?.en ?? ""],
-      sr: [workspace?.localizedNames?.sr ?? ""],
-    }),
-    fields: [{
+  const aboutMaterials: TranslationMaterial[] = workspace ? (() => {
+    const aboutName = workspace.name?.trim() ?? "";
+    const address = workspace.address ?? DEFAULT_WORKSPACE_ADDRESS;
+    const description = workspace.description ?? "";
+    const { fields, statuses } = resolveMaterialFields("О заведении", 0, [{
       id: "name",
       label: "Название заведения",
       source: aboutName,
@@ -370,9 +371,62 @@ function buildRealMaterials(
         en: workspace?.localizedNames?.en ?? "",
         sr: workspace?.localizedNames?.sr ?? "",
       },
-    }],
-  }] : [];
-  return [...positionMaterials, ...sectionMaterials, ...optionMaterials, ...labelMaterials, ...bannerMaterials, ...aboutMaterials];
+    }, {
+      id: "address",
+      label: "Адрес",
+      source: address,
+      values: {
+        kk: workspace.localizedAddresses?.kk ?? "",
+        en: workspace.localizedAddresses?.en ?? "",
+        sr: workspace.localizedAddresses?.sr ?? "",
+      },
+    }, {
+      id: "description",
+      label: "Описание",
+      source: description,
+      values: {
+        kk: workspace.localizedDescriptions?.kk ?? "",
+        en: workspace.localizedDescriptions?.en ?? "",
+        sr: workspace.localizedDescriptions?.sr ?? "",
+      },
+    }]);
+    return [{
+      id: "about:venue",
+      entityId: "venue",
+      title: "О заведении",
+      typeLabel: "Страница",
+      kind: "about" as const,
+      category: "about" as const,
+      statuses,
+      fields,
+    }];
+  })() : [];
+  return [...positionMaterials, ...sectionMaterials, ...labelMaterials, ...bannerMaterials, ...aboutMaterials];
+}
+
+export function summarizeLanguageProgress(
+  materials: TranslationMaterial[],
+  language: TranslationLanguageCode,
+) {
+  let totalFields = 0;
+  let doneFields = 0;
+  let missing = 0;
+  let outdated = 0;
+
+  materials.forEach((material) => {
+    const fields = material.fields.filter((field) => field.source.trim());
+    const hasFieldLevelHistory = fields.some((field) => Boolean(field.previousSource?.trim()));
+    fields.forEach((field, index) => {
+      totalFields += 1;
+      const isOutdated = material.statuses[language] === "outdated"
+        && (hasFieldLevelHistory ? Boolean(field.previousSource?.trim()) : index === 0);
+      if (isOutdated) outdated += 1;
+      else if (field.values[language]?.trim()) doneFields += 1;
+      else missing += 1;
+    });
+  });
+
+  return { totalFields, doneFields, missing, outdated };
 }
 
 function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMaterial[]) {
@@ -388,35 +442,15 @@ function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMa
       fields: material.fields.map((field) => {
         const previousField = previousFields.get(field.id);
         return previousField
-          ? { ...field, previousSource: previousField.previousSource, values: { ...field.values, ...previousField.values } }
+          ? {
+            ...field,
+            previousSource: previousField.previousSource,
+            values: field.source.trim() ? { ...field.values, ...previousField.values } : {},
+          }
           : field;
       }),
     };
   });
-}
-
-function nextLanguageStats(language: TranslationLanguage, previous: TranslationStatus, next: TranslationStatus) {
-  if (previous === next) return language;
-  let doneFields = language.doneFields;
-  let missing = language.missing;
-  let outdated = language.outdated;
-  if (previous === "missing" && next !== "missing") {
-    doneFields = Math.min(language.totalFields, doneFields + 1);
-    missing = Math.max(0, missing - 1);
-  }
-  if (previous === "outdated" && next !== "outdated") {
-    doneFields = Math.min(language.totalFields, doneFields + 1);
-    outdated = Math.max(0, outdated - 1);
-  }
-  if (previous !== "missing" && next === "missing") {
-    doneFields = Math.max(0, doneFields - 1);
-    missing += 1;
-  }
-  if (previous !== "outdated" && next === "outdated") {
-    doneFields = Math.max(0, doneFields - 1);
-    outdated += 1;
-  }
-  return { ...language, doneFields, missing, outdated };
 }
 
 export function TranslationsProvider({ children }: { children: ReactNode }) {
@@ -425,7 +459,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const labelDirectory = useCatalogLabels(true);
   const [banners, setBanners] = useState<Banner[]>(seedBanners);
   const realMaterials = useMemo(
-    () => buildRealMaterials(items, sections, labelDirectory.labels, banners, account?.workspace),
+    () => buildTranslationMaterials(items, sections, labelDirectory.labels, banners, account?.workspace),
     [account?.workspace, banners, items, labelDirectory.labels, sections],
   );
   const [languages, setLanguages] = useState<TranslationLanguage[]>([
@@ -451,10 +485,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLanguages((current) => current.map((language) => {
-      const totalFields = materials.length;
-      const missing = materials.filter((material) => material.statuses[language.code] === "missing").length;
-      const outdated = materials.filter((material) => material.statuses[language.code] === "outdated").length;
-      const doneFields = totalFields - missing - outdated;
+      const { totalFields, doneFields, missing, outdated } = summarizeLanguageProgress(materials, language.code);
       if (
         language.totalFields === totalFields
         && language.doneFields === doneFields
@@ -483,18 +514,10 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateMaterialStatus = useCallback((materialIds: string[], language: TranslationLanguageCode, next: TranslationStatus) => {
-    const transitions = materials
-      .filter((material) => materialIds.includes(material.id) && material.statuses[language] !== next)
-      .map((material) => ({ previous: material.statuses[language], next }));
     setMaterials((current) => current.map((material) => materialIds.includes(material.id)
       ? { ...material, statuses: { ...material.statuses, [language]: next } }
       : material));
-    if (transitions.length > 0) {
-      setLanguages((current) => current.map((item) => item.code === language
-        ? transitions.reduce((result, transition) => nextLanguageStats(result, transition.previous, transition.next), item)
-        : item));
-    }
-  }, [materials]);
+  }, []);
 
   const startAutoTranslate = useCallback((languageCodes: TranslationLanguageCode[], materialIds: string[], source: string) => {
     const uniqueIds = [...new Set(materialIds)].filter((id) => materials.some((material) => material.id === id));
@@ -516,7 +539,12 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
             ...material,
             fields: material.fields.map((field) => ({
               ...field,
-              values: { ...field.values, [language]: field.values[language]?.trim() || fallbackTarget(field.source, language, "machine") },
+              values: {
+                ...field.values,
+                [language]: field.source.trim()
+                  ? field.values[language]?.trim() || fallbackTarget(field.source, language, "machine")
+                  : "",
+              },
             })),
           };
         }));
@@ -535,8 +563,8 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       ...LANGUAGE_DETAILS[language],
       published: false,
       doneFields: 0,
-      totalFields: 64,
-      missing: 64,
+      totalFields: 0,
+      missing: 0,
       outdated: 0,
       autoTranslate: false,
     }]);
@@ -566,6 +594,28 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (material.kind === "position") {
       const item = items.find((candidate) => candidate.id === material.entityId);
       if (!item) return;
+      const field = material.fields.find((candidate) => candidate.id === fieldId);
+      if (field?.kind === "option-group" && field.optionGroupId) {
+        updateItem(item.id, {
+          optionGroups: (item.optionGroups ?? []).map((group) => group.id === field.optionGroupId
+            ? { ...group, nameTranslations: { ...group.nameTranslations, ru: group.name, [language]: value } }
+            : group),
+        });
+        return;
+      }
+      if (field?.kind === "option" && field.optionGroupId && field.optionVariantId) {
+        updateItem(item.id, {
+          optionGroups: (item.optionGroups ?? []).map((group) => group.id === field.optionGroupId
+            ? {
+              ...group,
+              variants: group.variants.map((variant) => variant.id === field.optionVariantId
+                ? { ...variant, nameTranslations: { ...variant.nameTranslations, ru: variant.name, [language]: value } }
+                : variant),
+            }
+            : group),
+        });
+        return;
+      }
       if (fieldId === "title") updateItem(item.id, { titleTranslations: { ...item.titleTranslations, ru: item.title, [language]: value } });
       if (fieldId === "description") updateItem(item.id, { descriptionTranslations: { ...item.descriptionTranslations, ru: stripHtml(item.description), [language]: value } });
       return;
@@ -575,34 +625,48 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       if (section) updateSection(section.id, { nameTranslations: { ...section.nameTranslations, ru: section.name, [language]: value } });
       return;
     }
-    if (material.kind === "option-group" && material.ownerItemId) {
-      const item = items.find((candidate) => candidate.id === material.ownerItemId);
-      if (!item?.optionGroups) return;
-      const optionGroups = item.optionGroups.map((group) => {
-        if (group.id !== material.entityId) return group;
-        if (fieldId === "group-name") return { ...group, nameTranslations: { ...group.nameTranslations, ru: group.name, [language]: value } };
-        const variantId = fieldId.startsWith("variant:") ? fieldId.slice("variant:".length) : null;
-        return { ...group, variants: group.variants.map((variant) => variant.id === variantId ? { ...variant, nameTranslations: { ...variant.nameTranslations, ru: variant.name, [language]: value } } : variant) };
-      });
-      updateItem(item.id, { optionGroups });
-      return;
-    }
     if (material.kind === "tag" || material.kind === "sticker") {
       const label = labelDirectory.labels.find((candidate) => candidate.id === material.entityId);
       if (label) labelDirectory.update(label.id, { ...label.translations, [language]: value });
       return;
     }
     if (material.kind === "banner") {
+      const field = material.fields.find((candidate) => candidate.id === fieldId);
       setBanners((current) => current.map((banner) => {
         if (banner.id !== material.entityId) return banner;
-        return fieldId === "title"
-          ? { ...banner, titleTranslations: { ...banner.titleTranslations, ru: banner.title, [language]: value } }
-          : { ...banner, subtitleTranslations: { ...banner.subtitleTranslations, ru: banner.subtitle, [language]: value } };
+        if (field?.kind === "banner-tag" && field.bannerTagId) {
+          const tagLanguage = language === "kk" ? "kz" : language;
+          return {
+            ...banner,
+            tags: banner.tags.map((tag) => tag.id === field.bannerTagId
+              ? { ...tag, texts: { ...tag.texts, [tagLanguage]: value } }
+              : tag),
+          };
+        }
+        return { ...banner, subtitleTranslations: { ...banner.subtitleTranslations, ru: banner.subtitle, [language]: value } };
       }));
       return;
     }
     if (material.kind === "about" && account?.workspace) {
-      updateWorkspace({ localizedNames: { ...account.workspace.localizedNames, ru: account.workspace.name, [language]: value } });
+      if (fieldId === "name") {
+        updateWorkspace({ localizedNames: { ...account.workspace.localizedNames, ru: account.workspace.name, [language]: value } });
+      } else if (fieldId === "address") {
+        updateWorkspace({
+          localizedAddresses: {
+            ...account.workspace.localizedAddresses,
+            ru: account.workspace.address ?? DEFAULT_WORKSPACE_ADDRESS,
+            [language]: value,
+          },
+        });
+      } else if (fieldId === "description") {
+        updateWorkspace({
+          localizedDescriptions: {
+            ...account.workspace.localizedDescriptions,
+            ru: account.workspace.description ?? "",
+            [language]: value,
+          },
+        });
+      }
     }
   }, [account?.workspace, items, labelDirectory, sections, updateItem, updateSection, updateWorkspace]);
 
@@ -610,17 +674,17 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     const activeMaterial = materials.find((material) => material.id === materialId);
     if (!activeMaterial) return;
     const updatedFields = activeMaterial.fields.map((field) => field.id === fieldId ? { ...field, values: { ...field.values, [language]: value } } : field);
-    const previousStatus = activeMaterial.statuses[language];
-    const nextStatus: TranslationStatus = updatedFields.every((field) => Boolean(field.values[language]?.trim())) ? "translated" : "missing";
+    const translatableFields = updatedFields.filter((field) => field.source.trim());
+    const nextStatus: TranslationStatus = translatableFields.length > 0
+      && translatableFields.every((field) => Boolean(field.values[language]?.trim()))
+      ? "translated"
+      : "missing";
     setSaveState("saving");
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     setMaterials((current) => current.map((material) => material.id === materialId
       ? { ...material, fields: updatedFields, statuses: { ...material.statuses, [language]: nextStatus } }
       : material));
     persistField(activeMaterial, fieldId, language, value);
-    if (previousStatus !== nextStatus) {
-      setLanguages((current) => current.map((item) => item.code === language ? nextLanguageStats(item, previousStatus, nextStatus) : item));
-    }
     saveTimerRef.current = window.setTimeout(() => {
       setSaveState("saved");
       const idleTimer = window.setTimeout(() => setSaveState("idle"), 1800);
@@ -644,7 +708,6 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     }
     if (currentDescription === caesarDescriptionRef.current) return;
     const previousSource = caesarDescriptionRef.current;
-    const previousStatus = materials.find((material) => material.id === caesar.id)?.statuses.kk ?? "translated";
     caesarDescriptionRef.current = currentDescription;
     setMaterials((current) => current.map((material) => material.id !== caesar.id ? material : {
       ...material,
@@ -652,11 +715,8 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       statuses: { ...material.statuses, kk: "outdated" },
       fields: material.fields.map((field) => field.id === "description" ? { ...field, previousSource, source: currentDescription } : field),
     }));
-    if (previousStatus !== "outdated") {
-      setLanguages((current) => current.map((language) => language.code === "kk" ? nextLanguageStats(language, previousStatus, "outdated") : language));
-    }
     showToast("Перевод «Цезарь с курицей» требует обновления", "Открыть перевод", () => openWorkspace({ language: "kk", category: "positions", materialId: caesar.id }));
-  }, [caesar, materials, openWorkspace, showToast]);
+  }, [caesar, openWorkspace, showToast]);
 
   const getCatalogSummary = useCallback((item: CatalogItem) => {
     const material = materials.find((candidate) => candidate.catalogItemId === item.id && candidate.kind === "position");

@@ -44,6 +44,7 @@ import { CompactContent, PageContent, PageScroll } from "@/components/workspace/
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import {
+  DEFAULT_WORKSPACE_ADDRESS,
   useMockAuth,
   type VenueType,
 } from "@/contexts/mock-auth-context";
@@ -1990,8 +1991,8 @@ function BasicInfoWorkspace({
   const currentVitrine = MOCK_VITRINES.find((vitrine) => vitrine.id === CURRENT_VITRINE_ID) ?? MOCK_VITRINES[0];
   const registrationCountryCode = currentVitrine?.registrationCountryCode;
   const [name, setName] = useState(account?.workspace.name ?? "Sweet affair");
-  const [address, setAddress] = useState("Астана, Абылай-хана 34, д 18");
-  const [description, setDescription] = useState("");
+  const [address, setAddress] = useState(account?.workspace.address ?? DEFAULT_WORKSPACE_ADDRESS);
+  const [description, setDescription] = useState(account?.workspace.description ?? "");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [wifiAdded, setWifiAdded] = useState(false);
@@ -2009,6 +2010,11 @@ function BasicInfoWorkspace({
   useEffect(() => {
     if (account?.workspace.name) setName(account.workspace.name);
   }, [account?.workspace.name]);
+
+  useEffect(() => {
+    setAddress(account?.workspace.address ?? DEFAULT_WORKSPACE_ADDRESS);
+    setDescription(account?.workspace.description ?? "");
+  }, [account?.workspace.address, account?.workspace.description]);
 
   const basicErrors = useMemo(
     () => ({
@@ -2043,6 +2049,32 @@ function BasicInfoWorkspace({
       },
     });
     touchBasicField("name");
+  };
+
+  const saveWorkspaceAddress = () => {
+    if (!account) return;
+    const nextAddress = address.trim();
+    setAddress(nextAddress);
+    updateWorkspace({
+      address: nextAddress,
+      localizedAddresses: {
+        ...account.workspace.localizedAddresses,
+        [account.workspace.primaryLanguage]: nextAddress,
+      },
+    });
+    touchBasicField("address");
+  };
+
+  const saveWorkspaceDescription = () => {
+    if (!account) return;
+    updateWorkspace({
+      description,
+      localizedDescriptions: {
+        ...account.workspace.localizedDescriptions,
+        [account.workspace.primaryLanguage]: description,
+      },
+    });
+    touchBasicField("description");
   };
 
   const handleLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -2137,7 +2169,7 @@ function BasicInfoWorkspace({
         label="Адрес"
         value={address}
         onChange={edit(setAddress)}
-        onBlur={() => touchBasicField("address")}
+        onBlur={saveWorkspaceAddress}
         error={basicErrors.address}
         placeholder="Например, ул. Кунаева, 12"
       />
@@ -2161,7 +2193,7 @@ function BasicInfoWorkspace({
       <DescriptionRichTextEditor
         value={description}
         onChange={edit(setDescription)}
-        onBlur={() => touchBasicField("description")}
+        onBlur={saveWorkspaceDescription}
         error={basicErrors.description}
         placeholder="Кратко расскажите о заведении, кухне и атмосфере"
         limit={DESCRIPTION_LIMIT}

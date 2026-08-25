@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowSquareOut,
@@ -73,7 +73,6 @@ const STATUS_META: Record<TranslationStatus, { label: string }> = {
 const CATEGORY_META: Array<{ id: TranslationCategory; label: string; group: "catalog" | "online" }> = [
   { id: "positions", label: "Позиции", group: "catalog" },
   { id: "sections", label: "Разделы", group: "catalog" },
-  { id: "options", label: "Модификаторы / опции", group: "catalog" },
   { id: "tags", label: "Теги", group: "catalog" },
   { id: "stickers", label: "Стикеры", group: "catalog" },
   { id: "banners", label: "Баннеры", group: "online" },
@@ -346,19 +345,48 @@ function TranslationEditor({ language, onOpenOriginal }: { language: Translation
         <div className="grid h-9 grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-[#e7e5e4] bg-[#fafaf9] text-[11px] font-medium text-stone-500">
           <div className="px-3">Поле</div><div className="px-3">Русский — основной</div><div className="border-l border-[#e7e5e4] px-3">{languageLabel(language)}</div>
         </div>
-        {material.fields.map((field) => {
+        {material.fields.map((field, index) => {
+          const hasSource = Boolean(field.source.trim());
           const multiline = field.id === "description" || field.source.length > 90;
+          const showOptionsHeader = field.kind === "option-group"
+            && !material.fields.slice(0, index).some((candidate) => candidate.kind === "option-group");
           return (
-            <div key={field.id} className="grid min-h-[50px] grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#e7e5e4]">
-              <div className="px-3 py-3 text-[11px] font-medium text-stone-400">{field.label}</div>
-              <div className="bg-[#fafaf9]/45 px-3 py-2.5 text-[13px] leading-5 text-stone-600">
-                {status === "outdated" && field.previousSource && <div className="mb-2 border-b border-stone-200 pb-2 text-[10px] text-stone-400"><span className="font-medium">Предыдущий оригинал:</span> {field.previousSource}</div>}
-                {field.source}
+            <Fragment key={field.id}>
+              {showOptionsHeader && <div className="grid h-8 grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-[#e7e5e4] bg-stone-50/80 text-[10px] font-semibold uppercase tracking-[0.06em] text-stone-400"><div className="px-3">Опции</div><div /><div className="border-l border-[#e7e5e4]" /></div>}
+              <div className={cn(
+                "grid min-h-[50px] grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#e7e5e4]",
+                field.kind === "option-group" && "bg-stone-50/50",
+              )}>
+                <div className={cn(
+                  "px-3 py-3 text-[11px] font-medium text-stone-400",
+                  field.kind === "option-group" && "text-stone-500",
+                  field.kind === "option" && "pl-6 font-normal",
+                )}>{field.label}</div>
+                <div className="bg-[#fafaf9]/45 px-3 py-2.5 text-[13px] leading-5 text-stone-600">
+                  {status === "outdated" && field.previousSource && <div className="mb-2 border-b border-stone-200 pb-2 text-[10px] text-stone-400"><span className="font-medium">Предыдущий оригинал:</span> {field.previousSource}</div>}
+                  {hasSource ? field.source : <span className="text-stone-400">Не заполнено</span>}
+                </div>
+                <div className="border-l border-[#e7e5e4] px-1.5 py-1.5">
+                  {multiline ? (
+                    <Textarea
+                      value={hasSource ? field.values[language] ?? "" : ""}
+                      disabled={!hasSource}
+                      onChange={(event) => updateField(material.id, field.id, language, event.target.value)}
+                      placeholder={hasSource ? "Введите перевод" : "Сначала заполните оригинал"}
+                      className="h-[68px] min-h-[68px] resize-none rounded-[6px] border-transparent px-2 py-1.5 text-[13px] leading-5 shadow-none transition-colors hover:border-[#e7e5e4] focus-visible:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-stone-400 disabled:opacity-100 disabled:hover:border-transparent"
+                    />
+                  ) : (
+                    <Input
+                      value={hasSource ? field.values[language] ?? "" : ""}
+                      disabled={!hasSource}
+                      onChange={(event) => updateField(material.id, field.id, language, event.target.value)}
+                      placeholder={hasSource ? "Введите перевод" : "Сначала заполните оригинал"}
+                      className="h-9 rounded-[6px] border-transparent px-2 text-[13px] shadow-none transition-colors hover:border-[#e7e5e4] focus:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-stone-400 disabled:opacity-100 disabled:hover:border-transparent"
+                    />
+                  )}
+                </div>
               </div>
-              <div className="border-l border-[#e7e5e4] px-1.5 py-1.5">
-                {multiline ? <Textarea value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="h-[68px] min-h-[68px] resize-none rounded-[6px] border-transparent px-2 py-1.5 text-[13px] leading-5 shadow-none transition-colors hover:border-[#e7e5e4] focus-visible:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10" /> : <Input value={field.values[language] ?? ""} onChange={(event) => updateField(material.id, field.id, language, event.target.value)} placeholder="Введите перевод" className="h-9 rounded-[6px] border-transparent px-2 text-[13px] shadow-none transition-colors hover:border-[#e7e5e4] focus:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-indigo-500/10" />}
-              </div>
-            </div>
+            </Fragment>
           );
         })}
       </div>

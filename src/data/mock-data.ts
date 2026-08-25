@@ -156,7 +156,7 @@ export type BannerTagType = "accent" | "contrast" | "outline";
 export type BannerTag = {
   id: string;
   type: BannerTagType;
-  texts: { ru: string; kz: string; en: string };
+  texts: { ru: string; kz: string; en: string; sr?: string };
 };
 
 export type Banner = {

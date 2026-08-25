@@ -72,6 +72,8 @@ export type PublishedMenuSnapshot = {
 
 export type MockWorkspace = {
   name: string;
+  address?: string;
+  description?: string;
   status: MockWorkspaceStatus;
   technicalAddress: string;
   webAddress: string;
@@ -84,6 +86,8 @@ export type MockWorkspace = {
   primaryLanguage: LanguageCode;
   languages: WorkspaceLanguage[];
   localizedNames: Partial<Record<LanguageCode, string>>;
+  localizedAddresses?: Partial<Record<LanguageCode, string>>;
+  localizedDescriptions?: Partial<Record<LanguageCode, string>>;
   currency: string;
   timezone: string;
   market: "Kazakhstan" | "Serbia";
@@ -185,6 +189,8 @@ const SEED_PHONE_CONTACT = "+79950876356";
 const DEFAULT_EXISTING_PASSWORD = "tasko123";
 const CATALOG_KEY_PREFIX = CATALOG_STORAGE_PREFIX;
 
+export const DEFAULT_WORKSPACE_ADDRESS = "Астана, Абылай-хана 34, д 18";
+
 type StoredAuthState = {
   accounts: Record<string, MockAccount>;
   contactIndex: Record<string, string>;
@@ -206,6 +212,8 @@ function getBrowserTimezone() {
 
 const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = true): MockWorkspace => ({
   name: firstEntry ? "Новое меню" : "Kimchi Astana",
+  address: firstEntry ? "" : DEFAULT_WORKSPACE_ADDRESS,
+  description: "",
   status: firstEntry ? "draft" : "published",
   technicalAddress: `tasko.menu/m/${stableMenuId(seed)}`,
   webAddress: firstEntry ? `${Date.now()}.tsqr.me` : "kimchi.tsqr.me",
@@ -220,6 +228,8 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
     ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }))
     : [],
   localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
+  localizedAddresses: setupCompleted && !firstEntry ? { ru: DEFAULT_WORKSPACE_ADDRESS } : {},
+  localizedDescriptions: {},
   currency: "KZT",
   timezone: getBrowserTimezone(),
   market: "Kazakhstan",
