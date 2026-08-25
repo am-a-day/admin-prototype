@@ -63,6 +63,7 @@ import {
   StopCircle,
   TextTSlash,
   Trash,
+  Translate,
   X,
   XCircle,
 } from "@phosphor-icons/react";
@@ -72,6 +73,7 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
+import { useTranslationsOptional } from "@/contexts/translations-context";
 import { buildSectionTree, catalogItems, catalogSections, formatPrice } from "@/data/catalog";
 import type { CatalogItem, CatalogSection, CatalogSectionNode, CatalogTranslations } from "@/data/catalog";
 import { useCatalogStore, type CatalogSaveStatus } from "@/contexts/catalog-store-context";
@@ -6276,12 +6278,18 @@ function getStatusChips(item: CatalogItem): AuditChip[] {
 const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumns.v3");
 const CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnOrder.v1");
 const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v2");
+const CATALOG_TRANSLATION_COLUMN_DEFAULT_MIGRATION_KEY = catalogStorageKey("unifiedWorkspace.translationColumnDefault.v1");
 function readTableColumnVisibility(): VisibilityState {
   const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
+  const translationDefaultMigrated = readJsonRecord<boolean>(CATALOG_TRANSLATION_COLUMN_DEFAULT_MIGRATION_KEY, false);
   const next = { ...DEFAULT_TABLE_COLUMN_VISIBILITY };
   CATALOG_INFORMATION_COLUMN_IDS.forEach((columnId) => {
     if (typeof stored[columnId] === "boolean") next[columnId] = stored[columnId];
   });
+  if (!translationDefaultMigrated) {
+    next.translation = true;
+    writeJsonRecord(CATALOG_TRANSLATION_COLUMN_DEFAULT_MIGRATION_KEY, true);
+  }
   next.position = true;
   return next;
 }
@@ -6423,6 +6431,7 @@ function AuditRowActionsMenu({
   item: CatalogItem;
   onAction: (action: string, anchor?: MovePopoverAnchor, schedule?: WeeklySchedule) => void;
 }) {
+  const translations = useTranslationsOptional();
   const [open, setOpen] = useState(false);
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const [stopEditorPinned, setStopEditorPinned] = useState(false);
@@ -6528,6 +6537,17 @@ function AuditRowActionsMenu({
               onMenuClose: () => setOpen(false),
             }}
           />
+          {translations && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+              <DropdownActionItem
+                icon={Translate}
+                onSelect={() => translations.openWorkspace({ category: "positions", materialId: item.id })}
+              >
+                Перевести
+              </DropdownActionItem>
+            </>
+          )}
         </DropdownContent>
       </DropdownMenu.Root>
     </div>
@@ -7610,6 +7630,7 @@ function OverviewWorkspace({
   overviewContextStorageKey?: string;
   onFirstItemCreated?: () => void;
 }) {
+  const translations = useTranslationsOptional();
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
   const {
@@ -9277,6 +9298,7 @@ function OverviewWorkspace({
                         />
                       </div>
                     ) : undefined}
+                    onTranslate={translations ? () => translations.openCatalogBulk([...selectedIds]) : undefined}
                   />
                 </div>
               ) : (

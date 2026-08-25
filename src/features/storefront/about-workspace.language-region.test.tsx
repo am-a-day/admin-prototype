@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { CatalogStoreProvider } from "@/contexts/catalog-store-context";
@@ -23,7 +23,7 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-function renderWorkspace() {
+function renderWorkspace(onOpenTranslations = () => {}) {
   render(
     <AboutWorkspace
       aboutTab="language-region"
@@ -33,6 +33,7 @@ function renderWorkspace() {
       setSeoTitle={() => {}}
       seoDescription=""
       setSeoDescription={() => {}}
+      onOpenTranslations={onOpenTranslations}
     />,
     { wrapper: Providers },
   );
@@ -64,31 +65,16 @@ describe("language and region workspace", () => {
     expect(screen.getByRole("combobox", { name: "Часовой пояс" })).toHaveTextContent("Белград, Центральная Европа");
   });
 
-  it("keeps adding, primary-language switching, and removal connected", async () => {
+  it("keeps language management in translations and links to the workspace", async () => {
     const user = userEvent.setup();
-    renderWorkspace();
+    const onOpenTranslations = vi.fn();
+    renderWorkspace(onOpenTranslations);
 
-    const primaryLanguageChip = screen.getByLabelText("Основной язык").parentElement;
-    expect(primaryLanguageChip?.querySelector('button[aria-label^="Действия для языка"]')).toBeNull();
+    expect(screen.getByText("Используется как источник для переводов")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Добавить язык" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Действия для языка/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Действия для языка English" }));
-    await user.click(screen.getByRole("menuitem", { name: "Удалить язык" }));
-    await user.click(screen.getByRole("button", { name: "Добавить язык" }));
-    await user.click(screen.getByRole("option", { name: /English/ }));
-    await user.click(screen.getByRole("button", { name: "Добавить и перевести" }));
-
-    const englishActions = await screen.findByRole("button", { name: "Действия для языка English" });
-    await user.click(englishActions);
-    await user.click(screen.getByRole("menuitem", { name: "Сделать основным" }));
-
-    await user.click(screen.getByRole("button", { name: "Действия для языка Русский" }));
-    await user.click(screen.getByRole("menuitem", { name: "Сделать основным" }));
-    await user.click(screen.getByRole("button", { name: "Действия для языка English" }));
-    await user.click(screen.getByRole("menuitem", { name: "Удалить язык" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Действия для языка English" })).not.toBeInTheDocument();
-    });
-    expect(screen.getAllByLabelText("Основной язык")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Перейти к переводам" }));
+    expect(onOpenTranslations).toHaveBeenCalledTimes(1);
   });
 });

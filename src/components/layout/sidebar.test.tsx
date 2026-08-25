@@ -39,7 +39,7 @@ describe("shared sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     expect(navigation).toHaveTextContent(
-      "Мой ресторанНайти позициюАналитикаОнлайн-менюГлавнаяКаталогОформлениеЗаказыНастройка заказовИстория заказовБольше",
+      "Мой ресторанНайти позициюАналитикаОнлайн-менюГлавнаяКаталогПереводыОформлениеЗаказыНастройка заказовИстория заказовБольше",
     );
 
     await user.click(within(navigation).getByRole("button", { name: "История заказов" }));

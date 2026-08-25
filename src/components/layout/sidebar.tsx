@@ -28,6 +28,7 @@ import {
   Swatches,
   Tag,
   ThumbsUp,
+  Translate,
   X,
   type Icon,
 } from "@phosphor-icons/react";
@@ -74,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Главная", section: "storefront", tab: "home", icon: Stack },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
+      { label: "Переводы", section: "storefront", tab: "translations", icon: Translate },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
     ],
   },

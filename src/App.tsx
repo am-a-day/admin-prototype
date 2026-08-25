@@ -38,6 +38,7 @@ import {
   type CatalogDataScenario,
 } from "@/lib/catalog-data-scenarios";
 import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
+import { TranslationsProvider } from "@/contexts/translations-context";
 import { PositionEditorFixtureProvider } from "@/features/storefront/catalog/editor/position-editor-fixture-context";
 import { PositionEditorDesignLab } from "@/design-lab/position-editor-lab";
 import {
@@ -95,6 +96,7 @@ import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/hom
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 import { PublicMenuPage } from "@/features/storefront/public-menu-page";
+import { TranslationOverlays, TranslationsWorkspace } from "@/features/storefront/translations-workspace";
 import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
 import { TrainingTabs } from "@/features/training/training-tabs";
 import type { TrainingActiveSession, TrainingTab } from "@/features/training/training-data";
@@ -180,6 +182,7 @@ function getInitialStorefrontRoute() {
   const storeTab: StoreTabId =
     storeTabSegment === "home" ||
     storeTabSegment === "catalog" ||
+    storeTabSegment === "translations" ||
     storeTabSegment === "upsell" ||
     storeTabSegment === "appearance" ||
     storeTabSegment === "about" ||
@@ -227,6 +230,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
   "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
+  "storefront:translations": { title: "Переводы",          description: "Языки и переводы контента онлайн-меню." },
   "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
   "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
@@ -964,6 +968,27 @@ function AuthenticatedShell() {
     continueNavigation();
   };
 
+  useEffect(() => {
+    const openTranslations = () => navigate("storefront", "translations");
+    window.addEventListener("tasko:open-translations", openTranslations);
+    return () => window.removeEventListener("tasko:open-translations", openTranslations);
+  }, []);
+
+  const openCatalogItemFromTranslations = (itemId: string) => {
+    const target = itemsById[itemId];
+    setSection("storefront");
+    setStoreTab("catalog");
+    setCatalogTab("overview");
+    setCatalogViewMode("quick:all");
+    setCatalogOverviewFilterId("quick:all");
+    setCatalogSectionScopeId(target?.sectionId ?? null);
+    const url = new URL(`${window.location.origin}${STOREFRONT_PATH}/catalog`);
+    url.searchParams.set("positionId", itemId);
+    if (target?.sectionId) url.searchParams.set("sectionId", target.sectionId);
+    window.history.pushState(null, "", url);
+    setCatalogRouteRevision((revision) => revision + 1);
+  };
+
   const handleQuickCreate = (action: QuickCreateAction) => {
     if (action === "banner") {
       guardedNavigate("storefront", "home");
@@ -1138,6 +1163,9 @@ function AuthenticatedShell() {
         />
       );
     }
+    if (storeTab === "translations") {
+      content = <TranslationsWorkspace onOpenCatalogItem={openCatalogItemFromTranslations} />;
+    }
     if (storeTab === "appearance") {
       content = <AppearanceWorkspace />;
     }
@@ -1151,6 +1179,7 @@ function AuthenticatedShell() {
           setSeoTitle={setSeoTitle}
           seoDescription={seoDescription}
           setSeoDescription={setSeoDescription}
+          onOpenTranslations={() => navigate("storefront", "translations")}
         />
       );
     }
@@ -1227,6 +1256,7 @@ function AuthenticatedShell() {
   // Главная сама рисует заголовок «Главная» + табы (как в макете) — прячем дубль в шапке.
   const isHomePage = section === "storefront" && storeTab === "home";
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
+  const isTranslationsPage = section === "storefront" && storeTab === "translations";
   const isAboutPage = section === "storefront" && storeTab === "about";
   const isOrderSettingsPage = section === "management" && manageTab === "order-settings";
   const isTrainingPage = section === "training";
@@ -1243,7 +1273,7 @@ function AuthenticatedShell() {
     isCatalogPage && catalogTab === "upsell" ? "upsell" :
     isTrainingPage ? null :
     (activeTab as StoreTabId | ManageTabId | AnalyticsTabId | null);
-  const previewVisible = section === "storefront";
+  const previewVisible = section === "storefront" && !isTranslationsPage;
 
   const metaKey =
     section === "storefront" ? `storefront:${storeTab}` :
@@ -1378,7 +1408,7 @@ function AuthenticatedShell() {
                     <PageLangSwitcher
                       compact={isOrderSettingsPage}
                       onManageLanguages={() =>
-                        navigate("storefront", "about:language-region")
+                        navigate("storefront", "translations")
                       }
                     />
                   )}
@@ -1418,12 +1448,12 @@ function AuthenticatedShell() {
               data-workspace-editor-card
               className={cn(
                 "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#e7e5e4]",
-                isCatalogPage ? "bg-white" : "bg-[#fbfbf9]",
+                isCatalogPage || isTranslationsPage ? "bg-white" : "bg-[#fbfbf9]",
               )}
             >
               <ContentHeader
-                title={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
               <div className="flex min-h-0 min-w-0 flex-1">
@@ -1483,6 +1513,7 @@ function AuthenticatedShell() {
 
       <DraftToast />
       <PublishToast />
+      <TranslationOverlays />
       <PrototypeToolsPanel open={prototypeToolsOpen} onOpenChange={setPrototypeToolsOpen} />
     </div>
     </PreviewPanelProvider>
@@ -1537,9 +1568,11 @@ export default function App() {
                 <VitrineLaunchProvider>
                   <PreviewDemoProvider>
                     <CatalogStoreProvider>
-                      <HeaderActionsProvider>
-                        <AppShell />
-                      </HeaderActionsProvider>
+                      <TranslationsProvider>
+                        <HeaderActionsProvider>
+                          <AppShell />
+                        </HeaderActionsProvider>
+                      </TranslationsProvider>
                     </CatalogStoreProvider>
                   </PreviewDemoProvider>
                 </VitrineLaunchProvider>

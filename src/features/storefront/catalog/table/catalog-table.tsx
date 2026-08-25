@@ -33,6 +33,8 @@ import {
   SquareSplitHorizontalIcon,
   SealPercent,
   Trash,
+  Translate,
+  WarningCircle,
   X,
   XCircle,
   type Icon as PhosphorIcon,
@@ -76,6 +78,7 @@ import { getLocalCatalogItemLabels, getLocalCatalogLabelText } from "../labels/l
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
 import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 import binocularsAsset from "../ui/binoculars.svg";
+import { useTranslationsOptional } from "@/contexts/translations-context";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
@@ -186,7 +189,7 @@ const TABLE_COLUMN_RESIZE_LABELS: Record<string, string> = {
   description: "Описание",
   weight: "Вес или объём",
   kbju: "КБЖУ",
-  translation: "Перевод",
+  translation: "Переводы",
   section: "Раздел",
   price: "Базовая цена",
   discount: "Скидка",
@@ -225,7 +228,7 @@ const CATALOG_INFORMATION_COLUMN_LABELS: Record<CatalogInformationColumnId, stri
   description: "Описание",
   weight: "Вес или объём",
   kbju: "КБЖУ",
-  translation: "Перевод",
+  translation: "Переводы",
   price: "Базовая цена",
   discount: "Скидка",
   tags: "Теги",
@@ -263,7 +266,7 @@ export const DEFAULT_TABLE_COLUMN_VISIBILITY: VisibilityState = {
   description: false,
   weight: true,
   kbju: false,
-  translation: false,
+  translation: true,
   section: false,
   price: true,
   discount: false,
@@ -1463,6 +1466,7 @@ function AuditDishRowContent({
   resolvedSticker,
 }: AuditDishRowProps & { resolvedTags: string[]; resolvedSticker: string }) {
   const item = row.original;
+  const translations = useTranslationsOptional();
   const itemTitle = item.title || "Новая позиция";
   const reducedMotion = usePrefersReducedMotion();
   const {
@@ -1601,12 +1605,34 @@ function AuditDishRowContent({
                 <AuditDot state={kbjuState} title={kbjuState === "missing" ? "Нет КБЖУ" : kbjuState === "partial" ? `КБЖУ заполнено частично (${item.nutritionFilledCount} из 4)` : "КБЖУ (на 100 г) заполнено"} />
               </span>
             );
-          case "translation":
+          case "translation": {
+            const summary = translations?.getCatalogSummary(item) ?? {
+              filled: item.translationFilledCount,
+              total: item.translationTotalCount,
+              outdated: false,
+              tooltip: `Переведено ${item.translationFilledCount} из ${item.translationTotalCount} языков`,
+            };
             return (
-              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", dividerClass)} title={`Перевод: ${item.translationFilledCount} из ${item.translationTotalCount} языков`}>
-                {item.translationFilledCount}/{item.translationTotalCount}
+              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", dividerClass)}>
+                <Tooltip side="top" label={<span className="whitespace-pre-line leading-5">{summary.tooltip}</span>}>
+                  <button
+                    type="button"
+                    data-no-dnd
+                    aria-label={`Открыть переводы для ${item.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      translations?.openWorkspace({ category: "positions", materialId: item.id });
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className={cn("inline-flex h-7 items-center gap-1 rounded-[6px] px-1.5 tabular-nums transition hover:bg-stone-100", summary.outdated && "text-amber-700")}
+                  >
+                    {summary.outdated && <WarningCircle size={13} weight="fill" />}
+                    {summary.filled}/{summary.total}
+                  </button>
+                </Tooltip>
               </span>
             );
+          }
           case "section":
             return (
               <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center px-2", dividerClass)}>
@@ -1910,6 +1936,7 @@ export function SelectionToolbar({
   hasArchivedItems,
   hasNonArchivedItems,
   labelActions,
+  onTranslate,
 }: {
   checked: boolean;
   indeterminate: boolean;
@@ -1935,6 +1962,7 @@ export function SelectionToolbar({
   hasArchivedItems: boolean;
   hasNonArchivedItems: boolean;
   labelActions?: ReactNode;
+  onTranslate?: () => void;
 }) {
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const [stopEditorPinned, setStopEditorPinned] = useState(false);
@@ -1949,6 +1977,16 @@ export function SelectionToolbar({
       onClearSelection={onClearSelection}
     >
       <span className="flex shrink-0 items-center gap-[6px]">
+          {onTranslate && (
+            <button
+              type="button"
+              onClick={onTranslate}
+              className="inline-flex h-[26px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[8px] border border-[#e7e5e4] bg-white pl-[6px] pr-2 text-[12px] font-normal leading-4 text-[#292524] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+            >
+              <Translate size={15} weight="regular" />
+              Перевести
+            </button>
+          )}
           <button
             type="button"
             onClick={(event) => onMove(getMovePopoverAnchor(event))}

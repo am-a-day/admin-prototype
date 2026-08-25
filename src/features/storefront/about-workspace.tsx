@@ -68,6 +68,7 @@ type AboutWorkspaceProps = {
   setSeoTitle: (v: string) => void;
   seoDescription: string;
   setSeoDescription: (v: string) => void;
+  onOpenTranslations?: () => void;
 };
 
 const TAB_LABELS: Record<AboutTab, string> = {
@@ -2211,7 +2212,7 @@ function BasicInfoWorkspace({
   );
 }
 
-export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
+export function LanguageRegionWorkspace({ onChange, onOpenTranslations }: { onChange: () => void; onOpenTranslations: () => void }) {
   const {
     account,
     updateWorkspace,
@@ -2237,6 +2238,31 @@ export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) 
   if (!account) return null;
 
   const workspace = account.workspace;
+  return (
+    <div className="w-full space-y-6">
+      <section aria-labelledby="primary-language-title">
+        <div id="primary-language-title" className="text-[13px] font-medium text-[#292524]">Основной язык</div>
+        <div className="mt-2 flex items-center justify-between rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-2.5">
+          <div>
+            <div className="text-[13px] font-medium text-[#292524]">Русский</div>
+            <div className="mt-0.5 text-[11px] text-[#79716b]">Используется как источник для переводов</div>
+          </div>
+          <span className="rounded-[6px] bg-[#f5f5f4] px-2 py-1 text-[11px] text-[#57534d]">Основной язык</span>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-4 rounded-[10px] border border-indigo-100 bg-indigo-50/50 px-3 py-2.5">
+          <div><div className="text-[13px] font-medium text-[#292524]">Переводы контента</div><div className="mt-0.5 text-[11px] text-[#79716b]">Добавление языков, прогресс и публикация находятся в отдельном рабочем разделе.</div></div>
+          <Button type="button" size="sm" className="shrink-0 bg-[#4f39f6] hover:bg-[#4030d4]" onClick={onOpenTranslations}>Перейти к переводам</Button>
+        </div>
+      </section>
+      <section aria-label="Региональные параметры" className="space-y-4">
+        <div className="grid grid-cols-[180px_1fr] items-center gap-4"><span className="text-[13px] font-medium text-[#292524]">Регион</span><span className="text-[13px] text-[#57534d]">{workspace.market}</span></div>
+        <BasicSelectField id="about-currency" label="Валюта" icon={CURRENCY_ICONS[workspace.currency] ?? Money} tooltip="Используется для отображения цен в онлайн-меню." value={workspace.currency} options={CURRENCY_OPTIONS} onChange={(currency) => { updateWorkspace({ currency }); onChange(); }} />
+        <BasicSelectField id="about-timezone" label="Часовой пояс" icon={GlobeHemisphereWest} tooltip="Используется для расписаний, заказов, уведомлений и аналитики." value={workspace.timezone} options={TIMEZONE_OPTIONS} onChange={(timezone) => { updateWorkspace({ timezone }); onChange(); }} />
+        <div className="grid grid-cols-[180px_1fr] items-center gap-4"><span className="text-[13px] font-medium text-[#292524]">Форматы</span><span className="text-[13px] text-[#57534d]">Дата: ДД.ММ.ГГГГ · Числа: 1 234,56</span></div>
+      </section>
+    </div>
+  );
+
   const availableLanguages = LANGUAGES.filter(
     ({ code }) => !workspace.languages.some((language) => language.code === code),
   );
@@ -2529,6 +2555,7 @@ export function AboutWorkspace({
   setSeoTitle,
   seoDescription,
   setSeoDescription,
+  onOpenTranslations,
 }: AboutWorkspaceProps) {
   const { registerChange } = usePublish();
 
@@ -2549,7 +2576,7 @@ export function AboutWorkspace({
           )}
 
           {tab === "language-region" && (
-            <LanguageRegionWorkspace onChange={() => registerChange("about")} />
+            <LanguageRegionWorkspace onChange={() => registerChange("about")} onOpenTranslations={onOpenTranslations ?? (() => {})} />
           )}
 
           {/* ── Правила для гостей ── */}
