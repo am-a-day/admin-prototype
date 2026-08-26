@@ -59,7 +59,7 @@ export function CatalogTreeThumbnail({
       data-has-image={src ? "true" : "false"}
       className={cn(
         "relative flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-[5.263px]",
-        selected && "rounded-[3px] border-[0.556px] border-[#4f39f6] bg-white p-[1.818px]",
+        selected && "rounded-[3px] border-[0.556px] border-[#4f39f6] bg-stone-100 p-[1.818px]",
         muted && "opacity-60 grayscale",
       )}
     >
@@ -67,7 +67,7 @@ export function CatalogTreeThumbnail({
         src={src}
         kind="item"
         className={cn(
-          "size-5 rounded-[4.615px] bg-white text-[#a6a09b] [&_svg]:size-[11px]",
+          "size-5 rounded-[4.615px] bg-stone-100 text-[#a6a09b] [&_svg]:size-[11px]",
           !src && "border-[0.714px] border-[#e7e5e4]",
           selected && "size-full rounded-[2px] border-0",
         )}
