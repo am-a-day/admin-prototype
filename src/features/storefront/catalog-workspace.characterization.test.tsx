@@ -110,6 +110,7 @@ function CatalogHarness({ initialPhase = "has-items" }: { initialPhase?: Catalog
           onSectionScopeChange={setSectionScopeId}
           onStopListFilterChange={() => {}}
           onStopListSectionScopeChange={() => {}}
+          onOpenStopList={() => {}}
           onCatalogTabChange={setCatalogTab}
           onRegisterCreateNavigationGuard={vi.fn()}
           onAdvancePhase={setCatalogPhase}

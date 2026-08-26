@@ -40,11 +40,14 @@ function renderTree(sections: CatalogTreeSection[], items: CatalogItem[], includ
         sections={sections}
         items={items}
         allPositionsSelected={false}
+        stopListActive={false}
+        stopListCount={55}
         selectedSectionId={null}
         sectionEditingEnabled
         includeArchived={includeArchived}
         onSelectSection={vi.fn()}
         onSelectAllPositions={vi.fn()}
+        onSelectStopList={vi.fn()}
         onStartCreateSection={vi.fn()}
         onCreateSection={vi.fn()}
         onCancelCreateSection={vi.fn()}
@@ -86,7 +89,7 @@ describe("CatalogTreeThumbnail", () => {
 });
 
 describe("UnifiedCatalogTreePanel section metadata", () => {
-  it("replaces counts with stopped and scheduled status icons and keeps the count in the tooltip", async () => {
+  it("hides section counts and keeps stopped and scheduled totals in status tooltips", async () => {
     const sections: CatalogTreeSection[] = [
       { id: "available-0", name: "Доступный 0", availabilityMode: "always", children: [] },
       { id: "available", name: "Доступный", availabilityMode: "always", children: [] },
@@ -109,16 +112,16 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const stoppedRow = screen.getByRole("button", { name: "Раздел На стопе" });
     const scheduledRow = screen.getByRole("button", { name: "Раздел По расписанию" });
 
-    expect(within(screen.getByRole("button", { name: "Раздел Доступный 0" })).getByText("0")).toBeInTheDocument();
-    expect(within(availableRow).getByText("6")).toBeInTheDocument();
-    expect(within(screen.getByRole("button", { name: "Раздел Доступный 13" })).getByText("13")).toBeInTheDocument();
-    expect(within(screen.getByRole("button", { name: "Раздел Доступный 241" })).getByText("241")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Доступный 0" })).queryByText("0")).not.toBeInTheDocument();
+    expect(within(availableRow).queryByText("6")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Доступный 13" })).queryByText("13")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Доступный 241" })).queryByText("241")).not.toBeInTheDocument();
     expect(within(availableRow).queryByLabelText(/На стопе/)).not.toBeInTheDocument();
     const stoppedStatus = within(stoppedRow).getByLabelText("На стопе · 21 позиция");
     const stoppedMetadata = stoppedStatus.closest("[data-catalog-section-metadata]");
     expect(stoppedStatus).toHaveAttribute("tabindex", "0");
     expect(stoppedStatus).toHaveClass("size-5");
-    expect(stoppedMetadata).toHaveClass("col-start-3", "size-5", "justify-center");
+    expect(stoppedMetadata).toHaveClass("ml-auto", "size-5", "justify-center", "group-hover:opacity-0");
     expect(stoppedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(stoppedRow).toHaveAttribute("title", "На стопе · 21 позиция");
     expect(within(stoppedRow).queryByText("21")).not.toBeInTheDocument();
@@ -129,7 +132,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("На стопе · 21 позиция");
   });
 
-  it("uses fixed add, more, and metadata slots for the header, root rows, and nested rows", async () => {
+  it("keeps hover actions out of flow while indentation only affects row content", async () => {
     const sections: CatalogTreeSection[] = [
       {
         id: "root",
@@ -148,8 +151,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const nestedRow = screen.getByRole("button", { name: "Раздел Вложенный раздел" });
     const rootLeft = rootRow.querySelector("[data-catalog-section-left-content]");
     const nestedLeft = nestedRow.querySelector("[data-catalog-section-left-content]");
-    const rootSlots = rootRow.querySelector("[data-catalog-section-right-slots]");
-    const nestedSlots = nestedRow.querySelector("[data-catalog-section-right-slots]");
+    const rootActions = rootRow.querySelector("[data-catalog-section-hover-actions]");
     const nestedActions = nestedRow.querySelector("[data-catalog-section-hover-actions]");
     const nestedMetadata = nestedRow.querySelector("[data-catalog-section-metadata]");
     const nestedCount = nestedRow.querySelector("[data-catalog-section-count]");
@@ -157,28 +159,27 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const scrollport = document.querySelector(".scrollbar-subtle");
     const headerActions = within(headerGrid as HTMLElement).getAllByRole("button");
 
-    expect(headerGrid).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
+    expect(headerGrid).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
     expect(headerActions.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Добавить раздел",
       "Открыть поиск разделов",
     ]);
     expect(headerActions.map((button) => button.querySelector("svg")?.getAttribute("width"))).toEqual(["14", "14"]);
-    expect(rootSlots).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
-    expect(nestedSlots).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
-    expect(nestedActions).toHaveClass("w-[46px]", "grid-cols-[20px_20px]", "col-span-2");
-    expect(nestedMetadata).toHaveClass("col-start-3", "size-5", "justify-center");
-    expect(nestedMetadata).not.toHaveClass("group-hover:opacity-0");
-    expect(nestedCount).toHaveClass("w-full", "text-right", "tabular-nums");
+    expect(rootActions).toHaveClass("absolute", "right-0.5", "w-[46px]", "grid-cols-[20px_20px]");
+    expect(nestedActions).toHaveClass("absolute", "right-0.5", "w-[46px]", "grid-cols-[20px_20px]");
+    expect(nestedMetadata).not.toBeInTheDocument();
+    expect(nestedCount).not.toBeInTheDocument();
+    expect(document.querySelector("[data-catalog-section-right-slots]")).not.toBeInTheDocument();
     expect(scrollport).toHaveClass("[scrollbar-gutter:stable]");
     expect(headerGrid?.closest(".scrollbar-subtle")).toBe(scrollport);
-    expect(rootSlots?.closest(".scrollbar-subtle")).toBe(scrollport);
-    expect(nestedSlots?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(rootActions?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(nestedActions?.closest(".scrollbar-subtle")).toBe(scrollport);
     expect(rootLeft).toHaveStyle({ paddingLeft: "0px" });
     expect(nestedLeft).toHaveStyle({ paddingLeft: "20px" });
-    expect(rootLeft?.nextElementSibling).toBe(rootSlots);
-    expect(nestedLeft?.nextElementSibling).toBe(nestedSlots);
-    expect(rootSlots?.parentElement).toBe(rootRow);
-    expect(nestedSlots?.parentElement).toBe(nestedRow);
+    expect(rootLeft?.nextElementSibling).toBe(rootActions);
+    expect(nestedLeft?.nextElementSibling).toBe(nestedActions);
+    expect(rootActions?.parentElement).toBe(rootRow);
+    expect(nestedActions?.parentElement).toBe(nestedRow);
     expect(nestedList).not.toHaveClass("pl-5");
     expect(rootRow.querySelector("[data-section-title]")).toHaveClass("min-w-0", "flex-1", "truncate");
 
@@ -189,9 +190,12 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(disabledAdd.querySelector("svg")).toHaveAttribute("width", "14");
     expect(more).toHaveClass("size-5");
     expect(more.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(screen.getByRole("button", { name: "Все позиции" })).not.toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: "Стоп-лист 55" })).toBeInTheDocument();
 
     const disabledAddTooltipTrigger = within(nestedRow).getByLabelText("Нельзя добавить подраздел: в разделе уже есть позиции");
     expect(disabledAddTooltipTrigger).toHaveAttribute("tabindex", "0");
+    expect(disabledAddTooltipTrigger).toHaveClass("opacity-0");
     disabledAddTooltipTrigger.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Нельзя добавить подраздел: в разделе уже есть позиции");
   });
@@ -222,7 +226,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const archivedRow = screen.getByRole("button", { name: "Раздел Архивный" });
     expect(archivedRow).toHaveAttribute("data-archived-section", "true");
     const archivedStatus = within(archivedRow).getByLabelText("В архиве · 13 позиций");
-    expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("col-start-3", "size-5", "justify-center");
+    expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("ml-auto", "size-5", "justify-center", "group-hover:opacity-0");
     expect(archivedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(within(archivedRow).queryByText("13")).not.toBeInTheDocument();
 

@@ -60,6 +60,7 @@ export function PositionEditorDesignLab({ fixture }: { fixture: PositionEditorDe
         onSectionScopeChange={setSectionScopeId}
         onStopListFilterChange={setStopListFilterId}
         onStopListSectionScopeChange={setStopListSectionScopeId}
+        onOpenStopList={() => {}}
         onCatalogTabChange={setCatalogTab}
         onRegisterCreateNavigationGuard={(_guard: CatalogCreateNavigationGuard | null) => {}}
         onAdvancePhase={() => {}}

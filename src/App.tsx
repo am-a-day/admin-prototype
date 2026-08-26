@@ -738,9 +738,7 @@ function AuthenticatedShell() {
   };
   const catalogPrimaryTab: CatalogPrimaryTab = catalogTab === "upsell"
     ? "upsell"
-    : catalogStopListActive
-      ? "stop-list"
-      : "sections";
+    : "sections";
   const changeCatalogPrimaryTab = (next: CatalogPrimaryTab) => {
     if (next === "sections") {
       requestCatalogNavigation(() => {
@@ -1179,6 +1177,7 @@ function AuthenticatedShell() {
           onSectionScopeChange={setCatalogSectionScopeId}
           onStopListFilterChange={setCatalogStopListFilterId}
           onStopListSectionScopeChange={setCatalogStopListSectionScopeId}
+          onOpenStopList={() => changeCatalogPrimaryTab("stop-list")}
           onCatalogTabChange={setCatalogTab}
           onRegisterCreateNavigationGuard={(guard) => {
             catalogCreateNavigationGuardRef.current = guard;

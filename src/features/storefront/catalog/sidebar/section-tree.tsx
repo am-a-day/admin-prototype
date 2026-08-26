@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretDoubleLeft, CaretDown, CaretRight, Check, DotsThreeVertical, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
+import { Asterisk, CaretDoubleLeft, CaretDown, CaretRight, Check, DotsThreeVertical, LockLaminated, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
@@ -84,7 +84,6 @@ export function CatalogTreeThumbnail({
 
 const CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY = catalogStorageKey("sections.treeShowArchived");
 const CATALOG_SECTION_ACTION_GRID_CLASS = "grid w-[46px] shrink-0 grid-cols-[20px_20px] items-center gap-1.5";
-const CATALOG_SECTION_TRAILING_GRID_CLASS = "grid w-[72px] shrink-0 grid-cols-[20px_20px_20px] items-center gap-1.5";
 
 const SECTION_STATUS_LABELS: Record<Exclude<CatalogAvailabilityStatusIconState, "soon">, string> = {
   archive: "В архиве",
@@ -118,11 +117,14 @@ type UnifiedCatalogTreePanelProps = {
   sections: CatalogTreeSection[];
   items: CatalogItem[];
   allPositionsSelected: boolean;
+  stopListActive: boolean;
+  stopListCount: number;
   selectedSectionId: string | null;
   sectionEditingEnabled: boolean;
   includeArchived: boolean;
   onSelectSection: (id: string) => void;
   onSelectAllPositions: () => void;
+  onSelectStopList: () => void;
   onStartCreateSection: (parentId: string | null) => void;
   onCreateSection: (name: string, parentId: string | null) => boolean | string | void;
   onCancelCreateSection: () => void;
@@ -219,11 +221,14 @@ export function UnifiedCatalogTreePanel({
   sections,
   items,
   allPositionsSelected,
+  stopListActive,
+  stopListCount,
   selectedSectionId,
   sectionEditingEnabled,
   includeArchived,
   onSelectSection,
   onSelectAllPositions,
+  onSelectStopList,
   onStartCreateSection,
   onCreateSection,
   onCancelCreateSection,
@@ -552,89 +557,17 @@ export function UnifiedCatalogTreePanel({
                 )}
               </div>
               {!renaming && (
-                <span
-                  data-catalog-section-right-slots
-                  className={cn(
-                    CATALOG_SECTION_TRAILING_GRID_CLASS,
-                    "relative ml-[9px] h-5",
-                    isArchived && "opacity-60",
-                  )}
-                >
-                  <div
-                    data-catalog-section-hover-actions
-                    className={cn(
-                      CATALOG_SECTION_ACTION_GRID_CLASS,
-                      "pointer-events-none col-span-2 col-start-1 row-start-1 h-5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
-                      (menuOpen || focusedActionSectionId === section.id) && "pointer-events-auto opacity-100",
-                    )}
-                    onFocusCapture={() => setFocusedActionSectionId(section.id)}
-                    onBlurCapture={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setFocusedActionSectionId((current) => current === section.id ? null : current);
-                      }
-                    }}
-                  >
-                      <Tooltip
-                        label="Нельзя добавить подраздел: в разделе уже есть позиции"
-                        side="top"
-                        delayDuration={250}
-                        disabled={allowSubsectionCreation}
-                      >
-                        <span
-                          className="flex size-5 shrink-0 items-center justify-center"
-                          tabIndex={allowSubsectionCreation ? undefined : 0}
-                          aria-label={allowSubsectionCreation ? undefined : "Нельзя добавить подраздел: в разделе уже есть позиции"}
-                        >
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            data-no-dnd
-                            aria-label={`Добавить подраздел в раздел ${section.name}`}
-                            disabled={!allowSubsectionCreation}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setExpanded((current) => ({ ...current, [section.id]: true }));
-                              onStartCreateSection(section.id);
-                            }}
-                            className="size-5 rounded-[6px] text-[#78716c] hover:bg-transparent hover:text-[#292524] focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:text-[#d6d3d1]"
-                          >
-                            <Plus size={14} weight="regular" aria-hidden="true" />
-                          </Button>
-                        </span>
-                      </Tooltip>
-                      <SharedDropdownMenu
-                        modal={false}
-                        open={menuOpen}
-                        onOpenChange={(open) => setOpenMenuSectionId(open ? section.id : null)}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            data-no-dnd
-                            aria-label={`Действия с разделом ${section.name}`}
-                            onClick={(event) => event.stopPropagation()}
-                            className="size-5 shrink-0 rounded-[6px] text-[#78716c] hover:bg-transparent hover:text-[#292524] focus-visible:ring-[#292524]/10"
-                          >
-                            <DotsThreeVertical size={16} weight="regular" aria-hidden="true" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <SectionTreeDropdown preventTriggerFocus>
-                          {renderSectionActions(
-                            section,
-                            { allowPositionCreation, allowSubsectionCreation },
-                            handleMenuAction,
-                          )}
-                        </SectionTreeDropdown>
-                      </SharedDropdownMenu>
-                  </div>
-                  <span
-                    data-catalog-section-metadata
-                    className="col-start-3 row-start-1 flex size-5 items-center justify-center"
-                  >
-                    {availabilityStatus && (
+                <>
+                  {availabilityStatus && (
+                    <span
+                      data-catalog-section-metadata
+                      className={cn(
+                        "ml-auto flex size-5 shrink-0 items-center justify-center transition-opacity group-hover:opacity-0",
+                        menuOpen || focusedActionSectionId === section.id
+                          ? "opacity-0"
+                          : isArchived && "opacity-60",
+                      )}
+                    >
                       <CatalogAvailabilityStatusIcon
                         state={availabilityStatus}
                         entity="section"
@@ -644,17 +577,86 @@ export function UnifiedCatalogTreePanel({
                         tooltipLabel={sectionStatusTooltipLabel}
                         hideWithGroupActions={false}
                       />
+                    </span>
+                  )}
+                  <div
+                    data-catalog-section-hover-actions
+                    className={cn(
+                      CATALOG_SECTION_ACTION_GRID_CLASS,
+                      "pointer-events-none absolute right-0.5 top-1.5 z-10 h-5 bg-[#f5f5f4] opacity-0 transition-opacity",
+                      isArchived
+                        ? "group-hover:pointer-events-auto group-hover:opacity-60 focus-within:pointer-events-auto focus-within:opacity-60"
+                        : "group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
+                      (menuOpen || focusedActionSectionId === section.id)
+                        && (isArchived ? "pointer-events-auto opacity-60" : "pointer-events-auto opacity-100"),
                     )}
-                    {!availabilityStatus && (
+                    onFocusCapture={() => setFocusedActionSectionId(section.id)}
+                    onBlurCapture={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setFocusedActionSectionId((current) => current === section.id ? null : current);
+                      }
+                    }}
+                  >
+                    <Tooltip
+                      label="Нельзя добавить подраздел: в разделе уже есть позиции"
+                      side="top"
+                      delayDuration={250}
+                      disabled={allowSubsectionCreation}
+                    >
                       <span
-                        data-catalog-section-count
-                        className="w-full text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]"
+                        className={cn(
+                          "flex size-5 shrink-0 items-center justify-center",
+                          !allowSubsectionCreation && "opacity-0",
+                        )}
+                        tabIndex={allowSubsectionCreation ? undefined : 0}
+                        aria-label={allowSubsectionCreation ? undefined : "Нельзя добавить подраздел: в разделе уже есть позиции"}
                       >
-                        {sectionItemCount}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          data-no-dnd
+                          aria-label={`Добавить подраздел в раздел ${section.name}`}
+                          disabled={!allowSubsectionCreation}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpanded((current) => ({ ...current, [section.id]: true }));
+                            onStartCreateSection(section.id);
+                          }}
+                          className="size-5 rounded-[6px] text-[#78716c] hover:bg-transparent hover:text-[#292524] focus-visible:ring-[#292524]/10 disabled:cursor-not-allowed disabled:text-[#d6d3d1]"
+                        >
+                          <Plus size={14} weight="regular" aria-hidden="true" />
+                        </Button>
                       </span>
-                    )}
-                  </span>
-                </span>
+                    </Tooltip>
+                    <SharedDropdownMenu
+                      modal={false}
+                      open={menuOpen}
+                      onOpenChange={(open) => setOpenMenuSectionId(open ? section.id : null)}
+                    >
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          data-no-dnd
+                          aria-label={`Действия с разделом ${section.name}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="size-5 shrink-0 rounded-[6px] text-[#78716c] hover:bg-transparent hover:text-[#292524] focus-visible:ring-[#292524]/10"
+                        >
+                          <DotsThreeVertical size={16} weight="regular" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <SectionTreeDropdown preventTriggerFocus>
+                        {renderSectionActions(
+                          section,
+                          { allowPositionCreation, allowSubsectionCreation },
+                          handleMenuAction,
+                        )}
+                      </SectionTreeDropdown>
+                    </SharedDropdownMenu>
+                  </div>
+                </>
               )}
             </div>
             {((hasChildren && isExpanded) || draftParentId === section.id)
@@ -715,7 +717,7 @@ export function UnifiedCatalogTreePanel({
           </div>
         </SectionTreeDropdown>
       </SharedDropdownMenu>
-      <div data-catalog-section-action-grid="header" className={CATALOG_SECTION_TRAILING_GRID_CLASS}>
+      <div data-catalog-section-action-grid="header" className={CATALOG_SECTION_ACTION_GRID_CLASS}>
         <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
           <Button
             type="button"
@@ -747,7 +749,6 @@ export function UnifiedCatalogTreePanel({
             <MagnifyingGlass size={14} weight="regular" aria-hidden="true" />
           </Button>
         </Tooltip>
-        <span aria-hidden="true" className="size-5" />
       </div>
     </div>
   );
@@ -779,26 +780,46 @@ export function UnifiedCatalogTreePanel({
       </div>
 
       <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
-        <div className="h-11 shrink-0 border-b border-[#e7e5e4] pb-3 pl-2 pr-1.5">
+        <div data-catalog-tree-primary-navigation className="shrink-0 border-b border-[#e7e5e4] pb-3 pl-2 pr-1.5">
           <button
             type="button"
             data-catalog-tree-root
             onClick={onSelectAllPositions}
             className={cn(
               "flex h-8 w-full items-center gap-2 rounded-[8px] p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-              allPositionsSelected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
+              allPositionsSelected && !stopListActive ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
             )}
           >
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-[#e7e5e4] text-[#57534d]">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-[4.615px] border-[0.714px] border-[#e7e5e4] bg-white text-[#57534d]">
               <Asterisk size={14} weight="regular" aria-hidden="true" />
             </span>
             <span className={cn(
               "min-w-0 flex-1 truncate text-[13px] font-medium leading-4",
-              allPositionsSelected ? "text-[#292524]" : "text-[#79716b]",
+              allPositionsSelected && !stopListActive ? "text-[#292524]" : "text-[#79716b]",
             )}>
               Все позиции
             </span>
-            <span className="shrink-0 text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]">{items.length}</span>
+          </button>
+          <button
+            type="button"
+            data-catalog-stop-list-entry
+            aria-current={stopListActive ? "page" : undefined}
+            onClick={onSelectStopList}
+            className={cn(
+              "flex h-8 w-full items-center gap-2 rounded-[8px] p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              stopListActive ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
+            )}
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-[4.615px] border-[0.714px] border-[#e7e5e4] bg-white text-[#57534d]">
+              <LockLaminated size={12} weight="regular" aria-hidden="true" />
+            </span>
+            <span className={cn(
+              "min-w-0 flex-1 truncate text-[13px] font-medium leading-4",
+              stopListActive ? "text-[#292524]" : "text-[#79716b]",
+            )}>
+              Стоп-лист
+            </span>
+            <span className="shrink-0 text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]">{stopListCount}</span>
           </button>
         </div>
 

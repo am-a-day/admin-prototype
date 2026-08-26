@@ -359,7 +359,6 @@ type CatalogTreeMoveUndoState = {
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
   { id: "sections", label: "Меню" },
   { id: "upsell", label: "Рекомендации" },
-  { id: "stop-list", label: "Стоп-лист" },
 ];
 
 function createRealPositionId() {
@@ -387,8 +386,6 @@ export function CatalogTabs({
   value: CatalogPrimaryTab;
   onChange: (tab: CatalogPrimaryTab) => void;
 }) {
-  const { items } = useCatalogStore();
-  const stopCount = items.filter((item) => item.status === "stopped").length;
   return (
     <div role="tablist" aria-label="Разделы каталога" className="flex w-full items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
       {CATALOG_TABS.map((t) => (
@@ -406,14 +403,6 @@ export function CatalogTabs({
           )}
         >
           <span>{t.label}</span>
-          {t.id === "stop-list" && (
-            <span className={cn(
-              "absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-medium",
-              value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
-            )}>
-              {stopCount}
-            </span>
-          )}
         </button>
       ))}
     </div>
@@ -436,6 +425,7 @@ type CatalogWorkspaceProps = {
   onSectionScopeChange: (id: string | null) => void;
   onStopListFilterChange: (id: OverviewFilterId) => void;
   onStopListSectionScopeChange: (id: string | null) => void;
+  onOpenStopList: () => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
@@ -3782,6 +3772,7 @@ function PopulatedWorkspace({
   workspaceKind = "catalog",
   secondaryNavigation,
   menuSwitcher,
+  onOpenStopList,
   onFirstItemCreated,
 }: {
   navigation: CatalogNavigationBoundary;
@@ -3812,6 +3803,7 @@ function PopulatedWorkspace({
   workspaceKind?: "catalog" | "stop-list";
   secondaryNavigation?: ReactNode;
   menuSwitcher?: ReactNode;
+  onOpenStopList: () => void;
   onFirstItemCreated?: () => void;
 }) {
   const { contentLanguage } = useAppSettings();
@@ -6031,11 +6023,14 @@ function PopulatedWorkspace({
               sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
               items={allItems}
               allPositionsSelected={selectedSectionId === null}
+              stopListActive={workspaceKind === "stop-list"}
+              stopListCount={allItems.filter((item) => item.status === "stopped").length}
               selectedSectionId={selectedSectionId}
               sectionEditingEnabled
               includeArchived={editorNavMode === "entity" || editorNavMode === "unified"}
               onSelectSection={handleTreeSelectSection}
               onSelectAllPositions={selectAllPositions}
+              onSelectStopList={onOpenStopList}
               onStartCreateSection={openSectionCreation}
               onCreateSection={createSectionFromDialog}
               onCancelCreateSection={closeSectionCreation}
@@ -10225,6 +10220,7 @@ export function CatalogWorkspace({
   onSectionScopeChange,
   onStopListFilterChange,
   onStopListSectionScopeChange,
+  onOpenStopList,
   onCatalogTabChange,
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
@@ -10437,6 +10433,7 @@ export function CatalogWorkspace({
       onCreateClosed={() => setPendingOpen(null)}
       menuSwitcher={catalogMenuSwitcher}
       secondaryNavigation={secondaryNavigation}
+      onOpenStopList={onOpenStopList}
       onFirstItemCreated={() => onAdvancePhase("has-items")}
     />
   );
@@ -10465,6 +10462,7 @@ export function CatalogWorkspace({
       workspaceKind="stop-list"
       secondaryNavigation={secondaryNavigation}
       menuSwitcher={catalogMenuSwitcher}
+      onOpenStopList={onOpenStopList}
     />
   );
   const workspace = sections.length === 0 ? (
