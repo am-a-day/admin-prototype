@@ -258,6 +258,11 @@ export function UnifiedCatalogTreePanel({
   const [renameName, setRenameName] = useState("");
   const [openMenuSectionId, setOpenMenuSectionId] = useState<string | null>(null);
   const [focusedActionSectionId, setFocusedActionSectionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOpenMenuSectionId(null);
+    setFocusedActionSectionId(null);
+  }, [allPositionsSelected, selectedSectionId, stopListActive]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const root = sections[0]?.id;
     return root ? { [root]: true } : {};

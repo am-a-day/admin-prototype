@@ -33,8 +33,13 @@ function catalogItem(id: string, sectionId: string): CatalogItem {
   };
 }
 
-function renderTree(sections: CatalogTreeSection[], items: CatalogItem[], includeArchived = false) {
-  return render(
+function treePanel(
+  sections: CatalogTreeSection[],
+  items: CatalogItem[],
+  includeArchived = false,
+  selectedSectionId: string | null = null,
+) {
+  return (
     <TooltipProvider>
       <UnifiedCatalogTreePanel
         sections={sections}
@@ -42,7 +47,7 @@ function renderTree(sections: CatalogTreeSection[], items: CatalogItem[], includ
         allPositionsSelected={false}
         stopListActive={false}
         stopListCount={55}
-        selectedSectionId={null}
+        selectedSectionId={selectedSectionId}
         sectionEditingEnabled
         includeArchived={includeArchived}
         onSelectSection={vi.fn()}
@@ -61,8 +66,12 @@ function renderTree(sections: CatalogTreeSection[], items: CatalogItem[], includ
         onCollapseSections={vi.fn()}
         onReorderSections={vi.fn()}
       />
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+}
+
+function renderTree(sections: CatalogTreeSection[], items: CatalogItem[], includeArchived = false) {
+  return render(treePanel(sections, items, includeArchived));
 }
 
 beforeEach(() => {
@@ -198,6 +207,24 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(disabledAddTooltipTrigger).toHaveClass("opacity-0");
     disabledAddTooltipTrigger.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Нельзя добавить подраздел: в разделе уже есть позиции");
+  });
+
+  it("closes row actions when navigation selects another section", async () => {
+    const user = userEvent.setup();
+    const sections: CatalogTreeSection[] = [
+      { id: "first", name: "Первый раздел", children: [] },
+      { id: "second", name: "Второй раздел", children: [] },
+    ];
+    const { rerender } = render(treePanel(sections, [], false, "first"));
+    const firstRow = screen.getByRole("button", { name: "Раздел Первый раздел" });
+    const firstActions = firstRow.querySelector("[data-catalog-section-hover-actions]");
+
+    await user.click(within(firstRow).getByRole("button", { name: "Действия с разделом Первый раздел" }));
+    expect(firstActions).toHaveClass("opacity-100", "pointer-events-auto");
+
+    rerender(treePanel(sections, [], false, "second"));
+
+    expect(firstActions).not.toHaveClass("opacity-100", "pointer-events-auto");
   });
 
   it("keeps archived sections hidden until enabled and shows Archive instead of their count", async () => {
