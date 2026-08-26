@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -1820,8 +1820,23 @@ const CATALOG_SECTION_TREE_QUERY_STORAGE_KEY = catalogStorageKey("sections.treeQ
 const CATALOG_SECTION_TREE_EXPANDED_STORAGE_KEY = catalogStorageKey("sections.treeExpanded");
 const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("sections.treeScrollTop");
 const CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY = catalogStorageKey("sections.treeContent");
+const CATALOG_SECTION_TREE_WIDTH_STORAGE_KEY = catalogStorageKey("sections.treeWidth.v1");
 const CATALOG_UNIFIED_SCOPE_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.scope");
+const CATALOG_SECTION_TREE_DEFAULT_WIDTH = 222;
+const CATALOG_SECTION_TREE_MIN_WIDTH = 220;
+const CATALOG_SECTION_TREE_MAX_WIDTH = 420;
 type CatalogTreeContentMode = "sections-and-positions" | "sections-only";
+
+function clampCatalogSectionTreeWidth(width: number) {
+  return Math.max(CATALOG_SECTION_TREE_MIN_WIDTH, Math.min(CATALOG_SECTION_TREE_MAX_WIDTH, width));
+}
+
+function readCatalogSectionTreeWidth() {
+  const storedWidth = readJsonRecord<number>(CATALOG_SECTION_TREE_WIDTH_STORAGE_KEY, CATALOG_SECTION_TREE_DEFAULT_WIDTH);
+  return Number.isFinite(storedWidth)
+    ? clampCatalogSectionTreeWidth(storedWidth)
+    : CATALOG_SECTION_TREE_DEFAULT_WIDTH;
+}
 
 function readCatalogTreeContentMode(): CatalogTreeContentMode {
   return readJsonRecord<CatalogTreeContentMode>(
@@ -4050,6 +4065,10 @@ function PopulatedWorkspace({
     ? allItems.find((item) => item.id === selectedItemId) ?? null
     : null;
   const [userCollapsedSections, setUserCollapsedSections] = useState(false);
+  const [sectionTreeWidth, setSectionTreeWidth] = useState(readCatalogSectionTreeWidth);
+  const [sectionTreeResizing, setSectionTreeResizing] = useState(false);
+  const sectionTreeWidthRef = useRef(sectionTreeWidth);
+  const sectionTreeResizeSessionRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [catalogContainerWidth, setCatalogContainerWidth] = useState<number | null>(null);
   const [sidePeekOpen, setSidePeekOpen] = useState(false);
   const sidePeekCloseRef = useRef<(() => void) | null>(null);
@@ -4058,6 +4077,25 @@ function PopulatedWorkspace({
     return () => {
       if (sidePeekCloseRef.current === requestClose) sidePeekCloseRef.current = null;
     };
+  }, []);
+  const updateSectionTreeWidth = useCallback((width: number) => {
+    const nextWidth = clampCatalogSectionTreeWidth(width);
+    sectionTreeWidthRef.current = nextWidth;
+    setSectionTreeWidth(nextWidth);
+  }, []);
+  const finishSectionTreeResize = useCallback((element?: HTMLElement, pointerId?: number) => {
+    if (element && pointerId != null && element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+    sectionTreeResizeSessionRef.current = null;
+    setSectionTreeResizing(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    writeJsonRecord(CATALOG_SECTION_TREE_WIDTH_STORAGE_KEY, Math.round(sectionTreeWidthRef.current));
+  }, []);
+  useEffect(() => () => {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
   }, []);
   useLayoutEffect(() => {
     const shell = document.querySelector<HTMLElement>("[data-catalog-adaptive-shell]");
@@ -5982,7 +6020,9 @@ function PopulatedWorkspace({
         {editorNavMode === "entity" || editorNavMode === "unified" ? (
           <div
             data-catalog-tree-shell
-            className="relative flex w-[222px] max-w-[222px] shrink-0 overflow-hidden"
+            data-catalog-tree-resizing={sectionTreeResizing ? "true" : undefined}
+            style={{ "--catalog-tree-width": `${sectionTreeWidth}px` } as CSSProperties}
+            className="relative flex shrink-0 overflow-visible"
           >
             <UnifiedCatalogTreePanel
               sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
@@ -6031,6 +6071,49 @@ function PopulatedWorkspace({
               onCollapseSections={() => setUserCollapsedSections(true)}
               onReorderSections={reorderTreeSectionsWithinParent}
             />
+            {!treeHidden && (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Изменить ширину панели разделов"
+                aria-valuemin={CATALOG_SECTION_TREE_MIN_WIDTH}
+                aria-valuemax={CATALOG_SECTION_TREE_MAX_WIDTH}
+                aria-valuenow={Math.round(sectionTreeWidth)}
+                tabIndex={0}
+                data-catalog-tree-resize-handle
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  sectionTreeResizeSessionRef.current = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startWidth: sectionTreeWidthRef.current,
+                  };
+                  setSectionTreeResizing(true);
+                  document.body.style.cursor = "col-resize";
+                  document.body.style.userSelect = "none";
+                }}
+                onPointerMove={(event) => {
+                  const session = sectionTreeResizeSessionRef.current;
+                  if (!session || session.pointerId !== event.pointerId) return;
+                  updateSectionTreeWidth(session.startWidth + event.clientX - session.startX);
+                }}
+                onPointerUp={(event) => finishSectionTreeResize(event.currentTarget, event.pointerId)}
+                onPointerCancel={(event) => finishSectionTreeResize(event.currentTarget, event.pointerId)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  const direction = event.key === "ArrowRight" ? 1 : -1;
+                  const step = event.shiftKey ? 20 : 2;
+                  const nextWidth = clampCatalogSectionTreeWidth(sectionTreeWidthRef.current + direction * step);
+                  updateSectionTreeWidth(nextWidth);
+                  writeJsonRecord(CATALOG_SECTION_TREE_WIDTH_STORAGE_KEY, Math.round(nextWidth));
+                }}
+                className="group/tree-resize absolute inset-y-0 right-[-5px] z-50 w-[10px] cursor-col-resize touch-none outline-none"
+              >
+                <span className="absolute inset-y-0 left-[4px] w-px bg-[#a8a29e] opacity-0 transition-opacity duration-150 group-hover/tree-resize:opacity-40 group-focus/tree-resize:opacity-50" />
+              </div>
+            )}
           </div>
         ) : editing ? (
           <SectionPositionNav

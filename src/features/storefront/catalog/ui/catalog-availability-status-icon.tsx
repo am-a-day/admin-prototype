@@ -19,11 +19,13 @@ export function CatalogAvailabilityStatusIcon({
   state,
   entity,
   tone = "semantic",
+  iconSize = 14,
   className,
 }: {
   state: CatalogAvailabilityStatusIconState;
   entity: "position" | "section";
   tone?: "semantic" | "neutral";
+  iconSize?: number;
   className?: string;
 }) {
   const { label, Icon, className: iconClassName } = STATUS_META[state];
@@ -40,7 +42,7 @@ export function CatalogAvailabilityStatusIcon({
         )}
       >
         <Icon
-          size={14}
+          size={iconSize}
           weight="regular"
           className={cn("shrink-0", tone === "neutral" ? "text-[#79716b]" : iconClassName)}
         />

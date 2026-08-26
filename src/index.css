@@ -120,10 +120,14 @@ body {
 }
 
 [data-catalog-tree-shell] {
-  flex: 0 0 222px;
-  width: 222px;
-  max-width: 222px;
+  flex: 0 0 var(--catalog-tree-width, 222px);
+  width: var(--catalog-tree-width, 222px);
+  max-width: var(--catalog-tree-width, 222px);
   transition: flex-basis 200ms ease-out, width 200ms ease-out, max-width 200ms ease-out;
+}
+
+[data-catalog-tree-shell][data-catalog-tree-resizing="true"] {
+  transition: none;
 }
 
 [data-catalog-tree-shell] > aside {

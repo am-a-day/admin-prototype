@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretDoubleLeft, CaretRight, Check, DotsThreeVertical, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
+import { Asterisk, CaretDoubleLeft, CaretDown, CaretRight, Check, DotsThreeVertical, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import { catalogStorageKey } from "@/lib/catalog-preview";
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { readCatalogJson, writeCatalogJson } from "../persistence";
 import { CatalogInlineNameEditor } from "../ui/catalog-inline-name-editor";
+import { CatalogThumbnail } from "../ui/catalog-thumbnail";
 import {
   CatalogAvailabilityStatusIcon,
   type CatalogAvailabilityStatusIconState,
@@ -54,13 +55,23 @@ export function CatalogTreeThumbnail({
 }) {
   return (
     <span
+      data-catalog-tree-thumbnail
+      data-has-image={src ? "true" : "false"}
       className={cn(
-        "relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5.263px] bg-[#e6e6db]",
-        selected && "w-[18.182px] rounded-[2.811px] border-[0.556px] border-[#4f39f6] bg-white p-[1.818px]",
-        muted && "opacity-50 grayscale",
+        "relative flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-[5.263px]",
+        selected && "rounded-[3px] border-[0.556px] border-[#4f39f6] bg-white p-[1.818px]",
+        muted && "opacity-60 grayscale",
       )}
     >
-      {src && <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />}
+      <CatalogThumbnail
+        src={src}
+        kind="item"
+        className={cn(
+          "size-5 rounded-[4.615px] bg-white text-[#a6a09b] [&_svg]:size-[11px]",
+          !src && "border-[0.714px] border-[#e7e5e4]",
+          selected && "size-full rounded-[2px] border-0",
+        )}
+      />
     </span>
   );
 }
@@ -158,14 +169,16 @@ function SortableSectionNode({
 function SectionTreeDropdown({
   children,
   preventTriggerFocus = false,
+  align = "end",
 }: {
   children: ReactNode;
   preventTriggerFocus?: boolean;
+  align?: "start" | "center" | "end";
 }) {
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
-        align="end"
+        align={align}
         sideOffset={6}
         onClick={(event) => event.stopPropagation()}
         onFocusOutside={(event) => event.preventDefault()}
@@ -390,7 +403,7 @@ export function UnifiedCatalogTreePanel({
     const renaming = renamingSectionId === section.id;
     const isArchived = section.status === "archive";
     const availabilityStatus: CatalogAvailabilityStatusIconState | null = isArchived
-      ? null
+      ? "archive"
       : section.availabilityMode === "unavailable"
         ? "stopped"
         : section.availabilityMode === "schedule"
@@ -489,27 +502,40 @@ export function UnifiedCatalogTreePanel({
                 />
               ) : (
                 <>
-                  <span className={cn(
-                    "ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] group-hover:pr-[33px] group-focus-within:pr-[33px]",
-                    isArchived ? "text-[#a8a29e]" : active ? "text-[#292524]" : "text-[#79716b]",
-                  )}>
+                  <span
+                    data-section-title
+                    className={cn(
+                      "ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]",
+                      isArchived ? "text-[#79716b] opacity-60" : active ? "text-[#292524]" : "text-[#79716b]",
+                    )}
+                  >
                     {section.name}
                   </span>
-                  {availabilityStatus && (
-                    <CatalogAvailabilityStatusIcon
-                      state={availabilityStatus}
-                      entity="section"
-                      tone="neutral"
-                      className="size-4"
-                    />
-                  )}
-                  <span className={cn(
-                    "shrink-0 text-[11px] leading-[18px] tabular-nums text-[#78716c] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
-                    availabilityStatus ? "ml-1" : "ml-[15px]",
-                    isArchived && "text-[#a8a29e]",
-                    menuOpen && "opacity-0",
-                  )}>
-                    {countBySection.get(section.id) ?? 0}
+                  <span
+                    data-catalog-section-trailing
+                    className={cn(
+                      "ml-[15px] grid w-[42px] shrink-0 grid-cols-[12px_minmax(0,1fr)] items-center gap-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+                      isArchived && "opacity-60",
+                      menuOpen && "opacity-0",
+                    )}
+                  >
+                    <span data-catalog-section-status-slot className="flex size-3 shrink-0 items-center justify-center">
+                      {availabilityStatus && (
+                        <CatalogAvailabilityStatusIcon
+                          state={availabilityStatus}
+                          entity="section"
+                          tone="neutral"
+                          iconSize={12}
+                          className="size-3"
+                        />
+                      )}
+                    </span>
+                    <span
+                      data-catalog-section-count
+                      className="min-w-0 shrink-0 text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]"
+                    >
+                      {countBySection.get(section.id) ?? 0}
+                    </span>
                   </span>
                   <div className={cn(
                     "pointer-events-none absolute top-2 flex h-4 w-[47px] items-center justify-end gap-1.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
@@ -591,8 +617,40 @@ export function UnifiedCatalogTreePanel({
   };
 
   const sectionsHeader = (
-    <div className="flex h-6 shrink-0 items-center justify-between pl-[14px] pr-3">
-      <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-[18px] text-[#1c1917]">Разделы</span>
+    <div className="flex h-6 shrink-0 items-center justify-between pl-[14px] pr-2">
+      <DropdownMenu.Root modal={false}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Настройки разделов"
+            className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-[6px] text-[#1c1917] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <span className="truncate text-[13px] font-normal leading-[18px]">Разделы</span>
+            <CaretDown size={10} weight="fill" aria-hidden="true" className="shrink-0 text-[#79716b]" />
+          </button>
+        </DropdownMenu.Trigger>
+        <SectionTreeDropdown align="start" preventTriggerFocus>
+          <div className="p-1">
+            <DropdownMenu.CheckboxItem
+              checked={showArchived}
+              onCheckedChange={(checked) => {
+                const nextShowArchived = checked === true;
+                setShowArchived(nextShowArchived);
+                writeCatalogJson(CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY, nextShowArchived);
+              }}
+              onSelect={(event) => event.preventDefault()}
+              className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
+            >
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
+                <DropdownMenu.ItemIndicator>
+                  <Check size={12} weight="bold" aria-hidden="true" />
+                </DropdownMenu.ItemIndicator>
+              </span>
+              <span className="min-w-0 flex-1 truncate">Показывать архивные</span>
+            </DropdownMenu.CheckboxItem>
+          </div>
+        </SectionTreeDropdown>
+      </DropdownMenu.Root>
       <div className="flex w-[86.5px] shrink-0 items-center justify-end gap-1.5">
         <Tooltip label="Поиск по разделам" side="top" delayDuration={250}>
           <button
@@ -603,11 +661,11 @@ export function UnifiedCatalogTreePanel({
               else openSearch();
             }}
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+              "flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
               searchOpen && "bg-[#f5f5f4] text-[#292524]",
             )}
           >
-            <MagnifyingGlass size={16} weight="regular" aria-hidden="true" />
+            <MagnifyingGlass size={14} weight="regular" aria-hidden="true" />
           </button>
         </Tooltip>
         <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
@@ -616,43 +674,11 @@ export function UnifiedCatalogTreePanel({
             ref={createSectionButtonRef}
             onClick={() => onStartCreateSection(null)}
             aria-label="Добавить раздел"
-            className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
           >
-            <Plus size={16} weight="regular" aria-hidden="true" />
+            <Plus size={14} weight="regular" aria-hidden="true" />
           </button>
         </Tooltip>
-        <DropdownMenu.Root modal={false}>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Настройки панели разделов"
-              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] data-[state=open]:bg-[#f5f5f4] data-[state=open]:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              <DotsThreeVertical size={16} weight="regular" aria-hidden="true" />
-            </button>
-          </DropdownMenu.Trigger>
-          <SectionTreeDropdown preventTriggerFocus>
-            <div className="p-1">
-              <DropdownMenu.CheckboxItem
-                checked={showArchived}
-                onCheckedChange={(checked) => {
-                  const nextShowArchived = checked === true;
-                  setShowArchived(nextShowArchived);
-                  writeCatalogJson(CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY, nextShowArchived);
-                }}
-                onSelect={(event) => event.preventDefault()}
-                className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
-              >
-                <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
-                  <DropdownMenu.ItemIndicator>
-                    <Check size={12} weight="bold" aria-hidden="true" />
-                  </DropdownMenu.ItemIndicator>
-                </span>
-                <span className="min-w-0 flex-1 truncate">Показывать архивные</span>
-              </DropdownMenu.CheckboxItem>
-            </div>
-          </SectionTreeDropdown>
-        </DropdownMenu.Root>
       </div>
     </div>
   );
@@ -722,9 +748,9 @@ export function UnifiedCatalogTreePanel({
                     type="button"
                     aria-label="Закрыть поиск разделов"
                     onClick={closeSearch}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                    className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
                   >
-                    <X size={16} weight="regular" aria-hidden="true" />
+                    <X size={14} weight="regular" aria-hidden="true" />
                   </button>
                 </Tooltip>
               </div>
@@ -732,7 +758,7 @@ export function UnifiedCatalogTreePanel({
           ) : sectionsHeader}
 
           <DndContext sensors={dndSensors} collisionDetection={sameParentCollisionDetection} onDragEnd={handleSectionDragEnd}>
-            <div ref={treeScrollRef} className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-3">
+            <div ref={treeScrollRef} className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3">
               {renderSectionList(visibleSections, null, 0)}
               {normalizedQuery && visibleIds.size === 0 && (
                 <p className="px-1.5 text-[13px] font-normal leading-4 text-[#78716c]">Разделы не найдены</p>
