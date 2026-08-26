@@ -19,6 +19,10 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CatalogInlineNameEditor } from "../ui/catalog-inline-name-editor";
+import {
+  CatalogAvailabilityStatusIcon,
+  type CatalogAvailabilityStatusIconState,
+} from "../ui/catalog-availability-status-icon";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import {
   countItemsBySection,
@@ -356,6 +360,13 @@ export function UnifiedCatalogTreePanel({
     const active = sectionEditingEnabled && selectedSectionId === section.id;
     const renaming = renamingSectionId === section.id;
     const isArchived = section.status === "archive";
+    const availabilityStatus: CatalogAvailabilityStatusIconState | null = isArchived
+      ? "archive"
+      : section.availabilityMode === "unavailable"
+        ? section.visibility === "hidden" ? "stopped" : "soon"
+        : section.availabilityMode === "schedule"
+          ? "scheduled"
+          : null;
     const hasDirectSubsections = hasChildren;
     const hasDirectPositions = items.some((item) => item.sectionId === section.id && (includeArchived || item.status !== "archive"));
     const reachedMaxDepth = getSectionTreeDepth(section.id, sections) >= MAX_CATALOG_SECTION_DEPTH;
@@ -454,9 +465,16 @@ export function UnifiedCatalogTreePanel({
                   )}>
                     {section.name}
                   </span>
-                  {isArchived && <span className="mr-1 shrink-0 text-[10px] text-[#a8a29e]">В архиве</span>}
+                  {availabilityStatus && (
+                    <CatalogAvailabilityStatusIcon
+                      state={availabilityStatus}
+                      entity="section"
+                      className="size-4"
+                    />
+                  )}
                   <span className={cn(
-                    "ml-[15px] shrink-0 text-[11px] leading-[18px] tabular-nums text-[#78716c] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+                    "shrink-0 text-[11px] leading-[18px] tabular-nums text-[#78716c] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+                    availabilityStatus ? "ml-1" : "ml-[15px]",
                     menuOpen && "opacity-0",
                   )}>
                     {countBySection.get(section.id) ?? 0}

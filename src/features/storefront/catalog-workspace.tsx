@@ -37,14 +37,12 @@ import {
   ArrowsOut,
   ArrowsOutCardinal,
   ArrowCounterClockwise,
-  CalendarDots,
   CaretDoubleRight,
   ArrowLeft,
   CaretDown,
   CaretRight,
   Check,
   CameraSlash,
-  Clock,
   DotsThree,
   DotsThreeVertical,
   DotsSixVertical,
@@ -54,7 +52,6 @@ import {
   FunnelSimple,
   ImageBroken,
   List,
-  LockLaminated,
   MagnifyingGlass,
   PencilSimple,
   PlusCircle,
@@ -144,6 +141,10 @@ import {
 } from "./catalog/sidebar/section-tree";
 import { CatalogMenuSwitcher } from "./catalog/sidebar/catalog-menu-switcher";
 import { CatalogActionButton } from "./catalog/ui/catalog-action-button";
+import {
+  CatalogAvailabilityStatusIcon,
+  type CatalogAvailabilityStatusIconState,
+} from "./catalog/ui/catalog-availability-status-icon";
 import {
   CATALOG_SECTION_HEADER_THUMBNAIL_CLASS,
   CatalogThumbnail,
@@ -6444,28 +6445,23 @@ function AuditRowActionsMenu({
       ? "scheduled"
       : "available";
   const stopDisplayMode: CatalogStopDisplayMode = item.unavailableDisplayMode ?? (item.status === "coming-soon" ? "comingSoon" : "hidden");
-  const statusMeta = item.status === "archive"
-    ? { key: "archive", label: "В архиве", icon: Archive, className: "text-[#94a3b8]" }
+  const status: CatalogAvailabilityStatusIconState | null = item.status === "archive"
+    ? "archive"
     : item.status === "stopped" || item.status === "coming-soon"
       ? item.unavailableDisplayMode === "comingSoon" || item.status === "coming-soon"
-        ? { key: "soon", label: "Скоро будет", icon: Clock, className: "text-[#2b7fff]" }
-        : { key: "stopped", label: "На стопе", icon: LockLaminated, className: "text-[#f54900]" }
+        ? "soon"
+        : "stopped"
       : item.scheduled
-        ? { key: "scheduled", label: "По расписанию", icon: CalendarDots, className: "text-[#2b7fff]" }
+        ? "scheduled"
         : null;
-  const StatusIcon = statusMeta?.icon;
   return (
     <div className="relative size-7">
-      {StatusIcon && !open && (
-        <Tooltip label={statusMeta.label} side="top">
-          <span
-            data-catalog-position-status={statusMeta.key}
-            aria-label={statusMeta.label}
-            className="absolute inset-0 inline-flex items-center justify-center transition-opacity group-hover:pointer-events-none group-hover:opacity-0 group-focus-within:pointer-events-none group-focus-within:opacity-0"
-          >
-            <StatusIcon size={14} weight="regular" className={cn("shrink-0", statusMeta.className)} />
-          </span>
-        </Tooltip>
+      {status && !open && (
+        <CatalogAvailabilityStatusIcon
+          state={status}
+          entity="position"
+          className="absolute inset-0"
+        />
       )}
       <DropdownMenu.Root
         modal={false}
