@@ -390,23 +390,25 @@ export function UnifiedCatalogTreePanel({
         depth === 0 ? "h-10" : "h-7",
       )}
     >
-      {depth === 0 && <span className="mr-1 h-5 w-2.5 shrink-0" />}
-      <CatalogTreeThumbnail />
-      <CatalogInlineNameEditor
-        ref={draftInputRef}
-        variant="tree"
-        value={draftName}
-        ariaLabel="Название раздела"
-        onChange={(event) => setDraftName(event.target.value)}
-        onCommit={submitDraft}
-        onCancel={cancelDraft}
-        cancelLabel="Отменить создание раздела"
-        commitLabel="Создать раздел"
-        placeholder="Название"
-        autoFocus
-        className="ml-2 flex-1"
-        inputClassName="h-full text-[13px] font-normal leading-4 placeholder:text-[#a8a29e]"
-      />
+      <div className="flex min-w-0 flex-1 items-center" style={{ paddingLeft: depth * 20 }}>
+        {depth === 0 && <span className="mr-1 h-5 w-2.5 shrink-0" />}
+        <CatalogTreeThumbnail />
+        <CatalogInlineNameEditor
+          ref={draftInputRef}
+          variant="tree"
+          value={draftName}
+          ariaLabel="Название раздела"
+          onChange={(event) => setDraftName(event.target.value)}
+          onCommit={submitDraft}
+          onCancel={cancelDraft}
+          cancelLabel="Отменить создание раздела"
+          commitLabel="Создать раздел"
+          placeholder="Название"
+          autoFocus
+          className="ml-2 flex-1"
+          inputClassName="h-full text-[13px] font-normal leading-4 placeholder:text-[#a8a29e]"
+        />
+      </div>
     </div>
   );
 
@@ -498,40 +500,45 @@ export function UnifiedCatalogTreePanel({
               )}
               style={sortableStyle}
             >
-              {showCaretSlot && (
-                <button
-                  type="button"
-                  data-no-dnd
-                  aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-                  disabled={!hasChildren}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
-                  }}
-                  className={cn("mr-1 flex h-5 w-2.5 shrink-0 items-center justify-center text-[#a6a09b]", !hasChildren && "invisible")}
-                >
-                  <CaretRight size={10} weight="fill" className={cn("transition-transform", isExpanded && "rotate-90")} />
-                </button>
-              )}
-              <CatalogTreeThumbnail src={section.imageUrl} selected={active} muted={isArchived} />
-              {renaming ? (
-                <CatalogInlineNameEditor
-                  ref={renameInputRef}
-                  variant="tree"
-                  value={renameName}
-                  ariaLabel="Название раздела"
-                  onChange={(event) => setRenameName(event.target.value)}
-                  onCommit={submitRename}
-                  onCancel={cancelRename}
-                  cancelLabel="Отменить переименование"
-                  commitLabel="Подтвердить переименование"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                  className="ml-2 flex-1"
-                  inputClassName="h-full text-[13px] font-normal leading-4"
-                />
-              ) : (
-                <>
+              <div
+                data-catalog-section-left-content
+                data-tree-depth={depth}
+                className="flex min-w-0 flex-1 items-center"
+                style={{ paddingLeft: depth * 20 }}
+              >
+                {showCaretSlot && (
+                  <button
+                    type="button"
+                    data-no-dnd
+                    aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
+                    disabled={!hasChildren}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
+                    }}
+                    className={cn("mr-1 flex h-5 w-2.5 shrink-0 items-center justify-center text-[#a6a09b]", !hasChildren && "invisible")}
+                  >
+                    <CaretRight size={10} weight="fill" className={cn("transition-transform", isExpanded && "rotate-90")} />
+                  </button>
+                )}
+                <CatalogTreeThumbnail src={section.imageUrl} selected={active} muted={isArchived} />
+                {renaming ? (
+                  <CatalogInlineNameEditor
+                    ref={renameInputRef}
+                    variant="tree"
+                    value={renameName}
+                    ariaLabel="Название раздела"
+                    onChange={(event) => setRenameName(event.target.value)}
+                    onCommit={submitRename}
+                    onCancel={cancelRename}
+                    cancelLabel="Отменить переименование"
+                    commitLabel="Подтвердить переименование"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                    className="ml-2 flex-1"
+                    inputClassName="h-full text-[13px] font-normal leading-4"
+                  />
+                ) : (
                   <span
                     data-section-title
                     className={cn(
@@ -541,14 +548,17 @@ export function UnifiedCatalogTreePanel({
                   >
                     {section.name}
                   </span>
-                  <span
-                    data-catalog-section-right-slots
-                    className={cn(
-                      CATALOG_SECTION_ACTION_GRID_CLASS,
-                      "relative ml-[9px] h-5",
-                      isArchived && "opacity-60",
-                    )}
-                  >
+                )}
+              </div>
+              {!renaming && (
+                <span
+                  data-catalog-section-right-slots
+                  className={cn(
+                    CATALOG_SECTION_ACTION_GRID_CLASS,
+                    "relative ml-[9px] h-5",
+                    isArchived && "opacity-60",
+                  )}
+                >
                     <span
                       data-catalog-section-metadata
                       className={cn(
@@ -647,8 +657,7 @@ export function UnifiedCatalogTreePanel({
                         </SectionTreeDropdown>
                       </SharedDropdownMenu>
                     </div>
-                  </span>
-                </>
+                </span>
               )}
             </div>
             {((hasChildren && isExpanded) || draftParentId === section.id)
@@ -665,7 +674,7 @@ export function UnifiedCatalogTreePanel({
       <SortableContext items={visibleSections.map((section) => section.id)} strategy={verticalListSortingStrategy}>
         <div
           data-section-parent-id={parentId ?? "__root__"}
-          className={cn(parentId !== null && "py-0.5 pl-5")}
+          className={cn(parentId !== null && "py-0.5")}
         >
           {draftParentId === parentId && renderDraftRow(depth)}
           {visibleSections.map((section) => renderSection(section, depth))}
@@ -675,7 +684,7 @@ export function UnifiedCatalogTreePanel({
   };
 
   const sectionsHeader = (
-    <div className="flex h-6 shrink-0 items-center justify-between pl-[14px] pr-2">
+    <div className="flex h-6 shrink-0 items-center justify-between pl-2 pr-0.5">
       <SharedDropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <button
@@ -795,40 +804,45 @@ export function UnifiedCatalogTreePanel({
           </button>
         </div>
 
-        <div className={cn("flex min-h-0 flex-1 flex-col", searchOpen ? "gap-2" : "gap-1.5")}>
-          {searchOpen ? (
-            <div className="flex shrink-0 flex-col gap-1 pb-2 shadow-[inset_0_-1px_0_#e7e5e4]">
-              {sectionsHeader}
-              <div className="flex h-7 items-center gap-1.5 px-3">
-                <Input
-                  ref={searchInputRef}
-                  size="compact"
-                  autoFocus
-                  value={query}
-                  aria-label="Поиск по разделам"
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") closeSearch();
-                  }}
-                  placeholder="Найти раздел..."
-                  className="h-7 min-w-0 flex-1 rounded-[7px] border-[#4f39f6] px-2 py-0.5 text-[13px] leading-4 text-[#1c1917] placeholder:text-[#a8a29e] focus:border-[#4f39f6] focus-visible:ring-0"
-                />
-                <Tooltip label="Закрыть поиск по разделам" side="top" delayDuration={250}>
-                  <button
-                    type="button"
-                    aria-label="Закрыть поиск разделов"
-                    onClick={closeSearch}
-                    className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                  >
-                    <X size={14} weight="regular" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
-            </div>
-          ) : sectionsHeader}
-
+        <div className="flex min-h-0 flex-1 flex-col">
           <DndContext sensors={dndSensors} collisionDetection={sameParentCollisionDetection} onDragEnd={handleSectionDragEnd}>
-            <div ref={treeScrollRef} className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3">
+            <div
+              ref={treeScrollRef}
+              className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 [scrollbar-gutter:stable]"
+            >
+              <div className={cn("sticky top-0 z-20 bg-white", searchOpen ? "mb-2" : "mb-1.5")}>
+                {searchOpen ? (
+                  <div className="flex shrink-0 flex-col gap-1 pb-2 shadow-[inset_0_-1px_0_#e7e5e4]">
+                    {sectionsHeader}
+                    <div className="flex h-7 items-center gap-1.5 px-1.5">
+                      <Input
+                        ref={searchInputRef}
+                        size="compact"
+                        autoFocus
+                        value={query}
+                        aria-label="Поиск по разделам"
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") closeSearch();
+                        }}
+                        placeholder="Найти раздел..."
+                        className="h-7 min-w-0 flex-1 rounded-[7px] border-[#4f39f6] px-2 py-0.5 text-[13px] leading-4 text-[#1c1917] placeholder:text-[#a8a29e] focus:border-[#4f39f6] focus-visible:ring-0"
+                      />
+                      <Tooltip label="Закрыть поиск по разделам" side="top" delayDuration={250}>
+                        <button
+                          type="button"
+                          aria-label="Закрыть поиск разделов"
+                          onClick={closeSearch}
+                          className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+                        >
+                          <X size={14} weight="regular" aria-hidden="true" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  </div>
+                ) : sectionsHeader}
+              </div>
+
               {renderSectionList(visibleSections, null, 0)}
               {normalizedQuery && visibleIds.size === 0 && (
                 <p className="px-1.5 text-[13px] font-normal leading-4 text-[#78716c]">Разделы не найдены</p>

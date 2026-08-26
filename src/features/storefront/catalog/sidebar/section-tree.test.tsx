@@ -114,6 +114,8 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(within(availableRow).queryByLabelText(/На стопе/)).not.toBeInTheDocument();
     const stoppedStatus = within(stoppedRow).getByLabelText("На стопе · 21 позиция");
     expect(stoppedStatus).toHaveAttribute("tabindex", "0");
+    expect(stoppedStatus).toHaveClass("col-start-2", "size-5");
+    expect(stoppedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(stoppedRow).toHaveAttribute("title", "На стопе · 21 позиция");
     expect(within(stoppedRow).queryByText("21")).not.toBeInTheDocument();
     expect(within(scheduledRow).getByLabelText("По расписанию · 12 позиций")).toBeInTheDocument();
@@ -140,16 +142,33 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const headerGrid = document.querySelector('[data-catalog-section-action-grid="header"]');
     const rootRow = screen.getByRole("button", { name: "Раздел Очень длинное название корневого раздела" });
     const nestedRow = screen.getByRole("button", { name: "Раздел Вложенный раздел" });
+    const rootLeft = rootRow.querySelector("[data-catalog-section-left-content]");
+    const nestedLeft = nestedRow.querySelector("[data-catalog-section-left-content]");
     const rootSlots = rootRow.querySelector("[data-catalog-section-right-slots]");
     const nestedSlots = nestedRow.querySelector("[data-catalog-section-right-slots]");
+    const nestedList = document.querySelector('[data-section-parent-id="root"]');
+    const scrollport = document.querySelector(".scrollbar-subtle");
+    const headerActions = within(headerGrid as HTMLElement).getAllByRole("button");
 
     expect(headerGrid).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
-    expect(within(headerGrid as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(headerActions.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Добавить раздел",
       "Открыть поиск разделов",
     ]);
+    expect(headerActions.map((button) => button.querySelector("svg")?.getAttribute("width"))).toEqual(["14", "14"]);
     expect(rootSlots).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
     expect(nestedSlots).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
+    expect(scrollport).toHaveClass("[scrollbar-gutter:stable]");
+    expect(headerGrid?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(rootSlots?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(nestedSlots?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(rootLeft).toHaveStyle({ paddingLeft: "0px" });
+    expect(nestedLeft).toHaveStyle({ paddingLeft: "20px" });
+    expect(rootLeft?.nextElementSibling).toBe(rootSlots);
+    expect(nestedLeft?.nextElementSibling).toBe(nestedSlots);
+    expect(rootSlots?.parentElement).toBe(rootRow);
+    expect(nestedSlots?.parentElement).toBe(nestedRow);
+    expect(nestedList).not.toHaveClass("pl-5");
     expect(rootRow.querySelector("[data-section-title]")).toHaveClass("min-w-0", "flex-1", "truncate");
 
     const disabledAdd = within(nestedRow).getByRole("button", { name: "Добавить подраздел в раздел Вложенный раздел" });
