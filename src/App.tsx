@@ -230,7 +230,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
   "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
   "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
-  "storefront:translations": { title: "Переводы",          description: "Языки и переводы контента онлайн-меню." },
+  "storefront:translations": { title: "Переводы",          description: "Языки и переводы всего гостевого контента." },
   "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
   "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
   "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },

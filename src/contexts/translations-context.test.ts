@@ -144,4 +144,27 @@ describe("translation field progress", () => {
       outdated: 0,
     });
   });
+
+  it("counts review metadata per field instead of treating it as a language-wide status", () => {
+    const material = {
+      statuses: { kk: "outdated", en: "translated", sr: "missing" },
+      fields: [{
+        id: "title",
+        source: "Паста",
+        values: { kk: "Паста" },
+        reviewLanguages: ["kk"],
+      }, {
+        id: "description",
+        source: "С томатами",
+        values: { kk: "Қызанақпен" },
+      }],
+    } as TranslationMaterial;
+
+    expect(summarizeLanguageProgress([material], "kk")).toEqual({
+      totalFields: 2,
+      doneFields: 1,
+      missing: 0,
+      outdated: 1,
+    });
+  });
 });
