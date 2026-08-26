@@ -13,16 +13,19 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, CaretDoubleLeft, CaretRight, DotsThreeVertical, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
+import { Asterisk, CaretDoubleLeft, CaretRight, Check, DotsThreeVertical, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
 import type { CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
+import { catalogStorageKey } from "@/lib/catalog-preview";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
+import { readCatalogJson, writeCatalogJson } from "../persistence";
 import { CatalogInlineNameEditor } from "../ui/catalog-inline-name-editor";
 import {
   CatalogAvailabilityStatusIcon,
   type CatalogAvailabilityStatusIconState,
 } from "../ui/catalog-availability-status-icon";
+import { CATALOG_SECTION_ACTION_ITEM_CLASS } from "../ui/catalog-dropdown";
 import type { WeeklySchedule } from "../ui/catalog-schedule-editor";
 import {
   countItemsBySection,
@@ -43,20 +46,31 @@ export type CatalogSectionActionAnchor = {
 export function CatalogTreeThumbnail({
   src,
   selected,
+  muted,
 }: {
   src?: string | null;
   selected?: boolean;
+  muted?: boolean;
 }) {
   return (
     <span
       className={cn(
         "relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[5.263px] bg-[#e6e6db]",
         selected && "w-[18.182px] rounded-[2.811px] border-[0.556px] border-[#4f39f6] bg-white p-[1.818px]",
+        muted && "opacity-50 grayscale",
       )}
     >
       {src && <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />}
     </span>
   );
+}
+
+const CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY = catalogStorageKey("sections.treeShowArchived");
+
+function hideArchivedSections(sections: CatalogTreeSection[]): CatalogTreeSection[] {
+  return sections.flatMap((section) => section.status === "archive"
+    ? []
+    : [{ ...section, children: hideArchivedSections(section.children ?? []) }]);
 }
 
 type SectionTreeActionOptions = {
@@ -191,6 +205,9 @@ export function UnifiedCatalogTreePanel({
 }: UnifiedCatalogTreePanelProps) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(() =>
+    readCatalogJson<boolean>(CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY, false),
+  );
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -215,17 +232,29 @@ export function UnifiedCatalogTreePanel({
     return args.pointerCoordinates ? pointerWithin(siblingArgs) : closestCenter(siblingArgs);
   }, []);
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
-  const flatSections = useMemo(() => flattenCatalogTree(sections), [sections]);
+  const allFlatSections = useMemo(() => flattenCatalogTree(sections), [sections]);
+  const visibleSections = useMemo(
+    () => showArchived ? sections : hideArchivedSections(sections),
+    [sections, showArchived],
+  );
+  const flatSections = useMemo(() => flattenCatalogTree(visibleSections), [visibleSections]);
   const visibleIds = useMemo(() => {
     if (!normalizedQuery) return new Set(flatSections.map((section) => section.id));
     return new Set(flatSections
       .filter((section) => section.name.toLocaleLowerCase("ru").includes(normalizedQuery))
-      .flatMap((section) => [section.id, ...findSectionPath(sections, section.id)]));
-  }, [flatSections, normalizedQuery, sections]);
+      .flatMap((section) => [section.id, ...findSectionPath(visibleSections, section.id)]));
+  }, [flatSections, normalizedQuery, visibleSections]);
   const countBySection = useMemo(
-    () => countItemsBySection(items, sections, includeArchived),
-    [includeArchived, items, sections],
+    () => countItemsBySection(items, visibleSections, includeArchived),
+    [includeArchived, items, visibleSections],
   );
+
+  useEffect(() => {
+    if (showArchived || !selectedSectionId) return;
+    if (allFlatSections.find((section) => section.id === selectedSectionId)?.status === "archive") {
+      onSelectAllPositions();
+    }
+  }, [allFlatSections, onSelectAllPositions, selectedSectionId, showArchived]);
 
   const handleSectionDragEnd = (event: DragEndEvent) => {
     if (!event.over || event.active.id === event.over.id) return;
@@ -361,9 +390,9 @@ export function UnifiedCatalogTreePanel({
     const renaming = renamingSectionId === section.id;
     const isArchived = section.status === "archive";
     const availabilityStatus: CatalogAvailabilityStatusIconState | null = isArchived
-      ? "archive"
+      ? null
       : section.availabilityMode === "unavailable"
-        ? section.visibility === "hidden" ? "stopped" : "soon"
+        ? "stopped"
         : section.availabilityMode === "schedule"
           ? "scheduled"
           : null;
@@ -400,6 +429,7 @@ export function UnifiedCatalogTreePanel({
               {...dragProps}
               data-sortable-section-id={section.id}
               data-tree-section-id={section.id}
+              data-archived-section={isArchived || undefined}
               role="button"
               aria-label={`Раздел ${section.name}`}
               tabIndex={0}
@@ -440,7 +470,7 @@ export function UnifiedCatalogTreePanel({
                   <CaretRight size={10} weight="fill" className={cn("transition-transform", isExpanded && "rotate-90")} />
                 </button>
               )}
-              <CatalogTreeThumbnail src={section.imageUrl} selected={active} />
+              <CatalogTreeThumbnail src={section.imageUrl} selected={active} muted={isArchived} />
               {renaming ? (
                 <CatalogInlineNameEditor
                   ref={renameInputRef}
@@ -461,7 +491,7 @@ export function UnifiedCatalogTreePanel({
                 <>
                   <span className={cn(
                     "ml-2 min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] group-hover:pr-[33px] group-focus-within:pr-[33px]",
-                    active ? "text-[#292524]" : isArchived ? "text-[#a8a29e]" : "text-[#79716b]",
+                    isArchived ? "text-[#a8a29e]" : active ? "text-[#292524]" : "text-[#79716b]",
                   )}>
                     {section.name}
                   </span>
@@ -469,12 +499,14 @@ export function UnifiedCatalogTreePanel({
                     <CatalogAvailabilityStatusIcon
                       state={availabilityStatus}
                       entity="section"
+                      tone="neutral"
                       className="size-4"
                     />
                   )}
                   <span className={cn(
                     "shrink-0 text-[11px] leading-[18px] tabular-nums text-[#78716c] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
                     availabilityStatus ? "ml-1" : "ml-[15px]",
+                    isArchived && "text-[#a8a29e]",
                     menuOpen && "opacity-0",
                   )}>
                     {countBySection.get(section.id) ?? 0}
@@ -589,6 +621,38 @@ export function UnifiedCatalogTreePanel({
             <Plus size={16} weight="regular" aria-hidden="true" />
           </button>
         </Tooltip>
+        <DropdownMenu.Root modal={false}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Настройки панели разделов"
+              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#79716b] transition hover:bg-[#f5f5f4] hover:text-[#292524] data-[state=open]:bg-[#f5f5f4] data-[state=open]:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              <DotsThreeVertical size={16} weight="regular" aria-hidden="true" />
+            </button>
+          </DropdownMenu.Trigger>
+          <SectionTreeDropdown preventTriggerFocus>
+            <div className="p-1">
+              <DropdownMenu.CheckboxItem
+                checked={showArchived}
+                onCheckedChange={(checked) => {
+                  const nextShowArchived = checked === true;
+                  setShowArchived(nextShowArchived);
+                  writeCatalogJson(CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY, nextShowArchived);
+                }}
+                onSelect={(event) => event.preventDefault()}
+                className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-[#d6d3d1] bg-white">
+                  <DropdownMenu.ItemIndicator>
+                    <Check size={12} weight="bold" aria-hidden="true" />
+                  </DropdownMenu.ItemIndicator>
+                </span>
+                <span className="min-w-0 flex-1 truncate">Показывать архивные</span>
+              </DropdownMenu.CheckboxItem>
+            </div>
+          </SectionTreeDropdown>
+        </DropdownMenu.Root>
       </div>
     </div>
   );
@@ -669,7 +733,7 @@ export function UnifiedCatalogTreePanel({
 
           <DndContext sensors={dndSensors} collisionDetection={sameParentCollisionDetection} onDragEnd={handleSectionDragEnd}>
             <div ref={treeScrollRef} className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-3">
-              {renderSectionList(sections, null, 0)}
+              {renderSectionList(visibleSections, null, 0)}
               {normalizedQuery && visibleIds.size === 0 && (
                 <p className="px-1.5 text-[13px] font-normal leading-4 text-[#78716c]">Разделы не найдены</p>
               )}

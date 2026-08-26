@@ -212,7 +212,7 @@ import { isWeeklyScheduleOrderable, type AvailabilityScheduleMode } from "./cata
 import {
   CatalogContextMenuContent,
   type CatalogMenuAvailability,
-  type CatalogSectionAvailabilityMenuProps,
+  type CatalogPositionAvailabilityMenuProps,
   type CatalogStopDisplayMode,
 } from "./catalog/ui/catalog-context-menu";
 import { getMovePopoverAnchor, type MovePopoverAnchor } from "./catalog/ui/move-anchor";
@@ -5166,16 +5166,19 @@ function PopulatedWorkspace({
     schedule: WeeklySchedule,
     scheduleMode: AvailabilityScheduleMode,
     outsideScheduleMode = target.outsideScheduleMode ?? "hidden",
+    activate = false,
   ) => {
     setSectionWeeklyScheduleBySection((current) => ({ ...current, [target.id]: schedule }));
     setSectionScheduleModeBySection((current) => ({ ...current, [target.id]: scheduleMode }));
     setSectionOutsideScheduleBySection((current) => ({ ...current, [target.id]: outsideScheduleMode }));
     setSectionAvailabilityBySection((current) => ({
       ...current,
-      [target.id]: current[target.id] === "unavailable" ? "unavailable" : "schedule",
+      [target.id]: activate ? "schedule" : current[target.id] === "unavailable" ? "unavailable" : "schedule",
     }));
     registerChange("catalog");
-    setFeedback(target.availabilityMode === "unavailable" ? "Расписание сохранено: раздел остаётся на стопе" : "Расписание раздела сохранено");
+    setFeedback(!activate && target.availabilityMode === "unavailable"
+      ? "Расписание сохранено: раздел остаётся на стопе"
+      : "Расписание раздела сохранено");
   };
 
   const deleteSectionSchedule = (target: TreeSection) => {
@@ -5278,6 +5281,11 @@ function PopulatedWorkspace({
         saveSectionSchedule(section, schedule, "available", outsideScheduleMode);
         return;
       }
+      if (section && selection.startsWith("schedule-activate:") && schedule) {
+        const outsideScheduleMode = selection.slice("schedule-activate:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        saveSectionSchedule(section, schedule, "available", outsideScheduleMode, true);
+        return;
+      }
       if (section && selection === "schedule-delete") {
         deleteSectionSchedule(section);
         return;
@@ -5373,6 +5381,11 @@ function PopulatedWorkspace({
       if (selection.startsWith("schedule-save:") && schedule) {
         const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
         saveSectionSchedule(target, schedule, "available", outsideScheduleMode);
+        return;
+      }
+      if (selection.startsWith("schedule-activate:") && schedule) {
+        const outsideScheduleMode = selection.slice("schedule-activate:".length) === "comingSoon" ? "comingSoon" : "hidden";
+        saveSectionSchedule(target, schedule, "available", outsideScheduleMode, true);
         return;
       }
       if (selection === "schedule-delete") {
@@ -6381,15 +6394,18 @@ function SectionActionMenuContent({
       </div>
     );
   }
-  const sectionAvailability: CatalogSectionAvailabilityMenuProps = {
+  const sectionAvailability: CatalogPositionAvailabilityMenuProps = {
     scheduleId: `section-${section.id}`,
     manualStopped: section.availabilityMode === "unavailable",
-    hasSchedule: section.hasSchedule ?? false,
+    hasSchedule: section.availabilityMode === "schedule",
     weeklySchedule: section.weeklySchedule ?? createDefaultWeeklySchedule(),
+    stopDisplayMode: section.visibility === "hidden" ? "hidden" : "comingSoon",
     outsideScheduleMode: section.outsideScheduleMode ?? "hidden",
     onManualStopChange: (stopped) => onAction(stopped ? "availability:manual-stop" : "availability:manual-resume"),
-    onScheduleChange: (schedule, outsideScheduleMode) => onAction(`availability:schedule-save:${outsideScheduleMode}`, undefined, schedule),
+    onAvailableSelect: () => onAction("availability:available"),
+    onScheduleChange: (schedule, outsideScheduleMode) => onAction(`availability:schedule-activate:${outsideScheduleMode}`, undefined, schedule),
     onScheduleDelete: () => onAction("availability:schedule-delete"),
+    onStopDisplayModeChange: (mode) => onAction(`availability:${mode === "comingSoon" ? "stop-soon" : "stop-hidden"}`),
   };
   return (
     <CatalogContextMenuContent

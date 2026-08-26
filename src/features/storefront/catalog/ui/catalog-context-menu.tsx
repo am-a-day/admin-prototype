@@ -2,7 +2,6 @@ import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
-  ArrowCounterClockwise,
   ArrowElbowUpRight,
   ArrowUUpLeft,
   CalendarBlank,
@@ -28,7 +27,6 @@ import {
   CATALOG_DROPDOWN_CONTENT_CLASS,
   CATALOG_DROPDOWN_ITEM_CLASS,
   CATALOG_DROPDOWN_SEPARATOR_CLASS,
-  CATALOG_SECTION_ACTION_CONTENT_CLASS,
   CATALOG_SECTION_ACTION_GROUP_CLASS,
   CATALOG_SECTION_ACTION_ITEM_CLASS,
   DropdownActionItem,
@@ -47,6 +45,7 @@ export type CatalogPositionAvailabilityMenuProps = {
   stopDisplayMode: CatalogStopDisplayMode;
   outsideScheduleMode: CatalogStopDisplayMode;
   onManualStopChange: (stopped: boolean) => void;
+  onAvailableSelect?: () => void;
   onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
   onScheduleDelete?: () => void;
   onStopDisplayModeChange: (mode: CatalogStopDisplayMode) => void;
@@ -301,6 +300,7 @@ export function CatalogPositionAvailabilityMenu({
   stopDisplayMode,
   outsideScheduleMode,
   onManualStopChange,
+  onAvailableSelect,
   onScheduleChange,
   onStopDisplayModeChange,
   onScheduleEditorPinnedChange,
@@ -362,7 +362,8 @@ export function CatalogPositionAvailabilityMenu({
                 event.preventDefault();
                 setStopEditorOpen(false);
                 setScheduleEditorOpen(false);
-                onManualStopChange(false);
+                if (onAvailableSelect) onAvailableSelect();
+                else onManualStopChange(false);
               }}
               className={cn(CATALOG_DROPDOWN_ITEM_CLASS, "text-[#44403b]")}
             >
@@ -523,87 +524,6 @@ export function CatalogPositionAvailabilityMenu({
   );
 }
 
-export type CatalogSectionAvailabilityMenuProps = {
-  scheduleId: string;
-  manualStopped: boolean;
-  hasSchedule: boolean;
-  weeklySchedule: WeeklySchedule;
-  outsideScheduleMode: CatalogStopDisplayMode;
-  onManualStopChange: (stopped: boolean) => void;
-  onScheduleChange: (schedule: WeeklySchedule, outsideScheduleMode: CatalogStopDisplayMode) => void;
-  onScheduleDelete: () => void;
-  onActionComplete?: () => void;
-};
-
-export function CatalogSectionAvailabilityMenu({
-  scheduleId,
-  manualStopped,
-  hasSchedule,
-  weeklySchedule,
-  outsideScheduleMode,
-  onManualStopChange,
-  onScheduleChange,
-  onScheduleDelete,
-  onActionComplete,
-}: CatalogSectionAvailabilityMenuProps) {
-  const [open, setOpen] = useState(false);
-  const availabilityMeta = manualStopped
-    ? { label: "На стопе", icon: <LockLaminated size={16} aria-hidden="true" /> }
-    : hasSchedule
-      ? { label: "По расписанию", icon: <CalendarDots size={16} aria-hidden="true" /> }
-      : { label: "Доступно", icon: <CheckCircle size={16} aria-hidden="true" /> };
-
-  return (
-    <DropdownMenu.Sub open={open} onOpenChange={setOpen}>
-      <DropdownMenu.SubTrigger
-        onPointerMove={() => setOpen(true)}
-        onClick={(event) => {
-          event.preventDefault();
-          setOpen(true);
-        }}
-        className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center text-[#57534d]">{availabilityMeta.icon}</span>
-        <span className="min-w-0 flex-1 truncate">{availabilityMeta.label}</span>
-        <CaretRight size={12} weight="bold" aria-hidden="true" className="shrink-0 text-[#a8a29e]" />
-      </DropdownMenu.SubTrigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.SubContent
-          sideOffset={6}
-          alignOffset={-5}
-          collisionPadding={12}
-          className={cn("z-[100004]", CATALOG_SECTION_ACTION_CONTENT_CLASS)}
-        >
-          <div className="p-1">
-            <DropdownMenu.Item
-              onSelect={() => {
-                onManualStopChange(!manualStopped);
-                onActionComplete?.();
-              }}
-              className={cn(CATALOG_SECTION_ACTION_ITEM_CLASS, "text-[#44403b]")}
-            >
-              {manualStopped
-                ? <ArrowCounterClockwise size={16} className="shrink-0 text-[#57534d]" />
-                : <Prohibit size={16} className="shrink-0 text-[#57534d]" />}
-              <span>{manualStopped ? "Снять со стопа" : "Поставить на стоп"}</span>
-            </DropdownMenu.Item>
-            <AvailabilityScheduleSubmenu
-              scheduleId={scheduleId}
-              hasSchedule={hasSchedule}
-              weeklySchedule={weeklySchedule}
-              outsideScheduleMode={outsideScheduleMode}
-              onScheduleChange={onScheduleChange}
-              onScheduleDelete={onScheduleDelete}
-              onActionComplete={onActionComplete}
-              triggerClassName={CATALOG_SECTION_ACTION_ITEM_CLASS}
-            />
-          </div>
-        </DropdownMenu.SubContent>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Sub>
-  );
-}
-
 export function CatalogAvailabilityMenu({
   scheduleId,
   availability,
@@ -686,7 +606,7 @@ type EntityMenuProps = {
   onArchive: () => void;
   onDelete: () => void;
   positionAvailability?: CatalogPositionAvailabilityMenuProps;
-  sectionAvailability?: CatalogSectionAvailabilityMenuProps;
+  sectionAvailability?: CatalogPositionAvailabilityMenuProps;
   sectionPrimaryAction?: ReactNode;
 };
 
@@ -741,7 +661,7 @@ export function CatalogContextMenuContent({
         {showAvailability && (
           <div className={CATALOG_SECTION_ACTION_GROUP_CLASS}>
             {sectionAvailability ? (
-              <CatalogSectionAvailabilityMenu {...sectionAvailability} />
+              <CatalogPositionAvailabilityMenu {...sectionAvailability} />
             ) : (
               <CatalogAvailabilityMenu
                 scheduleId={scheduleId}
