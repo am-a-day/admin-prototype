@@ -84,6 +84,7 @@ export function CatalogTreeThumbnail({
 
 const CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY = catalogStorageKey("sections.treeShowArchived");
 const CATALOG_SECTION_ACTION_GRID_CLASS = "grid w-[46px] shrink-0 grid-cols-[20px_20px] items-center gap-1.5";
+const CATALOG_SECTION_TRAILING_GRID_CLASS = "grid w-[72px] shrink-0 grid-cols-[20px_20px_20px] items-center gap-1.5";
 
 const SECTION_STATUS_LABELS: Record<Exclude<CatalogAvailabilityStatusIconState, "soon">, string> = {
   archive: "В архиве",
@@ -554,53 +555,25 @@ export function UnifiedCatalogTreePanel({
                 <span
                   data-catalog-section-right-slots
                   className={cn(
-                    CATALOG_SECTION_ACTION_GRID_CLASS,
+                    CATALOG_SECTION_TRAILING_GRID_CLASS,
                     "relative ml-[9px] h-5",
                     isArchived && "opacity-60",
                   )}
                 >
-                    <span
-                      data-catalog-section-metadata
-                      className={cn(
-                        CATALOG_SECTION_ACTION_GRID_CLASS,
-                        "col-span-2 col-start-1 row-start-1 h-5 transition-opacity group-hover:opacity-0",
-                        (menuOpen || focusedActionSectionId === section.id) && "opacity-0",
-                      )}
-                    >
-                      {availabilityStatus && (
-                        <CatalogAvailabilityStatusIcon
-                          state={availabilityStatus}
-                          entity="section"
-                          tone="neutral"
-                          iconSize={12}
-                          className="col-start-2 size-5"
-                          tooltipLabel={sectionStatusTooltipLabel}
-                          hideWithGroupActions={false}
-                        />
-                      )}
-                      {!availabilityStatus && (
-                        <span
-                          data-catalog-section-count
-                          className="col-span-2 col-start-1 min-w-0 text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]"
-                        >
-                          {sectionItemCount}
-                        </span>
-                      )}
-                    </span>
-                    <div
-                      data-catalog-section-hover-actions
-                      className={cn(
-                        CATALOG_SECTION_ACTION_GRID_CLASS,
-                        "pointer-events-none col-span-2 col-start-1 row-start-1 h-5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
-                        (menuOpen || focusedActionSectionId === section.id) && "pointer-events-auto opacity-100",
-                      )}
-                      onFocusCapture={() => setFocusedActionSectionId(section.id)}
-                      onBlurCapture={(event) => {
-                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                          setFocusedActionSectionId((current) => current === section.id ? null : current);
-                        }
-                      }}
-                    >
+                  <div
+                    data-catalog-section-hover-actions
+                    className={cn(
+                      CATALOG_SECTION_ACTION_GRID_CLASS,
+                      "pointer-events-none col-span-2 col-start-1 row-start-1 h-5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
+                      (menuOpen || focusedActionSectionId === section.id) && "pointer-events-auto opacity-100",
+                    )}
+                    onFocusCapture={() => setFocusedActionSectionId(section.id)}
+                    onBlurCapture={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setFocusedActionSectionId((current) => current === section.id ? null : current);
+                      }
+                    }}
+                  >
                       <Tooltip
                         label="Нельзя добавить подраздел: в разделе уже есть позиции"
                         side="top"
@@ -656,7 +629,31 @@ export function UnifiedCatalogTreePanel({
                           )}
                         </SectionTreeDropdown>
                       </SharedDropdownMenu>
-                    </div>
+                  </div>
+                  <span
+                    data-catalog-section-metadata
+                    className="col-start-3 row-start-1 flex size-5 items-center justify-center"
+                  >
+                    {availabilityStatus && (
+                      <CatalogAvailabilityStatusIcon
+                        state={availabilityStatus}
+                        entity="section"
+                        tone="neutral"
+                        iconSize={12}
+                        className="size-5"
+                        tooltipLabel={sectionStatusTooltipLabel}
+                        hideWithGroupActions={false}
+                      />
+                    )}
+                    {!availabilityStatus && (
+                      <span
+                        data-catalog-section-count
+                        className="w-full text-right text-[11px] leading-[18px] tabular-nums text-[#78716c]"
+                      >
+                        {sectionItemCount}
+                      </span>
+                    )}
+                  </span>
                 </span>
               )}
             </div>
@@ -718,7 +715,7 @@ export function UnifiedCatalogTreePanel({
           </div>
         </SectionTreeDropdown>
       </SharedDropdownMenu>
-      <div data-catalog-section-action-grid="header" className={CATALOG_SECTION_ACTION_GRID_CLASS}>
+      <div data-catalog-section-action-grid="header" className={CATALOG_SECTION_TRAILING_GRID_CLASS}>
         <Tooltip label="Добавить новый раздел" side="top" delayDuration={250}>
           <Button
             type="button"
@@ -750,6 +747,7 @@ export function UnifiedCatalogTreePanel({
             <MagnifyingGlass size={14} weight="regular" aria-hidden="true" />
           </Button>
         </Tooltip>
+        <span aria-hidden="true" className="size-5" />
       </div>
     </div>
   );

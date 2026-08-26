@@ -88,6 +88,7 @@ describe("CatalogTreeThumbnail", () => {
 describe("UnifiedCatalogTreePanel section metadata", () => {
   it("replaces counts with stopped and scheduled status icons and keeps the count in the tooltip", async () => {
     const sections: CatalogTreeSection[] = [
+      { id: "available-0", name: "Доступный 0", availabilityMode: "always", children: [] },
       { id: "available", name: "Доступный", availabilityMode: "always", children: [] },
       { id: "available-13", name: "Доступный 13", availabilityMode: "always", children: [] },
       { id: "available-241", name: "Доступный 241", availabilityMode: "always", children: [] },
@@ -108,13 +109,16 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const stoppedRow = screen.getByRole("button", { name: "Раздел На стопе" });
     const scheduledRow = screen.getByRole("button", { name: "Раздел По расписанию" });
 
+    expect(within(screen.getByRole("button", { name: "Раздел Доступный 0" })).getByText("0")).toBeInTheDocument();
     expect(within(availableRow).getByText("6")).toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: "Раздел Доступный 13" })).getByText("13")).toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: "Раздел Доступный 241" })).getByText("241")).toBeInTheDocument();
     expect(within(availableRow).queryByLabelText(/На стопе/)).not.toBeInTheDocument();
     const stoppedStatus = within(stoppedRow).getByLabelText("На стопе · 21 позиция");
+    const stoppedMetadata = stoppedStatus.closest("[data-catalog-section-metadata]");
     expect(stoppedStatus).toHaveAttribute("tabindex", "0");
-    expect(stoppedStatus).toHaveClass("col-start-2", "size-5");
+    expect(stoppedStatus).toHaveClass("size-5");
+    expect(stoppedMetadata).toHaveClass("col-start-3", "size-5", "justify-center");
     expect(stoppedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(stoppedRow).toHaveAttribute("title", "На стопе · 21 позиция");
     expect(within(stoppedRow).queryByText("21")).not.toBeInTheDocument();
@@ -125,7 +129,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("На стопе · 21 позиция");
   });
 
-  it("uses the same two fixed action slots for the header, root rows, and nested rows", async () => {
+  it("uses fixed add, more, and metadata slots for the header, root rows, and nested rows", async () => {
     const sections: CatalogTreeSection[] = [
       {
         id: "root",
@@ -146,18 +150,25 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const nestedLeft = nestedRow.querySelector("[data-catalog-section-left-content]");
     const rootSlots = rootRow.querySelector("[data-catalog-section-right-slots]");
     const nestedSlots = nestedRow.querySelector("[data-catalog-section-right-slots]");
+    const nestedActions = nestedRow.querySelector("[data-catalog-section-hover-actions]");
+    const nestedMetadata = nestedRow.querySelector("[data-catalog-section-metadata]");
+    const nestedCount = nestedRow.querySelector("[data-catalog-section-count]");
     const nestedList = document.querySelector('[data-section-parent-id="root"]');
     const scrollport = document.querySelector(".scrollbar-subtle");
     const headerActions = within(headerGrid as HTMLElement).getAllByRole("button");
 
-    expect(headerGrid).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
+    expect(headerGrid).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
     expect(headerActions.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Добавить раздел",
       "Открыть поиск разделов",
     ]);
     expect(headerActions.map((button) => button.querySelector("svg")?.getAttribute("width"))).toEqual(["14", "14"]);
-    expect(rootSlots).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
-    expect(nestedSlots).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
+    expect(rootSlots).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
+    expect(nestedSlots).toHaveClass("grid", "w-[72px]", "grid-cols-[20px_20px_20px]", "gap-1.5");
+    expect(nestedActions).toHaveClass("w-[46px]", "grid-cols-[20px_20px]", "col-span-2");
+    expect(nestedMetadata).toHaveClass("col-start-3", "size-5", "justify-center");
+    expect(nestedMetadata).not.toHaveClass("group-hover:opacity-0");
+    expect(nestedCount).toHaveClass("w-full", "text-right", "tabular-nums");
     expect(scrollport).toHaveClass("[scrollbar-gutter:stable]");
     expect(headerGrid?.closest(".scrollbar-subtle")).toBe(scrollport);
     expect(rootSlots?.closest(".scrollbar-subtle")).toBe(scrollport);
@@ -211,6 +222,8 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const archivedRow = screen.getByRole("button", { name: "Раздел Архивный" });
     expect(archivedRow).toHaveAttribute("data-archived-section", "true");
     const archivedStatus = within(archivedRow).getByLabelText("В архиве · 13 позиций");
+    expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("col-start-3", "size-5", "justify-center");
+    expect(archivedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(within(archivedRow).queryByText("13")).not.toBeInTheDocument();
 
     archivedStatus.focus();
