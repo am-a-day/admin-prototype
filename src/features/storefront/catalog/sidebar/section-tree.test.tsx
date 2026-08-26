@@ -45,6 +45,7 @@ function treePanel(
         sections={sections}
         items={items}
         allPositionsSelected={false}
+        allPositionsCount={items.length}
         stopListActive={false}
         stopListCount={55}
         selectedSectionId={selectedSectionId}
@@ -79,21 +80,21 @@ beforeEach(() => {
 });
 
 describe("CatalogTreeThumbnail", () => {
-  it("uses the same stone background for section images and placeholders", () => {
+  it("uses the same stone-200 background for section images and placeholders", () => {
     const { container, rerender } = render(<CatalogTreeThumbnail src="/section.webp" />);
 
-    expect(container.querySelector("[data-catalog-tree-thumbnail] > span")).toHaveClass("bg-stone-100");
+    expect(container.querySelector("[data-catalog-tree-thumbnail] > span")).toHaveClass("bg-stone-200");
     expect(container.querySelector('img[src="/section.webp"]')).toBeInTheDocument();
 
     rerender(<CatalogTreeThumbnail />);
 
-    expect(container.querySelector("[data-catalog-tree-thumbnail] > span")).toHaveClass("bg-stone-100");
+    expect(container.querySelector("[data-catalog-tree-thumbnail] > span")).toHaveClass("bg-stone-200");
   });
 
   it("keeps the selected thumbnail frame on the same stone background", () => {
     const { container } = render(<CatalogTreeThumbnail src="/section.webp" selected />);
 
-    expect(container.querySelector("[data-catalog-tree-thumbnail]")).toHaveClass("bg-stone-100");
+    expect(container.querySelector("[data-catalog-tree-thumbnail]")).toHaveClass("bg-stone-200");
   });
 });
 
@@ -199,7 +200,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(disabledAdd.querySelector("svg")).toHaveAttribute("width", "14");
     expect(more).toHaveClass("size-5");
     expect(more.querySelector("svg")).toHaveAttribute("width", "16");
-    expect(screen.getByRole("button", { name: "Все позиции" })).not.toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: "Все позиции 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Стоп-лист 55" })).toBeInTheDocument();
 
     const disabledAddTooltipTrigger = within(nestedRow).getByLabelText("Нельзя добавить подраздел: в разделе уже есть позиции");

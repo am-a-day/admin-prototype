@@ -52,6 +52,7 @@ import {
   FunnelSimple,
   ImageBroken,
   List,
+  LockLaminated,
   MagnifyingGlass,
   PencilSimple,
   PlusCircle,
@@ -6023,6 +6024,7 @@ function PopulatedWorkspace({
               sections={editorNavMode === "entity" || editorNavMode === "unified" ? allSectionTree : activeSectionTree}
               items={allItems}
               allPositionsSelected={selectedSectionId === null}
+              allPositionsCount={allItems.length}
               stopListActive={workspaceKind === "stop-list"}
               stopListCount={allItems.filter((item) => item.status === "stopped").length}
               selectedSectionId={selectedSectionId}
@@ -7730,6 +7732,7 @@ function OverviewWorkspace({
   const translations = useTranslationsOptional();
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
+  const fixedStopListMode = mandatoryFilterId === "status:stop";
   const {
     items,
     itemOrderBySection,
@@ -7751,6 +7754,7 @@ function OverviewWorkspace({
   const activeFilterStorageKey = `${overviewContextStorageKey}.activeFilter.v3`;
   const legacyActiveFiltersStorageKey = `${overviewContextStorageKey}.activeFilters.v2`;
   const [activeFilterId, setActiveFilterId] = useState<OverviewFilterId | null>(() => {
+    if (fixedStopListMode) return null;
     const stored = readJsonRecord<unknown>(activeFilterStorageKey, null);
     const legacyStored = readJsonRecord<unknown>(legacyActiveFiltersStorageKey, []);
     const candidates = typeof stored === "string" ? [stored] : Array.isArray(legacyStored) ? legacyStored : [];
@@ -8016,6 +8020,10 @@ function OverviewWorkspace({
     ),
     [availableScopeSections, workspaceSectionScopeId],
   );
+  const stopListTotalCount = useMemo(
+    () => fixedStopListMode ? getOverviewItems("status:stop", items).length : 0,
+    [fixedStopListMode, items],
+  );
   const filtered = useMemo(() => {
     const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
     const nextItems = activeFilterId ? getOverviewItems(activeFilterId, baseItems) : baseItems;
@@ -8217,12 +8225,16 @@ function OverviewWorkspace({
   const clearSearch = () => {
     setWorkspaceQuery("");
   };
-  const emptyTitle = activeFilterId != null
-    ? statusMeta.emptyTitle
-    : titleOverride ?? statusMeta.emptyTitle;
-  const emptyText = scopeSection
-    ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[activeDisplayFilterId].label.toLowerCase()}`
-    : statusMeta.emptyText;
+  const emptyTitle = fixedStopListMode
+    ? "В стоп-листе нет позиций"
+    : activeFilterId != null
+      ? statusMeta.emptyTitle
+      : titleOverride ?? statusMeta.emptyTitle;
+  const emptyText = fixedStopListMode
+    ? null
+    : scopeSection
+      ? `В разделе «${scopeSection.name}» нет позиций: ${OVERVIEW_FILTER_META[activeDisplayFilterId].label.toLowerCase()}`
+      : statusMeta.emptyText;
   const selectedSectionIsCompletelyEmpty = Boolean(
     scopeSection
     && scopeTotalCount === 0
@@ -8237,7 +8249,9 @@ function OverviewWorkspace({
     || tagFilter != null
     || stickerFilter != null,
   );
-  const showFilteredEmptyState = scopeTotalCount > 0 && visible.length === 0 && hasActiveTableConstraints;
+  const showFilteredEmptyState = fixedStopListMode
+    ? filtered.length > 0 && visible.length === 0 && Boolean(workspaceQuery.trim())
+    : scopeTotalCount > 0 && visible.length === 0 && hasActiveTableConstraints;
   const clearSelection = () => setSelectedIds(new Set());
   useEffect(() => {
     if (selectedIds.size === 0) return;
@@ -8252,6 +8266,10 @@ function OverviewWorkspace({
   }, [bulkDialog, moveRequest, selectedIds.size]);
   const showFeedback = (message: string) => {
     setFeedback(message);
+  };
+  const showStopListRemovalFeedback = (count = 1) => {
+    if (!fixedStopListMode || count < 1) return;
+    showFeedback(count === 1 ? "Позиция снята со стоп-листа" : "Позиции сняты со стоп-листа");
   };
   const completeCreateNavigation = (action: () => void) => {
     setDiscardDialogOpen(false);
@@ -8346,9 +8364,14 @@ function OverviewWorkspace({
     );
   };
   const removeSelectedStop = () => {
+    const removedCount = selectedAvailabilityItems.filter(
+      (item) => item.status === "stopped" || item.status === "coming-soon",
+    ).length;
     updateSelectedAvailabilityItems(
       (item) => ({ ...item, status: "active", scheduled: false }),
-      "Позиции сняты со стопа",
+      fixedStopListMode
+        ? removedCount === 1 ? "Позиция снята со стоп-листа" : "Позиции сняты со стоп-листа"
+        : "Позиции сняты со стопа",
       (item) => item.status === "stopped" || item.status === "coming-soon",
     );
   };
@@ -8580,11 +8603,13 @@ function OverviewWorkspace({
       }
       if (selection === "manual-resume") {
         updateItem(item.id, { status: "active", scheduled: false });
+        showStopListRemovalFeedback();
         return;
       }
       if (selection.startsWith("schedule-save:") && schedule) {
         const outsideScheduleMode = selection.slice("schedule-save:".length) === "comingSoon" ? "comingSoon" : "hidden";
         updateItem(item.id, { status: "active", scheduled: true, weeklySchedule: schedule, availabilityScheduleMode: "available", outsideScheduleMode });
+        showStopListRemovalFeedback();
         return;
       }
       if (selection === "schedule-delete") {
@@ -8613,6 +8638,7 @@ function OverviewWorkspace({
       }
       if (selection === "available") {
         updateItem(item.id, { status: "active", scheduled: false });
+        showStopListRemovalFeedback();
         return;
       }
       if (selection === "stop-soon") {
@@ -8625,12 +8651,16 @@ function OverviewWorkspace({
       }
       if (selection === "schedule") {
         updateItem(item.id, { status: "active", scheduled: true });
+        showStopListRemovalFeedback();
         return;
       }
     }
     const ids = new Set([item.id]);
     if (action === "На стоп") updateItems(ids, (current) => ({ ...current, status: "stopped" }));
-    if (action === "Убрать со стопа" || action === "Восстановить") updateItems(ids, (current) => ({ ...current, status: "active" }));
+    if (action === "Убрать со стопа" || action === "Восстановить") {
+      updateItems(ids, (current) => ({ ...current, status: "active" }));
+      showStopListRemovalFeedback();
+    }
     if (action === "В архив" || action === "Архивировать") updateItems(ids, (current) => ({ ...current, status: "archive" }));
     if (action === "Удалить") {
       setPendingPositionDelete(item);
@@ -9310,7 +9340,22 @@ function OverviewWorkspace({
                 </CatalogActionButton>
               ) : undefined}
             >
-              {tableHeader ?? (
+              {fixedStopListMode ? (
+                <div
+                  data-catalog-stop-list-heading
+                  className="flex h-7 max-w-full min-w-0 items-center gap-1.5"
+                >
+                  <span className={cn(
+                    "flex shrink-0 items-center justify-center bg-[#e6e6db] text-[#57534d]",
+                    CATALOG_SECTION_HEADER_THUMBNAIL_CLASS,
+                  )}>
+                    <LockLaminated size={12} weight="regular" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 truncate text-[14px] font-normal leading-5 text-[#1c1917]">Стоп-лист</span>
+                  <span className="shrink-0 text-[12px] leading-5 text-[#a8a29e]" aria-hidden="true">·</span>
+                  <span className="shrink-0 text-[14px] font-normal leading-5 tabular-nums text-[#a6a09b]">{stopListTotalCount}</span>
+                </div>
+              ) : tableHeader ?? (
                 <CatalogScopeSelect
                   value={workspaceSectionScopeId}
                   onChange={setWorkspaceSectionScopeId}
@@ -9347,6 +9392,7 @@ function OverviewWorkspace({
                 table={catalogTable}
                 onResetColumns={resetTableColumns}
                 onActiveFilterChange={setWorkspaceActiveFilter}
+                showFilter={!fixedStopListMode}
                 tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
                 stickerCategoryActive={USE_SHARED_TAGS_AND_STICKERS && stickerFilter != null}
                 onTagCategoryChange={USE_SHARED_TAGS_AND_STICKERS ? (active) => setTagFilter(active ? "all" : null) : undefined}
@@ -9441,17 +9487,19 @@ function OverviewWorkspace({
                             ? "По текущим фильтрам ничего не найдено"
                             : emptyTitle}
                       </p>
-                      <p className="mt-2 text-[14px] leading-[1.4] text-[#79716b]">
-                        {workspaceQuery.trim()
-                          ? "Измените поисковый запрос или очистите поиск."
-                          : selectedSectionIsCompletelyEmpty
-                          ? "Добавьте первую позицию или создайте подраздел."
-                          : activeFilterId != null && !workspaceQuery.trim()
-                            ? "Измените условия фильтрации или сбросьте фильтры."
-                            : emptyText}
-                      </p>
+                      {(workspaceQuery.trim() || selectedSectionIsCompletelyEmpty || activeFilterId != null || emptyText) && (
+                        <p className="mt-2 text-[14px] leading-[1.4] text-[#79716b]">
+                          {workspaceQuery.trim()
+                            ? "Измените поисковый запрос или очистите поиск."
+                            : selectedSectionIsCompletelyEmpty
+                            ? "Добавьте первую позицию или создайте подраздел."
+                            : activeFilterId != null && !workspaceQuery.trim()
+                              ? "Измените условия фильтрации или сбросьте фильтры."
+                              : emptyText}
+                        </p>
+                      )}
                     </div>
-                    {workspaceQuery.trim() ? (
+                    {fixedStopListMode && !workspaceQuery.trim() ? null : workspaceQuery.trim() ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -10457,7 +10505,7 @@ export function CatalogWorkspace({
       onOpenSectionInOverview={onStopListSectionScopeChange}
       onRegisterCreateNavigationGuard={onRegisterCreateNavigationGuard}
       mandatoryFilterId="status:stop"
-      titleOverride="Позиции на стопе"
+      titleOverride="Стоп-лист"
       allowPositionCreation={false}
       workspaceKind="stop-list"
       secondaryNavigation={secondaryNavigation}

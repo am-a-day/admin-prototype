@@ -1320,6 +1320,7 @@ export function CatalogTableToolbar({
   onTagCategoryChange,
   onStickerCategoryChange,
   onActiveFilterChange,
+  showFilter = true,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -1334,12 +1335,14 @@ export function CatalogTableToolbar({
   onTagCategoryChange?: (active: boolean) => void;
   onStickerCategoryChange?: (active: boolean) => void;
   onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
+  showFilter?: boolean;
 }) {
   return (
     <CatalogTableToolbarShell
       value={query}
       onValueChange={onQueryChange}
       ariaLabel="Найти позицию"
+      showFilter={showFilter}
       filter={(
         <CatalogTableFilterBar
           activeFilterId={activeFilterId}

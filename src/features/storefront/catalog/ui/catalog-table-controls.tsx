@@ -82,6 +82,7 @@ export function CatalogTableSearchControl({
   value,
   onValueChange,
   filter,
+  showFilter = true,
   placeholder = "Поиск по названию",
   ariaLabel,
   inputRef,
@@ -92,6 +93,7 @@ export function CatalogTableSearchControl({
   value: string;
   onValueChange: (value: string) => void;
   filter?: ReactNode;
+  showFilter?: boolean;
   placeholder?: string;
   ariaLabel: string;
   inputRef?: RefObject<HTMLInputElement | null>;
@@ -118,22 +120,25 @@ export function CatalogTableSearchControl({
       className={cn(
         "relative box-border flex h-[30px] min-w-0 max-w-full flex-1 items-center gap-2 overflow-hidden rounded-[7px] border text-[#a6a09b]",
         focused ? "border-[#4f39f6]" : "border-transparent",
+        !showFilter && "pl-4",
         className,
       )}
     >
-      <span
-        data-catalog-table-filter-cell
-        className="relative -ml-px flex h-full w-auto min-w-[60px] shrink-0 items-center pl-[16px]"
-      >
-        {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
-        {focused && (
-          <span
-            data-catalog-table-search-divider
-            className="pointer-events-none absolute bottom-[6px] right-0 top-[6px] w-px bg-[#e7e5e4]"
-            aria-hidden="true"
-          />
-        )}
-      </span>
+      {showFilter && (
+        <span
+          data-catalog-table-filter-cell
+          className="relative -ml-px flex h-full w-auto min-w-[60px] shrink-0 items-center pl-[16px]"
+        >
+          {filter ?? <CatalogTableFilterTrigger label="Все" ariaLabel="Фильтр таблицы" />}
+          {focused && (
+            <span
+              data-catalog-table-search-divider
+              className="pointer-events-none absolute bottom-[6px] right-0 top-[6px] w-px bg-[#e7e5e4]"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+      )}
       <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[#a6a09b]">
         {showSearchHint && <MagnifyingGlass size={14} className="shrink-0" />}
         <input
@@ -169,6 +174,7 @@ export function CatalogTableToolbarShell({
   value,
   onValueChange,
   filter,
+  showFilter = true,
   placeholder = "Поиск по названию",
   ariaLabel,
   inputRef,
@@ -180,6 +186,7 @@ export function CatalogTableToolbarShell({
   value: string;
   onValueChange: (value: string) => void;
   filter?: ReactNode;
+  showFilter?: boolean;
   placeholder?: string;
   ariaLabel: string;
   inputRef?: RefObject<HTMLInputElement | null>;
@@ -195,6 +202,7 @@ export function CatalogTableToolbarShell({
           value={value}
           onValueChange={onValueChange}
           filter={filter}
+          showFilter={showFilter}
           placeholder={placeholder}
           ariaLabel={ariaLabel}
           inputRef={inputRef}
