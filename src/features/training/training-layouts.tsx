@@ -27,13 +27,24 @@ function getTrainingSessionExitMessage(kind?: TrainingActiveSession) {
 
 export function OwnerTrainingLayout({
   activeTab,
+  onTabChange,
   onQuizActiveChange,
 }: {
   activeTab: TrainingTab;
+  onTabChange: (tab: TrainingTab) => void;
   onQuizActiveChange?: (active: boolean, kind?: TrainingActiveSession) => void;
 }) {
   const { webAddress } = useVitrineStatus();
-  return <TrainingPage activeTab={activeTab} menuUrl={`https://${webAddress}`} onQuizActiveChange={onQuizActiveChange} />;
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div data-secondary-navigation-scope="training-content" className="shrink-0 px-6 pt-6">
+        <TrainingTabs value={activeTab} onChange={onTabChange} />
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <TrainingPage activeTab={activeTab} menuUrl={`https://${webAddress}`} onQuizActiveChange={onQuizActiveChange} />
+      </div>
+    </div>
+  );
 }
 
 export function WaiterTrainingLayout() {

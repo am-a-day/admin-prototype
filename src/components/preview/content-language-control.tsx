@@ -1,111 +1,79 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown } from "lucide-react";
-import { createPortal } from "react-dom";
-import { LANGUAGES, type LanguageCode } from "@/data/languages";
-import { useAppSettings } from "@/contexts/app-settings-context";
+import { CaretDown, Check } from "@phosphor-icons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useMockAuth } from "@/contexts/mock-auth-context";
+import { getLanguage, type LanguageCode } from "@/data/languages";
 import { cn } from "@/lib/utils";
 
-/**
- * Переключатель языка редактируемого контента витрины.
- * Живёт в шапке панели превью (основной) и в свёрнутой плашке (compact).
- */
-export function ContentLanguageControl({ compact = false }: { compact?: boolean }) {
-  const { contentLanguage, setContentLanguage, contentLanguageShort } = useAppSettings();
+type ContentLanguageControlProps = {
+  value: LanguageCode;
+  onChange: (language: LanguageCode) => void;
+  compact?: boolean;
+};
+
+/** Preview-only language switcher. Language management lives in Translations. */
+export function ContentLanguageControl({
+  value,
+  onChange,
+  compact = false,
+}: ContentLanguageControlProps) {
   const { account } = useMockAuth();
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (btnRef.current?.contains(t)) return;
-      if (document.getElementById("content-lang-popup")?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const toggle = (e: ReactMouseEvent) => {
-    e.stopPropagation();
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
-    }
-    setOpen((v) => !v);
-  };
-
-  const currentLabel = LANGUAGES.find((l) => l.code === contentLanguage)?.label ?? contentLanguageShort;
+  const languages = account?.workspace.languages ?? [];
+  const current = getLanguage(value);
 
   return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggle}
-        title="Язык контента"
-        aria-expanded={open}
-        className={cn(
-          "flex items-center gap-0.5 rounded-md font-normal text-black transition hover:bg-zinc-100",
-          open && "bg-zinc-100",
-          compact ? "px-1 py-0.5 text-[14px]" : "px-1.5 py-1 text-[13px]",
-        )}
-      >
-        <span className="normal-case tracking-normal">
-          {compact ? contentLanguageShort : currentLabel}
-        </span>
-        <ChevronDown size={12} className={cn("shrink-0 text-zinc-400 transition", open && "rotate-180")} />
-      </button>
-
-      {open && createPortal(
-        <div
-          id="content-lang-popup"
-          style={{ top: pos.top, right: pos.right }}
-          className="fixed z-[200] w-52 rounded-2xl border border-border bg-white p-3 shadow-xl shadow-zinc-300/40"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label="Язык предпросмотра"
+          className={cn(
+            "inline-flex h-7 max-w-[150px] items-center gap-1 rounded-[8px] px-2 text-[12px] font-medium text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+            compact && "w-8 justify-center px-1",
+          )}
         >
-          <div className="mb-0.5 px-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">
-            Язык контента
-          </div>
-          <p className="mb-2 px-2 text-[10px] leading-4 text-zinc-400">
-            Версия меню и витрины для редактирования.
-          </p>
-          <div className="space-y-0.5">
-            {LANGUAGES.filter((lang) =>
-              account?.workspace.languages.some(({ code }) => code === lang.code),
-            ).map((lang) => {
-              const selected = contentLanguage === lang.code;
-              return (
-                <button
-                  key={lang.code}
-                  type="button"
-                  onClick={() => {
-                    setContentLanguage(lang.code as LanguageCode);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition",
-                    selected
-                      ? "bg-blue-50 font-bold text-blue-700"
-                      : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950",
-                  )}
-                >
-                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", selected ? "bg-blue-600" : "bg-transparent")} />
-                  {lang.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>,
-        document.body,
-      )}
-    </>
+          <span className="truncate">{compact ? current.short : current.label}</span>
+          {!compact && <CaretDown size={12} className="shrink-0 text-[#a6a09b]" aria-hidden="true" />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={6} className="min-w-[210px]">
+        {languages.map((workspaceLanguage) => {
+          const language = getLanguage(workspaceLanguage.code);
+          const selected = value === workspaceLanguage.code;
+          const draft = workspaceLanguage.code !== account?.workspace.primaryLanguage
+            && (!workspaceLanguage.visible || workspaceLanguage.status !== "ready");
+
+          return (
+            <DropdownMenuItem
+              key={workspaceLanguage.code}
+              onSelect={() => onChange(workspaceLanguage.code)}
+              className="justify-between"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Check
+                  size={14}
+                  weight="bold"
+                  className={cn("shrink-0", selected ? "text-[#292524]" : "opacity-0")}
+                  aria-hidden="true"
+                />
+                <span className={cn("truncate", selected && "font-medium text-[#292524]")}>{language.label}</span>
+              </span>
+              {draft && (
+                <Badge variant="secondary" className="h-[18px] rounded-[5px] border-0 bg-[#f5f5f4] px-1.5 py-0 text-[10px] font-normal text-[#79716b]">
+                  Черновик
+                </Badge>
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

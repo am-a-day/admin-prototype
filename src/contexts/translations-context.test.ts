@@ -124,6 +124,40 @@ describe("translation material structure", () => {
       values: { ru: "Паста", en: "Pasta" },
     });
   });
+
+  it("exposes the active local tags and sticker in the central translation materials", () => {
+    const materials = buildTranslationMaterials([createItem({
+      title: "Паста",
+      tags: ["Острое", "Халяль"],
+      guestLabels: ["Хит"],
+      upsell: {
+        tags: [
+          { ru: "Острое", en: "Spicy" },
+          { ru: "Халяль", kk: "Халал" },
+        ],
+        sticker: { ru: "Хит", en: "Popular" },
+      },
+    })], [], [], [], undefined);
+
+    const spicy = materials.find((material) => material.category === "tags" && material.title === "Острое");
+    const halal = materials.find((material) => material.category === "tags" && material.title === "Халяль");
+    const sticker = materials.find((material) => material.category === "stickers" && material.title === "Хит");
+
+    expect(spicy).toMatchObject({
+      ownerItemIds: ["item-1"],
+      category: "tags",
+      fields: [{ id: "name", values: { en: "Spicy" } }],
+    });
+    expect(halal).toMatchObject({
+      ownerItemIds: ["item-1"],
+      fields: [{ id: "name", values: { kk: "Халал" } }],
+    });
+    expect(sticker).toMatchObject({
+      ownerItemIds: ["item-1"],
+      category: "stickers",
+      fields: [{ id: "name", values: { en: "Popular" } }],
+    });
+  });
 });
 
 describe("translation field progress", () => {

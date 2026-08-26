@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Lock } from "lucide-react";
+import { Lock, SpinnerGap } from "@phosphor-icons/react";
 import { useVitrineLaunch } from "@/contexts/vitrine-launch-context";
 import { useVitrineStatus } from "@/lib/use-vitrine-status";
 import { useAppSettings } from "@/contexts/app-settings-context";
+import { ContentLanguageControl } from "@/components/preview/content-language-control";
 import { usePublish } from "@/contexts/publish-context";
 import { usePreviewDemo } from "@/contexts/preview-demo-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
+import { useTranslationsOptional, type TranslationMaterialKind } from "@/contexts/translations-context";
 import {
   categories,
   dishes,
@@ -63,6 +65,7 @@ import {
   readCatalogUpsellState,
   resolveRecommendationIds,
 } from "@/lib/catalog-upsell";
+import type { LanguageCode } from "@/data/languages";
 
 type PhonePreviewProps = {
   section: SectionId;
@@ -73,6 +76,8 @@ type PhonePreviewProps = {
   recommendationTexts: RecommendationTexts;
   upsellSurface: UpsellSurface;
   highlightUpsell: boolean;
+  previewLanguage: LanguageCode;
+  onPreviewLanguageChange: (language: LanguageCode) => void;
   // Навигация из превью в настройки (UX-эксперимент)
   onNavHomeHero: () => void;
   onNavHomeSections: () => void;
@@ -107,6 +112,8 @@ function PhonePreviewContent({
   recommendationTexts,
   upsellSurface,
   highlightUpsell,
+  previewLanguage,
+  onPreviewLanguageChange,
   onNavHomeHero,
   onNavHomeSections,
   onNavUpsell,
@@ -122,24 +129,35 @@ function PhonePreviewContent({
     deliveryComment,
     pickupComment,
     pickupAddress,
-    contentLanguage,
   } = useAppSettings();
   const { routes } = useOrderRouting();
   const { publishPhase } = usePublish();
-  const { items: catalogItems } = useCatalogStore();
+  const { items: catalogItems, sections: catalogSections } = useCatalogStore();
+  const translations = useTranslationsOptional();
   const { emptyVitrine } = usePreviewDemo();
   const { account } = useMockAuth();
   const { stage } = useVitrineLaunch();
   const { webAddress } = useVitrineStatus();
   const privatePreview = Boolean(account?.workspace.privatePreviewAvailable);
   const restaurantName =
-    account?.workspace.localizedNames[contentLanguage] ||
+    account?.workspace.localizedNames[previewLanguage] ||
     (account
       ? account.workspace.localizedNames[account.workspace.primaryLanguage]
       : undefined) ||
     account?.workspace.name ||
     "Новое меню";
   const previewAddress = account?.workspace.webAddress || "preview.tasko.local";
+  const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
+
+  const translatedFieldValue = (
+    kind: TranslationMaterialKind,
+    entityId: string,
+    fieldId: string,
+    fallback: string,
+  ) => translations?.materials
+    .find((material) => material.kind === kind && material.entityId === entityId)
+    ?.fields.find((field) => field.id === fieldId)
+    ?.values[previewLanguage]?.trim() || fallback;
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("home");
   const [menuCategory, setMenuCategory] = useState<string | null>(null);
@@ -164,32 +182,50 @@ function PhonePreviewContent({
   const dish = getDish(selectedDishId);
   const recommended = getRecommendedDishes(dish);
   const toPreviewDish = (item: CatalogItem, index = 0): Dish => {
-    const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
     const localLabels = getLocalCatalogItemLabels(item, primaryLanguage);
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId);
+    const localizedSectionName = section
+      ? translatedFieldValue(
+          "section",
+          section.id,
+          "name",
+          getCatalogTitleForLanguage(section.name, section.nameTranslations, previewLanguage, primaryLanguage),
+        )
+      : item.sectionName;
     const tags = USE_SHARED_TAGS_AND_STICKERS
       ? resolveCatalogItemTagIds(item, sharedLabels)
-          .map((id) => getCatalogLabelText(sharedLabels.find((label) => label.id === id), contentLanguage, primaryLanguage))
+          .map((id) => getCatalogLabelText(sharedLabels.find((label) => label.id === id), previewLanguage, primaryLanguage))
           .filter(Boolean)
-      : localLabels.tags.map((tag) => getLocalCatalogLabelText(tag, contentLanguage, primaryLanguage));
+      : localLabels.tags.map((tag) => getLocalCatalogLabelText(tag, previewLanguage, primaryLanguage));
     const sticker = USE_SHARED_TAGS_AND_STICKERS
       ? getCatalogLabelText(
           sharedLabels.find((label) => label.id === resolveCatalogItemStickerId(item, sharedLabels)),
-          contentLanguage,
+          previewLanguage,
           primaryLanguage,
         ) || null
-      : getLocalCatalogLabelText(localLabels.sticker, contentLanguage, primaryLanguage) || null;
+      : getLocalCatalogLabelText(localLabels.sticker, previewLanguage, primaryLanguage) || null;
     return {
       id: item.id,
       name: getCatalogTitleForLanguage(
         item.title,
         item.titleTranslations,
-        contentLanguage,
+        previewLanguage,
         primaryLanguage,
       ),
-      category: item.sectionName,
+      category: localizedSectionName,
       price: formatPrice(item.priceWithSale ?? item.price),
       weight: item.weightLabel ?? "",
-      description: item.description,
+      description: translatedFieldValue(
+        "position",
+        item.id,
+        "description",
+        getCatalogTitleForLanguage(
+          item.description,
+          item.descriptionTranslations,
+          previewLanguage,
+          primaryLanguage,
+        ),
+      ),
       accent: ["from-amber-50 to-orange-100", "from-emerald-50 to-lime-100", "from-violet-50 to-fuchsia-100", "from-sky-50 to-cyan-100"][index % 4],
       emoji: "🍽️",
       recommendations: [],
@@ -222,11 +258,55 @@ function PhonePreviewContent({
           .map((id) => dishes.find((d) => d.id === id))
           .filter((d): d is NonNullable<typeof d> => Boolean(d) && d!.id !== dish.id);
 
-  // Навигация по витрине доступна на админ-вкладке «Главная».
-  const browsing = section === "storefront" && activeTab === "home" && previewBanner != null;
+  const localizedPreviewBanner = previewBanner ? {
+    ...previewBanner,
+    title: getCatalogTitleForLanguage(
+      previewBanner.title,
+      previewBanner.titleTranslations,
+      previewLanguage,
+      primaryLanguage,
+    ),
+    subtitle: translatedFieldValue(
+      "banner",
+      previewBanner.id,
+      "subtitle",
+      getCatalogTitleForLanguage(
+        previewBanner.subtitle,
+        previewBanner.subtitleTranslations,
+        previewLanguage,
+        primaryLanguage,
+      ),
+    ),
+    tags: previewBanner.tags.map((tag) => {
+      const tagFallbacks: Partial<Record<LanguageCode, string>> = {
+        ru: tag.texts.ru,
+        kk: tag.texts.kz,
+        en: tag.texts.en,
+        zh: tag.texts.zh,
+        fr: tag.texts.fr,
+        es: tag.texts.es,
+        sr: tag.texts.sr,
+      };
+      const text = translatedFieldValue(
+        "banner",
+        previewBanner.id,
+        `tag:${tag.id}`,
+        tagFallbacks[previewLanguage]?.trim() || tag.texts.ru,
+      );
+      return { ...tag, texts: { ...tag.texts, ru: text } };
+    }),
+  } : null;
+  const localizedRecommendationTexts: RecommendationTexts = {
+    home: translatedFieldValue("interface", "recommendations", "home", recommendationTexts.home),
+    dish: translatedFieldValue("interface", "recommendations", "dish", recommendationTexts.dish),
+    cart: translatedFieldValue("interface", "recommendations", "cart", recommendationTexts.cart),
+  };
 
-  let screen: ReactNode = previewBanner ? (
-    <PhoneHome banner={previewBanner} restaurantName={restaurantName} empty={emptyVitrine} />
+  // Навигация по витрине доступна на админ-вкладке «Главная».
+  const browsing = section === "storefront" && activeTab === "home" && localizedPreviewBanner != null;
+
+  let screen: ReactNode = localizedPreviewBanner ? (
+    <PhoneHome banner={localizedPreviewBanner} restaurantName={restaurantName} empty={emptyVitrine} />
   ) : null;
   let showBottomNav = false;
   let overlay: ReactNode = null;
@@ -276,12 +356,12 @@ function PhonePreviewContent({
     );
   } else if (scenario === "delivery") {
     screen = <PhoneCheckout method="delivery" comment={deliveryComment} />;
-  } else if (browsing && previewBanner) {
+  } else if (browsing && localizedPreviewBanner) {
     showBottomNav = true;
     if (previewTab === "home") {
       screen = (
         <PhoneHome
-          banner={previewBanner}
+          banner={localizedPreviewBanner}
           restaurantName={restaurantName}
           empty={emptyVitrine}
           onBanner={onNavHomeHero}
@@ -314,7 +394,7 @@ function PhonePreviewContent({
     } else {
       screen = (
         <PhoneCart
-          title={recommendationTexts.cart}
+          title={localizedRecommendationTexts.cart}
           dish={catalogPreviewDish ?? dish}
           recommended={recItems}
           onRecommendations={onNavUpsell}
@@ -353,7 +433,7 @@ function PhonePreviewContent({
     if (upsellSurface === "home") {
       screen = (
         <PhoneUpsellHome
-          title={recommendationTexts.home}
+          title={localizedRecommendationTexts.home}
           recommended={recItems}
           highlight={highlightUpsell}
         />
@@ -361,7 +441,7 @@ function PhonePreviewContent({
     } else if (upsellSurface === "cart") {
       screen = (
         <PhoneCart
-          title={recommendationTexts.cart}
+          title={localizedRecommendationTexts.cart}
           dish={catalogPreviewDish ?? dish}
           recommended={recItems}
           highlight={highlightUpsell}
@@ -372,7 +452,7 @@ function PhonePreviewContent({
         <PhoneDish
           dish={catalogPreviewDish ?? dish}
           recommended={recItems}
-          title={recommendationTexts.dish}
+          title={localizedRecommendationTexts.dish}
           highlight={highlightUpsell}
         />
       );
@@ -384,7 +464,7 @@ function PhonePreviewContent({
   // Overlay публикации (Publish model): аккуратный полупрозрачный слой на 3 сек.
   const publishOverlay = publishPhase === "publishing" && (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/70 px-6 text-center backdrop-blur-[1px]">
-      <Loader2 size={26} className="animate-spin text-blue-600" />
+      <SpinnerGap size={26} className="animate-spin text-blue-600" />
       <div className="text-sm font-bold text-zinc-800">Обновляем витрину…</div>
     </div>
   );
@@ -428,6 +508,10 @@ function PhonePreviewContent({
                 </span>
               )}
             </div>
+            <ContentLanguageControl
+              value={previewLanguage}
+              onChange={onPreviewLanguageChange}
+            />
           </div>
 
           {/* Flat preview viewport — заполняет всю высоту панели */}

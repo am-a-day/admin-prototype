@@ -907,7 +907,7 @@ test("stretches the table across the available workspace while panels change", a
   expect(treeClosed.card!.width).toBeGreaterThan(previewClosed.card!.width);
 
   await page.getByRole("button", { name: "Показать разделы" }).click();
-  await expect(sectionTree).toHaveCSS("width", "222px");
+  await expect(sectionTree).toHaveCSS("width", "270px");
   await page.getByRole("button", { name: "Показать предпросмотр" }).click();
   await expect(page.getByRole("button", { name: "Скрыть предпросмотр" })).toBeVisible();
   await page.locator("[data-catalog-table-row]").first().click();

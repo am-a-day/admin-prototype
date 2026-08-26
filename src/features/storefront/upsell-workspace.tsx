@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { RecommendationsContextWorkspace } from "@/features/storefront/catalog";
 import type { RecommendationTexts, UpsellSurface } from "@/data/mock-data";
 
@@ -9,6 +10,7 @@ type UpsellWorkspaceProps = {
   setUpsellSurface: (surface: UpsellSurface) => void;
   setUpsellFocused: (focused: boolean) => void;
   onOpenPosition?: (id: string) => void;
+  secondaryNavigation?: ReactNode;
 };
 
 export function UpsellWorkspace(props: UpsellWorkspaceProps) {
@@ -18,6 +20,7 @@ export function UpsellWorkspace(props: UpsellWorkspaceProps) {
       setSelectedDishId={props.setSelectedDishId}
       setUpsellSurface={props.setUpsellSurface}
       setUpsellFocused={props.setUpsellFocused}
+      secondaryNavigation={props.secondaryNavigation}
     />
   );
 }

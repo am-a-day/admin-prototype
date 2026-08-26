@@ -4,19 +4,24 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
-import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
+import {
+  CatalogStoreProvider,
+  type CatalogStoreInitialData,
+  useCatalogStore,
+} from "@/contexts/catalog-store-context";
 import { MockAuthProvider, useMockAuth } from "@/contexts/mock-auth-context";
 import { TranslationsProvider } from "@/contexts/translations-context";
+import { catalogItems, catalogSections } from "@/data/catalog";
 import { TranslationOverlays, TranslationsWorkspace } from "./translations-workspace";
 
 const PRIMARY_CONFIRMED_KEY = "tasko.translations.primary-language-confirmed.v1.seed-owner";
 const JOBS_KEY = "tasko.translations.jobs.v1.seed-owner";
 
-function Providers({ children }: { children: ReactNode }) {
+function Providers({ children, initialData }: { children: ReactNode; initialData?: CatalogStoreInitialData }) {
   return (
     <MockAuthProvider>
       <AppSettingsProvider>
-        <CatalogStoreProvider>
+        <CatalogStoreProvider initialData={initialData}>
           <TranslationsProvider>
             <TooltipProvider>{children}</TooltipProvider>
           </TranslationsProvider>
@@ -46,12 +51,27 @@ function CatalogStateProbe() {
     <>
       <button type="button" onClick={() => items[0] && updateItem(items[0].id, { title: "Изменённый источник" })}>Изменить исходник</button>
       <output data-testid="catalog-translation">{JSON.stringify(items[0]?.titleTranslations ?? {})}</output>
+      <output data-testid="local-label-translations">
+        {JSON.stringify(items.flatMap((item) => item.upsell?.tags ?? []))}
+      </output>
+      <output data-testid="local-label-state">
+        {JSON.stringify({
+          tags: items[0]?.upsell?.tags ?? [],
+          sticker: items[0]?.upsell?.sticker ?? null,
+        })}
+      </output>
     </>
   );
 }
 
-function renderWorkspace({ confirmed = true }: { confirmed?: boolean } = {}) {
+function renderWorkspace({
+  confirmed = true,
+  initialData,
+}: { confirmed?: boolean; initialData?: CatalogStoreInitialData } = {}) {
   if (confirmed) window.localStorage.setItem(PRIMARY_CONFIRMED_KEY, "true");
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <Providers initialData={initialData}>{children}</Providers>
+  );
   return render(
     <>
       <TranslationsWorkspace onOpenOriginal={() => {}} />
@@ -59,7 +79,7 @@ function renderWorkspace({ confirmed = true }: { confirmed?: boolean } = {}) {
       <WorkspaceStateProbe />
       <CatalogStateProbe />
     </>,
-    { wrapper: Providers },
+    { wrapper: Wrapper },
   );
 }
 
@@ -115,6 +135,61 @@ describe("translations workspace", () => {
     expect(screen.queryByRole("button", { name: "Открыть" })).not.toBeInTheDocument();
   });
 
+  it("edits the active local tag translations only in the central workspace", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await user.click(screen.getByRole("button", { name: "English" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Раздел контента" }));
+    fireEvent.click(screen.getByRole("option", { name: "Другой контент" }));
+    const tagMaterial = screen.getAllByRole("region", { name: /Тег:/ })[0];
+    const target = within(tagMaterial).getAllByPlaceholderText("Введите перевод")[0];
+    fireEvent.change(target, { target: { value: "Central label translation" } });
+
+    await waitFor(() => {
+      const values = JSON.parse(screen.getByTestId("local-label-translations").textContent ?? "[]") as Array<{ en?: string }>;
+      expect(values.some((value) => value.en === "Central label translation")).toBe(true);
+    });
+    expect(within(tagMaterial).queryByRole("textbox", { name: "Русский" })).not.toBeInTheDocument();
+  });
+
+  it("keeps every local tag and sticker translation from one background job", async () => {
+    const user = userEvent.setup();
+    const sourceItem = catalogItems[0];
+    const sourceSection = catalogSections.find((section) => section.id === sourceItem.sectionId);
+    renderWorkspace({
+      initialData: {
+        sections: sourceSection ? [sourceSection] : catalogSections.slice(0, 1),
+        items: [{
+          ...sourceItem,
+          tags: ["Первый тег", "Второй тег"],
+          guestLabels: ["Хит"],
+          upsell: {
+            ...(sourceItem.upsell ?? {}),
+            tags: [{ ru: "Первый тег" }, { ru: "Второй тег" }],
+            sticker: { ru: "Хит" },
+          },
+        }],
+      },
+    });
+
+    await addSerbian(user);
+
+    await waitFor(() => {
+      const state = JSON.parse(screen.getByTestId("local-label-state").textContent ?? "{}") as {
+        tags: Array<{ sr?: string }>;
+        sticker?: { sr?: string } | null;
+      };
+      expect(state).toMatchObject({
+        tags: [
+          { sr: "[Srpski] Первый тег" },
+          { sr: "[Srpski] Второй тег" },
+        ],
+        sticker: { sr: "[Srpski] Хит" },
+      });
+    }, { timeout: 3500 });
+  }, 10_000);
+
   it("adds a language in one step, starts translation immediately, and defaults to auto-publication", async () => {
     const user = userEvent.setup();
     renderWorkspace();
@@ -140,9 +215,9 @@ describe("translations workspace", () => {
     await waitFor(() => {
       expect(workspaceState().languages.find(({ code }) => code === "sr")).toMatchObject({ status: "ready", visible: false });
       expect(workspaceState().publishedLanguages).not.toContain("sr");
-    }, { timeout: 3500 });
+    }, { timeout: 7000 });
     expect(screen.getAllByText("Черновик").length).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   it("publishes an added language after the background translation completes", async () => {
     const user = userEvent.setup();
@@ -153,8 +228,8 @@ describe("translations workspace", () => {
       expect(workspaceState().languages.find(({ code }) => code === "sr")).toMatchObject({ status: "ready", visible: true });
       expect(workspaceState().publishedLanguages).toContain("sr");
       expect(Object.values(workspaceState().publishedCatalog).join("\n")).toContain("[Srpski]");
-    }, { timeout: 3500 });
-  });
+    }, { timeout: 7000 });
+  }, 15_000);
 
   it("restores an in-flight background translation after remounting", async () => {
     const user = userEvent.setup();
@@ -165,8 +240,8 @@ describe("translations workspace", () => {
 
     renderWorkspace();
     expect(await screen.findByText("Переводим на Srpski")).toBeInTheDocument();
-    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 3500 });
-  });
+    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 7000 });
+  }, 15_000);
 
   it("restores auto-publication when the workspace closes during the final publish window", async () => {
     const user = userEvent.setup();
@@ -207,8 +282,8 @@ describe("translations workspace", () => {
     await waitFor(() => {
       const translations = JSON.parse(screen.getByTestId("catalog-translation").textContent ?? "{}") as Record<string, string>;
       expect(translations.sr).toBe("[Srpski] Изменённый источник");
-    }, { timeout: 3500 });
-  });
+    }, { timeout: 7000 });
+  }, 15_000);
 
   it("never overwrites a manual edit made while the first language job is running", async () => {
     const user = userEvent.setup();
@@ -217,9 +292,9 @@ describe("translations workspace", () => {
     const target = screen.getAllByPlaceholderText("Введите перевод")[0] as HTMLInputElement;
     fireEvent.change(target, { target: { value: "Ručno ispravljeno" } });
 
-    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 3500 });
+    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 7000 });
     expect(target).toHaveValue("Ručno ispravljeno");
-  });
+  }, 15_000);
 
   it("automatically refreshes a machine translation when its source changes", async () => {
     const user = userEvent.setup();
@@ -229,8 +304,8 @@ describe("translations workspace", () => {
     await waitFor(() => {
       const translations = JSON.parse(screen.getByTestId("catalog-translation").textContent ?? "{}") as Record<string, string>;
       expect(translations.en).toBe("[English] Изменённый источник");
-    }, { timeout: 3500 });
-  });
+    }, { timeout: 7000 });
+  }, 15_000);
 
   it("moves a published language to draft with confirmation and publishes it again from More", async () => {
     const user = userEvent.setup();

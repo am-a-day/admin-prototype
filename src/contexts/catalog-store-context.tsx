@@ -14,6 +14,7 @@ import {
   catalogItems,
   catalogSections,
   type CatalogItem,
+  type CatalogItemUpsell,
   type CatalogOptionGroup,
   type CatalogSection,
   type CatalogWeeklySchedule,
@@ -66,6 +67,7 @@ export type CatalogStoreInitialData = {
 
 type CatalogAction =
   | { type: "update-item"; id: string; patch: Partial<CatalogItem>; autosave: boolean }
+  | { type: "update-items"; patches: Record<string, Partial<CatalogItem>>; autosave: boolean }
   | { type: "update-section"; id: string; patch: Partial<CatalogSection> }
   | { type: "add-item"; item: CatalogItem }
   | { type: "add-section"; section: CatalogSection }
@@ -254,6 +256,18 @@ function reducer(state: CatalogState, action: CatalogAction): CatalogState {
       revision: state.revision + 1,
     };
   }
+  if (action.type === "update-items") {
+    const entries = Object.entries(action.patches).filter(([id]) => Boolean(state.itemsById[id]));
+    if (entries.length === 0) return state;
+    const lastModifiedAt = new Date().toISOString();
+    const itemsById = { ...state.itemsById };
+    let autosaveByItem = state.autosaveByItem;
+    entries.forEach(([id, patch]) => {
+      itemsById[id] = { ...itemsById[id], ...patch, lastModifiedAt };
+      if (action.autosave) autosaveByItem = nextAutosave(autosaveByItem, id, "saving");
+    });
+    return { ...state, itemsById, autosaveByItem, revision: state.revision + 1 };
+  }
   if (action.type === "update-section") {
     const section = state.sectionsById[action.id];
     if (!section) return state;
@@ -357,6 +371,7 @@ type CatalogStoreValue = CatalogState & {
   createMenu: (name: string) => void;
   publishMenu: (id?: string) => void;
   updateItem: (id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => void;
+  updateItems: (patches: Record<string, Partial<CatalogItem>>, options?: { autosave?: boolean }) => void;
   updateSection: (id: string, patch: Partial<CatalogSection>) => void;
   addItem: (item: CatalogItem) => void;
   addSection: (section: CatalogSection) => void;
@@ -488,6 +503,18 @@ export function CatalogStoreProvider({
   const updateItem = useCallback((id: string, patch: Partial<CatalogItem>, options?: { autosave?: boolean }) => {
     dispatch({ type: "update-item", id, patch, autosave: options?.autosave ?? true });
   }, [dispatch]);
+  const updateItems = useCallback((patches: Record<string, Partial<CatalogItem>>, options?: { autosave?: boolean }) => {
+    const upsellPatches = Object.entries(patches).filter((entry): entry is [string, Partial<CatalogItem> & { upsell: CatalogItemUpsell }] => (
+      entry[1].upsell !== undefined
+    ));
+    if (upsellPatches.length > 0) {
+      setUpsellByItem((current) => ({
+        ...current,
+        ...Object.fromEntries(upsellPatches.map(([id, patch]) => [id, patch.upsell])),
+      }));
+    }
+    dispatch({ type: "update-items", patches, autosave: options?.autosave ?? true });
+  }, [dispatch, setUpsellByItem]);
   const updateSection = useCallback((id: string, patch: Partial<CatalogSection>) => {
     dispatch({ type: "update-section", id, patch });
   }, [dispatch]);
@@ -602,6 +629,7 @@ export function CatalogStoreProvider({
     createMenu,
     publishMenu,
     updateItem,
+    updateItems,
     updateSection,
     addItem,
     addSection,
@@ -627,6 +655,7 @@ export function CatalogStoreProvider({
     createMenu,
     publishMenu,
     updateItem,
+    updateItems,
     updateSection,
     addItem,
     addSection,

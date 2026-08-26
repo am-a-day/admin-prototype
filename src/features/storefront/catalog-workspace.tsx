@@ -357,7 +357,7 @@ type CatalogTreeMoveUndoState = {
 } | null;
 
 const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
-  { id: "sections", label: "Каталог" },
+  { id: "sections", label: "Меню" },
   { id: "upsell", label: "Рекомендации" },
   { id: "stop-list", label: "Стоп-лист" },
 ];
@@ -390,7 +390,7 @@ export function CatalogTabs({
   const { items } = useCatalogStore();
   const stopCount = items.filter((item) => item.status === "stopped").length;
   return (
-    <div role="tablist" aria-label="Разделы каталога" className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
+    <div role="tablist" aria-label="Разделы каталога" className="flex w-full items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
       {CATALOG_TABS.map((t) => (
         <button
           key={t.id}
@@ -399,7 +399,7 @@ export function CatalogTabs({
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            "rounded-lg px-2.5 py-1 text-[12px] transition",
+            "relative shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] transition",
             value === t.id
               ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
               : "text-[#79716b] hover:text-zinc-700",
@@ -408,7 +408,7 @@ export function CatalogTabs({
           <span>{t.label}</span>
           {t.id === "stop-list" && (
             <span className={cn(
-              "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium",
+              "absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-medium",
               value === t.id ? "bg-[#f5f5f4] text-[#57534d]" : "bg-white/70 text-[#a6a09b]",
             )}>
               {stopCount}
@@ -441,6 +441,7 @@ type CatalogWorkspaceProps = {
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
   quickCreateRequest?: { id: number; action: "section" | "iiko" | "sheets" } | null;
   onQuickCreateHandled?: () => void;
+  secondaryNavigation?: ReactNode;
 };
 
 type SectionStatus = "active" | "archive";
@@ -1822,8 +1823,8 @@ const CATALOG_SECTION_TREE_SCROLL_STORAGE_KEY = catalogStorageKey("sections.tree
 const CATALOG_SECTION_TREE_CONTENT_STORAGE_KEY = catalogStorageKey("sections.treeContent");
 const CATALOG_SECTION_TREE_WIDTH_STORAGE_KEY = catalogStorageKey("sections.treeWidth.v1");
 const CATALOG_UNIFIED_SCOPE_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.scope");
-const CATALOG_SECTION_TREE_DEFAULT_WIDTH = 222;
-const CATALOG_SECTION_TREE_MIN_WIDTH = 220;
+const CATALOG_SECTION_TREE_DEFAULT_WIDTH = 270;
+const CATALOG_SECTION_TREE_MIN_WIDTH = 270;
 const CATALOG_SECTION_TREE_MAX_WIDTH = 420;
 type CatalogTreeContentMode = "sections-and-positions" | "sections-only";
 
@@ -3779,6 +3780,7 @@ function PopulatedWorkspace({
   titleOverride,
   allowPositionCreation = true,
   workspaceKind = "catalog",
+  secondaryNavigation,
   menuSwitcher,
   onFirstItemCreated,
 }: {
@@ -3808,6 +3810,7 @@ function PopulatedWorkspace({
   titleOverride?: string;
   allowPositionCreation?: boolean;
   workspaceKind?: "catalog" | "stop-list";
+  secondaryNavigation?: ReactNode;
   menuSwitcher?: ReactNode;
   onFirstItemCreated?: () => void;
 }) {
@@ -6067,6 +6070,7 @@ function PopulatedWorkspace({
                 />
               )}
               positionCreationEnabled={allowPositionCreation}
+              secondaryNavigation={secondaryNavigation}
               menuSwitcher={menuSwitcher}
               onCollapseSections={() => setUserCollapsedSections(true)}
               onReorderSections={reorderTreeSectionsWithinParent}
@@ -6642,7 +6646,7 @@ function AuditRowActionsMenu({
                 icon={Translate}
                 onSelect={() => translations.openWorkspace({ category: "positions", materialId: item.id })}
               >
-                Перевести
+                Открыть в переводах
               </DropdownActionItem>
             </>
           )}
@@ -9396,7 +9400,7 @@ function OverviewWorkspace({
                         />
                       </div>
                     ) : undefined}
-                    onTranslate={translations ? () => translations.openCatalogBulk([...selectedIds]) : undefined}
+                    onOpenTranslations={translations ? () => translations.openCatalogBulk([...selectedIds]) : undefined}
                   />
                 </div>
               ) : (
@@ -9874,11 +9878,13 @@ export function RecommendationsContextWorkspace({
   setSelectedDishId,
   setUpsellSurface,
   setUpsellFocused,
+  secondaryNavigation,
 }: {
   selectedDishId?: string;
   setSelectedDishId?: (id: string) => void;
   setUpsellSurface?: (surface: "home" | "dish" | "cart") => void;
   setUpsellFocused?: (focused: boolean) => void;
+  secondaryNavigation?: ReactNode;
 } = {}) {
   // This workspace owns item-to-item recommendation links only; tags and stickers stay contextual in the position editor.
   const { items, setActiveEditorItemId, upsellByItem, setUpsellByItem } = useCatalogStore();
@@ -10046,7 +10052,15 @@ export function RecommendationsContextWorkspace({
     <TooltipProvider>
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[251px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white">
+        <aside className="flex w-[270px] shrink-0 flex-col overflow-hidden border-r border-[#e7e5e4] bg-white">
+          {secondaryNavigation && (
+            <div
+              data-secondary-navigation-scope="catalog-sidebar"
+              className="shrink-0 border-b border-[#e7e5e4] px-2 py-2"
+            >
+              {secondaryNavigation}
+            </div>
+          )}
           <div className="border-b border-[#e7e5e4] px-3 pb-3 pt-4">
             <h2 className="px-1 text-[14px] font-medium leading-5 text-[#292524]">Рекомендации</h2>
             <div className="mt-3">
@@ -10216,6 +10230,7 @@ export function CatalogWorkspace({
   onAdvancePhase,
   quickCreateRequest,
   onQuickCreateHandled,
+  secondaryNavigation,
 }: CatalogWorkspaceProps) {
   const {
     activeEditorItemId,
@@ -10421,6 +10436,7 @@ export function CatalogWorkspace({
       }}
       onCreateClosed={() => setPendingOpen(null)}
       menuSwitcher={catalogMenuSwitcher}
+      secondaryNavigation={secondaryNavigation}
       onFirstItemCreated={() => onAdvancePhase("has-items")}
     />
   );
@@ -10447,6 +10463,7 @@ export function CatalogWorkspace({
       titleOverride="Позиции на стопе"
       allowPositionCreation={false}
       workspaceKind="stop-list"
+      secondaryNavigation={secondaryNavigation}
       menuSwitcher={catalogMenuSwitcher}
     />
   );
@@ -10456,7 +10473,7 @@ export function CatalogWorkspace({
         menuSwitcher={showOnboardingMenuSwitcher ? catalogMenuSwitcher : undefined}
       />
     ) : catalogTab === "upsell" ? (
-      <RecommendationsContextWorkspace />
+      <RecommendationsContextWorkspace secondaryNavigation={secondaryNavigation} />
     ) : stopListActive ? (
       stopListWorkspace
     ) : (

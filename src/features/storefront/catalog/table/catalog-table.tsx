@@ -1936,7 +1936,7 @@ export function SelectionToolbar({
   hasArchivedItems,
   hasNonArchivedItems,
   labelActions,
-  onTranslate,
+  onOpenTranslations,
 }: {
   checked: boolean;
   indeterminate: boolean;
@@ -1962,7 +1962,7 @@ export function SelectionToolbar({
   hasArchivedItems: boolean;
   hasNonArchivedItems: boolean;
   labelActions?: ReactNode;
-  onTranslate?: () => void;
+  onOpenTranslations?: () => void;
 }) {
   const [scheduleEditorPinned, setScheduleEditorPinned] = useState(false);
   const [stopEditorPinned, setStopEditorPinned] = useState(false);
@@ -1977,14 +1977,14 @@ export function SelectionToolbar({
       onClearSelection={onClearSelection}
     >
       <span className="flex shrink-0 items-center gap-[6px]">
-          {onTranslate && (
+          {onOpenTranslations && (
             <button
               type="button"
-              onClick={onTranslate}
+              onClick={onOpenTranslations}
               className="inline-flex h-[26px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[8px] border border-[#e7e5e4] bg-white pl-[6px] pr-2 text-[12px] font-normal leading-4 text-[#292524] transition hover:border-[#d6d3d1] hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
             >
               <Translate size={15} weight="regular" />
-              Перевести
+              Открыть в переводах
             </button>
           )}
           <button

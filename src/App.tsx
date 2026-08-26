@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AppHeaderRight } from "@/components/layout/app-header";
 import { Sidebar, FullSidebar, NavDrawer, getPageTitle, type QuickCreateAction, type SidebarMode } from "@/components/layout/sidebar";
-import { ContentHeader, PageLangSwitcher } from "@/components/layout/content-header";
+import { ContentHeader } from "@/components/layout/content-header";
 import { PreviewReturnButton, PreviewToggle } from "@/components/layout/preview-toggle";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HeaderActionsProvider } from "@/contexts/header-actions-context";
 import { VitrineLaunchProvider, useVitrineLaunch, type LaunchStage } from "@/contexts/vitrine-launch-context";
 import { PhonePreview } from "@/components/preview/phone-preview";
-import { AppSettingsProvider } from "@/contexts/app-settings-context";
+import { AppSettingsProvider, useAppSettings } from "@/contexts/app-settings-context";
 import { OrderRoutingProvider } from "@/contexts/order-routing-context";
 import { PlanProvider, usePlan } from "@/contexts/plan-context";
 import { PublishProvider, usePublish, type PageKey } from "@/contexts/publish-context";
@@ -56,7 +56,7 @@ import { PublishToast } from "@/components/workspace/publish-toast";
 import { AuthScreen } from "@/features/auth/auth-screen";
 import { WorkspaceSetupScreen } from "@/features/auth/workspace-setup-screen";
 import { Flask, X } from "@phosphor-icons/react";
-import { Bell } from "lucide-react";
+import type { LanguageCode } from "@/data/languages";
 import {
   DEFAULT_RECOMMENDATION_TEXTS,
   RESTAURANT_NAME,
@@ -73,13 +73,11 @@ import { AnalyticsPage, OrderHistoryPage, QRPage } from "@/features/standalone-p
 import { AMApp } from "@/features/am/am-app";
 import {
   DeliveryWorkspace,
-  OrderSettingsSaveIndicator,
-  OrderSettingsTabs,
   type OrderSettingsSaveState,
   type OrderSettingsTab,
 } from "@/features/management/delivery-workspace";
 import { ManagementStub } from "@/features/management/management-stub";
-import { AboutTabs, AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
+import { AboutWorkspace, type AboutTab } from "@/features/storefront/about-workspace";
 import { AppearanceWorkspace } from "@/features/storefront/appearance-workspace";
 import {
   CatalogTabs,
@@ -94,16 +92,15 @@ import {
   type CatalogViewMode,
   type OverviewFilterId,
 } from "@/features/storefront/catalog";
-import { HomeWorkspace, HomeTabs, type HomeTab } from "@/features/storefront/home-workspace";
+import { HomeWorkspace, type HomeTab } from "@/features/storefront/home-workspace";
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 import { PublicMenuPage } from "@/features/storefront/public-menu-page";
 import { TranslationOverlays, TranslationsWorkspace } from "@/features/storefront/translations-workspace";
 import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
-import { TrainingTabs } from "@/features/training/training-tabs";
 import type { TrainingActiveSession, TrainingTab } from "@/features/training/training-data";
 
-type PageMeta = { title: string; description?: string; showLanguage?: boolean };
+type PageMeta = { title: string; description?: string };
 type SidebarPreference = "expanded" | "collapsed" | null;
 
 function getCatalogHistoryContext(state: unknown = window.history.state): CatalogReturnContext | null {
@@ -228,13 +225,13 @@ function getTrainingSessionExitMessage(kind?: TrainingActiveSession) {
 
 const PAGE_META: Record<string, PageMeta> = {
   "storefront:launch":     { title: "Моя витрина",       description: "Центр состояния витрины." },
-  "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции.", showLanguage: true },
-  "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню.",                showLanguage: true },
+  "storefront:home":       { title: "Главная витрины",    description: "Баннеры, ключевые разделы и продвигаемые позиции." },
+  "storefront:catalog":    { title: "Каталог",            description: "Разделы, позиции и карточки меню." },
   "storefront:translations": { title: "Переводы",          description: "Языки и переводы всего гостевого контента." },
-  "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями.",              showLanguage: true },
-  "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины.",             showLanguage: true },
-  "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление.", showLanguage: true },
-  "management:order-settings": { title: "Настройка заказов", description: "Настройте способы получения заказов и обслуживание гостей.", showLanguage: true },
+  "storefront:upsell":     { title: "Рекомендации",       description: "Что предложить вместе с позициями." },
+  "storefront:appearance": { title: "Оформление",         description: "Стиль карточек, цвет и фон витрины." },
+  "storefront:about":      { title: "Заведение",          description: "Информация о заведении и публичное представление." },
+  "management:order-settings": { title: "Настройка заказов", description: "Настройте способы получения заказов и обслуживание гостей." },
   "management:order-history":  { title: "История заказов",   description: "Все входящие заказы — доставка и самовывоз." },
   "management:billing":    { title: "Тарифы",             description: "Текущий план, ограничения и возможности следующего." },
   "management:account":    { title: "Аккаунт",            description: "Личные данные владельца и доступ к аккаунту." },
@@ -538,6 +535,7 @@ function PrototypeToolsPanel({
 
 function AuthenticatedShell() {
   const { account } = useMockAuth();
+  const { setContentLanguage } = useAppSettings();
   const { registerChange } = usePublish();
   const { markVisited, stage } = useVitrineLaunch();
   const { activeEditorItemId, itemsById } = useCatalogStore();
@@ -626,7 +624,26 @@ function AuthenticatedShell() {
   // Панель превью можно скрыть — чисто пользовательский тумблер, не зависит
   // от вкладки/фильтра/выбранной позиции каталога.
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [previewLanguage, setPreviewLanguage] = useState<LanguageCode>(
+    () => account?.workspace.primaryLanguage ?? "ru",
+  );
   const [prototypeToolsOpen, setPrototypeToolsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!account) return;
+    setContentLanguage(account.workspace.primaryLanguage);
+    if (!account.workspace.languages.some(({ code }) => code === previewLanguage)) {
+      setPreviewLanguage(account.workspace.primaryLanguage);
+    }
+  }, [
+    account,
+    account?.workspace.languages,
+    account?.workspace.primaryLanguage,
+    previewLanguage,
+    section,
+    setContentLanguage,
+    storeTab,
+  ]);
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
     setCatalogStopListActive(false);
     setCatalogViewMode(mode);
@@ -1141,6 +1158,9 @@ function AuthenticatedShell() {
               setCatalogSectionScopeId(target?.sectionId ?? null);
             });
           }}
+          secondaryNavigation={
+            <CatalogTabs value={catalogPrimaryTab} onChange={changeCatalogPrimaryTab} />
+          }
         />
       ) : (
         <CatalogWorkspace
@@ -1169,6 +1189,11 @@ function AuthenticatedShell() {
           }}
           quickCreateRequest={quickCatalogCreate}
           onQuickCreateHandled={() => setQuickCatalogCreate(null)}
+          secondaryNavigation={
+            catalogPhase === "empty"
+              ? undefined
+              : <CatalogTabs value={catalogPrimaryTab} onChange={changeCatalogPrimaryTab} />
+          }
         />
       );
     }
@@ -1184,6 +1209,7 @@ function AuthenticatedShell() {
           setPreviewScenario={setPreviewScenario}
           onConfigureOrderSettings={openOrderAcceptance}
           aboutTab={storeAboutTab}
+          onAboutTabChange={(tab) => navigate("storefront", `about:${tab}`)}
           seoTitle={seoTitle}
           setSeoTitle={setSeoTitle}
           seoDescription={seoDescription}
@@ -1196,6 +1222,8 @@ function AuthenticatedShell() {
       content = (
         <DeliveryWorkspace
           activeTab={orderSettingsTab}
+          onTabChange={setOrderSettingsTab}
+          saveState={orderSettingsSaveState}
           onSaveStateChange={setOrderSettingsSaveState}
           channelsManagerOpen={orderChannelsOpen}
           onChannelsManagerOpenChange={setOrderChannelsOpen}
@@ -1212,6 +1240,7 @@ function AuthenticatedShell() {
     content = (
       <OwnerTrainingLayout
         activeTab={trainingTab}
+        onTabChange={changeTrainingTab}
         onQuizActiveChange={(active, kind) => {
           setTrainingQuizActive(active);
           setTrainingActiveSessionKind(kind);
@@ -1384,62 +1413,8 @@ function AuthenticatedShell() {
           {/* Work area */}
           <div
             data-position-editor-overlay-root
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-[6px] pb-3 pr-3 pl-1"
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-3 pl-1 pr-3"
           >
-            {/* Toolbar: tabs left + language right */}
-            {(isHomePage || isCatalogPage || isAboutPage || isTrainingPage || pageMeta.showLanguage || previewVisible) && (
-              <div className={cn(
-                "flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2",
-              )}>
-                <div className={cn(isAboutPage || isOrderSettingsPage ? "min-w-0 flex-1" : "shrink-0")}>
-                  {isHomePage && <HomeTabs value={homeTab} onChange={setHomeTab} />}
-                  {isCatalogPage && catalogPhase !== "empty" && (
-                    <CatalogTabs value={catalogPrimaryTab} onChange={changeCatalogPrimaryTab} />
-                  )}
-                  {isAboutPage && (
-                    <AboutTabs
-                      value={storeAboutTab}
-                      onChange={(t) => {
-                        navigate("storefront", `about:${t}`);
-                      }}
-                    />
-                  )}
-                  {isTrainingPage && (
-                    <TrainingTabs value={trainingTab} onChange={changeTrainingTab} />
-                  )}
-                  {isOrderSettingsPage && (
-                    <OrderSettingsTabs value={orderSettingsTab} onChange={setOrderSettingsTab} />
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {pageMeta.showLanguage && (!isOrderSettingsPage || orderSettingsTab === "delivery" || orderSettingsTab === "pickup") && (
-                    <PageLangSwitcher
-                      compact={isOrderSettingsPage}
-                      onManageLanguages={() =>
-                        navigate("storefront", "translations")
-                      }
-                    />
-                  )}
-                  {isOrderSettingsPage && (
-                    <button
-                      type="button"
-                      data-order-channels-trigger
-                      aria-haspopup="dialog"
-                      aria-expanded={orderChannelsOpen}
-                      onClick={() => setOrderChannelsOpen((open) => !open)}
-                      className="flex h-8 items-center rounded-[10px] border border-[#d6d3d1] bg-white px-3 text-[13px] font-medium text-[#292524] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                    >
-                      <Bell size={13} className="mr-1.5" />
-                      Каналы уведомлений
-                    </button>
-                  )}
-                  {isOrderSettingsPage && (
-                    <OrderSettingsSaveIndicator state={orderSettingsSaveState} />
-                  )}
-                </div>
-              </div>
-            )}
-
           {/* Editor card + preview card side by side */}
           <div
             data-catalog-adaptive-shell={isCatalogPage || undefined}
@@ -1500,6 +1475,8 @@ function AuthenticatedShell() {
                     recommendationTexts={recommendationTexts}
                     upsellSurface={upsellSurface}
                     highlightUpsell={upsellFocused}
+                    previewLanguage={previewLanguage}
+                    onPreviewLanguageChange={setPreviewLanguage}
                     onNavHomeHero={navHomeHero}
                     onNavHomeSections={navHomeSections}
                     onNavUpsell={navUpsellPage}

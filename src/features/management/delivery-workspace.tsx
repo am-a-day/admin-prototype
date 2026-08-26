@@ -11,6 +11,7 @@ import {
   Send,
   X,
 } from "lucide-react";
+import { Bell } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -414,11 +415,15 @@ function WorkspaceLoading() {
 
 export function DeliveryWorkspace({
   activeTab,
+  onTabChange,
+  saveState,
   onSaveStateChange,
   channelsManagerOpen,
   onChannelsManagerOpenChange,
 }: {
   activeTab: OrderSettingsTab;
+  onTabChange: (tab: OrderSettingsTab) => void;
+  saveState: OrderSettingsSaveState;
   onSaveStateChange: (state: OrderSettingsSaveState) => void;
   channelsManagerOpen: boolean;
   onChannelsManagerOpenChange: (open: boolean) => void;
@@ -610,6 +615,28 @@ export function DeliveryWorkspace({
     <PageScroll>
       <PageContent className="space-y-0">
         <CompactContent className="space-y-4">
+        <div
+          data-secondary-navigation-scope="order-settings-content"
+          className="min-w-0"
+        >
+          <OrderSettingsTabs value={activeTab} onChange={onTabChange} />
+        </div>
+        <div className="flex min-h-8 items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-order-channels-trigger
+              aria-haspopup="dialog"
+              aria-expanded={channelsManagerOpen}
+              onClick={() => onChannelsManagerOpenChange(!channelsManagerOpen)}
+              className="h-8 rounded-[10px] px-3 text-[13px]"
+            >
+              <Bell size={14} aria-hidden="true" />
+              Каналы уведомлений
+            </Button>
+            <OrderSettingsSaveIndicator state={saveState} />
+        </div>
         {!loading && (activeTab === "payment" ? (
           <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
             <div className="min-w-0">

@@ -10,17 +10,16 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CatalogItem, CatalogLanguageCode, CatalogLocalizedValue } from "@/data/catalog";
-import { getLanguage, type LanguageCode } from "@/data/languages";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
+import { useTranslationsOptional } from "@/contexts/translations-context";
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
 import {
   buildCatalogLabelAssignmentPatch,
@@ -46,7 +45,7 @@ import { usePositionSidePeekOverlay } from "../editor/side-peek-context";
 
 const NO_STICKER_VALUE = "__none__";
 
-type LabelEditState = { id: string; mode: "rename" | "translations" } | null;
+type LabelEditState = { id: string } | null;
 
 function getScopeItems(item: CatalogItem, allItems: CatalogItem[]) {
   return [item, ...allItems.filter((candidate) => candidate.id !== item.id)];
@@ -102,56 +101,11 @@ function LabelRowActions({
         <DropdownMenuLabel>Используется в {usageCount} {positionWord(usageCount, ["позиции", "позициях", "позициях"])}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onRename}><PencilSimple size={15} />Переименовать</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onTranslations}><Translate size={15} />Переводы</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onTranslations}><Translate size={15} />Открыть в переводах</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onDelete} className="text-destructive focus:text-destructive"><Trash size={15} />Удалить</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function LabelTranslationEditor({
-  label,
-  languages,
-  onSave,
-  onClose,
-}: {
-  label: CatalogLabel;
-  languages: LanguageCode[];
-  onSave: (translations: CatalogLocalizedValue) => boolean;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState<Partial<CatalogLocalizedValue>>(label.translations);
-
-  const submit = () => {
-    if (onSave(compactTranslations(draft))) onClose();
-  };
-
-  return (
-    <div className="mx-2 mb-2 rounded-[9px] border border-stone-200 bg-stone-50 p-2.5" onClick={(event) => event.stopPropagation()}>
-      <div className="space-y-2">
-        {languages.map((code) => (
-          <label key={code} className="grid grid-cols-[76px_minmax(0,1fr)] items-center gap-2 text-[12px] text-stone-500">
-            <span>{getLanguage(code).label}</span>
-            <Input
-              size="compact"
-              value={draft[code] ?? ""}
-              onChange={(event) => setDraft((current) => ({ ...current, [code]: event.target.value }))}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") { event.preventDefault(); onClose(); }
-                if (event.key === "Enter") { event.preventDefault(); submit(); }
-              }}
-              placeholder={code === "ru" ? "Название" : "Нет перевода"}
-              className="h-8 min-w-0 rounded-[7px] border-stone-200 bg-white text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-stone-400"
-            />
-          </label>
-        ))}
-      </div>
-      <div className="mt-2 flex justify-end gap-1">
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>Отмена</Button>
-        <Button type="button" size="sm" onClick={submit}>Готово</Button>
-      </div>
-    </div>
   );
 }
 
@@ -217,11 +171,8 @@ function CatalogLabelPicker({
 }) {
   const { contentLanguage } = useAppSettings();
   const { account } = useMockAuth();
+  const translations = useTranslationsOptional();
   const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
-  const enabledLanguages = useMemo(() => {
-    const codes = account?.workspace.languages.map(({ code }) => code) ?? [primaryLanguage];
-    return [primaryLanguage, ...codes.filter((code) => code !== primaryLanguage)] as LanguageCode[];
-  }, [account?.workspace.languages, primaryLanguage]);
   const directory = useCatalogLabels();
   const scopeItems = getScopeItems(item, allItems);
   const usageCountByLabelId = useMemo(() => {
@@ -311,8 +262,7 @@ function CatalogLabelPicker({
 
   const renderLabelRow = (label: CatalogLabel) => {
     const selected = type === "tag" ? selectedTagIds.includes(label.id) : selectedStickerId === label.id;
-    const isRenaming = editing?.id === label.id && editing.mode === "rename";
-    const isTranslating = editing?.id === label.id && editing.mode === "translations";
+    const isRenaming = editing?.id === label.id;
     const usageCount = usageCountByLabelId.get(label.id) ?? 0;
     const toggle = () => assign(label);
     return (
@@ -363,8 +313,11 @@ function CatalogLabelPicker({
             <LabelRowActions
               label={label}
               usageCount={usageCount}
-              onRename={() => { setRenameDraft(label.translations.ru); setEditing({ id: label.id, mode: "rename" }); }}
-              onTranslations={() => setEditing({ id: label.id, mode: "translations" })}
+              onRename={() => { setRenameDraft(label.translations.ru); setEditing({ id: label.id }); }}
+              onTranslations={() => translations?.openWorkspace({
+                category: type === "tag" ? "tags" : "stickers",
+                materialId: label.id,
+              })}
               onDelete={() => requestDelete(label)}
               onOpenChange={(next) => {
                 if (next) setContextMenuOpen(true);
@@ -373,14 +326,6 @@ function CatalogLabelPicker({
             />
           )}
         </div>
-        {isTranslating && (
-          <LabelTranslationEditor
-            label={label}
-            languages={enabledLanguages}
-            onSave={(translations) => updateLabel(label, translations)}
-            onClose={() => setEditing(null)}
-          />
-        )}
       </div>
     );
   };
@@ -504,18 +449,14 @@ function LocalLabelInlineInput({
 function LocalLabelEditPopover({
   type,
   value,
-  languages,
   primaryLanguage,
-  displayLanguage,
   onChange,
   onRemove,
   initialOpen = false,
 }: {
   type: CatalogLabelType;
   value: CatalogLocalizedValue;
-  languages: LanguageCode[];
   primaryLanguage: CatalogLanguageCode;
-  displayLanguage: CatalogLanguageCode;
   onChange: (value: CatalogLocalizedValue) => void;
   onRemove: () => void;
   /** Used only by deterministic Design Lab captures of the existing edit popover. */
@@ -525,11 +466,11 @@ function LocalLabelEditPopover({
   const [draft, setDraft] = useState<Partial<CatalogLocalizedValue>>(value);
   const [editBase, setEditBase] = useState<CatalogLocalizedValue>(value);
   usePositionSidePeekOverlay(open, () => setOpen(false));
-  const displayText = getLocalCatalogLabelText(value, displayLanguage, primaryLanguage);
+  const displayText = getLocalCatalogLabelText(value, primaryLanguage, primaryLanguage);
 
-  const commitLanguage = (code: LanguageCode) => {
-    const normalized = normalizeLocalCatalogLabelEdit(editBase, draft, code, primaryLanguage);
-    if (!normalized || (code === primaryLanguage && !draft[code]?.trim())) {
+  const commitPrimaryLanguage = () => {
+    const normalized = normalizeLocalCatalogLabelEdit(editBase, draft, primaryLanguage, primaryLanguage);
+    if (!normalized || !draft[primaryLanguage]?.trim()) {
       setDraft(editBase);
       return;
     }
@@ -577,44 +518,34 @@ function LocalLabelEditPopover({
         sideOffset={6}
         className="z-[100008] w-[288px] rounded-[12px] border-stone-200 p-3 shadow-[0_14px_40px_rgba(41,37,36,0.16)]"
       >
-        <div className="space-y-2.5">
-          {languages.map((code) => {
-            const language = getLanguage(code);
-            return (
-              <label key={code} className="block text-[12px] font-medium text-stone-600">
-                <span className="mb-1 block">{language.label}</span>
-                <Input
-                  size="compact"
-                  autoFocus={code === primaryLanguage}
-                  value={draft[code] ?? ""}
-                  onChange={(event) => {
-                    const nextDraft = { ...draft, [code]: event.target.value };
-                    setDraft(nextDraft);
-                    if (code === primaryLanguage) {
-                      const normalized = normalizeLocalCatalogLabelEdit(editBase, nextDraft, code, primaryLanguage);
-                      if (normalized) onChange(normalized);
-                    }
-                  }}
-                  onBlur={() => commitLanguage(code)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      event.currentTarget.blur();
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      setDraft(editBase);
-                      onChange(editBase);
-                      setOpen(false);
-                    }
-                  }}
-                  placeholder={code === primaryLanguage ? undefined : `Если пусто — ${getLanguage(primaryLanguage).label}`}
-                  className="h-8 rounded-[7px] border-stone-200 bg-white text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-stone-400"
-                />
-              </label>
-            );
-          })}
-        </div>
+        <label className="block text-[12px] font-medium text-stone-600">
+          <span className="mb-1 block">Название</span>
+          <Input
+            size="compact"
+            autoFocus
+            value={draft[primaryLanguage] ?? ""}
+            onChange={(event) => {
+              const nextDraft = { ...draft, [primaryLanguage]: event.target.value };
+              setDraft(nextDraft);
+              const normalized = normalizeLocalCatalogLabelEdit(editBase, nextDraft, primaryLanguage, primaryLanguage);
+              if (normalized) onChange(normalized);
+            }}
+            onBlur={commitPrimaryLanguage}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setDraft(editBase);
+                onChange(editBase);
+                setOpen(false);
+              }
+            }}
+            className="h-8 rounded-[7px] border-stone-200 bg-white text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-stone-400"
+          />
+        </label>
       </PopoverContent>
     </Popover>
   );
@@ -631,15 +562,8 @@ function LocalCatalogLabelControls({
   initialCreatingType?: CatalogLabelType;
   initialEditingType?: CatalogLabelType;
 }) {
-  const { contentLanguage } = useAppSettings();
   const { account } = useMockAuth();
   const primaryLanguage = (account?.workspace.primaryLanguage ?? "ru") as CatalogLanguageCode;
-  const enabledLanguages = useMemo(() => {
-    const codes = account?.workspace.languages
-      .filter(({ visible }) => visible !== false)
-      .map(({ code }) => code) ?? [primaryLanguage];
-    return [primaryLanguage, ...codes.filter((code) => code !== primaryLanguage)] as LanguageCode[];
-  }, [account?.workspace.languages, primaryLanguage]);
   const itemLabels = getLocalCatalogItemLabels(item, primaryLanguage);
   const itemLabelsKey = JSON.stringify(itemLabels);
   const [optimistic, setOptimistic] = useState(() => ({ itemId: item.id, ...itemLabels }));
@@ -679,9 +603,7 @@ function LocalCatalogLabelControls({
                   key={`${type}-${index}`}
                   type={type}
                   value={value}
-                  languages={enabledLanguages}
                   primaryLanguage={primaryLanguage}
-                  displayLanguage={contentLanguage}
                   onChange={(nextValue) => apply(type === "tag"
                     ? { tags: labels.tags.map((tag, tagIndex) => tagIndex === index ? nextValue : tag), sticker: labels.sticker }
                     : { tags: labels.tags, sticker: nextValue })}

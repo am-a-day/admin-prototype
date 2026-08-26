@@ -39,6 +39,7 @@ describe("restaurant profile information architecture", () => {
     render(
       <AboutWorkspace
         aboutTab="info"
+        onAboutTabChange={() => {}}
         setPreviewScenario={() => {}}
         onConfigureOrderSettings={() => {}}
         seoTitle=""

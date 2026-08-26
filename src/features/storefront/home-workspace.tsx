@@ -41,7 +41,7 @@ type HomeWorkspaceProps = {
   updateBanner: (id: string, patch: Partial<Banner>) => void;
   removeBanner: (id: string) => void;
   addBanner: (imageUrl?: string) => void;
-  /** Активная вкладка главной (живёт в App, рендерится в общей шапке контента). */
+  /** Активная вкладка главной; состояние остаётся в App, навигация живёт в workspace. */
   homeTab: HomeTab;
   setHomeTab: (t: HomeTab) => void;
   /** Прокрутка/подсветка блока при переходе из превью. */
@@ -554,6 +554,9 @@ export function HomeWorkspace({
       <input ref={addFileRef} type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
       <PageContent className="space-y-0">
         <CompactContent className="space-y-6">
+          <div data-secondary-navigation-scope="home-content">
+            <HomeTabs value={tab} onChange={setTab} />
+          </div>
           <LaunchPageHint
             checkId="home"
             title="Настройте главный экран витрины"

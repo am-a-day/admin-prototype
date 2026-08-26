@@ -14,7 +14,7 @@ import {
   useMockAuth,
   type MockWorkspace,
 } from "@/contexts/mock-auth-context";
-import type { CatalogItem, CatalogSection, CatalogTranslations } from "@/data/catalog";
+import type { CatalogItem, CatalogLocalizedValue, CatalogSection, CatalogTranslations } from "@/data/catalog";
 import { DEFAULT_RECOMMENDATION_TEXTS, banners as seedBanners, type Banner } from "@/data/mock-data";
 import type { LanguageCode } from "@/data/languages";
 import { getLanguage } from "@/data/languages";
@@ -23,6 +23,12 @@ import {
   useCatalogLabels,
   type CatalogLabel,
 } from "@/features/storefront/catalog/labels/catalog-labels";
+import { USE_SHARED_TAGS_AND_STICKERS } from "@/features/storefront/catalog/feature-flags";
+import {
+  buildLocalCatalogLabelPatch,
+  getLocalCatalogItemLabels,
+  getLocalCatalogLabelText,
+} from "@/features/storefront/catalog/labels/local-catalog-labels";
 
 export type TranslationLanguageCode = LanguageCode;
 export type TranslationStatus = "missing" | "machine" | "translated" | "outdated";
@@ -51,6 +57,8 @@ export type TranslationMaterial = {
   id: string;
   entityId: string;
   ownerItemId?: string;
+  ownerItemIds?: string[];
+  localLabelSource?: string;
   catalogItemId?: string;
   title: string;
   typeLabel: string;
@@ -565,6 +573,128 @@ function labelMaterial(label: CatalogLabel, index: number, primaryLanguage: Tran
   };
 }
 
+function localLabelValues(value: CatalogLocalizedValue) {
+  return Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [
+    language,
+    value[language] ?? "",
+  ]));
+}
+
+function localLabelMaterials(
+  items: CatalogItem[],
+  primaryLanguage: TranslationLanguageCode,
+): TranslationMaterial[] {
+  type LocalLabelGroup = {
+    type: "tag" | "sticker";
+    source: string;
+    value: CatalogLocalizedValue;
+    ownerItemIds: string[];
+  };
+  const groups = new Map<string, LocalLabelGroup>();
+  const register = (type: LocalLabelGroup["type"], value: CatalogLocalizedValue, itemId: string) => {
+    const source = getLocalCatalogLabelText(value, primaryLanguage, primaryLanguage);
+    const key = `${type}:${source.toLocaleLowerCase("ru")}`;
+    const existing = groups.get(key);
+    if (existing) {
+      if (!existing.ownerItemIds.includes(itemId)) existing.ownerItemIds.push(itemId);
+      TRANSLATION_LANGUAGE_CODES.forEach((language) => {
+        if (!existing.value[language] && value[language]) existing.value[language] = value[language];
+      });
+      return;
+    }
+    groups.set(key, { type, source, value: { ...value }, ownerItemIds: [itemId] });
+  };
+  items.forEach((item) => {
+    const labels = getLocalCatalogItemLabels(item, primaryLanguage);
+    labels.tags.forEach((tag) => register("tag", tag, item.id));
+    if (labels.sticker) register("sticker", labels.sticker, item.id);
+  });
+  return [...groups.values()].map((group, index) => {
+    const id = `local-${group.type}:${encodeURIComponent(group.source.toLocaleLowerCase("ru"))}`;
+    const { fields, statuses } = resolveMaterialFields(group.source, index, [{
+      id: "name",
+      label: "Название",
+      source: group.source,
+      values: localLabelValues(group.value),
+    }]);
+    return {
+      id,
+      entityId: id,
+      ownerItemIds: group.ownerItemIds,
+      localLabelSource: group.source,
+      title: group.source,
+      typeLabel: group.type === "tag" ? "Тег" : "Стикер",
+      kind: group.type,
+      category: group.type === "tag" ? "tags" : "stickers",
+      statuses,
+      fields,
+    };
+  });
+}
+
+function buildLocalLabelTranslationPatch(
+  item: CatalogItem,
+  material: TranslationMaterial,
+  language: TranslationLanguageCode,
+  primaryLanguage: TranslationLanguageCode,
+  resolveValue: (fieldId: string, currentValue: string) => string,
+) {
+  const labels = getLocalCatalogItemLabels(item, primaryLanguage);
+  const translateValue = (value: CatalogLocalizedValue, fieldId: string): CatalogLocalizedValue => ({
+    ...value,
+    [language]: resolveValue(fieldId, value[language] ?? ""),
+  });
+  if (material.kind === "tag") {
+    return buildLocalCatalogLabelPatch(item, {
+      tags: labels.tags.map((tag) => (
+        getLocalCatalogLabelText(tag, primaryLanguage, primaryLanguage) === material.localLabelSource
+          ? translateValue(tag, "name")
+          : tag
+      )),
+      sticker: labels.sticker,
+    }, primaryLanguage);
+  }
+  return buildLocalCatalogLabelPatch(item, {
+    tags: labels.tags,
+    sticker: labels.sticker
+      && getLocalCatalogLabelText(labels.sticker, primaryLanguage, primaryLanguage) === material.localLabelSource
+      ? translateValue(labels.sticker, "name")
+      : labels.sticker,
+  }, primaryLanguage);
+}
+
+function buildPositionTranslationPatch(
+  item: CatalogItem,
+  language: TranslationLanguageCode,
+  translatedFields: TranslationField[],
+): Partial<CatalogItem> {
+  const valueFor = (fieldId: string) => translatedFields.find((field) => field.id === fieldId)?.values[language] ?? "";
+  return {
+    titleTranslations: { ...item.titleTranslations, ru: item.title, [language]: valueFor("title") },
+    descriptionTranslations: {
+      ...item.descriptionTranslations,
+      ru: stripHtml(item.description),
+      [language]: valueFor("description"),
+    },
+    optionGroups: (item.optionGroups ?? []).map((group) => ({
+      ...group,
+      nameTranslations: {
+        ...group.nameTranslations,
+        ru: group.name,
+        [language]: valueFor(`option-group:${group.id}`),
+      },
+      variants: group.variants.map((variant) => ({
+        ...variant,
+        nameTranslations: {
+          ...variant.nameTranslations,
+          ru: variant.name,
+          [language]: valueFor(`option:${group.id}:${variant.id}`),
+        },
+      })),
+    })),
+  };
+}
+
 function bannerMaterial(banner: Banner, index: number, primaryLanguage: TranslationLanguageCode): TranslationMaterial {
   const rawFields: TranslationField[] = [{
     id: "subtitle",
@@ -614,7 +744,9 @@ export function buildTranslationMaterials(
   const primaryLanguage = workspace?.primaryLanguage ?? "ru";
   const positionMaterials = items.map((item, index) => positionMaterial(item, index, primaryLanguage));
   const sectionMaterials = sections.map((section, index) => sectionMaterial(section, index, primaryLanguage));
-  const labelMaterials = labels.map((label, index) => labelMaterial(label, index, primaryLanguage));
+  const labelMaterials = USE_SHARED_TAGS_AND_STICKERS
+    ? labels.map((label, index) => labelMaterial(label, index, primaryLanguage))
+    : localLabelMaterials(items, primaryLanguage);
   const bannerMaterials = banners.map((banner, index) => bannerMaterial(banner, index, primaryLanguage));
   const aboutMaterials: TranslationMaterial[] = workspace ? (() => {
     const aboutName = workspace.name?.trim() ?? "";
@@ -752,7 +884,7 @@ function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMa
 }
 
 export function TranslationsProvider({ children }: { children: ReactNode }) {
-  const { items, sections, updateItem, updateSection } = useCatalogStore();
+  const { items, sections, updateItem, updateItems, updateSection } = useCatalogStore();
   const {
     account,
     addWorkspaceLanguage,
@@ -807,6 +939,8 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const cancelledJobIdsRef = useRef(new Set<string>());
   const materialsRef = useRef(materials);
   const jobsRef = useRef(jobs);
+  const catalogItemsRef = useRef(items);
+  catalogItemsRef.current = items;
   const persistTranslatedMaterialRef = useRef<(
     material: TranslationMaterial,
     language: TranslationLanguageCode,
@@ -896,6 +1030,11 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setWorkspaceRequested(true);
     window.dispatchEvent(new CustomEvent("tasko:open-translations"));
   }, [setActiveLanguage]);
+
+  const openCatalogBulk = useCallback((itemIds: string[]) => {
+    setCatalogBulkRequest(itemIds);
+    openWorkspace({ category: "positions" });
+  }, [openWorkspace]);
 
   const startAutoTranslate = useCallback((
     languageCodes: TranslationLanguageCode[],
@@ -1160,6 +1299,21 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (material.kind === "tag" || material.kind === "sticker") {
+      const ownerItemIds = material.ownerItemIds ?? (material.ownerItemId ? [material.ownerItemId] : []);
+      if (ownerItemIds.length > 0) {
+        const patches = Object.fromEntries(ownerItemIds.flatMap((itemId) => {
+          const item = items.find((candidate) => candidate.id === itemId);
+          return item ? [[item.id, buildLocalLabelTranslationPatch(
+            item,
+            material,
+            language,
+            account?.workspace.primaryLanguage ?? "ru",
+            (candidateFieldId, currentValue) => candidateFieldId === fieldId ? value : currentValue,
+          )] as const] : [];
+        }));
+        updateItems(patches);
+        return;
+      }
       const label = labelDirectory.labels.find((candidate) => candidate.id === material.entityId);
       if (label) labelDirectory.update(label.id, { ...label.translations, [language]: value });
       return;
@@ -1202,7 +1356,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [account?.id, account?.workspace, items, labelDirectory, sections, updateItem, updateSection, updateWorkspace]);
+  }, [account?.id, account?.workspace, items, labelDirectory, sections, updateItem, updateItems, updateSection, updateWorkspace]);
 
   const persistTranslatedMaterial = useCallback((
     material: TranslationMaterial,
@@ -1214,33 +1368,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (material.kind === "position") {
       const item = items.find((candidate) => candidate.id === material.entityId);
       if (!item) return;
-      const title = valueFor("title");
-      const description = valueFor("description");
-      const optionGroups = (item.optionGroups ?? []).map((group) => ({
-        ...group,
-        nameTranslations: {
-          ...group.nameTranslations,
-          ru: group.name,
-          [language]: valueFor(`option-group:${group.id}`),
-        },
-        variants: group.variants.map((variant) => ({
-          ...variant,
-          nameTranslations: {
-            ...variant.nameTranslations,
-            ru: variant.name,
-            [language]: valueFor(`option:${group.id}:${variant.id}`),
-          },
-        })),
-      }));
-      updateItem(item.id, {
-        titleTranslations: { ...item.titleTranslations, ru: item.title, [language]: title },
-        descriptionTranslations: {
-          ...item.descriptionTranslations,
-          ru: stripHtml(item.description),
-          [language]: description,
-        },
-        optionGroups,
-      });
+      updateItem(item.id, buildPositionTranslationPatch(item, language, translatedFields));
       return;
     }
 
@@ -1272,6 +1400,21 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     }
 
     if (material.kind === "tag" || material.kind === "sticker") {
+      const ownerItemIds = material.ownerItemIds ?? (material.ownerItemId ? [material.ownerItemId] : []);
+      if (ownerItemIds.length > 0) {
+        const patches = Object.fromEntries(ownerItemIds.flatMap((itemId) => {
+          const item = items.find((candidate) => candidate.id === itemId);
+          return item ? [[item.id, buildLocalLabelTranslationPatch(
+            item,
+            material,
+            language,
+            account?.workspace.primaryLanguage ?? "ru",
+            (fieldId, currentValue) => valueFor(fieldId) || currentValue,
+          )] as const] : [];
+        }));
+        updateItems(patches);
+        return;
+      }
       const label = labelDirectory.labels.find((candidate) => candidate.id === material.entityId);
       if (label) labelDirectory.update(label.id, { ...label.translations, [language]: valueFor("name") });
       return;
@@ -1322,7 +1465,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         },
       });
     }
-  }, [account?.id, account?.workspace, items, labelDirectory, sections, updateItem, updateSection, updateWorkspace]);
+  }, [account?.id, account?.workspace, items, labelDirectory, sections, updateItem, updateItems, updateSection, updateWorkspace]);
 
   persistTranslatedMaterialRef.current = persistTranslatedMaterial;
 
@@ -1384,10 +1527,44 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       return translated;
     });
 
+    const translatedCatalogItems = new Map<string, CatalogItem>();
     translatedMaterials.forEach((material) => {
-      persistTranslatedMaterialRef.current(material, job.language, material.fields);
+      const ownerItemIds = material.ownerItemIds ?? (material.ownerItemId ? [material.ownerItemId] : []);
+      if (material.kind === "position") {
+        const item = translatedCatalogItems.get(material.entityId)
+          ?? catalogItemsRef.current.find((candidate) => candidate.id === material.entityId);
+        if (item) {
+          translatedCatalogItems.set(material.entityId, {
+            ...item,
+            ...buildPositionTranslationPatch(item, job.language, material.fields),
+          });
+        }
+      } else if ((material.kind === "tag" || material.kind === "sticker") && ownerItemIds.length > 0) {
+        const valuesByField = new Map(material.fields.map((field) => [field.id, field.values[job.language] ?? ""]));
+        ownerItemIds.forEach((itemId) => {
+          const item = translatedCatalogItems.get(itemId)
+            ?? catalogItemsRef.current.find((candidate) => candidate.id === itemId);
+          if (!item) return;
+          const patch = buildLocalLabelTranslationPatch(
+            item,
+            material,
+            job.language,
+            account?.workspace.primaryLanguage ?? "ru",
+            (fieldId, currentValue) => valuesByField.get(fieldId) || currentValue,
+          );
+          translatedCatalogItems.set(itemId, { ...item, ...patch });
+        });
+      } else {
+        persistTranslatedMaterialRef.current(material, job.language, material.fields);
+      }
       material.fields.forEach((field) => persistFieldMetadata(account?.id, material.id, field));
     });
+    if (translatedCatalogItems.size > 0) {
+      catalogItemsRef.current = catalogItemsRef.current.map((item) => (
+        translatedCatalogItems.get(item.id) ?? item
+      ));
+      updateItems(Object.fromEntries(translatedCatalogItems));
+    }
     materialsRef.current = nextMaterials;
     setMaterials(nextMaterials);
     if (translatedMaterials.length > 0) setWorkspaceLanguageHasContent(job.language, true);
@@ -1441,7 +1618,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       "Посмотреть переводы",
       () => openWorkspace({ language: job.language }),
     );
-  }, [account?.id, openWorkspace, setWorkspaceLanguageHasContent, setWorkspaceLanguageVisibility, showToast]);
+  }, [account?.id, account?.workspace.primaryLanguage, openWorkspace, setWorkspaceLanguageHasContent, setWorkspaceLanguageVisibility, showToast, updateItems]);
 
   useEffect(() => {
     jobs.forEach((job) => {
@@ -1654,7 +1831,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setActiveCategory,
     setActiveMaterialId,
     openWorkspace,
-    openCatalogBulk: setCatalogBulkRequest,
+    openCatalogBulk,
     closeCatalogBulk: () => setCatalogBulkRequest(null),
     addLanguage,
     confirmPrimaryLanguage,
@@ -1691,6 +1868,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     jobs,
     languages,
     materials,
+    openCatalogBulk,
     openWorkspace,
     primaryLanguageConfirmed,
     removeBanner,

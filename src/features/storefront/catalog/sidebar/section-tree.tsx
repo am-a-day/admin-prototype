@@ -138,6 +138,7 @@ type UnifiedCatalogTreePanelProps = {
     onAction: (action: string, anchor?: CatalogSectionActionAnchor, schedule?: WeeklySchedule) => void,
   ) => ReactNode;
   positionCreationEnabled?: boolean;
+  secondaryNavigation?: ReactNode;
   menuSwitcher?: ReactNode;
   onCollapseSections: () => void;
   onReorderSections: (parentId: string | null, activeId: string, overId: string) => void;
@@ -234,6 +235,7 @@ export function UnifiedCatalogTreePanel({
   onSectionAction,
   renderSectionActions,
   positionCreationEnabled = true,
+  secondaryNavigation,
   menuSwitcher,
   onCollapseSections,
   onReorderSections,
@@ -744,8 +746,16 @@ export function UnifiedCatalogTreePanel({
   );
 
   return (
-    <aside className="relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-white pt-6 shadow-[inset_-1px_0_0_#e7e5e4]">
-      <div className="flex h-[18px] shrink-0 items-center justify-between pl-[14px] pr-3">
+    <aside className="relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-white shadow-[inset_-1px_0_0_#e7e5e4]">
+      {secondaryNavigation && (
+        <div
+          data-secondary-navigation-scope="catalog-sidebar"
+          className="shrink-0 border-b border-[#e7e5e4] px-2 py-2"
+        >
+          {secondaryNavigation}
+        </div>
+      )}
+      <div className="mt-4 flex h-[18px] shrink-0 items-center justify-between pl-[14px] pr-3">
         <div className="min-w-0 flex-1">
           {menuSwitcher ?? <span className="block truncate text-[14px] font-normal leading-[18px] text-[#1c1917]">Меню</span>}
         </div>

@@ -32,6 +32,7 @@ type AboutWorkspaceProps = {
   setPreviewScenario: (scenario: PreviewScenario) => void;
   onConfigureOrderSettings: () => void;
   aboutTab: AboutTab;
+  onAboutTabChange: (tab: AboutTab) => void;
   seoTitle: string;
   setSeoTitle: (v: string) => void;
   seoDescription: string;
@@ -2127,6 +2128,7 @@ export function AboutWorkspace({
   setPreviewScenario,
   onConfigureOrderSettings,
   aboutTab: tab,
+  onAboutTabChange,
   seoTitle,
   setSeoTitle,
   seoDescription,
@@ -2138,6 +2140,9 @@ export function AboutWorkspace({
     <PageScroll>
       <PageContent>
         <CompactContent className="space-y-6">
+          <div data-secondary-navigation-scope="about-content">
+            <AboutTabs value={tab} onChange={onAboutTabChange} />
+          </div>
           <div>
             <h1 className="text-[14px] font-medium leading-tight text-stone-950">{TAB_HEADERS[tab].title}</h1>
             <p className="mt-1 text-sm text-zinc-500">{TAB_HEADERS[tab].subtitle}</p>

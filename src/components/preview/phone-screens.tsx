@@ -358,9 +358,9 @@ export function PhoneCatalog({
           )}
         </div>
         <div className="rounded-t-[28px] bg-white px-5 pt-5">
-          <h2 className="text-xl font-black leading-tight">{catalogItem.title}</h2>
+          <h2 className="text-xl font-black leading-tight">{catalogDish?.name ?? catalogItem.title}</h2>
           <DishLabelBadges dish={catalogDish ?? {}} />
-          <RichDescriptionPreview value={catalogItem.description} />
+          <RichDescriptionPreview value={catalogDish?.description ?? catalogItem.description} />
           {catalogItem.displayMode !== "no-price" && (
             <div className="mt-5 flex items-center justify-between gap-3">
               <div className="text-xl font-black">{formatPrice(catalogItem.priceWithSale ?? catalogItem.price)}</div>

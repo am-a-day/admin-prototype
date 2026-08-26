@@ -526,6 +526,7 @@ function TranslationContent({ language, onOpenOriginal }: { language: Translatio
   const { account } = useMockAuth();
   const {
     activeCategory,
+    activeMaterialId,
     jobs,
     materials,
     saveState,
@@ -540,20 +541,30 @@ function TranslationContent({ language, onOpenOriginal }: { language: Translatio
 
   useEffect(() => setView(contentViewForCategory(activeCategory)), [activeCategory]);
   useEffect(() => setVisibleLimit(12), [filter, query]);
+  useEffect(() => {
+    if (!activeMaterialId) return;
+    setFilter("all");
+    setQuery("");
+    setVisibleLimit(12);
+  }, [activeMaterialId]);
 
-  const visibleMaterials = useMemo(() => materials
-    .filter((material) => materialMatchesView(material, view))
-    .map((material) => ({
-      ...material,
-      fields: material.fields.filter((field) => {
-        if (!fieldMatchesFilter(field, language.code, filter)) return false;
-        if (filter === "all" && view !== "about" && !field.source.trim()) return false;
-        const normalizedQuery = query.trim().toLocaleLowerCase();
-        return !normalizedQuery || [material.title, field.label, field.source, field.values[language.code] ?? ""]
-          .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
-      }),
-    }))
-    .filter((material) => material.fields.length > 0), [filter, language.code, materials, query, view]);
+  const visibleMaterials = useMemo(() => {
+    const matching = materials
+      .filter((material) => materialMatchesView(material, view))
+      .map((material) => ({
+        ...material,
+        fields: material.fields.filter((field) => {
+          if (!fieldMatchesFilter(field, language.code, filter)) return false;
+          if (filter === "all" && view !== "about" && !field.source.trim()) return false;
+          const normalizedQuery = query.trim().toLocaleLowerCase();
+          return !normalizedQuery || [material.title, field.label, field.source, field.values[language.code] ?? ""]
+            .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+        }),
+      }))
+      .filter((material) => material.fields.length > 0);
+    if (!activeMaterialId) return matching;
+    return matching.sort((left, right) => Number(right.id === activeMaterialId) - Number(left.id === activeMaterialId));
+  }, [activeMaterialId, filter, language.code, materials, query, view]);
 
   const changeView = (nextView: ContentView) => {
     setView(nextView);
@@ -614,7 +625,12 @@ function TranslationContent({ language, onOpenOriginal }: { language: Translatio
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visibleMaterials.slice(0, visibleLimit).map((material) => (
-          <section key={material.id} aria-label={`${material.typeLabel}: ${material.title}`}>
+          <section
+            key={material.id}
+            aria-label={`${material.typeLabel}: ${material.title}`}
+            data-active-translation-material={material.id === activeMaterialId ? "true" : undefined}
+            className={cn(material.id === activeMaterialId && "ring-1 ring-inset ring-indigo-200")}
+          >
             <div className="sticky top-0 z-[1] flex h-9 items-center justify-between gap-3 border-b border-[#e7e5e4] bg-white/95 px-4 backdrop-blur-sm">
               <div className="min-w-0 truncate text-[12px] font-semibold text-stone-800">{material.title}<span className="ml-2 font-normal text-stone-400">{material.typeLabel}</span></div>
               <Tooltip label="Открыть оригинал" side="left">

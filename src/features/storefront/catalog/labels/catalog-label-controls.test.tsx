@@ -34,7 +34,7 @@ function item(patch: Partial<CatalogItem> = {}) {
 }
 
 describe("simple position label controls", () => {
-  it("creates multiple tags inline, edits translations, and removes a tag", async () => {
+  it("creates multiple tags inline, edits only the primary name, and removes a tag", async () => {
     const user = userEvent.setup();
     const onPatchItem = vi.fn();
     render(<CatalogLabelControls item={item()} allItems={[]} onPatchItem={onPatchItem} />);
@@ -51,20 +51,18 @@ describe("simple position label controls", () => {
     expect(screen.getByRole("button", { name: "Редактировать тег «Халяль»" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Редактировать тег «Острое»" }));
-    expect(screen.getByRole("textbox", { name: "Русский" })).toHaveValue("Острое");
-    expect(screen.getByRole("textbox", { name: "English" })).toHaveValue("");
-    expect(screen.getByRole("textbox", { name: "Қазақша" })).toHaveValue("");
-    await user.clear(screen.getByRole("textbox", { name: "Русский" }));
-    await user.type(screen.getByRole("textbox", { name: "Русский" }), "Пикантное");
+    expect(screen.getByRole("textbox", { name: "Название" })).toHaveValue("Острое");
+    expect(screen.queryByRole("textbox", { name: "English" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Қазақша" })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("textbox", { name: "Название" }));
+    await user.type(screen.getByRole("textbox", { name: "Название" }), "Пикантное");
     await user.tab();
     expect(screen.getByRole("button", { name: "Редактировать тег «Пикантное»" })).toBeVisible();
-    await user.type(screen.getByRole("textbox", { name: "English" }), "Spicy");
-    await user.tab();
     expect(onPatchItem).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "item-1" }),
       expect.objectContaining({
         upsell: expect.objectContaining({
-          tags: expect.arrayContaining([expect.objectContaining({ ru: "Пикантное", en: "Spicy" })]),
+          tags: expect.arrayContaining([expect.objectContaining({ ru: "Пикантное" })]),
         }),
       }),
     );
@@ -84,8 +82,8 @@ describe("simple position label controls", () => {
     expect(screen.getByRole("button", { name: "Редактировать стикер «Хит»" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Редактировать стикер «Хит»" }));
-    await user.clear(screen.getByRole("textbox", { name: "Русский" }));
-    await user.type(screen.getByRole("textbox", { name: "Русский" }), "Новинка");
+    await user.clear(screen.getByRole("textbox", { name: "Название" }));
+    await user.type(screen.getByRole("textbox", { name: "Название" }), "Новинка");
     await user.tab();
     expect(screen.getByRole("button", { name: "Редактировать стикер «Новинка»" })).toBeVisible();
 

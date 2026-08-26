@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, Menu } from "lucide-react";
+import { CaretDoubleLeft, CaretDoubleRight, List } from "@phosphor-icons/react";
 import { OrgMenu } from "@/components/layout/account-menu";
 import { UserMenu } from "@/components/layout/user-menu";
 import { PublishStatusControl } from "@/components/layout/publish-status-control";
@@ -32,7 +32,7 @@ export function AppHeaderRight({
   return (
     <header className="flex h-[59px] shrink-0 items-center gap-1 bg-stone-100 pr-3">
 
-      {/* ── Left: mobile logo+hamburger, OR fixed collapse toggle + page title (collapsed) ── */}
+      {/* ── Left: global section context + primary navigation toggle ── */}
       {showHamburger ? (
         <div className="flex shrink-0 items-center gap-2 mr-1">
           <TaskoLogo className="text-zinc-900" />
@@ -42,8 +42,9 @@ export function AppHeaderRight({
             className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70"
             title="Навигация"
           >
-            <Menu size={18} />
+            <List size={18} />
           </button>
+          {pageTitle && <span className="shrink-0 text-[12px] leading-4 text-black">{pageTitle}</span>}
         </div>
       ) : onToggleSidebar ? (
         <div className="flex shrink-0 items-center gap-[7px]">
@@ -53,13 +54,13 @@ export function AppHeaderRight({
             title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
             className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#79716b] transition hover:bg-white/70 hover:text-[#44403b]"
           >
-            {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+            {sidebarCollapsed ? <CaretDoubleRight size={18} /> : <CaretDoubleLeft size={18} />}
           </button>
-          {sidebarCollapsed && pageTitle && (
+          {pageTitle && (
             <span className="shrink-0 text-[12px] leading-4 text-black">{pageTitle}</span>
           )}
         </div>
-      ) : sidebarCollapsed && pageTitle ? (
+      ) : pageTitle ? (
         <div className="flex shrink-0 items-center gap-2">
           <span className="shrink-0 text-[12px] leading-4 text-black">{pageTitle}</span>
         </div>

@@ -4,7 +4,7 @@ import type {
   CatalogLocalizedValue,
 } from "@/data/catalog";
 
-const LANGUAGE_CODES: CatalogLanguageCode[] = ["ru", "kk", "en", "sr"];
+const LANGUAGE_CODES: CatalogLanguageCode[] = ["ru", "kk", "en", "zh", "fr", "es", "sr"];
 
 function compactText(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, " ") ?? "";
@@ -28,6 +28,9 @@ export function normalizeLocalCatalogLabel(
     ru: translations.ru || primaryText,
     ...(translations.kk ? { kk: translations.kk } : {}),
     ...(translations.en ? { en: translations.en } : {}),
+    ...(translations.zh ? { zh: translations.zh } : {}),
+    ...(translations.fr ? { fr: translations.fr } : {}),
+    ...(translations.es ? { es: translations.es } : {}),
     ...(translations.sr ? { sr: translations.sr } : {}),
   };
 }
@@ -61,12 +64,12 @@ export function normalizeLocalCatalogLabelEdit(
 
 function localTagsFromItem(item: CatalogItem) {
   if (item.upsell?.tags !== undefined) return item.upsell.tags;
-  return item.tags.map((text) => ({ ru: text }));
+  return (item.tags ?? []).map((text) => ({ ru: text }));
 }
 
 function localStickerFromItem(item: CatalogItem) {
   if (item.upsell?.sticker !== undefined) return item.upsell.sticker;
-  return item.guestLabels[0] ? { ru: item.guestLabels[0] } : null;
+  return item.guestLabels?.[0] ? { ru: item.guestLabels[0] } : null;
 }
 
 export function getLocalCatalogItemLabels(
