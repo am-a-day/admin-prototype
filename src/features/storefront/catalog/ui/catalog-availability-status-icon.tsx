@@ -21,23 +21,29 @@ export function CatalogAvailabilityStatusIcon({
   tone = "semantic",
   iconSize = 14,
   className,
+  tooltipLabel,
+  hideWithGroupActions = true,
 }: {
   state: CatalogAvailabilityStatusIconState;
   entity: "position" | "section";
   tone?: "semantic" | "neutral";
   iconSize?: number;
   className?: string;
+  tooltipLabel?: string;
+  hideWithGroupActions?: boolean;
 }) {
   const { label, Icon, className: iconClassName } = STATUS_META[state];
 
   return (
-    <Tooltip label={label} side="top">
+    <Tooltip label={tooltipLabel ?? label} side="top">
       <span
         data-catalog-position-status={entity === "position" ? state : undefined}
         data-catalog-section-status={entity === "section" ? state : undefined}
-        aria-label={label}
+        aria-label={tooltipLabel ?? label}
+        tabIndex={tooltipLabel ? 0 : undefined}
         className={cn(
-          "inline-flex shrink-0 items-center justify-center transition-opacity group-hover:pointer-events-none group-hover:opacity-0 group-focus-within:pointer-events-none group-focus-within:opacity-0",
+          "inline-flex shrink-0 items-center justify-center transition-opacity",
+          hideWithGroupActions && "group-hover:pointer-events-none group-hover:opacity-0 group-focus-within:pointer-events-none group-focus-within:opacity-0",
           className,
         )}
       >
