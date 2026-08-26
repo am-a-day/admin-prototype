@@ -167,6 +167,59 @@ describe("translations workspace", () => {
     await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 3500 });
   });
 
+  it("restores auto-publication when the workspace closes during the final publish window", async () => {
+    const user = userEvent.setup();
+    const view = renderWorkspace();
+    await addSerbian(user);
+
+    await waitFor(() => {
+      expect(workspaceState().languages.find(({ code }) => code === "sr")).toMatchObject({ status: "ready", visible: false });
+    }, { timeout: 3000 });
+    view.unmount();
+
+    renderWorkspace();
+    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 3500 });
+  }, 10_000);
+
+  it("cancels an active translation when its language is deleted", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await addSerbian(user);
+    expect(await screen.findByText("Переводим на Srpski")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Действия для Srpski" }));
+    await user.click(screen.getByRole("menuitem", { name: "Удалить язык" }));
+    await user.click(screen.getByRole("button", { name: "Удалить язык" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 1800));
+
+    expect(workspaceState().languages.some(({ code }) => code === "sr")).toBe(false);
+    expect(workspaceState().publishedLanguages).not.toContain("sr");
+    expect(screen.queryByRole("button", { name: "Srpski" })).not.toBeInTheDocument();
+  });
+
+  it("folds a source update into an already running language job", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await addSerbian(user);
+    await user.click(screen.getByRole("button", { name: "Изменить исходник" }));
+
+    await waitFor(() => {
+      const translations = JSON.parse(screen.getByTestId("catalog-translation").textContent ?? "{}") as Record<string, string>;
+      expect(translations.sr).toBe("[Srpski] Изменённый источник");
+    }, { timeout: 3500 });
+  });
+
+  it("automatically refreshes a machine translation when its source changes", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await user.click(screen.getByRole("button", { name: "Изменить исходник" }));
+
+    await waitFor(() => {
+      const translations = JSON.parse(screen.getByTestId("catalog-translation").textContent ?? "{}") as Record<string, string>;
+      expect(translations.en).toBe("[English] Изменённый источник");
+    }, { timeout: 3500 });
+  });
+
   it("moves a published language to draft with confirmation and publishes it again from More", async () => {
     const user = userEvent.setup();
     renderWorkspace();
@@ -185,7 +238,7 @@ describe("translations workspace", () => {
 
   it("preserves a manual translation, marks the changed source for review, and lets the user confirm it", async () => {
     const user = userEvent.setup();
-    renderWorkspace();
+    const view = renderWorkspace();
 
     await user.click(screen.getByRole("button", { name: "English" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Раздел контента" }));
@@ -196,6 +249,13 @@ describe("translations workspace", () => {
 
     await waitFor(() => expect(screen.getAllByText("На проверку").length).toBeGreaterThan(0), { timeout: 3500 });
     expect(JSON.parse(screen.getByTestId("catalog-translation").textContent ?? "{}").en).toBe("Manual translation");
+    view.unmount();
+
+    renderWorkspace();
+    await user.click(screen.getByRole("button", { name: "English" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Раздел контента" }));
+    fireEvent.click(screen.getByRole("option", { name: "Позиции и разделы" }));
+    expect(await screen.findAllByText("На проверку")).not.toHaveLength(0);
     await user.click(screen.getAllByRole("button", { name: "Проверено" })[0]);
     await waitFor(() => expect(screen.queryByText("На проверку")).not.toBeInTheDocument());
   }, 10_000);
@@ -204,8 +264,10 @@ describe("translations workspace", () => {
     const user = userEvent.setup();
     renderWorkspace();
 
+    const automaticActions = screen.getAllByRole("button", { name: /Автоперевести:/ });
+    expect(automaticActions.length).toBeGreaterThan(0);
+    await user.click(automaticActions[0]);
     expect(screen.getAllByRole("img", { name: /Переведено автоматически/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /Автоперевести:/ }).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Фильтр: Все" }));
     const menu = screen.getByRole("menu");
     expect(within(menu).getByRole("menuitem", { name: "Все" })).toBeInTheDocument();
@@ -252,6 +314,10 @@ describe("translations workspace", () => {
     expect(screen.getByText(/только элементы из этого задания/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Повторить" }));
     expect(await screen.findByText("Повторный перевод запущен")).toBeInTheDocument();
+    await waitFor(() => {
+      const storedJobs = JSON.parse(window.localStorage.getItem(JOBS_KEY) ?? "[]") as Array<{ status: string; materialIds: string[] }>;
+      expect(storedJobs[0]).toMatchObject({ status: "error", materialIds: ["missing-material"] });
+    }, { timeout: 3500 });
   });
 
   it("shows the empty state after the last target language is removed", async () => {

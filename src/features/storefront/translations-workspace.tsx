@@ -15,6 +15,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -214,6 +215,8 @@ function PrimaryLanguageDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const { languages, setPrimaryLanguage } = useTranslations();
   const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
   const [language, setLanguage] = useState<TranslationLanguageCode>(primaryLanguage);
+  const availablePrimaryLanguages = LANGUAGES.filter((item) =>
+    item.code === primaryLanguage || languages.some((languageItem) => languageItem.code === item.code));
 
   useEffect(() => {
     if (open) setLanguage(primaryLanguage);
@@ -228,7 +231,7 @@ function PrimaryLanguageDialog({ open, onOpenChange }: { open: boolean; onOpenCh
         </DialogHeader>
         <Select value={language} onValueChange={(value) => setLanguage(value as TranslationLanguageCode)}>
           <SelectTrigger aria-label="Новый основной язык" className="h-9 shadow-none"><SelectValue /></SelectTrigger>
-          <SelectContent>{LANGUAGES.map((item) => <SelectItem key={item.code} value={item.code}>{item.label}</SelectItem>)}</SelectContent>
+          <SelectContent className="z-[100022]">{availablePrimaryLanguages.map((item) => <SelectItem key={item.code} value={item.code}>{item.label}</SelectItem>)}</SelectContent>
         </Select>
         {languages.length > 0 && language !== primaryLanguage && (
           <div className="flex gap-2 rounded-[9px] bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
@@ -310,10 +313,11 @@ function LanguageRail({ onAddLanguage }: { onAddLanguage: () => void }) {
                 activeLanguage === language.code ? "bg-[#f4f3ff]" : "hover:bg-[#fafaf9]",
               )}
             >
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => setActiveLanguage(language.code)}
-                className="min-w-0 flex-1 px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-300"
+                className="h-auto min-w-0 flex-1 flex-col items-start gap-0 rounded-[8px] bg-transparent px-2 py-1.5 text-left font-normal whitespace-normal hover:bg-transparent focus-visible:ring-inset focus-visible:ring-indigo-300"
               >
                 <span className={cn("block truncate text-[13px] text-stone-800", activeLanguage === language.code && "font-medium text-indigo-950")}>{language.label}</span>
                 {(translating || failed || !language.published) && (
@@ -321,7 +325,7 @@ function LanguageRail({ onAddLanguage }: { onAddLanguage: () => void }) {
                     {translating ? "Переводим…" : failed ? "Не удалось перевести" : "Черновик"}
                   </span>
                 )}
-              </button>
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Действия для ${language.label}`} className="size-7 shrink-0 rounded-[7px] text-stone-400 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100">
@@ -444,7 +448,7 @@ function TranslationFieldRow({
   const targetValue = sourceFilled ? field.values[language] ?? "" : "";
   const needsReview = field.reviewLanguages?.includes(language) ?? false;
   const missing = sourceFilled && !targetValue.trim();
-  const machineTranslated = Boolean(targetValue.trim()) && !field.manuallyEditedLanguages?.includes(language);
+  const machineTranslated = Boolean(targetValue.trim()) && (field.machineTranslatedLanguages?.includes(language) ?? false);
   const multiline = field.id === "description" || field.source.length > 90 || targetValue.length > 90;
   const editorClassName = "rounded-[7px] border-[#e7e5e4] bg-white px-2.5 text-[13px] leading-5 shadow-none focus-visible:border-indigo-300 focus-visible:ring-indigo-100 disabled:bg-stone-50 disabled:opacity-100";
 
@@ -461,7 +465,7 @@ function TranslationFieldRow({
           <div className="flex min-w-0 items-center gap-1.5">
             {needsReview && (
               <Tooltip label="Оригинал изменился, перевод автоматически обновлён, но желательно проверить результат." side="top">
-                <span tabIndex={0} className="rounded-[5px] bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">На проверку</span>
+                <Badge tabIndex={0} variant="secondary" className="border-0 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">На проверку</Badge>
               </Tooltip>
             )}
             {missing && <span className="text-[10px] font-medium text-stone-400">Не переведено</span>}

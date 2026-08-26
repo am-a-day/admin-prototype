@@ -43,6 +43,7 @@ export type TranslationField = {
   bannerTagId?: string;
   values: Partial<Record<TranslationLanguageCode, string>>;
   manuallyEditedLanguages?: TranslationLanguageCode[];
+  machineTranslatedLanguages?: TranslationLanguageCode[];
   reviewLanguages?: TranslationLanguageCode[];
 };
 
@@ -183,6 +184,8 @@ const TRANSLATION_JOBS_STORAGE_PREFIX = "tasko.translations.jobs.v1";
 const TRANSLATION_SECTIONS_STORAGE_PREFIX = "tasko.translations.sections.v1";
 const TRANSLATION_BANNERS_STORAGE_PREFIX = "tasko.translations.banners.v1";
 const TRANSLATION_MANUAL_FIELDS_STORAGE_PREFIX = "tasko.translations.manual-fields.v1";
+const TRANSLATION_FIELD_METADATA_STORAGE_PREFIX = "tasko.translations.field-metadata.v1";
+const TRANSLATION_SOURCE_SNAPSHOT_STORAGE_PREFIX = "tasko.translations.source-snapshot.v1";
 const TRANSLATION_PRIMARY_CONFIRMED_STORAGE_PREFIX = "tasko.translations.primary-language-confirmed.v1";
 const TRANSLATION_ACTIVE_LANGUAGE_STORAGE_PREFIX = "tasko.translations.active-language.v1";
 
@@ -295,15 +298,81 @@ function readStoredManualFields(accountId: string | undefined) {
   }
 }
 
-function applyStoredManualFields(materials: TranslationMaterial[], accountId: string | undefined) {
-  const stored = readStoredManualFields(accountId);
+type StoredFieldMetadata = Record<string, {
+  manuallyEditedLanguages?: TranslationLanguageCode[];
+  machineTranslatedLanguages?: TranslationLanguageCode[];
+  reviewLanguages?: TranslationLanguageCode[];
+}>;
+
+function readStoredFieldMetadata(accountId: string | undefined): StoredFieldMetadata {
+  if (!accountId || typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(`${TRANSLATION_FIELD_METADATA_STORAGE_PREFIX}.${accountId}`);
+    return raw ? JSON.parse(raw) as StoredFieldMetadata : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistFieldMetadata(
+  accountId: string | undefined,
+  materialId: string,
+  field: TranslationField,
+) {
+  if (!accountId || typeof window === "undefined") return;
+  const stored = readStoredFieldMetadata(accountId);
+  window.localStorage.setItem(
+    `${TRANSLATION_FIELD_METADATA_STORAGE_PREFIX}.${accountId}`,
+    JSON.stringify({
+      ...stored,
+      [`${materialId}:${field.id}`]: {
+        manuallyEditedLanguages: field.manuallyEditedLanguages ?? [],
+        machineTranslatedLanguages: field.machineTranslatedLanguages ?? [],
+        reviewLanguages: field.reviewLanguages ?? [],
+      },
+    }),
+  );
+}
+
+function applyStoredFieldMetadata(materials: TranslationMaterial[], accountId: string | undefined) {
+  const stored = readStoredFieldMetadata(accountId);
+  const legacyManualFields = readStoredManualFields(accountId);
   return materials.map((material) => ({
     ...material,
-    fields: material.fields.map((field) => ({
-      ...field,
-      manuallyEditedLanguages: stored[`${material.id}:${field.id}`] ?? field.manuallyEditedLanguages,
-    })),
+    fields: material.fields.map((field) => {
+      const metadata = stored[`${material.id}:${field.id}`];
+      return {
+        ...field,
+        manuallyEditedLanguages: metadata?.manuallyEditedLanguages
+          ?? legacyManualFields[`${material.id}:${field.id}`]
+          ?? field.manuallyEditedLanguages,
+        machineTranslatedLanguages: metadata?.machineTranslatedLanguages
+          ?? field.machineTranslatedLanguages,
+        reviewLanguages: metadata?.reviewLanguages ?? field.reviewLanguages,
+      };
+    }),
   }));
+}
+
+function readStoredSourceSnapshot(
+  accountId: string | undefined,
+  fallback: Map<string, string>,
+) {
+  if (!accountId || typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(`${TRANSLATION_SOURCE_SNAPSHOT_STORAGE_PREFIX}.${accountId}`);
+    return raw ? new Map(Object.entries(JSON.parse(raw) as Record<string, string>)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistSourceSnapshot(accountId: string | undefined, snapshot: Map<string, string>) {
+  if (!accountId || typeof window === "undefined") return;
+  window.localStorage.setItem(
+    `${TRANSLATION_SOURCE_SNAPSHOT_STORAGE_PREFIX}.${accountId}`,
+    JSON.stringify(Object.fromEntries(snapshot)),
+  );
 }
 
 function stripHtml(value: string) {
@@ -667,6 +736,8 @@ function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMa
             values: field.source.trim() ? { ...field.values, ...previousField.values } : {},
             manuallyEditedLanguages: previousField.manuallyEditedLanguages
               ?? field.manuallyEditedLanguages,
+            machineTranslatedLanguages: previousField.machineTranslatedLanguages
+              ?? field.machineTranslatedLanguages,
             reviewLanguages: previousField.reviewLanguages ?? field.reviewLanguages,
           }
           : field;
@@ -689,7 +760,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const labelDirectory = useCatalogLabels(true);
   const [banners, setBanners] = useState<Banner[]>(() => readStoredBanners(account?.id));
   const realMaterials = useMemo(
-    () => applyStoredManualFields(
+    () => applyStoredFieldMetadata(
       applyStoredSectionTranslations(
         buildTranslationMaterials(items, sections, labelDirectory.labels, banners, account?.workspace),
         account?.id,
@@ -737,8 +808,9 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     fields: TranslationField[],
   ) => void>(() => {});
   const saveTimerRef = useRef<number | null>(null);
-  const sourceSnapshotRef = useRef(new Map(
-    realMaterials.flatMap((material) => material.fields.map((field) => [`${material.id}:${field.id}`, field.source])),
+  const sourceSnapshotRef = useRef(readStoredSourceSnapshot(
+    account?.id,
+    new Map(realMaterials.flatMap((material) => material.fields.map((field) => [`${material.id}:${field.id}`, field.source]))),
   ));
   const primaryLanguageRef = useRef(account?.workspace.primaryLanguage);
 
@@ -803,6 +875,8 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => {
     timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timersRef.current = [];
+    scheduledJobIdsRef.current.clear();
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
   }, []);
 
@@ -832,12 +906,39 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (uniqueIds.length === 0 || languageCodes.length === 0) return;
     const startedAt = Date.now();
     setJobs((current) => {
-      const activeLanguages = new Set(current
-        .filter((job) => job.status === "queued" || job.status === "running")
-        .map((job) => job.language));
-      const additions = languageCodes
-        .filter((language) => !activeLanguages.has(language))
-        .map((language, index): TranslationJob => ({
+      const mergeFieldMaps = (
+        previous: Record<string, string[]> | undefined,
+        incoming: Record<string, string[]> | undefined,
+      ) => Object.fromEntries([...new Set([
+        ...Object.keys(previous ?? {}),
+        ...Object.keys(incoming ?? {}),
+      ])].map((materialId) => [
+        materialId,
+        [...new Set([...(previous?.[materialId] ?? []), ...(incoming?.[materialId] ?? [])])],
+      ]));
+      let next = current;
+      const additions: TranslationJob[] = [];
+      languageCodes.forEach((language, index) => {
+        const activeJob = next.find((job) =>
+          job.language === language && (job.status === "queued" || job.status === "running"));
+        if (activeJob) {
+          const mergedMaterialIds = [...new Set([...activeJob.materialIds, ...uniqueIds])];
+          next = next.map((job) => job.id === activeJob.id
+            ? {
+                ...job,
+                source,
+                materialIds: mergedMaterialIds,
+                total: mergedMaterialIds.length,
+                fieldIdsByMaterial: job.fieldIdsByMaterial === undefined
+                  ? undefined
+                  : mergeFieldMaps(job.fieldIdsByMaterial, fieldIdsByMaterial),
+                reviewFieldIdsByMaterial: mergeFieldMaps(job.reviewFieldIdsByMaterial, reviewFieldIdsByMaterial),
+                preserveManualTranslations: job.preserveManualTranslations || preserveManualTranslations,
+              }
+            : job);
+          return;
+        }
+        additions.push({
           id: `translation-job-${startedAt}-${language}-${index}`,
           language,
           source,
@@ -852,8 +953,9 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           preserveManualTranslations,
           startedAt,
           finishesAt: startedAt + 1500 + index * 120,
-        }));
-      return additions.length ? [...additions, ...current] : current;
+        });
+      });
+      return additions.length ? [...additions, ...next] : next;
     });
     showToast("Перевод запущен. Можно закрыть админку — процесс продолжится в фоне.");
   }, [showToast]);
@@ -928,43 +1030,9 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
   const setPrimaryLanguage = useCallback((language: TranslationLanguageCode) => {
     if (!account || language === account.workspace.primaryLanguage) return;
-    const previousPrimary = account.workspace.primaryLanguage;
-    const workspaceLanguages = account.workspace.languages.some((item) => item.code === language)
-      ? account.workspace.languages.map((item) => item.code === language ? { ...item, status: "ready" as const, visible: true } : item)
-      : [...account.workspace.languages, { code: language, status: "ready" as const, visible: true }];
+    if (!account.workspace.languages.some((item) => item.code === language)) return;
     updateWorkspace({
       primaryLanguage: language,
-      languages: workspaceLanguages,
-      localizedNames: {
-        ...account.workspace.localizedNames,
-        [language]: account.workspace.localizedNames[language] ?? account.workspace.name,
-      },
-      publishedSnapshot: account.workspace.publishedSnapshot
-        ? {
-            ...account.workspace.publishedSnapshot,
-            version: account.workspace.publishedSnapshot.version + 1,
-            publishedAt: Date.now(),
-            publishedLanguages: workspaceLanguages
-              .filter(({ code, status, visible }) =>
-                code === language || (status === "ready" && visible))
-              .map(({ code }) => code),
-          }
-        : null,
-    });
-    setLanguages((current) => {
-      const withoutNextPrimary = current.filter((item) => item.code !== language);
-      return withoutNextPrimary.some((item) => item.code === previousPrimary)
-        ? withoutNextPrimary
-        : [...withoutNextPrimary, {
-          code: previousPrimary,
-          ...LANGUAGE_DETAILS[previousPrimary],
-          published: true,
-          doneFields: 0,
-          totalFields: 0,
-          missing: 0,
-          outdated: 0,
-          autoTranslate: true,
-        }];
     });
     setContentLanguage(language);
     showToast(`${getLanguage(language).label} теперь основной язык`);
@@ -1231,10 +1299,13 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           return { ...field, reviewLanguages: [...reviewLanguages] };
         }
         const manuallyEditedLanguages = new Set(field.manuallyEditedLanguages ?? []);
+        const machineTranslatedLanguages = new Set(field.machineTranslatedLanguages ?? []);
         manuallyEditedLanguages.delete(job.language);
+        machineTranslatedLanguages.add(job.language);
         return {
           ...field,
           manuallyEditedLanguages: [...manuallyEditedLanguages],
+          machineTranslatedLanguages: [...machineTranslatedLanguages],
           reviewLanguages: [...reviewLanguages],
           values: {
             ...field.values,
@@ -1261,10 +1332,26 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
     translatedMaterials.forEach((material) => {
       persistTranslatedMaterialRef.current(material, job.language, material.fields);
+      material.fields.forEach((field) => persistFieldMetadata(account?.id, material.id, field));
     });
     materialsRef.current = nextMaterials;
     setMaterials(nextMaterials);
-    setWorkspaceLanguageHasContent(job.language, true);
+    if (translatedMaterials.length > 0) setWorkspaceLanguageHasContent(job.language, true);
+    const translatedIds = new Set(translatedMaterials.map((material) => material.id));
+    const failedMaterialIds = job.materialIds.filter((materialId) => !translatedIds.has(materialId));
+    if (failedMaterialIds.length > 0) {
+      setJobs((current) => current.map((item) => item.id === job.id
+        ? {
+            ...item,
+            materialIds: failedMaterialIds,
+            total: failedMaterialIds.length,
+            completed: 0,
+            status: "error",
+          }
+        : item));
+      showToast("Не удалось перевести часть текстов. Можно повторить только их.");
+      return;
+    }
     const markCompleted = () => setJobs((current) => current.map((item) => item.id === job.id
       ? { ...item, status: "completed", completed: item.total }
       : item));
@@ -1294,7 +1381,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       "Посмотреть переводы",
       () => openWorkspace({ language: job.language }),
     );
-  }, [openWorkspace, setWorkspaceLanguageHasContent, setWorkspaceLanguageVisibility, showToast]);
+  }, [account?.id, openWorkspace, setWorkspaceLanguageHasContent, setWorkspaceLanguageVisibility, showToast]);
 
   useEffect(() => {
     jobs.forEach((job) => {
@@ -1311,13 +1398,20 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       const finishTimer = window.setTimeout(
         () => {
           const latestJob = jobsRef.current.find((candidate) => candidate.id === job.id) ?? job;
-          completeTranslationJob(latestJob);
+          try {
+            completeTranslationJob(latestJob);
+          } catch {
+            setJobs((current) => current.map((item) => item.id === job.id
+              ? { ...item, status: "error", completed: 0 }
+              : item));
+            showToast("Не удалось перевести часть текстов. Можно повторить только их.");
+          }
         },
         Math.max(0, finishesAt - now),
       );
       timersRef.current.push(startTimer, finishTimer);
     });
-  }, [completeTranslationJob, jobs]);
+  }, [completeTranslationJob, jobs, showToast]);
 
   useEffect(() => {
     const primaryLanguage = account?.workspace.primaryLanguage;
@@ -1327,6 +1421,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (primaryLanguageRef.current !== primaryLanguage) {
       primaryLanguageRef.current = primaryLanguage;
       sourceSnapshotRef.current = currentSources;
+      persistSourceSnapshot(account?.id, currentSources);
       return;
     }
     const changedFieldsByMaterial: Record<string, string[]> = {};
@@ -1351,6 +1446,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     );
     const changedMaterialIds = Object.keys(fieldIdsByMaterial);
     sourceSnapshotRef.current = currentSources;
+    persistSourceSnapshot(account?.id, currentSources);
     if (changedMaterialIds.length > 0) {
       const timer = window.setTimeout(() => startAutoTranslate(
           languages.map(({ code }) => code),
@@ -1364,7 +1460,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         ), 0);
       timersRef.current.push(timer);
     }
-  }, [account?.workspace.primaryLanguage, languages, realMaterials, startAutoTranslate]);
+  }, [account?.id, account?.workspace.primaryLanguage, languages, realMaterials, startAutoTranslate]);
 
   const updateField = useCallback((materialId: string, fieldId: string, language: TranslationLanguageCode, value: string, origin: "manual" | "machine" = "manual") => {
     const activeMaterial = materials.find((material) => material.id === materialId);
@@ -1372,28 +1468,26 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     const updatedFields = activeMaterial.fields.map((field) => {
       if (field.id !== fieldId) return field;
       const manuallyEditedLanguages = new Set(field.manuallyEditedLanguages ?? []);
+      const machineTranslatedLanguages = new Set(field.machineTranslatedLanguages ?? []);
       const reviewLanguages = new Set(field.reviewLanguages ?? []);
-      if (origin === "manual") manuallyEditedLanguages.add(language);
-      else manuallyEditedLanguages.delete(language);
+      if (origin === "manual") {
+        manuallyEditedLanguages.add(language);
+        machineTranslatedLanguages.delete(language);
+      } else {
+        manuallyEditedLanguages.delete(language);
+        machineTranslatedLanguages.add(language);
+      }
       reviewLanguages.delete(language);
       return {
         ...field,
         values: { ...field.values, [language]: value },
         manuallyEditedLanguages: [...manuallyEditedLanguages],
+        machineTranslatedLanguages: [...machineTranslatedLanguages],
         reviewLanguages: [...reviewLanguages],
       };
     });
-    if (account?.id) {
-      const stored = readStoredManualFields(account.id);
-      const storageKey = `${materialId}:${fieldId}`;
-      const manuallyEditedLanguages = new Set(stored[storageKey] ?? []);
-      if (origin === "manual") manuallyEditedLanguages.add(language);
-      else manuallyEditedLanguages.delete(language);
-      window.localStorage.setItem(
-        `${TRANSLATION_MANUAL_FIELDS_STORAGE_PREFIX}.${account.id}`,
-        JSON.stringify({ ...stored, [storageKey]: [...manuallyEditedLanguages] }),
-      );
-    }
+    const updatedField = updatedFields.find((field) => field.id === fieldId);
+    if (updatedField) persistFieldMetadata(account?.id, materialId, updatedField);
     const nextStatus = translationStatusForFields(updatedFields, language);
     setSaveState("saving");
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -1423,11 +1517,12 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         ...field,
         reviewLanguages: field.reviewLanguages?.filter((code) => code !== language),
       }));
+      fields.forEach((field) => persistFieldMetadata(account?.id, material.id, field));
       return { ...material, fields, statuses: { ...material.statuses, [language]: translationStatusForFields(fields, language) } };
     }));
     setSaveState("saved");
     showToast("Перевод подтверждён");
-  }, [showToast]);
+  }, [account?.id, showToast]);
 
   const confirmField = useCallback((materialId: string, fieldId: string, language: TranslationLanguageCode) => {
     setMaterials((current) => current.map((material) => {
@@ -1435,11 +1530,13 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       const fields = material.fields.map((field) => field.id === fieldId
         ? { ...field, reviewLanguages: field.reviewLanguages?.filter((code) => code !== language) }
         : field);
+      const confirmedField = fields.find((field) => field.id === fieldId);
+      if (confirmedField) persistFieldMetadata(account?.id, material.id, confirmedField);
       return { ...material, fields, statuses: { ...material.statuses, [language]: translationStatusForFields(fields, language) } };
     }));
     setSaveState("saved");
     showToast("Перевод проверен");
-  }, [showToast]);
+  }, [account?.id, showToast]);
 
   const getCatalogSummary = useCallback((item: CatalogItem) => {
     const material = materials.find((candidate) => candidate.catalogItemId === item.id && candidate.kind === "position");
