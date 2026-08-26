@@ -215,8 +215,10 @@ function PrimaryLanguageDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const { languages, setPrimaryLanguage } = useTranslations();
   const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
   const [language, setLanguage] = useState<TranslationLanguageCode>(primaryLanguage);
-  const availablePrimaryLanguages = LANGUAGES.filter((item) =>
-    item.code === primaryLanguage || languages.some((languageItem) => languageItem.code === item.code));
+  const availablePrimaryLanguages = languages.length === 0
+    ? LANGUAGES
+    : LANGUAGES.filter((item) =>
+        item.code === primaryLanguage || languages.some((languageItem) => languageItem.code === item.code));
 
   useEffect(() => {
     if (open) setLanguage(primaryLanguage);
@@ -310,7 +312,7 @@ function LanguageRail({ onAddLanguage }: { onAddLanguage: () => void }) {
               key={language.code}
               className={cn(
                 "group mb-0.5 flex min-h-10 items-center rounded-[8px] pr-1 transition-colors",
-                activeLanguage === language.code ? "bg-[#f4f3ff]" : "hover:bg-[#fafaf9]",
+                activeLanguage === language.code ? "bg-indigo-50" : "hover:bg-[#fafaf9]",
               )}
             >
               <Button

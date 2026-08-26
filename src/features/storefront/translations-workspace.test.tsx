@@ -209,6 +209,17 @@ describe("translations workspace", () => {
     }, { timeout: 3500 });
   });
 
+  it("never overwrites a manual edit made while the first language job is running", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await addSerbian(user);
+    const target = screen.getAllByPlaceholderText("Введите перевод")[0] as HTMLInputElement;
+    fireEvent.change(target, { target: { value: "Ručno ispravljeno" } });
+
+    await waitFor(() => expect(workspaceState().publishedLanguages).toContain("sr"), { timeout: 3500 });
+    expect(target).toHaveValue("Ručno ispravljeno");
+  });
+
   it("automatically refreshes a machine translation when its source changes", async () => {
     const user = userEvent.setup();
     renderWorkspace();

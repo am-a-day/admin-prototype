@@ -213,12 +213,17 @@ function detectContentLanguage(
     ...sections.slice(0, 12).map((section) => section.name),
     ...items.slice(0, 24).flatMap((item) => [item.title, stripHtml(item.description)]),
   ].filter(Boolean).join(" ");
+  const countMatches = (pattern: RegExp) => (sample.match(pattern) ?? []).length;
   const counts: Partial<Record<TranslationLanguageCode, number>> = {
-    zh: (sample.match(/[\u3400-\u9fff]/g) ?? []).length,
-    kk: (sample.match(/[әғқңөұүһіӘҒҚҢӨҰҮҺІ]/g) ?? []).length,
-    ru: (sample.match(/[а-яёА-ЯЁ]/g) ?? []).length,
-    sr: (sample.match(/[čćžšđČĆŽŠĐ]/g) ?? []).length,
-    en: (sample.match(/[a-zA-Z]/g) ?? []).length,
+    zh: countMatches(/[\u3400-\u9fff]/g),
+    kk: countMatches(/[әғқңөұүһіӘҒҚҢӨҰҮҺІ]/g) * 12,
+    ru: countMatches(/[а-яёА-ЯЁ]/g),
+    sr: (countMatches(/[čćžšđČĆŽŠĐ]/g) + countMatches(/[јљњћђџЈЉЊЋЂЏ]/g)) * 12,
+    fr: countMatches(/[àâçéèêëîïôûùüÿœæÀÂÇÉÈÊËÎÏÔÛÙÜŸŒÆ]/g) * 12
+      + countMatches(/\b(le|la|les|des|une|avec|pour|restaurant)\b/gi) * 4,
+    es: countMatches(/[áéíóúüñ¿¡ÁÉÍÓÚÜÑ]/g) * 12
+      + countMatches(/\b(el|los|las|una|con|para|restaurante)\b/gi) * 4,
+    en: countMatches(/[a-zA-Z]/g),
   };
   const detected = (Object.entries(counts) as Array<[TranslationLanguageCode, number]>)
     .sort((left, right) => right[1] - left[1])[0];
@@ -979,6 +984,8 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       "Новый язык",
       publishAfterComplete,
       publishAfterComplete ? "publish" : "review",
+      undefined,
+      true,
     ), 0);
     timersRef.current.push(timer);
   }, [addWorkspaceLanguage, materials, setActiveLanguage, startAutoTranslate]);
@@ -1030,9 +1037,26 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
   const setPrimaryLanguage = useCallback((language: TranslationLanguageCode) => {
     if (!account || language === account.workspace.primaryLanguage) return;
+    const hasTargetLanguages = account.workspace.languages.some(({ code }) => code !== account.workspace.primaryLanguage);
+    if (!hasTargetLanguages) {
+      updateWorkspace({
+        primaryLanguage: language,
+        languages: [{ code: language, status: "ready", visible: true }],
+        localizedNames: {
+          ...account.workspace.localizedNames,
+          [language]: account.workspace.localizedNames[language] ?? account.workspace.name,
+        },
+      });
+      setContentLanguage(language);
+      showToast(`${getLanguage(language).label} теперь основной язык`);
+      return;
+    }
     if (!account.workspace.languages.some((item) => item.code === language)) return;
     updateWorkspace({
       primaryLanguage: language,
+      languages: account.workspace.languages.map((item) => item.code === language
+        ? { ...item, status: "ready", visible: true }
+        : item),
     });
     setContentLanguage(language);
     showToast(`${getLanguage(language).label} теперь основной язык`);
@@ -1282,9 +1306,15 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (cancelledJobIdsRef.current.has(job.id)) return;
     const jobIds = new Set(job.materialIds);
     const translatedMaterials: TranslationMaterial[] = [];
+    const failedFieldIdsByMaterial: Record<string, string[]> = {};
     const nextMaterials = materialsRef.current.map((material) => {
       if (!jobIds.has(material.id)) return material;
       const targetFieldIds = job.fieldIdsByMaterial?.[material.id];
+      if (targetFieldIds) {
+        const knownFieldIds = new Set(material.fields.map((field) => field.id));
+        const missingFieldIds = targetFieldIds.filter((fieldId) => !knownFieldIds.has(fieldId));
+        if (missingFieldIds.length > 0) failedFieldIdsByMaterial[material.id] = missingFieldIds;
+      }
       let preservedManualTranslation = false;
       const fields = material.fields.map((field) => {
         if (targetFieldIds && !targetFieldIds.includes(field.id)) return field;
@@ -1338,12 +1368,18 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setMaterials(nextMaterials);
     if (translatedMaterials.length > 0) setWorkspaceLanguageHasContent(job.language, true);
     const translatedIds = new Set(translatedMaterials.map((material) => material.id));
-    const failedMaterialIds = job.materialIds.filter((materialId) => !translatedIds.has(materialId));
+    const failedMaterialIds = [...new Set([
+      ...job.materialIds.filter((materialId) => !translatedIds.has(materialId)),
+      ...Object.keys(failedFieldIdsByMaterial),
+    ])];
     if (failedMaterialIds.length > 0) {
       setJobs((current) => current.map((item) => item.id === job.id
         ? {
             ...item,
             materialIds: failedMaterialIds,
+            fieldIdsByMaterial: Object.keys(failedFieldIdsByMaterial).length > 0
+              ? failedFieldIdsByMaterial
+              : item.fieldIdsByMaterial,
             total: failedMaterialIds.length,
             completed: 0,
             status: "error",
