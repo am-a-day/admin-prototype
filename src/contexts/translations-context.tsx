@@ -1039,24 +1039,48 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     if (!account || language === account.workspace.primaryLanguage) return;
     const hasTargetLanguages = account.workspace.languages.some(({ code }) => code !== account.workspace.primaryLanguage);
     if (!hasTargetLanguages) {
+      const nextLanguages = [{ code: language, status: "ready" as const, visible: true }];
       updateWorkspace({
         primaryLanguage: language,
-        languages: [{ code: language, status: "ready", visible: true }],
+        languages: nextLanguages,
         localizedNames: {
           ...account.workspace.localizedNames,
           [language]: account.workspace.localizedNames[language] ?? account.workspace.name,
         },
+        publishedSnapshot: account.workspace.publishedSnapshot
+          ? {
+              ...account.workspace.publishedSnapshot,
+              version: account.workspace.publishedSnapshot.version + 1,
+              publishedAt: Date.now(),
+              publishedLanguages: [language],
+            }
+          : null,
       });
       setContentLanguage(language);
       showToast(`${getLanguage(language).label} теперь основной язык`);
       return;
     }
     if (!account.workspace.languages.some((item) => item.code === language)) return;
+    const nextLanguages = account.workspace.languages.map((item) => item.code === language
+      ? { ...item, status: "ready" as const, visible: true }
+      : item);
     updateWorkspace({
       primaryLanguage: language,
-      languages: account.workspace.languages.map((item) => item.code === language
-        ? { ...item, status: "ready", visible: true }
-        : item),
+      languages: nextLanguages,
+      publishedSnapshot: account.workspace.publishedSnapshot
+        ? {
+            ...account.workspace.publishedSnapshot,
+            version: account.workspace.publishedSnapshot.version + 1,
+            publishedAt: Date.now(),
+            publishedLanguages: [
+              language,
+              ...nextLanguages
+                .filter(({ code, status, visible }) =>
+                  code !== language && status === "ready" && visible)
+                .map(({ code }) => code),
+            ],
+          }
+        : null,
     });
     setContentLanguage(language);
     showToast(`${getLanguage(language).label} теперь основной язык`);

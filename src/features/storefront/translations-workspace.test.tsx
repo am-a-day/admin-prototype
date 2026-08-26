@@ -98,6 +98,7 @@ describe("translations workspace", () => {
     await user.click(screen.getByRole("button", { name: "Подтвердить" }));
 
     await waitFor(() => expect(workspaceState().primaryLanguage).toBe("en"));
+    expect(workspaceState().publishedLanguages[0]).toBe("en");
     expect(screen.getByText(/Основной язык:/)).toHaveTextContent("English");
     expect(screen.queryByRole("heading", { name: "Основной язык контента" })).not.toBeInTheDocument();
   });
@@ -300,6 +301,7 @@ describe("translations workspace", () => {
     await user.click(screen.getByRole("button", { name: "Изменить язык" }));
 
     await waitFor(() => expect(workspaceState().primaryLanguage).toBe("en"));
+    expect(workspaceState().publishedLanguages[0]).toBe("en");
     expect(screen.getByText(/Основной язык:/)).toHaveTextContent("English");
   });
 

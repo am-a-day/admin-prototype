@@ -55,8 +55,17 @@ test("adds, restores, publishes and drafts a language without fake progress", as
   await expect(page.getByRole("checkbox")).toBeChecked();
   await expect(page.getByText(/\d+%/)).toHaveCount(0);
 
+  await page.evaluate(({ jobsKey }) => {
+    const jobs = JSON.parse(window.localStorage.getItem(jobsKey) ?? "[]") as Array<{ status: string; finishesAt: number }>;
+    window.localStorage.setItem(jobsKey, JSON.stringify(jobs.map((job) => ({
+      ...job,
+      status: "running",
+      finishesAt: Date.now() + 2_500,
+    }))));
+  }, { jobsKey: JOBS_KEY });
   await page.reload();
   await expect(page.getByRole("button", { name: /^Srpski/ }).first()).toBeVisible();
+  await expect(page.getByText("Переводим на Srpski")).toBeVisible();
   await expect(page.getByText("Переводим на Srpski")).toHaveCount(0, { timeout: 12_000 });
   await page.getByRole("button", { name: "Действия для Srpski" }).click();
   await page.getByRole("menuitem", { name: "Сделать черновиком" }).click();
@@ -81,12 +90,19 @@ test("keeps the editor focused on content, filters and per-field actions", async
   await expect(automaticOrigin).toBeVisible();
   await page.getByRole("textbox", { name: "Введите перевод" }).first().fill("Қолмен түзетілді");
   await expect(automaticOrigin).toHaveCount(0);
+  await page.getByRole("status").getByRole("button", { name: "Закрыть" }).click();
 
   await page.getByRole("button", { name: "Фильтр: Все" }).click();
   await expect(page.getByRole("menuitem", { name: "Все" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "На проверку" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Не переведено" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Переведено", exact: true })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Не переведено" }).click();
+  await page.getByRole("combobox", { name: "Раздел контента" }).click();
+  await page.getByRole("option", { name: "Позиции и разделы" }).click();
+  await expect(page.getByRole("textbox", { name: "Введите перевод" }).first()).toHaveValue("");
+  await page.getByRole("button", { name: /Автоперевести:/ }).first().click();
+  await expect(page.getByRole("status")).toContainText("Поле переведено автоматически");
 });
 
 test("preserves a manual field, marks a changed source for review and confirms it", async ({ page }) => {
@@ -122,7 +138,7 @@ test("warns on primary-language changes and exposes a recoverable failed subset"
       language: "kk",
       source: "Обновлённый исходный текст",
       materialIds: ["about:venue"],
-      fieldIdsByMaterial: { "about:venue": ["new-field-that-is-not-ready"] },
+      fieldIdsByMaterial: { "about:venue": ["name"] },
       total: 1,
       completed: 0,
       status: "error",
@@ -137,14 +153,16 @@ test("warns on primary-language changes and exposes a recoverable failed subset"
   await expect(page.getByText(/только элементы из этого задания/)).toBeVisible();
   await page.getByRole("button", { name: "Повторить" }).click();
   await expect(page.getByText("Переводим на Қазақша")).toBeVisible();
-  await expect(page.getByText("Не удалось перевести часть текстов", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Переводим на Қазақша")).toHaveCount(0, { timeout: 5_000 });
+  await expect(page.getByText("Не удалось перевести часть текстов", { exact: true })).toHaveCount(0);
   const retrySubset = await page.evaluate(({ jobsKey }) => {
-    const jobs = JSON.parse(window.localStorage.getItem(jobsKey) ?? "[]") as Array<{ materialIds: string[]; fieldIdsByMaterial?: Record<string, string[]> }>;
+    const jobs = JSON.parse(window.localStorage.getItem(jobsKey) ?? "[]") as Array<{ status: string; materialIds: string[]; fieldIdsByMaterial?: Record<string, string[]> }>;
     return jobs[0];
   }, { jobsKey: JOBS_KEY });
   expect(retrySubset).toMatchObject({
+    status: "completed",
     materialIds: ["about:venue"],
-    fieldIdsByMaterial: { "about:venue": ["new-field-that-is-not-ready"] },
+    fieldIdsByMaterial: { "about:venue": ["name"] },
   });
 
   await page.getByRole("button", { name: "Настройки переводов" }).click();
