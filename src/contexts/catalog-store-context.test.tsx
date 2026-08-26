@@ -41,7 +41,9 @@ describe("CatalogStoreProvider menu language translations", () => {
           ru: "Новое блюдо",
           kk: "Новое блюдо",
           en: "Новое блюдо",
-          sr: "Новое блюдо",
+          zh: "Новое блюдо",
+          fr: "Новое блюдо",
+          es: "Новое блюдо",
         });
     });
   });

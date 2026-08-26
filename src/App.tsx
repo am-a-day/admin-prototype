@@ -152,7 +152,6 @@ const ABOUT_PATH = `${STOREFRONT_PATH}/about`;
 
 const ABOUT_PATH_SEGMENTS: Record<AboutTab, string> = {
   info: "profile",
-  "language-region": "language-region",
   "guest-rules": "guest-rules",
   "rec-titles": "rec-titles",
   "public-display": "public-display",
@@ -161,7 +160,6 @@ const ABOUT_PATH_SEGMENTS: Record<AboutTab, string> = {
 function normalizeAboutTab(tab: string | null | undefined): AboutTab {
   if (tab === "profile" || tab === "info") return "info";
   if (
-    tab === "language-region" ||
     tab === "guest-rules" ||
     tab === "rec-titles" ||
     tab === "public-display"
@@ -910,15 +908,6 @@ function AuthenticatedShell() {
         const aboutTab = normalizeAboutTab(nestedTab);
         setStoreAboutTab(aboutTab);
         setPreviewScenario(aboutTab === "info" ? "about" : null);
-        if (aboutTab === "language-region") {
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              document
-                .getElementById("about-language-region-top")
-                ?.scrollIntoView({ block: "start" });
-            });
-          });
-        }
       }
       // Mark launch checklist steps as visited
       // (catalog is marked only when user adds first item — see CatalogWorkspace onAdvancePhase)
@@ -1199,7 +1188,6 @@ function AuthenticatedShell() {
           setSeoTitle={setSeoTitle}
           seoDescription={seoDescription}
           setSeoDescription={setSeoDescription}
-          onOpenTranslations={() => navigate("storefront", "translations")}
         />
       );
     }

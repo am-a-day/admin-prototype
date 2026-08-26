@@ -39,8 +39,15 @@ describe("shared sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     expect(navigation).toHaveTextContent(
-      "Мой ресторанНайти позициюАналитикаОнлайн-менюГлавнаяКаталогПереводыОформлениеЗаказыНастройка заказовИстория заказовБольше",
+      "Мой ресторанНайти позициюПереводыАналитикаОнлайн-менюГлавнаяКаталогОформлениеЗаказыНастройка заказовИстория заказовБольше",
     );
+
+    const translations = within(navigation).getByRole("button", { name: "Переводы" });
+    const onlineMenuGroup = within(navigation).getByText("Онлайн-меню").parentElement;
+    expect(onlineMenuGroup).not.toContainElement(translations);
+
+    await user.click(translations);
+    expect(onNavigate).toHaveBeenCalledWith("storefront", "translations");
 
     await user.click(within(navigation).getByRole("button", { name: "История заказов" }));
     expect(onNavigate).toHaveBeenCalledWith("management", "order-history");

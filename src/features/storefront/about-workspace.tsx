@@ -2,36 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Cli
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu as LanguageDropdownMenu,
-  DropdownMenuContent as LanguageDropdownMenuContent,
-  DropdownMenuItem as LanguageDropdownMenuItem,
-  DropdownMenuTrigger as LanguageDropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import {
-  CurrencyDollar,
-  CurrencyEur,
-  CurrencyKzt,
-  CurrencyRub,
-  DotsThreeVertical,
-  GlobeHemisphereWest,
-  MagnifyingGlass,
-  Money,
-  PlusCircle as PhosphorPlusCircle,
-  Star as PhosphorStar,
-  Trash,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
@@ -42,21 +13,17 @@ import {
 import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/components/workspace/description-rich-text-editor";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
 import { useAppSettings } from "@/contexts/app-settings-context";
-import { useCatalogStore } from "@/contexts/catalog-store-context";
 import {
   DEFAULT_WORKSPACE_ADDRESS,
   useMockAuth,
   type VenueType,
 } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
-import { LANGUAGES, type LanguageCode } from "@/data/languages";
 import { CURRENT_VITRINE_ID, MOCK_VITRINES, type PreviewScenario } from "@/data/mock-data";
-import { buildMockCatalogTitleTranslations } from "@/lib/mock-catalog-translations";
 import { cn } from "@/lib/utils";
 
 export type AboutTab =
   | "info"
-  | "language-region"
   | "guest-rules"
   | "public-display"
   | "rec-titles";
@@ -69,12 +36,10 @@ type AboutWorkspaceProps = {
   setSeoTitle: (v: string) => void;
   seoDescription: string;
   setSeoDescription: (v: string) => void;
-  onOpenTranslations?: () => void;
 };
 
 const TAB_LABELS: Record<AboutTab, string> = {
   "info": "Профиль",
-  "language-region": "Язык и регион",
   "guest-rules": "Предупреждения",
   "public-display": "Мой ресторан в сети",
   "rec-titles": "Заголовки и кнопки",
@@ -83,10 +48,6 @@ const TAB_LABELS: Record<AboutTab, string> = {
 // Один источник для заголовка/подзаголовка рабочей области по активной вкладке.
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
   "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас" },
-  "language-region": {
-    title: "Языки и регион",
-    subtitle: "Настройки языка, отображения цен и локального времени",
-  },
   "guest-rules": { title: "Предупреждения", subtitle: "Настройте подтверждения, которые гости увидят перед открытием меню." },
   "public-display": { title: "Мой ресторан в сети", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
   "rec-titles": { title: "Заголовки и кнопки", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
@@ -94,7 +55,6 @@ const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
 
 const ABOUT_TABS: { id: AboutTab; label: string }[] = [
   { id: "info", label: TAB_LABELS.info },
-  { id: "language-region", label: TAB_LABELS["language-region"] },
   { id: "guest-rules", label: TAB_LABELS["guest-rules"] },
   { id: "rec-titles", label: TAB_LABELS["rec-titles"] },
   { id: "public-display", label: TAB_LABELS["public-display"] },
@@ -775,65 +735,6 @@ function BasicField({
         {error ?? helperText}
       </div>
     </label>
-  );
-}
-
-function BasicSelectField<T extends string>({
-  id,
-  label,
-  icon: Icon,
-  value,
-  options,
-  helperText,
-  tooltip,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  icon: PhosphorIcon;
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  helperText?: string;
-  tooltip?: string;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="block">
-      {tooltip ? (
-        <DottedLabelWithTooltip id={`${id}-label`} label={label} tooltip={tooltip} />
-      ) : (
-        <label
-          htmlFor={id}
-          className="mb-1.5 block text-[13px] font-medium leading-[18px] text-[#292524]"
-        >
-          {label}
-        </label>
-      )}
-      <Select value={value} onValueChange={(nextValue) => onChange(nextValue as T)}>
-        <SelectTrigger
-          id={id}
-          aria-labelledby={tooltip ? `${id}-label` : undefined}
-          className="h-[30px] rounded-[10px] border-[#e7e5e4] px-2.5 text-[12px] font-normal shadow-none"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon size={14} weight="fill" className="shrink-0 text-[#79716b]" aria-hidden="true" />
-            <SelectValue />
-          </span>
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {helperText && (
-        <div className="mt-1 text-[12px] leading-4 text-[#a8a29e]">
-          {helperText}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1955,30 +1856,6 @@ function VenueTypeChipGroup({
   );
 }
 
-const CURRENCY_OPTIONS = [
-  { value: "KZT", label: "Казахстанский тенге — KZT" },
-  { value: "RSD", label: "Сербский динар — RSD" },
-  { value: "RUB", label: "Российский рубль — RUB" },
-  { value: "USD", label: "Доллар США — USD" },
-  { value: "EUR", label: "Евро — EUR" },
-];
-
-const CURRENCY_ICONS: Record<string, PhosphorIcon> = {
-  KZT: CurrencyKzt,
-  RSD: Money,
-  RUB: CurrencyRub,
-  USD: CurrencyDollar,
-  EUR: CurrencyEur,
-};
-
-const TIMEZONE_OPTIONS = [
-  { value: "Asia/Almaty", label: "Казахстан, UTC+5" },
-  { value: "Europe/Belgrade", label: "Белград, Центральная Европа" },
-  { value: "Europe/Moscow", label: "Москва, UTC+3" },
-  { value: "Europe/London", label: "Лондон" },
-  { value: "Europe/Berlin", label: "Берлин, Центральная Европа" },
-];
-
 function BasicInfoWorkspace({
   onChange,
   setPreviewScenario,
@@ -2244,339 +2121,6 @@ function BasicInfoWorkspace({
   );
 }
 
-export function LanguageRegionWorkspace({ onChange, onOpenTranslations }: { onChange: () => void; onOpenTranslations: () => void }) {
-  const {
-    account,
-    updateWorkspace,
-    addWorkspaceLanguage,
-    removeWorkspaceLanguage,
-    setWorkspaceLanguageHasContent,
-  } = useMockAuth();
-  const { contentLanguage, setContentLanguage } = useAppSettings();
-  const { items, updateItem } = useCatalogStore();
-  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
-  const [languageQuery, setLanguageQuery] = useState("");
-  const [pendingLanguage, setPendingLanguage] = useState<LanguageCode | null>(null);
-  const [translatingLanguages, setTranslatingLanguages] = useState<Set<LanguageCode>>(
-    () => new Set(),
-  );
-  const translationTimersRef = useRef<Map<LanguageCode, number>>(new Map());
-
-  useEffect(() => () => {
-    translationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    translationTimersRef.current.clear();
-  }, []);
-
-  if (!account) return null;
-
-  const workspace = account.workspace;
-  return (
-    <div className="w-full space-y-6">
-      <section aria-labelledby="primary-language-title">
-        <div id="primary-language-title" className="text-[13px] font-medium text-[#292524]">Основной язык</div>
-        <div className="mt-2 flex items-center justify-between rounded-[10px] border border-[#e7e5e4] bg-white px-3 py-2.5">
-          <div>
-            <div className="text-[13px] font-medium text-[#292524]">Русский</div>
-            <div className="mt-0.5 text-[11px] text-[#79716b]">Используется как источник для переводов</div>
-          </div>
-          <span className="rounded-[6px] bg-[#f5f5f4] px-2 py-1 text-[11px] text-[#57534d]">Основной язык</span>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-4 rounded-[10px] border border-indigo-100 bg-indigo-50/50 px-3 py-2.5">
-          <div><div className="text-[13px] font-medium text-[#292524]">Переводы контента</div><div className="mt-0.5 text-[11px] text-[#79716b]">Добавление языков, прогресс и публикация находятся в отдельном рабочем разделе.</div></div>
-          <Button type="button" size="sm" className="shrink-0 bg-[#4f39f6] hover:bg-[#4030d4]" onClick={onOpenTranslations}>Перейти к переводам</Button>
-        </div>
-      </section>
-      <section aria-label="Региональные параметры" className="space-y-4">
-        <div className="grid grid-cols-[180px_1fr] items-center gap-4"><span className="text-[13px] font-medium text-[#292524]">Регион</span><span className="text-[13px] text-[#57534d]">{workspace.market}</span></div>
-        <BasicSelectField id="about-currency" label="Валюта" icon={CURRENCY_ICONS[workspace.currency] ?? Money} tooltip="Используется для отображения цен в онлайн-меню." value={workspace.currency} options={CURRENCY_OPTIONS} onChange={(currency) => { updateWorkspace({ currency }); onChange(); }} />
-        <BasicSelectField id="about-timezone" label="Часовой пояс" icon={GlobeHemisphereWest} tooltip="Используется для расписаний, заказов, уведомлений и аналитики." value={workspace.timezone} options={TIMEZONE_OPTIONS} onChange={(timezone) => { updateWorkspace({ timezone }); onChange(); }} />
-        <div className="grid grid-cols-[180px_1fr] items-center gap-4"><span className="text-[13px] font-medium text-[#292524]">Форматы</span><span className="text-[13px] text-[#57534d]">Дата: ДД.ММ.ГГГГ · Числа: 1 234,56</span></div>
-      </section>
-    </div>
-  );
-
-  const availableLanguages = LANGUAGES.filter(
-    ({ code }) => !workspace.languages.some((language) => language.code === code),
-  );
-  const normalizedLanguageQuery = languageQuery.trim().toLocaleLowerCase();
-  const filteredAvailableLanguages = availableLanguages.filter((language) =>
-    [language.label, language.short, language.code]
-      .some((value) => value.toLocaleLowerCase().includes(normalizedLanguageQuery)),
-  );
-  const addedLanguages = [...workspace.languages].sort((left, right) => {
-    if (left.code === workspace.primaryLanguage) return -1;
-    if (right.code === workspace.primaryLanguage) return 1;
-    return 0;
-  });
-  const pendingLanguageDetails = LANGUAGES.find(({ code }) => code === pendingLanguage);
-
-  const makePrimary = (primaryLanguage: LanguageCode) => {
-    if (primaryLanguage === workspace.primaryLanguage) return;
-    updateWorkspace({
-      primaryLanguage,
-      languages: [...workspace.languages]
-        .sort((left, right) => {
-          if (left.code === primaryLanguage) return -1;
-          if (right.code === primaryLanguage) return 1;
-          return 0;
-        })
-        .map((language) => ({ ...language, visible: true })),
-      localizedNames: {
-        ...workspace.localizedNames,
-        [primaryLanguage]:
-          workspace.localizedNames[primaryLanguage] ?? workspace.name,
-      },
-    });
-    setContentLanguage(primaryLanguage);
-    onChange();
-  };
-
-  const removeLanguage = (language: LanguageCode) => {
-    if (language === workspace.primaryLanguage) return;
-    const timer = translationTimersRef.current.get(language);
-    if (timer) window.clearTimeout(timer);
-    translationTimersRef.current.delete(language);
-    setTranslatingLanguages((current) => {
-      const next = new Set(current);
-      next.delete(language);
-      return next;
-    });
-    removeWorkspaceLanguage(language);
-    if (contentLanguage === language) setContentLanguage(workspace.primaryLanguage);
-    onChange();
-  };
-
-  const confirmAddLanguage = () => {
-    if (!pendingLanguage) return;
-    const language = pendingLanguage;
-    const nextLanguageCodes = [...workspace.languages.map(({ code }) => code), language];
-    addWorkspaceLanguage(language);
-    setTranslatingLanguages((current) => new Set(current).add(language));
-    setPendingLanguage(null);
-    setLanguagePickerOpen(false);
-    setLanguageQuery("");
-    onChange();
-
-    const timer = window.setTimeout(() => {
-      items.forEach((item) => {
-        updateItem(item.id, {
-          titleTranslations: buildMockCatalogTitleTranslations(
-            item.title,
-            workspace.primaryLanguage,
-            nextLanguageCodes,
-            item.titleTranslations,
-          ),
-        });
-      });
-      updateWorkspace({
-        localizedNames: {
-          ...workspace.localizedNames,
-          [language]: workspace.localizedNames[language]
-            ?? workspace.localizedNames[workspace.primaryLanguage]
-            ?? workspace.name,
-        },
-      });
-      setWorkspaceLanguageHasContent(language, true);
-      setTranslatingLanguages((current) => {
-        const next = new Set(current);
-        next.delete(language);
-        return next;
-      });
-      translationTimersRef.current.delete(language);
-    }, 900);
-    translationTimersRef.current.set(language, timer);
-  };
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <>
-      <div className="w-full space-y-6">
-        <section aria-labelledby="menu-languages-title">
-          <DottedLabelWithTooltip
-            id="menu-languages-title"
-            label="Языки"
-            tooltip="Основной язык используется по умолчанию. Добавленные языки доступны гостям на всей витрине, а существующий контент переводится автоматически."
-          />
-
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {addedLanguages.map((workspaceLanguage) => {
-                const language = LANGUAGES.find(({ code }) => code === workspaceLanguage.code);
-                if (!language) return null;
-                const primary = workspace.primaryLanguage === language.code;
-                const translating = translatingLanguages.has(language.code);
-
-                return (
-                  <div
-                    key={language.code}
-                    data-language-chip={language.code}
-                    className="flex h-6 items-center gap-1 rounded-[6px] bg-[#e7e5e4] pl-1.5 pr-0.5 text-[12px] text-[#292524]"
-                  >
-                    {primary && (
-                      <PhosphorStar size={12} weight="fill" aria-label="Основной язык" className="shrink-0" />
-                    )}
-                    <span className="whitespace-nowrap font-medium">{language.label}</span>
-                    {translating && (
-                      <span className="whitespace-nowrap text-[11px] text-[#79716b]">Переводим…</span>
-                    )}
-                    {!primary && (
-                      <LanguageDropdownMenu>
-                        <LanguageDropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            aria-label={`Действия для языка ${language.label}`}
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[#79716b] outline-none transition hover:bg-white/60 hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20"
-                          >
-                            <DotsThreeVertical size={13} weight="bold" />
-                          </button>
-                        </LanguageDropdownMenuTrigger>
-                        <LanguageDropdownMenuContent align="end">
-                          <LanguageDropdownMenuItem onSelect={() => makePrimary(language.code)}>
-                            <PhosphorStar size={14} />
-                            Сделать основным
-                          </LanguageDropdownMenuItem>
-                          <LanguageDropdownMenuItem
-                            onSelect={() => removeLanguage(language.code)}
-                            className="text-[#dc2626] data-[highlighted]:bg-[#fef2f2]"
-                          >
-                            <Trash size={14} />
-                            Удалить язык
-                          </LanguageDropdownMenuItem>
-                        </LanguageDropdownMenuContent>
-                      </LanguageDropdownMenu>
-                    )}
-                  </div>
-                );
-              })}
-
-              <Popover
-                open={languagePickerOpen || pendingLanguage !== null}
-                onOpenChange={(open) => {
-                  setLanguagePickerOpen(open);
-                  if (!open) {
-                    setLanguageQuery("");
-                    setPendingLanguage(null);
-                  }
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Добавить язык"
-                    disabled={availableLanguages.length === 0}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/20 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <PhosphorPlusCircle size={14} />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  role={pendingLanguage ? "dialog" : undefined}
-                  aria-label={pendingLanguage ? `Добавить ${pendingLanguageDetails?.label}?` : undefined}
-                  className="w-[268px] p-2"
-                >
-                  {pendingLanguage ? (
-                    <div className="p-1">
-                      <h3 className="text-[14px] font-semibold text-[#292524]">
-                        Добавить {pendingLanguageDetails?.label}?
-                      </h3>
-                      <p className="mt-1.5 text-[12px] leading-5 text-[#79716b]">
-                        Существующий контент меню будет автоматически переведён на новый язык.
-                      </p>
-                      <div className="mt-4 flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setPendingLanguage(null);
-                            setLanguagePickerOpen(false);
-                          }}
-                        >
-                          Отмена
-                        </Button>
-                        <Button type="button" size="sm" onClick={confirmAddLanguage}>
-                          Добавить и перевести
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="relative">
-                        <MagnifyingGlass
-                          size={14}
-                          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#a8a29e]"
-                        />
-                        <Input
-                          autoFocus
-                          size="compact"
-                          value={languageQuery}
-                          onChange={(event) => setLanguageQuery(event.target.value)}
-                          placeholder="Найти язык"
-                          aria-label="Поиск языка"
-                          className="pl-8"
-                        />
-                      </div>
-                      <div role="listbox" aria-label="Доступные языки" className="mt-1 max-h-56 overflow-y-auto">
-                        {filteredAvailableLanguages.map((language) => (
-                          <button
-                            key={language.code}
-                            type="button"
-                            role="option"
-                            aria-selected="false"
-                            onClick={() => setPendingLanguage(language.code)}
-                            className="flex h-9 w-full items-center justify-between rounded-[8px] px-2 text-left text-[13px] text-[#292524] outline-none transition hover:bg-[#f5f5f4] focus-visible:bg-[#f5f5f4]"
-                          >
-                            <span>{language.label}</span>
-                            <span className="text-[11px] font-medium text-[#a8a29e]">{language.short}</span>
-                          </button>
-                        ))}
-                        {filteredAvailableLanguages.length === 0 && (
-                          <p className="px-2 py-3 text-center text-[12px] text-[#a8a29e]">
-                            Языки не найдены
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </PopoverContent>
-              </Popover>
-          </div>
-        </section>
-
-        <section aria-label="Региональные параметры" className="space-y-4">
-            <BasicSelectField
-              id="about-currency"
-              label="Валюта"
-              icon={CURRENCY_ICONS[workspace.currency] ?? Money}
-              tooltip="Используется для отображения цен в онлайн-меню."
-              value={workspace.currency}
-              options={CURRENCY_OPTIONS}
-              onChange={(currency) => {
-                updateWorkspace({ currency });
-                onChange();
-              }}
-            />
-
-            <BasicSelectField
-              id="about-timezone"
-              label="Часовой пояс"
-              icon={GlobeHemisphereWest}
-              tooltip="Используется для расписаний, заказов, уведомлений и аналитики."
-              value={workspace.timezone}
-              options={TIMEZONE_OPTIONS}
-              onChange={(timezone) => {
-                updateWorkspace({ timezone });
-                onChange();
-              }}
-            />
-        </section>
-      </div>
-
-      </>
-    </TooltipProvider>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AboutWorkspace({
@@ -2587,7 +2131,6 @@ export function AboutWorkspace({
   setSeoTitle,
   seoDescription,
   setSeoDescription,
-  onOpenTranslations,
 }: AboutWorkspaceProps) {
   const { registerChange } = usePublish();
 
@@ -2595,7 +2138,7 @@ export function AboutWorkspace({
     <PageScroll>
       <PageContent>
         <CompactContent className="space-y-6">
-          <div id={tab === "language-region" ? "about-language-region-top" : undefined}>
+          <div>
             <h1 className="text-[14px] font-medium leading-tight text-stone-950">{TAB_HEADERS[tab].title}</h1>
             <p className="mt-1 text-sm text-zinc-500">{TAB_HEADERS[tab].subtitle}</p>
           </div>
@@ -2605,10 +2148,6 @@ export function AboutWorkspace({
             <div onMouseEnter={() => setPreviewScenario("about")}>
               <BasicInfoWorkspace onChange={() => registerChange("about")} setPreviewScenario={setPreviewScenario} />
             </div>
-          )}
-
-          {tab === "language-region" && (
-            <LanguageRegionWorkspace onChange={() => registerChange("about")} onOpenTranslations={onOpenTranslations ?? (() => {})} />
           )}
 
           {/* ── Правила для гостей ── */}

@@ -188,13 +188,40 @@ const SEED_PHONE_ACCOUNT_ID = "seed-phone-owner";
 const SEED_PHONE_CONTACT = "+79950876356";
 const DEFAULT_EXISTING_PASSWORD = "tasko123";
 const CATALOG_KEY_PREFIX = CATALOG_STORAGE_PREFIX;
+const CURRENT_AUTH_STATE_VERSION = 2;
 
 export const DEFAULT_WORKSPACE_ADDRESS = "Астана, Абылай-хана 34, д 18";
 
 type StoredAuthState = {
+  version?: number;
   accounts: Record<string, MockAccount>;
   contactIndex: Record<string, string>;
 };
+
+function defaultWorkspaceLanguages(primaryLanguage: LanguageCode): WorkspaceLanguage[] {
+  const codes = [
+    primaryLanguage,
+    ...LANGUAGES.map(({ code }) => code).filter(
+      (code) => code !== primaryLanguage && code !== "sr",
+    ),
+  ].slice(0, 6);
+
+  return codes.map((code) => ({
+    code,
+    status: "ready",
+    visible: code === primaryLanguage || code !== "kk",
+  }));
+}
+
+function migrateLegacyWorkspaceLanguages(
+  languages: WorkspaceLanguage[],
+  primaryLanguage: LanguageCode,
+): WorkspaceLanguage[] {
+  const byCode = new Map(languages.map((language) => [language.code, language]));
+  return defaultWorkspaceLanguages(primaryLanguage).map(
+    (fallback) => byCode.get(fallback.code) ?? fallback,
+  );
+}
 
 function stableMenuId(seed: string) {
   let hash = 2166136261;
@@ -225,7 +252,7 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   venueType: "restaurant",
   primaryLanguage: "ru",
   languages: setupCompleted
-    ? LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }))
+    ? LANGUAGES.filter(({ code }) => code !== "sr").map(({ code }) => ({ code, status: "ready" as const, visible: code !== "kk" }))
     : [],
   localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
   localizedAddresses: setupCompleted && !firstEntry ? { ru: DEFAULT_WORKSPACE_ADDRESS } : {},
@@ -243,7 +270,7 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
         name: "Kimchi Astana",
         catalogPhase: "has-items",
         catalogSnapshot: {},
-        publishedLanguages: LANGUAGES.map(({ code }) => code),
+        publishedLanguages: LANGUAGES.filter(({ code }) => code !== "sr" && code !== "kk").map(({ code }) => code),
         localizedNames: { ru: "Kimchi Astana" },
       },
   review: {
@@ -349,6 +376,7 @@ function createSeedAuthState(): StoredAuthState {
   const seed = createSeedAccount();
   const phoneSeed = createSeedPhoneAccount();
   return {
+    version: CURRENT_AUTH_STATE_VERSION,
     accounts: { [seed.id]: seed, [phoneSeed.id]: phoneSeed },
     contactIndex: {
       [normalizeContact(seed.contact)]: seed.id,
@@ -365,6 +393,7 @@ function readAuthState(): StoredAuthState {
     if (raw) {
       const parsed = JSON.parse(raw) as StoredAuthState;
       if (parsed.accounts && parsed.contactIndex) {
+        const needsLanguageMigration = (parsed.version ?? 1) < CURRENT_AUTH_STATE_VERSION;
         const accounts: Record<string, MockAccount> = Object.fromEntries(
           Object.entries(parsed.accounts).map(([id, account]) => {
             const fallback = createWorkspace(account.workspace.firstEntry ?? false, account.contact || id);
@@ -384,7 +413,7 @@ function readAuthState(): StoredAuthState {
                     name: account.workspace.name || fallback.name,
                     catalogPhase: "has-items" as const,
                     catalogSnapshot: account.catalogSnapshot ?? {},
-                    publishedLanguages: LANGUAGES.map(({ code }) => code),
+                    publishedLanguages: LANGUAGES.filter(({ code }) => code !== "sr" && code !== "kk").map(({ code }) => code),
                     localizedNames: account.workspace.localizedNames ?? {
                       [account.workspace.primaryLanguage ?? "ru"]: account.workspace.name || fallback.name,
                     },
@@ -393,12 +422,15 @@ function readAuthState(): StoredAuthState {
             const primaryLanguage = LANGUAGES.some(({ code }) => code === account.workspace.primaryLanguage)
               ? account.workspace.primaryLanguage as LanguageCode
               : "ru";
-            const languages = account.workspace.languages?.length
+            const persistedLanguages = account.workspace.languages?.length
               ? account.workspace.languages.map((language) => ({
                   ...language,
                   visible: language.visible ?? true,
                 }))
-              : LANGUAGES.map(({ code }) => ({ code, status: "ready" as const, visible: true }));
+              : defaultWorkspaceLanguages(primaryLanguage);
+            const languages = needsLanguageMigration && (account.workspace.setupCompleted ?? true)
+              ? migrateLegacyWorkspaceLanguages(persistedLanguages, primaryLanguage)
+              : persistedLanguages;
             return [
               id,
               {
@@ -434,7 +466,7 @@ function readAuthState(): StoredAuthState {
                         publishedLanguages:
                           publishedSnapshot.publishedLanguages?.length
                             ? publishedSnapshot.publishedLanguages
-                            : LANGUAGES.map(({ code }) => code),
+                            : LANGUAGES.filter(({ code }) => code !== "sr" && code !== "kk").map(({ code }) => code),
                         localizedNames: publishedSnapshot.localizedNames ?? {
                           [primaryLanguage]: publishedSnapshot.name,
                         },
@@ -457,7 +489,12 @@ function readAuthState(): StoredAuthState {
         const contactIndex = Object.fromEntries(
           Object.values(accounts).map((account) => [normalizeContact(account.contact), account.id]),
         );
-        const migrated = { ...parsed, accounts, contactIndex };
+        const migrated = {
+          ...parsed,
+          version: CURRENT_AUTH_STATE_VERSION,
+          accounts,
+          contactIndex,
+        };
         writeAuthState(migrated);
         return migrated;
       }
@@ -471,7 +508,10 @@ function readAuthState(): StoredAuthState {
 
 function writeAuthState(state: StoredAuthState) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_STATE_KEY, JSON.stringify(state));
+  window.localStorage.setItem(
+    AUTH_STATE_KEY,
+    JSON.stringify({ ...state, version: CURRENT_AUTH_STATE_VERSION }),
+  );
 }
 
 function readSessionId() {
@@ -684,7 +724,7 @@ export function MockAuthProvider({
         if (workspace.languages.some(({ code }) => code === language)) return workspace;
         return {
           ...workspace,
-          languages: [...workspace.languages, { code: language, status: "empty", visible: true }],
+          languages: [...workspace.languages, { code: language, status: "empty", visible: false }],
         };
       });
     },
@@ -694,12 +734,28 @@ export function MockAuthProvider({
   const setWorkspaceLanguageVisibility = useCallback(
     (language: LanguageCode, visible: boolean) => {
       if (!account || language === account.workspace.primaryLanguage) return;
-      updateWorkspaceAccount(account.id, (workspace) => ({
-        ...workspace,
-        languages: workspace.languages.map((item) =>
+      updateWorkspaceAccount(account.id, (workspace) => {
+        const languages = workspace.languages.map((item) =>
           item.code === language ? { ...item, visible } : item,
-        ),
-      }));
+        );
+        const now = Date.now();
+        return {
+          ...workspace,
+          languages,
+          publishedSnapshot: workspace.publishedSnapshot
+            ? {
+                ...workspace.publishedSnapshot,
+                version: workspace.publishedSnapshot.version + 1,
+                publishedAt: now,
+                catalogSnapshot: snapshotCatalog(),
+                publishedLanguages: languages
+                  .filter(({ code, status, visible: isVisible }) =>
+                    code === workspace.primaryLanguage || (status === "ready" && isVisible))
+                  .map(({ code }) => code),
+              }
+            : null,
+        };
+      });
     },
     [account, updateWorkspaceAccount],
   );
@@ -726,6 +782,16 @@ export function MockAuthProvider({
           ...workspace,
           localizedNames,
           languages: workspace.languages.filter(({ code }) => code !== language),
+          publishedSnapshot: workspace.publishedSnapshot
+            ? {
+                ...workspace.publishedSnapshot,
+                version: workspace.publishedSnapshot.version + 1,
+                publishedAt: Date.now(),
+                publishedLanguages: workspace.publishedSnapshot.publishedLanguages.filter(
+                  (code) => code !== language,
+                ),
+              }
+            : null,
         };
       });
     },

@@ -87,7 +87,8 @@ export type MockVitrine = {
 };
 
 export const MOCK_VITRINES: MockVitrine[] = [
-  { id: "abaya",    initials: "АБ", avatarColor: "bg-zinc-900",    name: "Kimchi Astana", address: "Абая, 10",      url: "kimchi-abaya.tsqr.me",    registrationCountryCode: "KZ" },
+  { id: "abaya", initials: "АБ", avatarColor: "bg-zinc-900", name: "Мой ресторан 7470", address: "ул. Абая 10", url: "aura.tsqr.me", registrationCountryCode: "KZ" },
+  { id: "turan", initials: "ТУ", avatarColor: "bg-stone-700", name: "Мой ресторан 7470", address: "ул. Туран 37", url: "aura-turan.tsqr.me", registrationCountryCode: "KZ" },
 ];
 
 /** ID of the vitrine currently being edited (mock). */
@@ -156,15 +157,15 @@ export type BannerTagType = "accent" | "contrast" | "outline";
 export type BannerTag = {
   id: string;
   type: BannerTagType;
-  texts: { ru: string; kz: string; en: string; sr?: string };
+  texts: { ru: string; kz: string; en: string; zh?: string; fr?: string; es?: string; sr?: string };
 };
 
 export type Banner = {
   id: string;
   title: string;
-  titleTranslations?: Partial<Record<"ru" | "kk" | "en" | "sr", string>>;
+  titleTranslations?: Partial<Record<"ru" | "kk" | "en" | "zh" | "fr" | "es" | "sr", string>>;
   subtitle: string;
-  subtitleTranslations?: Partial<Record<"ru" | "kk" | "en" | "sr", string>>;
+  subtitleTranslations?: Partial<Record<"ru" | "kk" | "en" | "zh" | "fr" | "es" | "sr", string>>;
   tags: BannerTag[];
   accent: string;
   visible: boolean;

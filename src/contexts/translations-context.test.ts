@@ -104,6 +104,26 @@ describe("translation material structure", () => {
     expect(material.fields[1].source).not.toBe("");
     expect(material.fields[2]).toMatchObject({ source: "", values: { kk: "", en: "", sr: "" } });
   });
+
+  it("uses the selected primary language as the source while preserving Russian values", () => {
+    const workspace = {
+      primaryLanguage: "en",
+      name: "Tasko Cafe",
+      localizedNames: { ru: "Кафе Tasko", en: "Tasko Cafe" },
+      localizedAddresses: {},
+      localizedDescriptions: {},
+    } as unknown as MockWorkspace;
+
+    const [position] = buildTranslationMaterials([createItem({
+      title: "Паста",
+      titleTranslations: { ru: "Паста", en: "Pasta" },
+    })], [], [], [], workspace);
+
+    expect(position.fields[0]).toMatchObject({
+      source: "Pasta",
+      values: { ru: "Паста", en: "Pasta" },
+    });
+  });
 });
 
 describe("translation field progress", () => {

@@ -17,7 +17,7 @@ export type CatalogSection = {
 
 export type CatalogSectionNode = CatalogSection & { children: CatalogSectionNode[] };
 
-export type CatalogLanguageCode = "ru" | "kk" | "en" | "sr";
+export type CatalogLanguageCode = "ru" | "kk" | "en" | "zh" | "fr" | "es" | "sr";
 export type CatalogTranslations = Partial<Record<CatalogLanguageCode, string>>;
 
 export type CatalogNutrition = {
@@ -58,6 +58,9 @@ export type CatalogLocalizedValue = {
   ru: string;
   kk?: string;
   en?: string;
+  zh?: string;
+  fr?: string;
+  es?: string;
   sr?: string;
 };
 

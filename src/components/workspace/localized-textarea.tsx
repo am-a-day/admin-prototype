@@ -6,6 +6,9 @@ const LANGUAGE_GENITIVE: Record<LanguageCode, string> = {
   ru: "русского",
   kk: "казахского",
   en: "английского",
+  zh: "китайского",
+  fr: "французского",
+  es: "испанского",
   sr: "сербского",
 };
 
