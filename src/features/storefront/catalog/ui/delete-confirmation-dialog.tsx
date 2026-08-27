@@ -16,13 +16,15 @@ export function DeleteConfirmationDialog({
   open,
   title,
   description,
+  confirmLabel = "Удалить навсегда",
   onOpenChange,
   onConfirm,
 }: {
-  kind: "section" | "position" | "bulk";
+  kind: "section" | "position" | "bulk" | "language";
   open: boolean;
   title: string;
   description: string;
+  confirmLabel?: string;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void | Promise<void>;
 }) {
@@ -96,7 +98,7 @@ export function DeleteConfirmationDialog({
             onClick={() => void confirm()}
             className="h-7 min-w-0 rounded-[8px] bg-[#ec003f] px-2.5 text-[13px] font-medium leading-4 shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#d80039] focus-visible:ring-[#ec003f]/25"
           >
-            Удалить навсегда
+            {confirmLabel}
           </Button>
         </AlertDialogFooter>
 

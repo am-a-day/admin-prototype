@@ -75,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Главная", section: "storefront", tab: "home", icon: Stack },
       { label: "Каталог", section: "storefront", tab: "catalog", icon: ForkKnife },
+      { label: "Переводы", section: "storefront", tab: "translations", icon: Translate },
       { label: "Оформление", section: "storefront", tab: "appearance", icon: Swatches },
     ],
   },
@@ -102,7 +103,6 @@ function getNavGroups(type: OrganizationType) {
   return {
     primary: [
       { label: labels.group, section: "storefront" as const, tab: "about", icon: Buildings },
-      { label: "Переводы", section: "storefront" as const, tab: "translations", icon: Translate },
       { label: "Аналитика", section: "analytics" as const, tab: "scans", icon: ChartBar },
     ],
     groups: NAV_GROUPS,
@@ -552,8 +552,7 @@ function NavList({
       <div className={compact ? "space-y-1" : undefined}>
         {renderItem(navigation.primary[0])}
         <SidebarSearch compact={compact} onNavigate={onNavigate} showTooltip={showTooltips} />
-        {renderItem(navigation.primary[1])}
-        {renderItem(navigation.primary[2])}
+        {navigation.primary.slice(1).map(renderItem)}
       </div>
 
       {navigation.groups.map((group) => (
