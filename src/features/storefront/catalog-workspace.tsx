@@ -3758,6 +3758,7 @@ function PopulatedWorkspace({
   initialSelectedItemId,
   initialHighlightItemId,
   initialSelectedSectionId,
+  navigationSectionId,
   initialReturnContext,
   pendingOpen,
   tableOpenSignal,
@@ -3790,6 +3791,7 @@ function PopulatedWorkspace({
   /** Раздел, выбранный в «Позициях» на момент перехода сюда. Приоритетнее последнего
    * состояния дерева, но не выше прямой ссылки на раздел (?sectionId=). */
   initialSelectedSectionId: string | null;
+  navigationSectionId?: string | null;
   initialReturnContext?: StructureReturnContext | null;
   pendingOpen?: PendingOpen | null;
   tableOpenSignal: number;
@@ -3880,10 +3882,17 @@ function PopulatedWorkspace({
     && providedSections.some((section) => section.id === storedUnifiedScope)
     ? storedUnifiedScope
     : null;
-  const firstSectionId = directSection?.id
-    ?? (initialSelectedSectionId && providedSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
-    ?? (scopeSectionId && providedSections.some((section) => section.id === scopeSectionId) ? scopeSectionId : null)
-    ?? storedUnifiedSectionId;
+  const controlledNavigationSectionId = navigationSectionId === undefined
+    ? undefined
+    : navigationSectionId && providedSections.some((section) => section.id === navigationSectionId)
+      ? navigationSectionId
+      : null;
+  const firstSectionId = controlledNavigationSectionId !== undefined
+    ? controlledNavigationSectionId
+    : directSection?.id
+      ?? (initialSelectedSectionId && providedSections.some((section) => section.id === initialSelectedSectionId) ? initialSelectedSectionId : null)
+      ?? (scopeSectionId && providedSections.some((section) => section.id === scopeSectionId) ? scopeSectionId : null)
+      ?? storedUnifiedSectionId;
   const firstItemId = editorNavMode === "entity" || editorNavMode === "unified"
     ? activeEditorItemId ?? retainedItem?.id ?? directItem?.id ?? null
     : preferredItemId;
@@ -3993,6 +4002,17 @@ function PopulatedWorkspace({
   } | null>(null);
   const [treeMoveUndo, setTreeMoveUndo] = useState<CatalogTreeMoveUndoState>(null);
   const previousResetSignalRef = useRef(resetSignal);
+
+  useEffect(() => {
+    if (controlledNavigationSectionId === undefined || selectedSectionId === controlledNavigationSectionId) return;
+    setSelectedSectionId(controlledNavigationSectionId);
+    setGlobalTableScopeId(null);
+    setSelectedItemId(null);
+    setEditorSource(null);
+    setActiveEditorItemId(null);
+    setSelectedIds(new Set());
+    setEditing(false);
+  }, [controlledNavigationSectionId, selectedSectionId, setActiveEditorItemId]);
 
   useEffect(() => {
     if (!initialReturnContext) return;
@@ -10474,6 +10494,7 @@ export function CatalogWorkspace({
       initialSelectedItemId={retainedItemId}
       initialHighlightItemId={retainedStructureHighlightItemId}
       initialSelectedSectionId={retainedSectionId ?? firstRunSection?.id ?? null}
+      navigationSectionId={sectionScopeId}
       initialReturnContext={null}
       pendingOpen={pendingOpen}
       tableOpenSignal={overviewTableOpenSignal}
@@ -10516,6 +10537,7 @@ export function CatalogWorkspace({
       resetSignal={resetSignal}
       initialSelectedItemId={null}
       initialSelectedSectionId={stopListSectionScopeId}
+      navigationSectionId={null}
       initialReturnContext={null}
       tableOpenSignal={0}
       onFilterChange={onStopListFilterChange}

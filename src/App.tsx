@@ -102,6 +102,10 @@ import type { TrainingActiveSession, TrainingTab } from "@/features/training/tra
 
 type PageMeta = { title: string; description?: string };
 type SidebarPreference = "expanded" | "collapsed" | null;
+type CatalogNavigationView =
+  | { type: "all" }
+  | { type: "stop-list" }
+  | { type: "section"; sectionId: string };
 
 function getCatalogHistoryContext(state: unknown = window.history.state): CatalogReturnContext | null {
   if (!state || typeof state !== "object") return null;
@@ -552,6 +556,11 @@ function AuthenticatedShell() {
   const initialCatalogCreate = initialStorefrontRoute.storeTab === "catalog" && initialCatalogParams.get("createPosition") === "1";
   const initialCatalogContext = getCatalogHistoryContext();
   const initialCatalogSectionId = initialCatalogParams.get("sectionId");
+  const initialCatalogSectionScopeId = initialCatalogCreate
+    ? initialCatalogSectionId
+    : initialCatalogContext?.tab === "overview"
+      ? initialCatalogContext.sectionScopeId
+      : initialCatalogContext?.sectionId ?? initialCatalogSectionId;
   const [section, setSection] = useState<SectionId>(isInitialTrainingRoute ? "training" : "storefront");
   const [storeTab, setStoreTab] = useState<StoreTabId>(initialStorefrontRoute.storeTab);
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>(initialStorefrontRoute.aboutTab);
@@ -578,7 +587,15 @@ function AuthenticatedShell() {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>(() =>
     initialCatalogCreate ? "overview" : initialCatalogContext?.tab ?? "sections",
   );
-  const [catalogStopListActive, setCatalogStopListActive] = useState(false);
+  const [catalogNavigationView, setCatalogNavigationView] = useState<CatalogNavigationView>(() =>
+    initialCatalogSectionScopeId
+      ? { type: "section", sectionId: initialCatalogSectionScopeId }
+      : { type: "all" },
+  );
+  const catalogStopListActive = catalogNavigationView.type === "stop-list";
+  const catalogSectionScopeId = catalogNavigationView.type === "section"
+    ? catalogNavigationView.sectionId
+    : null;
   const [catalogStopListFilterId, setCatalogStopListFilterId] = useState<OverviewFilterId>("quick:all");
   const [catalogStopListSectionScopeId, setCatalogStopListSectionScopeId] = useState<string | null>(null);
   const [catalogOverviewFilterId, setCatalogOverviewFilterId] = useState<OverviewFilterId>(() =>
@@ -591,13 +608,6 @@ function AuthenticatedShell() {
     initialCatalogContext?.tab === "overview"
       ? initialCatalogContext.filterId
       : initialCatalogCreate ? "quick:all" : "sections",
-  );
-  const [catalogSectionScopeId, setCatalogSectionScopeId] = useState<string | null>(() =>
-    initialCatalogCreate
-      ? initialCatalogSectionId
-      : initialCatalogContext?.tab === "overview"
-        ? initialCatalogContext.sectionScopeId
-        : initialCatalogContext?.sectionId ?? null,
   );
   const [catalogResetSignal] = useState(0);
   const [catalogRouteRevision, setCatalogRouteRevision] = useState(0);
@@ -645,7 +655,7 @@ function AuthenticatedShell() {
     storeTab,
   ]);
   const changeCatalogViewMode = (mode: CatalogViewMode) => {
-    setCatalogStopListActive(false);
+    setCatalogNavigationView((current) => current.type === "stop-list" ? { type: "all" } : current);
     setCatalogViewMode(mode);
     if (mode === "sections") {
       setCatalogTab("sections");
@@ -662,6 +672,24 @@ function AuthenticatedShell() {
     }
     navigate();
   };
+  const replaceCatalogNavigationView = (next: CatalogNavigationView) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("positionId");
+    url.searchParams.delete("highlightPositionId");
+    url.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
+    if (next.type === "section") url.searchParams.set("sectionId", next.sectionId);
+    else url.searchParams.delete("sectionId");
+    window.history.replaceState(window.history.state, "", url);
+    setCatalogRouteRevision((revision) => revision + 1);
+    setCatalogNavigationView(next);
+    if (next.type === "stop-list") setCatalogStopListSectionScopeId(null);
+  };
+  const replaceCatalogSectionScope = (sectionId: string | null) => {
+    if (catalogNavigationView.type === "stop-list") return;
+    replaceCatalogNavigationView(sectionId
+      ? { type: "section", sectionId }
+      : { type: "all" });
+  };
   const catalogNavigation: CatalogNavigationBoundary = {
     route: getCatalogBrowserRoute(catalogRouteRevision),
     replaceSection: (sectionId) => {
@@ -670,6 +698,7 @@ function AuthenticatedShell() {
       url.searchParams.set("sectionId", sectionId);
       window.history.replaceState(null, "", url);
       setCatalogRouteRevision((revision) => revision + 1);
+      setCatalogNavigationView({ type: "section", sectionId });
     },
     replacePosition: (positionId) => {
       const url = new URL(window.location.href);
@@ -722,7 +751,7 @@ function AuthenticatedShell() {
   };
   const changeCatalogTab = (next: CatalogTab) => {
     requestCatalogNavigation(() => {
-      setCatalogStopListActive(false);
+      setCatalogNavigationView((current) => current.type === "stop-list" ? { type: "all" } : current);
       setCatalogTab(next);
       if (next === "overview") {
         const nextFilter = catalogViewMode === "sections"
@@ -746,7 +775,7 @@ function AuthenticatedShell() {
           ? lastNonStopCatalogFilterRef.current
           : catalogViewMode === "sections" ? "quick:all" : catalogViewMode;
         setCatalogTab("overview");
-        setCatalogStopListActive(false);
+        setCatalogNavigationView((current) => current.type === "stop-list" ? { type: "all" } : current);
         setCatalogViewMode(restoredFilter);
         setCatalogOverviewFilterId(restoredFilter);
       });
@@ -766,13 +795,13 @@ function AuthenticatedShell() {
       return;
     }
     if (next === "upsell") {
-      setCatalogStopListActive(false);
+      setCatalogNavigationView((current) => current.type === "stop-list" ? { type: "all" } : current);
       changeCatalogTab("upsell");
       return;
     }
     if (next === "stop-list") {
       requestCatalogNavigation(() => {
-        setCatalogStopListActive(true);
+        replaceCatalogNavigationView({ type: "stop-list" });
         setCatalogTab("overview");
       });
       return;
@@ -780,20 +809,13 @@ function AuthenticatedShell() {
   };
   const exitCatalogStopList = (sectionId: string | null) => {
     requestCatalogNavigation(() => {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("positionId");
-      url.searchParams.delete("highlightPositionId");
-      url.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
-      if (sectionId) url.searchParams.set("sectionId", sectionId);
-      else url.searchParams.delete("sectionId");
-      window.history.replaceState(window.history.state, "", url);
-      setCatalogRouteRevision((revision) => revision + 1);
-      setCatalogStopListActive(false);
+      replaceCatalogNavigationView(sectionId
+        ? { type: "section", sectionId }
+        : { type: "all" });
       setCatalogTab("overview");
       setCatalogViewMode("quick:all");
       setCatalogOverviewFilterId("quick:all");
       lastNonStopCatalogFilterRef.current = "quick:all";
-      setCatalogSectionScopeId(sectionId);
     });
   };
   // Sidebar зависит только от ширины viewport
@@ -991,7 +1013,9 @@ function AuthenticatedShell() {
     setCatalogTab("overview");
     setCatalogViewMode("quick:all");
     setCatalogOverviewFilterId("quick:all");
-    setCatalogSectionScopeId(target?.sectionId ?? null);
+    setCatalogNavigationView(target?.sectionId
+      ? { type: "section", sectionId: target.sectionId }
+      : { type: "all" });
     const url = new URL(`${window.location.origin}${STOREFRONT_PATH}/catalog`);
     url.searchParams.set("positionId", itemId);
     if (target?.sectionId) url.searchParams.set("sectionId", target.sectionId);
@@ -1009,8 +1033,8 @@ function AuthenticatedShell() {
       setStoreTab("catalog");
       setCatalogTab("sections");
       setCatalogViewMode("sections");
-      setCatalogSectionScopeId(material.entityId);
-      window.history.pushState(null, "", `${STOREFRONT_PATH}/catalog`);
+      setCatalogNavigationView({ type: "section", sectionId: material.entityId });
+      window.history.pushState(null, "", `${STOREFRONT_PATH}/catalog?sectionId=${encodeURIComponent(material.entityId)}`);
       return;
     }
     if (material.kind === "banner") {
@@ -1094,16 +1118,24 @@ function AuthenticatedShell() {
           setCatalogTab("overview");
           setCatalogViewMode(context?.tab === "overview" ? context.filterId : "quick:all");
           setCatalogOverviewFilterId(context?.tab === "overview" ? context.filterId : "quick:all");
-          setCatalogSectionScopeId(params.get("sectionId"));
+          const sectionId = params.get("sectionId");
+          setCatalogNavigationView(sectionId ? { type: "section", sectionId } : { type: "all" });
         } else if (context?.tab === "overview") {
           setCatalogTab("overview");
           setCatalogViewMode(context.filterId);
           setCatalogOverviewFilterId(context.filterId);
-          setCatalogSectionScopeId(context.sectionScopeId);
+          setCatalogNavigationView(context.sectionScopeId
+            ? { type: "section", sectionId: context.sectionScopeId }
+            : { type: "all" });
         } else if (context?.tab === "sections") {
           setCatalogTab("sections");
           setCatalogViewMode("sections");
-          setCatalogSectionScopeId(context.sectionId);
+          setCatalogNavigationView(context.sectionId
+            ? { type: "section", sectionId: context.sectionId }
+            : { type: "all" });
+        } else {
+          const sectionId = params.get("sectionId");
+          setCatalogNavigationView(sectionId ? { type: "section", sectionId } : { type: "all" });
         }
       }
       setPreviewScenario(
@@ -1171,7 +1203,9 @@ function AuthenticatedShell() {
               setCatalogTab("overview");
               setCatalogViewMode("quick:all");
               setCatalogOverviewFilterId("quick:all");
-              setCatalogSectionScopeId(target?.sectionId ?? null);
+              setCatalogNavigationView(target?.sectionId
+                ? { type: "section", sectionId: target.sectionId }
+                : { type: "all" });
             });
           }}
           secondaryNavigation={
@@ -1192,7 +1226,7 @@ function AuthenticatedShell() {
           resetSignal={catalogResetSignal}
           onOverviewFilterChange={setCatalogOverviewFilterId}
           onViewModeChange={changeCatalogViewMode}
-          onSectionScopeChange={setCatalogSectionScopeId}
+          onSectionScopeChange={replaceCatalogSectionScope}
           onStopListFilterChange={setCatalogStopListFilterId}
           onStopListSectionScopeChange={setCatalogStopListSectionScopeId}
           onOpenStopList={() => changeCatalogPrimaryTab("stop-list")}
