@@ -168,7 +168,7 @@ export function getLocalizedValueLabels(values: LocalizedValue[], language: Lang
     .map((value) => getLocalizedValueLabel(value, language))
     .filter((value): value is string => Boolean(value));
 }
-function PositionSaveStatus({
+export function PositionSaveStatus({
   status,
   onRetry,
 }: {

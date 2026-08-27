@@ -1137,10 +1137,15 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       return current.filter((job) => job.language !== language);
     });
     removeWorkspaceLanguage(language);
-    setLanguages((current) => current.filter((item) => item.code !== language));
-    if (activeLanguage === language) setActiveLanguage("kk");
+    setLanguages((current) => {
+      const next = current.filter((item) => item.code !== language);
+      if (activeLanguage === language) {
+        setActiveLanguage(next[0]?.code ?? account?.workspace.primaryLanguage ?? "ru");
+      }
+      return next;
+    });
     showToast(`${LANGUAGE_DETAILS[language].label} удалён`);
-  }, [activeLanguage, removeWorkspaceLanguage, setActiveLanguage, showToast]);
+  }, [account?.workspace.primaryLanguage, activeLanguage, removeWorkspaceLanguage, setActiveLanguage, showToast]);
 
   const setPublished = useCallback((language: TranslationLanguageCode, published: boolean) => {
     setLanguages((current) => current.map((item) => item.code === language ? { ...item, published } : item));
