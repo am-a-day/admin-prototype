@@ -427,6 +427,7 @@ type CatalogWorkspaceProps = {
   onStopListFilterChange: (id: OverviewFilterId) => void;
   onStopListSectionScopeChange: (id: string | null) => void;
   onOpenStopList: () => void;
+  onExitStopList: (sectionId: string | null) => void;
   onCatalogTabChange: (tab: CatalogTab) => void;
   onRegisterCreateNavigationGuard: (guard: CatalogCreateNavigationGuard | null) => void;
   onAdvancePhase: (next: "has-sections" | "has-items") => void;
@@ -3774,6 +3775,7 @@ function PopulatedWorkspace({
   secondaryNavigation,
   menuSwitcher,
   onOpenStopList,
+  onExitStopList,
   onFirstItemCreated,
 }: {
   navigation: CatalogNavigationBoundary;
@@ -3805,6 +3807,7 @@ function PopulatedWorkspace({
   secondaryNavigation?: ReactNode;
   menuSwitcher?: ReactNode;
   onOpenStopList: () => void;
+  onExitStopList?: (sectionId: string | null) => void;
   onFirstItemCreated?: () => void;
 }) {
   const { contentLanguage } = useAppSettings();
@@ -4243,6 +4246,10 @@ function PopulatedWorkspace({
   };
 
   const handleTreeSelectSection = (id: string) => {
+    if (workspaceKind === "stop-list" && onExitStopList) {
+      onExitStopList(id);
+      return;
+    }
     setRenamingSectionId(null);
     setSectionRenameInHeader(false);
     openSectionEditor(id);
@@ -4366,6 +4373,10 @@ function PopulatedWorkspace({
   };
 
   const selectAllPositions = () => {
+    if (workspaceKind === "stop-list" && onExitStopList) {
+      onExitStopList(null);
+      return;
+    }
     setSelectedSectionId(null);
     setGlobalTableScopeId(null);
     setUnifiedTableOpenSignal((signal) => signal + 1);
@@ -10269,6 +10280,7 @@ export function CatalogWorkspace({
   onStopListFilterChange,
   onStopListSectionScopeChange,
   onOpenStopList,
+  onExitStopList,
   onCatalogTabChange,
   onRegisterCreateNavigationGuard,
   onAdvancePhase,
@@ -10442,6 +10454,13 @@ export function CatalogWorkspace({
     />
   );
   const showOnboardingMenuSwitcher = activeMenuId !== "primary" || menus.length > 3;
+  const exitStopListToCatalogScope = (sectionId: string | null) => {
+    setRetainedItemId(null);
+    setRetainedSectionId(sectionId);
+    overviewSectionScopeRef.current = sectionId;
+    setOverviewTableOpenSignal((signal) => signal + 1);
+    onExitStopList(sectionId);
+  };
   const structureWorkspace = (
     <PopulatedWorkspace
       key={`catalog-workspace-${activeMenuId}`}
@@ -10511,6 +10530,7 @@ export function CatalogWorkspace({
       secondaryNavigation={secondaryNavigation}
       menuSwitcher={catalogMenuSwitcher}
       onOpenStopList={onOpenStopList}
+      onExitStopList={exitStopListToCatalogScope}
     />
   );
   const workspace = sections.length === 0 ? (

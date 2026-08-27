@@ -29,9 +29,17 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-function CatalogHarness({ initialPhase = "has-items" }: { initialPhase?: CatalogPhase }) {
+function CatalogHarness({
+  initialPhase = "has-items",
+  initialStopListActive = false,
+}: {
+  initialPhase?: CatalogPhase;
+  initialStopListActive?: boolean;
+}) {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("sections");
   const [sectionScopeId, setSectionScopeId] = useState<string | null>(null);
+  const [stopListSectionScopeId, setStopListSectionScopeId] = useState<string | null>(null);
+  const [stopListActive, setStopListActive] = useState(initialStopListActive);
   const [viewMode, setViewMode] = useState<CatalogViewMode>("sections");
   const [catalogPhase, setCatalogPhase] = useState<CatalogPhase>(initialPhase);
   const [routeRevision, setRouteRevision] = useState(0);
@@ -99,18 +107,35 @@ function CatalogHarness({ initialPhase = "has-items" }: { initialPhase?: Catalog
           selectedDishId="669204cd-0d0d-4782-8784-27df185f169e"
           catalogPhase={catalogPhase}
           catalogTab={catalogTab}
-          stopListActive={false}
+          stopListActive={stopListActive}
           viewMode={viewMode}
           sectionScopeId={sectionScopeId}
           stopListFilterId="quick:all"
-          stopListSectionScopeId={null}
+          stopListSectionScopeId={stopListSectionScopeId}
           resetSignal={0}
           onOverviewFilterChange={setViewMode}
-          onViewModeChange={setViewMode}
+          onViewModeChange={(mode) => {
+            setStopListActive(false);
+            setViewMode(mode);
+            setCatalogTab(mode === "sections" ? "sections" : "overview");
+          }}
           onSectionScopeChange={setSectionScopeId}
           onStopListFilterChange={() => {}}
-          onStopListSectionScopeChange={() => {}}
-          onOpenStopList={() => {}}
+          onStopListSectionScopeChange={setStopListSectionScopeId}
+          onOpenStopList={() => {
+            setStopListActive(true);
+            setCatalogTab("overview");
+          }}
+          onExitStopList={(sectionId) => {
+            const url = new URL(window.location.href);
+            if (sectionId) url.searchParams.set("sectionId", sectionId);
+            else url.searchParams.delete("sectionId");
+            window.history.replaceState(window.history.state, "", url);
+            setStopListActive(false);
+            setCatalogTab("overview");
+            setViewMode("quick:all");
+            setSectionScopeId(sectionId);
+          }}
           onCatalogTabChange={setCatalogTab}
           onRegisterCreateNavigationGuard={vi.fn()}
           onAdvancePhase={setCatalogPhase}
@@ -120,11 +145,14 @@ function CatalogHarness({ initialPhase = "has-items" }: { initialPhase?: Catalog
   );
 }
 
-function renderCatalog(initialPhase: CatalogPhase = "has-items") {
+function renderCatalog(initialPhase: CatalogPhase = "has-items", initialStopListActive = false) {
   window.localStorage.clear();
   window.localStorage.setItem("tasko.mockAuth.session.v1", "seed-owner");
   window.history.replaceState({}, "", "/storefront/catalog?editorNav=unified");
-  return render(<CatalogHarness initialPhase={initialPhase} />, { wrapper: Providers });
+  return render(
+    <CatalogHarness initialPhase={initialPhase} initialStopListActive={initialStopListActive} />,
+    { wrapper: Providers },
+  );
 }
 
 async function openSectionTreeSearch(user: ReturnType<typeof userEvent.setup>) {
@@ -276,6 +304,47 @@ describe("catalog observable behavior baseline", () => {
     expect(document.querySelector("[data-catalog-overview-header-trigger]")).toHaveTextContent("Все позиции");
     expect(document.querySelector("[data-position-create-button]")).toHaveTextContent("Новая позиция");
   });
+
+  it("exits stop-list mode for all positions, root sections, nested sections, and consecutive navigation", async () => {
+    const user = userEvent.setup();
+    renderCatalog("has-items", true);
+
+    const stopListEntry = () => screen.getByRole("button", { name: /Стоп-лист \d+/ });
+    const allPositionsEntry = () => document.querySelector<HTMLElement>("[data-catalog-tree-root]")!;
+
+    expect(stopListEntry()).toHaveAttribute("aria-current", "page");
+    await user.click(allPositionsEntry());
+
+    await waitFor(() => expect(stopListEntry()).not.toHaveAttribute("aria-current"));
+    expect(document.querySelector("[data-catalog-overview-header-trigger]")).toHaveTextContent("Все позиции");
+    expect(window.location.search).toBe("?editorNav=unified");
+
+    await user.click(stopListEntry());
+    expect(stopListEntry()).toHaveAttribute("aria-current", "page");
+    const kitchenRow = screen.getByRole("button", { name: "Раздел Кухня" });
+    const kitchenId = kitchenRow.getAttribute("data-tree-section-id");
+    await user.click(kitchenRow);
+
+    await waitFor(() => expect(stopListEntry()).not.toHaveAttribute("aria-current"));
+    expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveTextContent("Кухня");
+    expect(new URLSearchParams(window.location.search).get("sectionId")).toBe(kitchenId);
+
+    await user.click(stopListEntry());
+    const breakfastRow = screen.getByRole("button", { name: "Раздел Завтраки" });
+    const breakfastId = breakfastRow.getAttribute("data-tree-section-id");
+    await user.click(breakfastRow);
+
+    await waitFor(() => expect(stopListEntry()).not.toHaveAttribute("aria-current"));
+    expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveTextContent("Завтраки");
+    expect(new URLSearchParams(window.location.search).get("sectionId")).toBe(breakfastId);
+
+    const bakingRow = screen.getByRole("button", { name: "Раздел Выпечка" });
+    const bakingId = bakingRow.getAttribute("data-tree-section-id");
+    await user.click(bakingRow);
+    expect(stopListEntry()).not.toHaveAttribute("aria-current");
+    expect(document.querySelector("[data-catalog-workspace-table-header]")).toHaveTextContent("Выпечка");
+    expect(bakingId).not.toBe(breakfastId);
+  }, 10_000);
 
   it("filters only section names, keeps ancestor context, and restores the tree on close", async () => {
     const user = userEvent.setup();

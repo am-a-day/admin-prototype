@@ -778,6 +778,24 @@ function AuthenticatedShell() {
       return;
     }
   };
+  const exitCatalogStopList = (sectionId: string | null) => {
+    requestCatalogNavigation(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("positionId");
+      url.searchParams.delete("highlightPositionId");
+      url.searchParams.delete(CATALOG_CREATE_QUERY_PARAM);
+      if (sectionId) url.searchParams.set("sectionId", sectionId);
+      else url.searchParams.delete("sectionId");
+      window.history.replaceState(window.history.state, "", url);
+      setCatalogRouteRevision((revision) => revision + 1);
+      setCatalogStopListActive(false);
+      setCatalogTab("overview");
+      setCatalogViewMode("quick:all");
+      setCatalogOverviewFilterId("quick:all");
+      lastNonStopCatalogFilterRef.current = "quick:all";
+      setCatalogSectionScopeId(sectionId);
+    });
+  };
   // Sidebar зависит только от ширины viewport
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   useEffect(() => {
@@ -1178,6 +1196,7 @@ function AuthenticatedShell() {
           onStopListFilterChange={setCatalogStopListFilterId}
           onStopListSectionScopeChange={setCatalogStopListSectionScopeId}
           onOpenStopList={() => changeCatalogPrimaryTab("stop-list")}
+          onExitStopList={exitCatalogStopList}
           onCatalogTabChange={setCatalogTab}
           onRegisterCreateNavigationGuard={(guard) => {
             catalogCreateNavigationGuardRef.current = guard;
