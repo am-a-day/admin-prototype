@@ -38,6 +38,7 @@ function treePanel(
   items: CatalogItem[],
   includeArchived = false,
   selectedSectionId: string | null = null,
+  onSelectSection = vi.fn(),
 ) {
   return (
     <TooltipProvider>
@@ -51,7 +52,7 @@ function treePanel(
         selectedSectionId={selectedSectionId}
         sectionEditingEnabled
         includeArchived={includeArchived}
-        onSelectSection={vi.fn()}
+        onSelectSection={onSelectSection}
         onSelectAllPositions={vi.fn()}
         onSelectStopList={vi.fn()}
         onStartCreateSection={vi.fn()}
@@ -99,14 +100,16 @@ describe("CatalogTreeThumbnail", () => {
 });
 
 describe("UnifiedCatalogTreePanel section metadata", () => {
-  it("hides section counts and keeps stopped and scheduled totals in status tooltips", async () => {
+  it("shows 0 only for empty available sections and keeps statuses higher priority", async () => {
     const sections: CatalogTreeSection[] = [
       { id: "available-0", name: "Доступный 0", availabilityMode: "always", children: [] },
       { id: "available", name: "Доступный", availabilityMode: "always", children: [] },
       { id: "available-13", name: "Доступный 13", availabilityMode: "always", children: [] },
       { id: "available-241", name: "Доступный 241", availabilityMode: "always", children: [] },
       { id: "stopped", name: "На стопе", availabilityMode: "unavailable", children: [] },
+      { id: "stopped-empty", name: "Пустой на стопе", availabilityMode: "unavailable", children: [] },
       { id: "scheduled", name: "По расписанию", availabilityMode: "schedule", children: [] },
+      { id: "scheduled-empty", name: "Пустой по расписанию", availabilityMode: "schedule", children: [] },
     ];
     const items = [
       ...Array.from({ length: 6 }, (_, index) => catalogItem(`available-${index}`, "available")),
@@ -122,7 +125,15 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const stoppedRow = screen.getByRole("button", { name: "Раздел На стопе" });
     const scheduledRow = screen.getByRole("button", { name: "Раздел По расписанию" });
 
-    expect(within(screen.getByRole("button", { name: "Раздел Доступный 0" })).queryByText("0")).not.toBeInTheDocument();
+    const emptyAvailableRow = screen.getByRole("button", { name: "Раздел Доступный 0" });
+    const emptyAvailableIndicator = within(emptyAvailableRow).getByText("0");
+    expect(emptyAvailableIndicator).toHaveAttribute("data-catalog-section-empty-indicator");
+    expect(emptyAvailableIndicator).toHaveClass("text-[#a8a29e]", "tabular-nums", "text-right");
+    expect(emptyAvailableIndicator.closest("[data-catalog-section-metadata]")).toHaveClass(
+      "absolute",
+      "right-0.5",
+      "group-hover:opacity-0",
+    );
     expect(within(availableRow).queryByText("6")).not.toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: "Раздел Доступный 13" })).queryByText("13")).not.toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: "Раздел Доступный 241" })).queryByText("241")).not.toBeInTheDocument();
@@ -137,9 +148,53 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(within(stoppedRow).queryByText("21")).not.toBeInTheDocument();
     expect(within(scheduledRow).getByLabelText("По расписанию · 12 позиций")).toBeInTheDocument();
     expect(within(scheduledRow).queryByText("12")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Пустой на стопе" })).getByLabelText("На стопе · 0 позиций")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Пустой на стопе" })).queryByText("0")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Пустой по расписанию" })).getByLabelText("По расписанию · 0 позиций")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Раздел Пустой по расписанию" })).queryByText("0")).not.toBeInTheDocument();
 
     stoppedStatus.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent("На стопе · 21 позиция");
+  });
+
+  it("gives the chevron a stable 20px hover target without selecting the row", async () => {
+    const user = userEvent.setup();
+    const onSelectSection = vi.fn();
+    const sections: CatalogTreeSection[] = [
+      {
+        id: "root",
+        name: "Корневой раздел",
+        children: [{ id: "empty-child", parentId: "root", name: "Пустой подраздел", children: [] }],
+      },
+    ];
+
+    render(treePanel(sections, [], false, null, onSelectSection));
+
+    const rootRow = screen.getByRole("button", { name: "Раздел Корневой раздел" });
+    const caret = within(rootRow).getByRole("button", { name: "Свернуть раздел Корневой раздел" });
+    const caretSlot = caret.closest("[data-catalog-section-caret-slot]");
+
+    expect(caret).toHaveClass("size-5", "rounded-[6px]", "hover:bg-stone-100", "absolute");
+    expect(caret.querySelector("svg")).toHaveAttribute("width", "10");
+    expect(caretSlot).toHaveClass("h-5", "w-2.5", "mr-1");
+
+    await user.hover(caret);
+    expect(rootRow).toHaveClass("bg-transparent");
+    expect(rootRow).not.toHaveClass("hover:bg-[#f5f5f4]");
+
+    await user.unhover(caret);
+    expect(rootRow).toHaveClass("hover:bg-[#f5f5f4]");
+
+    await user.click(caret);
+    expect(onSelectSection).not.toHaveBeenCalled();
+    expect(within(rootRow).getByRole("button", { name: "Раскрыть раздел Корневой раздел" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Раздел Пустой подраздел" })).not.toBeInTheDocument();
+
+    await user.click(within(rootRow).getByRole("button", { name: "Раскрыть раздел Корневой раздел" }));
+    expect(within(screen.getByRole("button", { name: "Раздел Пустой подраздел" })).getByText("0")).toHaveAttribute(
+      "data-catalog-section-empty-indicator",
+    );
+    expect(onSelectSection).not.toHaveBeenCalled();
   });
 
   it("anchors independent hover actions to the row edge while indentation only affects left content", async () => {
@@ -260,6 +315,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
         children: [
           { id: "active", parentId: "root", name: "Активный", status: "active", children: [] },
           { id: "archive", parentId: "root", name: "Архивный", status: "archive", children: [] },
+          { id: "archive-empty", parentId: "root", name: "Пустой архивный", status: "archive", children: [] },
         ],
       },
     ];
@@ -280,6 +336,9 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("absolute", "right-0.5", "size-5", "justify-center", "group-hover:opacity-0");
     expect(archivedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(within(archivedRow).queryByText("13")).not.toBeInTheDocument();
+    const emptyArchivedRow = screen.getByRole("button", { name: "Раздел Пустой архивный" });
+    expect(within(emptyArchivedRow).getByLabelText("В архиве · 0 позиций")).toBeInTheDocument();
+    expect(within(emptyArchivedRow).queryByText("0")).not.toBeInTheDocument();
 
     archivedStatus.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent("В архиве · 13 позиций");

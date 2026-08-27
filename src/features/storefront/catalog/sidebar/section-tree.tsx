@@ -249,6 +249,7 @@ export function UnifiedCatalogTreePanel({
   onReorderSections,
 }: UnifiedCatalogTreePanelProps) {
   const [query, setQuery] = useState("");
+  const [hoveredCaretSectionId, setHoveredCaretSectionId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(() =>
     readCatalogJson<boolean>(CATALOG_TREE_SHOW_ARCHIVED_STORAGE_KEY, false),
@@ -448,6 +449,8 @@ export function UnifiedCatalogTreePanel({
           ? "scheduled"
           : null;
     const sectionItemCount = countBySection.get(section.id) ?? 0;
+    const showEmptyIndicator = availabilityStatus === null && sectionItemCount === 0;
+    const caretHovered = hoveredCaretSectionId === section.id;
     const sectionStatusTooltipLabel = availabilityStatus
       ? `${SECTION_STATUS_LABELS[availabilityStatus]} · ${formatPositionsCount(sectionItemCount)}`
       : undefined;
@@ -506,7 +509,7 @@ export function UnifiedCatalogTreePanel({
                 "group relative flex items-center rounded-[8px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#292524]/10",
                 renaming ? (depth === 0 ? "h-10 pl-1.5" : "h-7 pl-1.5") : "h-8 py-1.5",
                 !renaming && (active && depth === 0 ? "pl-2 pr-0.5" : "pl-1.5 pr-0.5"),
-                active ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
+                active ? "bg-[#f5f5f4]" : caretHovered ? "bg-transparent" : "hover:bg-[#f5f5f4]",
                 isDragging && "bg-[#f5f5f4] opacity-70 shadow-sm",
               )}
               style={sortableStyle}
@@ -518,19 +521,27 @@ export function UnifiedCatalogTreePanel({
                 style={{ paddingLeft: depth * 20 }}
               >
                 {showCaretSlot && (
-                  <button
-                    type="button"
-                    data-no-dnd
-                    aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
-                    disabled={!hasChildren}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
-                    }}
-                    className={cn("mr-1 flex h-5 w-2.5 shrink-0 items-center justify-center text-[#a6a09b]", !hasChildren && "invisible")}
-                  >
-                    <CaretRight size={10} weight="fill" className={cn("transition-transform", isExpanded && "rotate-90")} />
-                  </button>
+                  <span data-catalog-section-caret-slot className="relative mr-1 h-5 w-2.5 shrink-0">
+                    <button
+                      type="button"
+                      data-no-dnd
+                      data-catalog-section-caret
+                      aria-label={`${isExpanded ? "Свернуть" : "Раскрыть"} раздел ${section.name}`}
+                      disabled={!hasChildren}
+                      onPointerEnter={() => setHoveredCaretSectionId(section.id)}
+                      onPointerLeave={() => setHoveredCaretSectionId((current) => current === section.id ? null : current)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (hasChildren) setExpanded((current) => ({ ...current, [section.id]: !isExpanded }));
+                      }}
+                      className={cn(
+                        "absolute left-1/2 top-1/2 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#a6a09b] hover:bg-stone-100",
+                        !hasChildren && "invisible",
+                      )}
+                    >
+                      <CaretRight size={10} weight="fill" className={cn("transition-transform", isExpanded && "rotate-90")} />
+                    </button>
+                  </span>
                 )}
                 <CatalogTreeThumbnail src={section.imageUrl} selected={active} muted={isArchived} />
                 {renaming ? (
@@ -563,7 +574,7 @@ export function UnifiedCatalogTreePanel({
               </div>
               {!renaming && (
                 <>
-                  {availabilityStatus && (
+                  {(availabilityStatus || showEmptyIndicator) && (
                     <span
                       data-catalog-section-metadata
                       className={cn(
@@ -571,15 +582,24 @@ export function UnifiedCatalogTreePanel({
                         isArchived && "opacity-60",
                       )}
                     >
-                      <CatalogAvailabilityStatusIcon
-                        state={availabilityStatus}
-                        entity="section"
-                        tone="neutral"
-                        iconSize={12}
-                        className="size-5"
-                        tooltipLabel={sectionStatusTooltipLabel}
-                        hideWithGroupActions={false}
-                      />
+                      {availabilityStatus ? (
+                        <CatalogAvailabilityStatusIcon
+                          state={availabilityStatus}
+                          entity="section"
+                          tone="neutral"
+                          iconSize={12}
+                          className="size-5"
+                          tooltipLabel={sectionStatusTooltipLabel}
+                          hideWithGroupActions={false}
+                        />
+                      ) : (
+                        <span
+                          data-catalog-section-empty-indicator
+                          className="w-full text-right text-[11px] leading-[18px] tabular-nums text-[#a8a29e]"
+                        >
+                          0
+                        </span>
+                      )}
                     </span>
                   )}
                   <Tooltip
