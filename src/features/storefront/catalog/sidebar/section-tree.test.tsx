@@ -131,7 +131,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const stoppedMetadata = stoppedStatus.closest("[data-catalog-section-metadata]");
     expect(stoppedStatus).toHaveAttribute("tabindex", "0");
     expect(stoppedStatus).toHaveClass("size-5");
-    expect(stoppedMetadata).toHaveClass("ml-auto", "size-5", "justify-center", "group-hover:opacity-0");
+    expect(stoppedMetadata).toHaveClass("absolute", "right-0.5", "size-5", "justify-center", "group-hover:opacity-0");
     expect(stoppedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(stoppedRow).toHaveAttribute("title", "На стопе · 21 позиция");
     expect(within(stoppedRow).queryByText("21")).not.toBeInTheDocument();
@@ -142,90 +142,113 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("На стопе · 21 позиция");
   });
 
-  it("keeps hover actions out of flow while indentation only affects row content", async () => {
+  it("anchors independent hover actions to the row edge while indentation only affects left content", async () => {
     const sections: CatalogTreeSection[] = [
       {
         id: "root",
         name: "Очень длинное название корневого раздела",
         children: [
-          { id: "nested", parentId: "root", name: "Вложенный раздел", children: [] },
+          {
+            id: "nested",
+            parentId: "root",
+            name: "Вложенный раздел",
+            children: [
+              { id: "deep", parentId: "nested", name: "Глубокий раздел", children: [] },
+            ],
+          },
         ],
       },
     ];
-    const items = [catalogItem("nested-item", "nested")];
+    const items = [catalogItem("deep-item", "deep")];
 
-    renderTree(sections, items);
+    render(treePanel(sections, items, false, "deep"));
 
     const headerGrid = document.querySelector('[data-catalog-section-action-grid="header"]');
     const rootRow = screen.getByRole("button", { name: "Раздел Очень длинное название корневого раздела" });
     const nestedRow = screen.getByRole("button", { name: "Раздел Вложенный раздел" });
+    const deepRow = await screen.findByRole("button", { name: "Раздел Глубокий раздел" });
     const rootLeft = rootRow.querySelector("[data-catalog-section-left-content]");
     const nestedLeft = nestedRow.querySelector("[data-catalog-section-left-content]");
-    const rootActions = rootRow.querySelector("[data-catalog-section-hover-actions]");
-    const nestedActions = nestedRow.querySelector("[data-catalog-section-hover-actions]");
+    const deepLeft = deepRow.querySelector("[data-catalog-section-left-content]");
+    const rootAdd = rootRow.querySelector("[data-catalog-section-add-action]");
+    const rootMore = within(rootRow).getByRole("button", { name: "Действия с разделом Очень длинное название корневого раздела" });
+    const nestedAdd = nestedRow.querySelector("[data-catalog-section-add-action]");
+    const nestedMore = within(nestedRow).getByRole("button", { name: "Действия с разделом Вложенный раздел" });
+    const deepAdd = deepRow.querySelector("[data-catalog-section-add-action]");
+    const deepMore = within(deepRow).getByRole("button", { name: "Действия с разделом Глубокий раздел" });
     const nestedMetadata = nestedRow.querySelector("[data-catalog-section-metadata]");
     const nestedCount = nestedRow.querySelector("[data-catalog-section-count]");
     const nestedList = document.querySelector('[data-section-parent-id="root"]');
     const scrollport = document.querySelector(".scrollbar-subtle");
     const headerActions = within(headerGrid as HTMLElement).getAllByRole("button");
 
-    expect(headerGrid).toHaveClass("grid", "w-[46px]", "grid-cols-[20px_20px]", "gap-1.5");
+    expect(headerGrid).toHaveClass("flex", "w-[46px]", "gap-1.5");
     expect(headerActions.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Добавить раздел",
       "Открыть поиск разделов",
     ]);
     expect(headerActions.map((button) => button.querySelector("svg")?.getAttribute("width"))).toEqual(["14", "14"]);
-    expect(rootActions).toHaveClass("absolute", "right-0.5", "w-[46px]", "grid-cols-[20px_20px]");
-    expect(nestedActions).toHaveClass("absolute", "right-0.5", "w-[46px]", "grid-cols-[20px_20px]");
+    expect(rootAdd).toHaveClass("absolute", "right-7");
+    expect(rootMore).toHaveClass("absolute", "right-0.5");
+    expect(nestedAdd).toHaveClass("absolute", "right-7");
+    expect(nestedMore).toHaveClass("absolute", "right-0.5");
+    expect(deepAdd).toHaveClass("absolute", "right-7");
+    expect(deepMore).toHaveClass("absolute", "right-0.5");
     expect(nestedMetadata).not.toBeInTheDocument();
     expect(nestedCount).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-section-right-slots]")).not.toBeInTheDocument();
     expect(scrollport).toHaveClass("[scrollbar-gutter:stable]");
     expect(headerGrid?.closest(".scrollbar-subtle")).toBe(scrollport);
-    expect(rootActions?.closest(".scrollbar-subtle")).toBe(scrollport);
-    expect(nestedActions?.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(rootMore.closest(".scrollbar-subtle")).toBe(scrollport);
+    expect(nestedMore.closest(".scrollbar-subtle")).toBe(scrollport);
     expect(rootLeft).toHaveStyle({ paddingLeft: "0px" });
     expect(nestedLeft).toHaveStyle({ paddingLeft: "20px" });
-    expect(rootLeft?.nextElementSibling).toBe(rootActions);
-    expect(nestedLeft?.nextElementSibling).toBe(nestedActions);
-    expect(rootActions?.parentElement).toBe(rootRow);
-    expect(nestedActions?.parentElement).toBe(nestedRow);
+    expect(deepLeft).toHaveStyle({ paddingLeft: "40px" });
+    expect(rootLeft).toHaveClass("pr-[52px]");
+    expect(nestedLeft).toHaveClass("pr-[52px]");
+    expect(rootAdd?.parentElement).toBe(rootRow);
+    expect(rootMore.parentElement).toBe(rootRow);
+    expect(nestedAdd?.parentElement).toBe(nestedRow);
+    expect(nestedMore.parentElement).toBe(nestedRow);
     expect(nestedList).not.toHaveClass("pl-5");
     expect(rootRow.querySelector("[data-section-title]")).toHaveClass("min-w-0", "flex-1", "truncate");
 
-    const disabledAdd = within(nestedRow).getByRole("button", { name: "Добавить подраздел в раздел Вложенный раздел" });
-    const more = within(nestedRow).getByRole("button", { name: "Действия с разделом Вложенный раздел" });
+    const nestedEnabledAdd = within(nestedRow).getByRole("button", { name: "Добавить подраздел в раздел Вложенный раздел" });
+    const disabledAdd = within(deepRow).getByRole("button", { name: "Добавить подраздел в раздел Глубокий раздел" });
+    const more = within(deepRow).getByRole("button", { name: "Действия с разделом Глубокий раздел" });
+    expect(nestedEnabledAdd).toBeEnabled();
     expect(disabledAdd).toBeDisabled();
     expect(disabledAdd).toHaveClass("size-5");
     expect(disabledAdd.querySelector("svg")).toHaveAttribute("width", "14");
+    expect(nestedAdd).toHaveClass("group-hover:opacity-100");
+    expect(nestedAdd?.className).toBe(rootAdd?.className);
+    expect(deepAdd?.className).toBe(rootAdd?.className);
     expect(more).toHaveClass("size-5");
     expect(more.querySelector("svg")).toHaveAttribute("width", "16");
     expect(screen.getByRole("button", { name: "Все позиции 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Стоп-лист 55" })).toBeInTheDocument();
 
-    const disabledAddTooltipTrigger = within(nestedRow).getByLabelText("Нельзя добавить подраздел: в разделе уже есть позиции");
+    const disabledAddTooltipTrigger = within(deepRow).getByLabelText("Нельзя добавить подраздел: в разделе уже есть позиции");
     expect(disabledAddTooltipTrigger).toHaveAttribute("tabindex", "0");
-    expect(disabledAddTooltipTrigger).toHaveClass("opacity-0");
     disabledAddTooltipTrigger.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Нельзя добавить подраздел: в разделе уже есть позиции");
   });
 
-  it("closes row actions when navigation selects another section", async () => {
+  it("does not pin More or its action background while its menu is open", async () => {
     const user = userEvent.setup();
     const sections: CatalogTreeSection[] = [
       { id: "first", name: "Первый раздел", children: [] },
       { id: "second", name: "Второй раздел", children: [] },
     ];
-    const { rerender } = render(treePanel(sections, [], false, "first"));
+    render(treePanel(sections, [], false, "first"));
     const firstRow = screen.getByRole("button", { name: "Раздел Первый раздел" });
-    const firstActions = firstRow.querySelector("[data-catalog-section-hover-actions]");
+    const firstMore = within(firstRow).getByRole("button", { name: "Действия с разделом Первый раздел" });
 
-    await user.click(within(firstRow).getByRole("button", { name: "Действия с разделом Первый раздел" }));
-    expect(firstActions).toHaveClass("opacity-100", "pointer-events-auto");
+    await user.click(firstMore);
 
-    rerender(treePanel(sections, [], false, "second"));
-
-    expect(firstActions).not.toHaveClass("opacity-100", "pointer-events-auto");
+    expect(firstMore).toHaveAttribute("data-state", "open");
+    expect(firstMore).toHaveClass("opacity-0", "group-hover:opacity-100", "hover:bg-[#e7e5e4]");
+    expect(firstMore).not.toHaveClass("opacity-100", "bg-[#f5f5f4]");
   });
 
   it("keeps archived sections hidden until enabled and shows Archive instead of their count", async () => {
@@ -254,7 +277,7 @@ describe("UnifiedCatalogTreePanel section metadata", () => {
     const archivedRow = screen.getByRole("button", { name: "Раздел Архивный" });
     expect(archivedRow).toHaveAttribute("data-archived-section", "true");
     const archivedStatus = within(archivedRow).getByLabelText("В архиве · 13 позиций");
-    expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("ml-auto", "size-5", "justify-center", "group-hover:opacity-0");
+    expect(archivedStatus.closest("[data-catalog-section-metadata]")).toHaveClass("absolute", "right-0.5", "size-5", "justify-center", "group-hover:opacity-0");
     expect(archivedStatus.querySelector("svg")).toHaveAttribute("width", "12");
     expect(within(archivedRow).queryByText("13")).not.toBeInTheDocument();
 
