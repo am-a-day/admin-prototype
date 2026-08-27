@@ -96,7 +96,8 @@ import { HomeWorkspace, type HomeTab } from "@/features/storefront/home-workspac
 import { LaunchPage } from "@/features/storefront/launch-page";
 import { UpsellWorkspace } from "@/features/storefront/upsell-workspace";
 import { PublicMenuPage } from "@/features/storefront/public-menu-page";
-import { TranslationOverlays, TranslationsWorkspace } from "@/features/storefront/translations-workspace";
+import { TranslationOverlays } from "@/features/storefront/translations-workspace";
+import { TranslationsWorkspace } from "@/features/storefront/translations-workspace-v2";
 import { OwnerTrainingLayout, WaiterTrainingLayout } from "@/features/training/training-layouts";
 import type { TrainingActiveSession, TrainingTab } from "@/features/training/training-data";
 
@@ -1362,7 +1363,7 @@ function AuthenticatedShell() {
     isCatalogPage && catalogTab === "upsell" ? "upsell" :
     isTrainingPage ? null :
     (activeTab as StoreTabId | ManageTabId | AnalyticsTabId | null);
-  const previewVisible = section === "storefront" && !isTranslationsPage;
+  const previewVisible = section === "storefront";
 
   const metaKey =
     section === "storefront" ? `storefront:${storeTab}` :
@@ -1503,7 +1504,7 @@ function AuthenticatedShell() {
                 data-preview-panel-slot
                 className={cn(
                   "min-h-0 shrink-0 overflow-hidden transition-[width,margin] ease-out motion-reduce:transition-none",
-                  isCatalogPage && "max-[1199px]:ml-0 max-[1199px]:w-0",
+                  (isCatalogPage || isTranslationsPage) && "max-[1199px]:ml-0 max-[1199px]:w-0",
                   previewCollapsed ? "ml-0 w-0" : "ml-3 w-[390px]",
                 )}
                 style={{ transitionDuration: `${PREVIEW_PANEL_TRANSITION_MS}ms` }}

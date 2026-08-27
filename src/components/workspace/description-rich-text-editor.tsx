@@ -90,11 +90,13 @@ export function getDescriptionTextLength(html: string) {
 function RichTextToolbarButton({
   label,
   active,
+  disabled = false,
   onMouseDown,
   children,
 }: {
   label: string;
   active: boolean;
+  disabled?: boolean;
   onMouseDown: () => void;
   children: ReactNode;
 }) {
@@ -104,12 +106,13 @@ function RichTextToolbarButton({
       title={label}
       aria-label={label}
       aria-pressed={active}
+      disabled={disabled}
       onMouseDown={(event) => {
         event.preventDefault();
         onMouseDown();
       }}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-[7px] text-[13px] font-semibold leading-none text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+        "flex h-7 w-7 items-center justify-center rounded-[7px] text-[13px] font-semibold leading-none text-[#57534d] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 disabled:pointer-events-none disabled:opacity-40",
         active && "bg-[#efefeb] text-[#292524] shadow-[inset_0_0_0_1px_rgba(41,37,36,0.08)]",
       )}
     >
@@ -128,6 +131,9 @@ export function DescriptionRichTextEditor({
   limit,
   error,
   compact = false,
+  readOnly = false,
+  hideLabel = false,
+  className,
 }: {
   value?: string;
   initialValue?: string;
@@ -138,6 +144,9 @@ export function DescriptionRichTextEditor({
   limit: number;
   error?: string;
   compact?: boolean;
+  readOnly?: boolean;
+  hideLabel?: boolean;
+  className?: string;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const sourceValue = value ?? initialValue ?? "";
@@ -234,8 +243,8 @@ export function DescriptionRichTextEditor({
   };
 
   return (
-    <div>
-      <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{label}</div>
+    <div className={className}>
+      {!hideLabel && <div className="mb-1.5 text-[13px] leading-5 text-[#303030]">{label}</div>}
       <div
         className={cn(
           "overflow-hidden rounded-[8px] border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition focus-within:border-[#c7c2bd]",
@@ -243,19 +252,19 @@ export function DescriptionRichTextEditor({
         )}
       >
         <div className="flex h-8 items-center gap-0.5 border-b border-[#e5e5e5] px-1.5">
-          <RichTextToolbarButton label="Жирный" active={activeMarks.bold} onMouseDown={() => applyCommand("bold")}>
+          <RichTextToolbarButton label="Жирный" active={activeMarks.bold} disabled={readOnly} onMouseDown={() => applyCommand("bold")}>
             B
           </RichTextToolbarButton>
-          <RichTextToolbarButton label="Курсив" active={activeMarks.italic} onMouseDown={() => applyCommand("italic")}>
+          <RichTextToolbarButton label="Курсив" active={activeMarks.italic} disabled={readOnly} onMouseDown={() => applyCommand("italic")}>
             <span className="italic">I</span>
           </RichTextToolbarButton>
-          <RichTextToolbarButton label="Подчёркнутый" active={activeMarks.underline} onMouseDown={() => applyCommand("underline")}>
+          <RichTextToolbarButton label="Подчёркнутый" active={activeMarks.underline} disabled={readOnly} onMouseDown={() => applyCommand("underline")}>
             <span className="underline">U</span>
           </RichTextToolbarButton>
-          <RichTextToolbarButton label="Зачёркнутый" active={activeMarks.strike} onMouseDown={() => applyCommand("strikeThrough")}>
+          <RichTextToolbarButton label="Зачёркнутый" active={activeMarks.strike} disabled={readOnly} onMouseDown={() => applyCommand("strikeThrough")}>
             <span className="line-through">S</span>
           </RichTextToolbarButton>
-          <RichTextToolbarButton label="Маркированный список" active={activeMarks.list} onMouseDown={() => applyCommand("insertUnorderedList")}>
+          <RichTextToolbarButton label="Маркированный список" active={activeMarks.list} disabled={readOnly} onMouseDown={() => applyCommand("insertUnorderedList")}>
             •
           </RichTextToolbarButton>
           <div className={cn("ml-auto text-[12px] leading-5", counterTone)}>
@@ -270,17 +279,21 @@ export function DescriptionRichTextEditor({
               element.dataset.richTextInitialized = "true";
             }
           }}
-          contentEditable
+          contentEditable={!readOnly}
           suppressContentEditableWarning
           role="textbox"
           aria-label={label}
           aria-multiline="true"
           aria-invalid={Boolean(shownError)}
           data-placeholder={placeholder}
-          onInput={() => syncFromEditor()}
+          onInput={() => {
+            if (!readOnly) syncFromEditor();
+          }}
           onBlur={() => {
-            syncFromEditor(true);
-            onBlur?.();
+            if (!readOnly) {
+              syncFromEditor(true);
+              onBlur?.();
+            }
           }}
           onKeyUp={refreshActiveMarks}
           onMouseUp={refreshActiveMarks}
@@ -288,6 +301,7 @@ export function DescriptionRichTextEditor({
           onPaste={handlePaste}
           className={cn(
             "px-3 py-2 text-[13px] leading-5 text-[#292524] outline-none empty:before:pointer-events-none empty:before:text-[#a8a29e] empty:before:content-[attr(data-placeholder)] [&_em]:italic [&_li]:ml-4 [&_li]:list-disc [&_p]:my-0 [&_s]:line-through [&_strong]:font-semibold [&_u]:underline [&_ul]:my-0 [&_ul]:pl-2",
+            readOnly && "cursor-default bg-[#fafaf9] text-[#57534d]",
             compact ? "min-h-[80px]" : "min-h-[96px]",
           )}
         />
