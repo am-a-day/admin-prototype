@@ -546,10 +546,13 @@ function AuthenticatedShell() {
   const { activeEditorItemId, itemsById } = useCatalogStore();
   const {
     banners: bannerList,
+    jobs: translationJobs,
     updateBanner,
     removeBanner: removeSharedBanner,
     addBanner: addSharedBanner,
   } = useTranslations();
+  const translationsLoading = translationJobs.some((job) =>
+    job.source === "Новый язык" && (job.status === "queued" || job.status === "running"));
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";
@@ -1401,6 +1404,7 @@ function AuthenticatedShell() {
               showTooltips={!wide}
               onQuickCreate={handleQuickCreate}
               onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
+              translationsLoading={translationsLoading}
             />
           </div>
 
@@ -1423,6 +1427,7 @@ function AuthenticatedShell() {
                   pinned={false}
                   onQuickCreate={handleQuickCreate}
                   onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
+                  translationsLoading={translationsLoading}
                 />
               </div>
             </div>
@@ -1461,6 +1466,7 @@ function AuthenticatedShell() {
             onNavigate={guardedNavigate}
             onQuickCreate={handleQuickCreate}
             onOpenPrototypeTools={() => setPrototypeToolsOpen(true)}
+            translationsLoading={translationsLoading}
           />
 
           {/* Work area */}

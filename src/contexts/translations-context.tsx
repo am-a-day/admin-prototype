@@ -1082,6 +1082,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
             : job);
           return;
         }
+        const durationMs = source === "Новый язык" ? 40_000 : 1_500;
         additions.push({
           id: `translation-job-${startedAt}-${language}-${index}`,
           language,
@@ -1096,7 +1097,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           reviewFieldIdsByMaterial,
           preserveManualTranslations,
           startedAt,
-          finishesAt: startedAt + 1500 + index * 120,
+          finishesAt: startedAt + durationMs + index * 120,
         });
       });
       return additions.length ? [...additions, ...next] : next;

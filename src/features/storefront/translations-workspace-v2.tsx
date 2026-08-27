@@ -604,7 +604,7 @@ function TranslationSidebar({
   const closeSearch = () => { setQuery(""); setSearchOpen(false); };
 
   return (
-    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f5f5f4] shadow-[inset_-1px_0_0_#e7e5e4]">
+    <aside data-translations-sidebar className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-r border-stone-200 bg-[#f5f5f4]">
       <div className="flex h-[48px] shrink-0 items-end border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]">
         <div className="flex w-full items-center justify-between">
           <h1 className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#1c1917]">Переводы</h1>
@@ -686,7 +686,7 @@ function TranslationSidebar({
 }
 
 function MachineIndicator({ field }: { field: TranslationField }) {
-  return <Tooltip label="Переведено автоматически" side="top"><span tabIndex={0} role="img" aria-label={`Переведено автоматически: ${field.label}`} className="flex size-4 items-center justify-center text-[#615fff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200"><StarFour size={12} weight="fill" /></span></Tooltip>;
+  return <Tooltip label="Переведено автоматически" side="top"><span tabIndex={0} role="img" aria-label={`Переведено автоматически: ${field.label}`} className="flex size-4 items-center justify-center text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"><StarFour size={12} /></span></Tooltip>;
 }
 
 function TranslationFieldRow({ field, language, material }: { field: TranslationField; language: TranslationLanguageCode; material: TranslationMaterial }) {
@@ -708,7 +708,7 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
       <div className={cn("group relative min-w-0 bg-white", isDescription ? "p-0" : "flex h-12 items-center px-1.5")}>
         {sourceFilled && !machineTranslated && (
           <Tooltip label={translateLabel} side="top" delayDuration={250}>
-            <Button type="button" variant="ghost" size="icon" aria-label={`${translateLabel}: ${field.label}`} onClick={() => autoTranslateField(material.id, field.id, language)} className={cn("absolute right-3 z-10 size-[26px] rounded-[7px] bg-white/95 p-0 text-[#615fff] opacity-0 transition-opacity hover:bg-[#f5f5ff] group-hover:opacity-100 group-focus-within:opacity-100", isDescription ? "top-[42px]" : "top-[11px]")}><StarFour size={16} weight="fill" /></Button>
+            <Button data-ai-translate-action type="button" variant="ghost" size="icon" aria-label={`${translateLabel}: ${field.label}`} onClick={() => autoTranslateField(material.id, field.id, language)} className={cn("absolute right-3 z-10 size-[26px] rounded-[8px] bg-stone-200 p-0 text-stone-900 opacity-0 transition-[color,background-color,opacity] hover:bg-stone-300 hover:text-stone-950 group-hover:opacity-100 group-focus-within:opacity-100", isDescription ? "top-[42px]" : "top-[11px]")}><StarFour size={16} /></Button>
           </Tooltip>
         )}
         {isDescription ? (
@@ -735,11 +735,12 @@ function TranslationEditor({ entity, language }: { entity: TranslationEntity | n
   if (!entity) return <main className="grid min-h-0 min-w-0 flex-1 place-items-center bg-[#fafaf9] text-[13px] text-[#79716b]">Нет сущностей для перевода</main>;
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white">
-      <header className="flex h-[55px] shrink-0 items-center justify-between gap-3 border-b border-[#eeeeec] px-4">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f5f5f4]">
+      <header className="flex h-[49px] shrink-0 items-center justify-between gap-3 bg-white px-4">
         <div className="flex min-w-0 items-center gap-1.5"><CatalogThumbnail src={imageUrl} kind={entity.material.kind === "section" ? "section" : "item"} className="size-6 rounded-[6px]" /><span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span></div>
         <PositionSaveStatus status={saveState} />
       </header>
+      <div data-translations-table-gap aria-hidden="true" className="h-1.5 shrink-0 bg-[#f5f5f4]" />
       <div className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} (оригинал)</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#fafaf9]"><div className="bg-white">{entity.fields.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} />)}</div></div>
     </main>
@@ -750,7 +751,7 @@ function EmptyTranslations() {
   return (
     <div className="flex min-h-0 flex-1 bg-[#fbfbf9]">
       <ResizableTranslationsSidebar>
-        <aside className="flex h-full w-full min-w-0 flex-col bg-[#f5f5f4] shadow-[inset_-1px_0_0_#e7e5e4]">
+        <aside data-translations-sidebar className="flex h-full w-full min-w-0 flex-col border-r border-stone-200 bg-[#f5f5f4]">
           <div className="flex h-[48px] items-end justify-between border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]"><h1 className="min-w-0 truncate text-[13px] text-[#1c1917]">Переводы</h1><TranslationsHeaderMenu /></div>
           <div data-translations-language-block className="flex flex-col gap-1 bg-white px-1.5 pb-1 pt-2">
             <AddLanguagePopover>

@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { CatalogStoreProvider, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
@@ -37,6 +37,10 @@ describe("translations workspace v2", () => {
     window.localStorage.setItem("tasko.mockAuth.session.v1", "seed-owner");
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("switches target languages and opens the shared original-language popover", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
@@ -61,48 +65,25 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
   });
 
-  it("deletes, adds, translates, hides, shows, and promotes a language from compact popovers", async () => {
+  it("deletes, hides, shows, and promotes languages from compact popovers", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     const { container } = renderWorkspace({ sections: [section], items: [item] });
 
-    await user.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
+    await user.click(screen.getByRole("button", { name: "Действия языка «Испанский»" }));
     let languageMenu = screen.getByRole("dialog");
     expect(within(languageMenu).getByRole("button", { name: "Сделать основным" })).toBeInTheDocument();
     expect(within(languageMenu).getByRole("button", { name: "Скрыть из меню" })).toBeInTheDocument();
     expect(within(languageMenu).getByRole("button", { name: "Удалить" })).toHaveClass("text-[#c10007]");
 
     await user.click(within(languageMenu).getByRole("button", { name: "Удалить" }));
-    const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить язык «Английский»?" });
+    const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить язык «Испанский»?" });
     expect(deleteDialog).toHaveAttribute("data-delete-confirmation-kind", "language");
     expect(within(deleteDialog).getByText("Все переводы на этот язык будут удалены. Это действие нельзя отменить.")).toBeInTheDocument();
     await user.click(within(deleteDialog).getByRole("button", { name: "Удалить" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Действия языка «Английский»" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Действия языка «Испанский»" })).not.toBeInTheDocument());
 
-    await user.click(screen.getByRole("button", { name: "Добавить язык" }));
-    const addPopover = screen.getByRole("dialog");
-    const languageSearch = within(addPopover).getByRole("textbox", { name: "Поиск языка" });
-    await user.type(languageSearch, "англ");
-    expect(within(addPopover).queryByText("Казахский")).not.toBeInTheDocument();
-    await user.click(within(addPopover).getByRole("button", { name: /Английский/ }));
-
-    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating"));
-    expect(screen.getByRole("button", { name: /Английский\. Идёт автоматический перевод/ })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Действия языка «Английский»" })).not.toBeInTheDocument();
-    expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeDisabled();
-    expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
-    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
-
-    await waitFor(
-      () => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"),
-      { timeout: 3500 },
-    );
-    expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
-    expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
     const actions = screen.getByRole("button", { name: "Действия языка «Английский»" });
     await user.click(actions);
     languageMenu = screen.getByRole("dialog");
@@ -125,6 +106,41 @@ describe("translations workspace v2", () => {
     expect(within(languageMenu).getByText("Текущий язык оригинала")).toBeInTheDocument();
     await user.click(within(languageMenu).getByRole("button", { name: "Сделать основным" }));
     await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
+  });
+
+  it("keeps a newly added language translating for at least 40 seconds", async () => {
+    vi.useFakeTimers();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить язык" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating");
+    expect(screen.getByRole("button", { name: /Английский\. Идёт автоматический перевод/ })).toBeDisabled();
+    expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeDisabled();
+    expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(39_900); });
+    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready");
+    expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
+    expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
   });
 
   it("switches entity types, keeps options separate, and searches only the current list", async () => {
@@ -172,13 +188,17 @@ describe("translations workspace v2", () => {
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     const { container } = renderWorkspace({ sections: [section], items: [{ ...item, description: "Сытное блюдо на завтрак", hasDescription: true }] });
 
+    expect(container.querySelector("[data-translations-sidebar]")).toHaveClass("border-r", "border-stone-200");
+    expect(container.querySelector("[data-translations-table-gap]")).toHaveClass("h-1.5");
+
     const titleInput = screen.getByRole("textbox", { name: "Казахский: Название" });
     expect(titleInput).toHaveClass("border-0", "rounded-none", "focus-visible:border-0");
     const titleAction = screen.getByRole("button", { name: /Перевести автоматически: Название|Перевести: Название/ });
+    expect(titleAction).toHaveClass("size-[26px]", "rounded-[8px]", "bg-stone-200", "text-stone-900");
     expect(titleAction).toHaveTextContent("");
     expect(titleAction.querySelector("svg")).toBeInTheDocument();
     await user.click(titleAction);
-    expect(await screen.findByRole("img", { name: "Переведено автоматически: Название" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "Переведено автоматически: Название" })).toHaveClass("text-stone-600");
     expect(screen.queryByRole("button", { name: /Перевести автоматически: Название|Перевести: Название/ })).not.toBeInTheDocument();
 
     fireEvent.focus(titleInput);

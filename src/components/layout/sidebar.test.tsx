@@ -87,6 +87,23 @@ describe("shared sidebar", () => {
     expect(screen.queryByRole("menu", { name: "Создать" })).not.toBeInTheDocument();
   });
 
+  it("replaces the translations icon with a loader during new-language translation", () => {
+    render(
+      <FullSidebar
+        section="storefront"
+        activeTab="translations"
+        onNavigate={() => {}}
+        translationsLoading
+      />,
+      { wrapper: Providers },
+    );
+
+    const translations = screen.getByRole("button", { name: "Переводы" });
+    expect(translations).toHaveAttribute("aria-busy", "true");
+    expect(translations).toHaveAttribute("data-nav-loading", "true");
+    expect(translations.querySelector("svg")).toHaveClass("animate-spin", "motion-reduce:animate-none");
+  });
+
   it("opens Prototype tools from More and marks the entry as DEV", async () => {
     const user = userEvent.setup();
     const onOpenPrototypeTools = vi.fn();

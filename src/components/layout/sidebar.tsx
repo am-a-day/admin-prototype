@@ -24,6 +24,7 @@ import {
   Scan,
   SealPercent,
   ShieldCheck,
+  SpinnerGap,
   Stack,
   Swatches,
   Tag,
@@ -511,6 +512,7 @@ function NavList({
   onNavigate,
   compact,
   showTooltips = false,
+  translationsLoading = false,
   onOpenPrototypeTools,
 }: {
   section: SectionId;
@@ -518,18 +520,22 @@ function NavList({
   onNavigate: (section: SectionId, tab: string) => void;
   compact: boolean;
   showTooltips?: boolean;
+  translationsLoading?: boolean;
   onOpenPrototypeTools?: () => void;
 }) {
   const { account } = useMockAuth();
   const navigation = getNavGroups(account?.workspace.organizationType ?? "restaurant");
 
   const renderItem = (item: NavItem) => {
-    const ItemIcon = item.icon;
+    const loading = translationsLoading && item.section === "storefront" && item.tab === "translations";
+    const ItemIcon = loading ? SpinnerGap : item.icon;
     const active = section === item.section && activeTab === item.tab;
     return (
       <Tooltip key={item.label} label={item.label} disabled={!compact || !showTooltips} delayDuration={0}>
         <button
           type="button"
+          aria-busy={loading || undefined}
+          data-nav-loading={loading ? "true" : undefined}
           data-tour={item.section === "storefront" && item.tab === "home" ? "nav-home" : undefined}
           onClick={(event) => { event.stopPropagation(); onNavigate(item.section, item.tab); }}
           className={cn(
@@ -540,7 +546,7 @@ function NavList({
               : "text-[#5a5a5c] hover:bg-white/70 hover:text-zinc-800",
           )}
         >
-          <ItemIcon size={16} weight="fill" className="shrink-0" />
+          <ItemIcon size={16} weight={loading ? "regular" : "fill"} className={cn("shrink-0", loading && "animate-spin motion-reduce:animate-none")} />
           {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
         </button>
       </Tooltip>
@@ -588,6 +594,7 @@ export function NavDrawer({
   onNavigate,
   onOpenPrototypeTools,
   onQuickCreate,
+  translationsLoading = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -596,6 +603,7 @@ export function NavDrawer({
   onNavigate: (section: SectionId, tab: string) => void;
   onOpenPrototypeTools?: () => void;
   onQuickCreate?: (action: QuickCreateAction) => void;
+  translationsLoading?: boolean;
 }) {
   const { account } = useMockAuth();
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -652,6 +660,7 @@ export function NavDrawer({
           activeTab={activeTab}
           onNavigate={handleNavigate}
           compact={false}
+          translationsLoading={translationsLoading}
           onOpenPrototypeTools={() => {
             onOpenPrototypeTools?.();
             onClose();
@@ -674,6 +683,7 @@ type NavProps = {
   pinned?: boolean;
   onQuickCreate?: (action: QuickCreateAction) => void;
   onOpenPrototypeTools?: () => void;
+  translationsLoading?: boolean;
 };
 
 function StartPlanBlock() {
@@ -704,7 +714,7 @@ function StartPlanBlock() {
   );
 }
 
-export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools }: NavProps) {
+export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools, translationsLoading = false }: NavProps) {
   const { planId } = usePlan();
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
@@ -729,7 +739,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
       <div className="px-3 pb-1">
         <QuickCreateMenu compact={false} onAction={onQuickCreate} />
       </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} onOpenPrototypeTools={onOpenPrototypeTools} />
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={false} translationsLoading={translationsLoading} onOpenPrototypeTools={onOpenPrototypeTools} />
       {planId === "Start" ? <StartPlanBlock /> : <PlanWidget onNavigate={onNavigate} compact={false} />}
     </div>
   );
@@ -737,7 +747,7 @@ export function FullSidebar({ section, activeTab, onNavigate, onPin, pinned = fa
 
 // ── Rail sidebar (icons only) ─────────────────────────────────────────────────
 
-function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate, onOpenPrototypeTools }: NavProps & { showTooltips?: boolean }) {
+function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQuickCreate, onOpenPrototypeTools, translationsLoading = false }: NavProps & { showTooltips?: boolean }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-100">
       {/* Header row: mini logo, aligns with app header height */}
@@ -747,7 +757,7 @@ function RailSidebar({ section, activeTab, onNavigate, showTooltips = false, onQ
       <div className="shrink-0 px-[7px] pb-1">
         <QuickCreateMenu compact onAction={onQuickCreate} />
       </div>
-      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} onOpenPrototypeTools={onOpenPrototypeTools} />
+      <NavList section={section} activeTab={activeTab} onNavigate={onNavigate} compact={true} showTooltips={showTooltips} translationsLoading={translationsLoading} onOpenPrototypeTools={onOpenPrototypeTools} />
       {/* stopPropagation: клик по тарифу не должен разворачивать rail */}
       <div onClick={(e) => e.stopPropagation()}>
         <PlanWidget onNavigate={onNavigate} compact={true} />
@@ -765,7 +775,7 @@ type SidebarProps = NavProps & {
   showTooltips?: boolean;
 };
 
-export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools }: SidebarProps) {
+export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = false, onPin, pinned = false, onQuickCreate, onOpenPrototypeTools, translationsLoading = false }: SidebarProps) {
   const isRail = mode === "rail";
 
   if (mode === "topbar") return null;
@@ -773,9 +783,9 @@ export function Sidebar({ section, activeTab, onNavigate, mode, showTooltips = f
   return (
     <TooltipProvider delayDuration={0}>
       {isRail ? (
-        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} />
+        <RailSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} showTooltips={showTooltips} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} translationsLoading={translationsLoading} />
       ) : (
-        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} />
+        <FullSidebar section={section} activeTab={activeTab} onNavigate={onNavigate} onPin={onPin} pinned={pinned} onQuickCreate={onQuickCreate} onOpenPrototypeTools={onOpenPrototypeTools} translationsLoading={translationsLoading} />
       )}
     </TooltipProvider>
   );
