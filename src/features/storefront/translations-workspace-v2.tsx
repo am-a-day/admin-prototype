@@ -500,10 +500,14 @@ function OpenInCatalogButton({
   entity,
   onOpenCatalog,
   revealClassName,
+  className,
+  iconWeight = "bold",
 }: {
   entity: TranslationEntity;
   onOpenCatalog: (entity: TranslationEntity) => void;
   revealClassName: string;
+  className?: string;
+  iconWeight?: "regular" | "bold";
 }) {
   return (
     <Tooltip label="Открыть в каталоге" side="top" delayDuration={250}>
@@ -511,12 +515,14 @@ function OpenInCatalogButton({
         type="button"
         aria-label={`Открыть «${entity.title}» в каталоге`}
         onClick={() => onOpenCatalog(entity)}
+        data-translation-catalog-action
         className={cn(
           "absolute right-1 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-white/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
           revealClassName,
+          className,
         )}
       >
-        <ArrowUpRight size={14} weight="bold" />
+        <ArrowUpRight size={14} weight={iconWeight} />
       </button>
     </Tooltip>
   );
@@ -759,23 +765,36 @@ function TranslationSidebar({
               const batchState = entityBatchState(entity, selectedLanguageJob);
               const positionActions = contentType === "positions" && Boolean(entity.material.catalogItemId);
               return (
-                <div key={entity.key} className="group/entity relative">
-                  <button type="button" aria-label={contentType === "positions" ? `Выбрать позицию «${entity.title}»` : undefined} aria-current={selected ? "page" : undefined} onClick={() => onSelect(entity)} className={cn("flex h-7 w-full items-center gap-2 rounded-[8px] p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", positionActions && "pr-7", selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
-                    <CatalogThumbnail kind={entity.material.kind === "section" ? "section" : "item"} className="size-5 rounded-[5px]" />
-                    <span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] leading-4", selected ? "font-medium text-[#333]" : "text-[#666]")}>{entity.title}</span>{entity.subtitle && <span className="block truncate text-[10px] leading-3 text-[#666]">{entity.subtitle}</span>}</span>
-                    {batchState === "running" ? (
-                      <span role="img" aria-label="Сущность переводится" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><SpinnerGap size={14} className="animate-spin" /></span>
-                    ) : batchState === "error" ? (
-                      <span role="img" aria-label="Ошибка перевода сущности" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><WarningCircle size={14} /></span>
-                    ) : !complete && batchState !== "pending" && (
-                      <span role="img" aria-label="Перевод не заполнен" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><CircleDashed size={14} /></span>
-                    )}
+                <div
+                  key={entity.key}
+                  data-translation-entity-row
+                  className={cn(
+                    "group/entity relative rounded-[8px] transition",
+                    selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4] focus-within:bg-[#f5f5f4]",
+                  )}
+                >
+                  <button type="button" aria-label={contentType === "positions" ? `Выбрать позицию «${entity.title}»` : undefined} aria-current={selected ? "page" : undefined} onClick={() => onSelect(entity)} className="flex h-7 w-full items-center gap-2 rounded-[8px] p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+                    <span data-translation-entity-content className="flex min-w-0 flex-1 items-center gap-2">
+                      <CatalogThumbnail kind={entity.material.kind === "section" ? "section" : "item"} className="size-5 rounded-[5px]" />
+                      <span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] leading-4", selected ? "font-medium text-[#333]" : "text-[#666] group-hover/entity:text-[#333] group-focus-within/entity:text-[#333]")}>{entity.title}</span>{entity.subtitle && <span className="block truncate text-[10px] leading-3 text-[#666]">{entity.subtitle}</span>}</span>
+                    </span>
+                    <span data-translation-entity-slot className="flex size-5 shrink-0 items-center justify-center">
+                      {batchState === "running" ? (
+                        <span role="img" aria-label="Сущность переводится" className={cn("flex size-5 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><SpinnerGap size={14} className="animate-spin" /></span>
+                      ) : batchState === "error" ? (
+                        <span role="img" aria-label="Ошибка перевода сущности" className={cn("flex size-5 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><WarningCircle size={14} /></span>
+                      ) : !complete && batchState !== "pending" && (
+                        <span role="img" aria-label="Перевод не заполнен" className={cn("flex size-5 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><CircleDashed size={14} /></span>
+                      )}
+                    </span>
                   </button>
                   {positionActions && (
                     <OpenInCatalogButton
                       entity={entity}
                       onOpenCatalog={openCatalog}
                       revealClassName="group-hover/entity:opacity-100 group-focus-within/entity:opacity-100"
+                      className="hover:bg-[#e7e5e4] focus-visible:bg-[#e7e5e4]"
+                      iconWeight="regular"
                     />
                   )}
                 </div>

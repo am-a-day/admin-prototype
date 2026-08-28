@@ -699,6 +699,74 @@ describe("translations workspace v2", () => {
     expect((restored.container.querySelector("[data-translations-entity-list]") as HTMLElement).scrollTop).toBe(18);
   });
 
+  it("keeps entity status and catalog actions in one fixed trailing slot", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    window.localStorage.setItem("tasko.translations.reset-languages.v1.seed-owner", JSON.stringify(["kk"]));
+    const shortItem = {
+      ...item,
+      id: "status-slot-short",
+      title: "Короткая тестовая позиция 48271",
+      description: "",
+      hasDescription: false,
+      titleTranslations: {},
+      descriptionTranslations: {},
+      optionGroups: [],
+    };
+    const longItem = {
+      ...item,
+      id: "status-slot-long",
+      title: "Очень длинное название позиции, которое обязательно должно обрезаться",
+      description: "",
+      hasDescription: false,
+      titleTranslations: {},
+      descriptionTranslations: {},
+      optionGroups: [],
+    };
+    const onOpenOriginal = vi.fn();
+    renderWorkspace({ sections: [section], items: [shortItem, longItem] }, onOpenOriginal);
+
+    const shortButton = screen.getByRole("button", { name: `Выбрать позицию «${shortItem.title}»` });
+    const longButton = screen.getByRole("button", { name: `Выбрать позицию «${longItem.title}»` });
+    const shortRow = shortButton.closest("[data-translation-entity-row]") as HTMLElement;
+    const longRow = longButton.closest("[data-translation-entity-row]") as HTMLElement;
+
+    expect(shortRow).toHaveClass("bg-[#f5f5f4]");
+    expect(longRow).toHaveClass("hover:bg-[#f5f5f4]", "focus-within:bg-[#f5f5f4]");
+    expect(shortButton).not.toHaveClass("pr-7");
+    expect(longButton).not.toHaveClass("pr-7");
+    expect(within(longRow).getByText(longItem.title)).toHaveClass("truncate");
+
+    [shortRow, longRow].forEach((row) => {
+      expect(row.querySelector("[data-translation-entity-content]")).toHaveClass("min-w-0", "flex-1");
+      const slot = row.querySelector("[data-translation-entity-slot]") as HTMLElement;
+      expect(slot).toHaveClass("size-5", "shrink-0", "items-center", "justify-center");
+      const status = within(slot).getByRole("img", { name: "Перевод не заполнен" });
+      expect(status).toHaveClass("size-5", "group-hover/entity:opacity-0", "group-focus-within/entity:opacity-0");
+      expect(status.querySelector("svg")).toHaveAttribute("width", "14");
+      expect(status.querySelector("svg")).toHaveAttribute("height", "14");
+      const action = within(row).getByRole("button", { name: /Открыть .* в каталоге/ });
+      expect(action).toHaveClass("right-1", "size-5", "hover:bg-[#e7e5e4]", "group-hover/entity:opacity-100");
+      expect(action.querySelector("svg")).toHaveAttribute("width", "14");
+      expect(action.querySelector("svg")).toHaveAttribute("height", "14");
+    });
+
+    const longAction = within(longRow).getByRole("button", { name: `Открыть «${longItem.title}» в каталоге` });
+    await user.hover(longAction);
+    expect(await screen.findByRole("tooltip", { name: "Открыть в каталоге" })).toBeInTheDocument();
+    await user.click(longAction);
+    expect(onOpenOriginal).toHaveBeenCalledWith(expect.objectContaining({ catalogItemId: longItem.id }));
+    expect(shortButton).not.toHaveAttribute("aria-current");
+    expect(longButton).toHaveAttribute("aria-current", "page");
+
+    const longTranslation = screen.getByRole("textbox", { name: "Казахский: Название" });
+    await user.clear(longTranslation);
+    await user.type(longTranslation, "Ұзын атауы бар позиция");
+    await waitFor(() => expect(within(longRow).queryByRole("img", { name: "Перевод не заполнен" })).not.toBeInTheDocument());
+    expect(longRow.querySelector("[data-translation-entity-slot]")).toBeEmptyDOMElement();
+  });
+
   it("translates fields independently and clears the AI indicator after manual editing", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
