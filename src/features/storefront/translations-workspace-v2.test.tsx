@@ -707,9 +707,24 @@ describe("translations workspace v2", () => {
 
     expect(container.querySelector("[data-translations-sidebar]")).toHaveClass("border-r", "border-stone-200");
     expect(container.querySelector("[data-translations-table-gap]")).toHaveClass("h-1.5");
+    expect(container.querySelector("[data-translations-table-header]")).toHaveClass("bg-white");
+    expect(container.querySelector("[data-translations-table-body]")).toHaveClass("bg-white");
+    expect(container.querySelector("[data-translations-original-background]")).toHaveClass("col-span-2", "bg-[#fafaf9]");
+    expect(container.querySelector("[data-translations-target-background]")).toHaveClass("col-start-3", "bg-white");
+
+    const fieldRows = Array.from(container.querySelectorAll("[data-translation-field-row]"));
+    expect(fieldRows).toHaveLength(2);
+    fieldRows.forEach((row) => {
+      expect(row.querySelector("[data-translation-field-label]")).not.toHaveClass("bg-white");
+      expect(row.querySelector("[data-translation-source-field]")).not.toHaveClass("bg-white");
+      expect(row.querySelector("[data-translation-target-field]")).not.toHaveClass("bg-[#fafaf9]");
+    });
+
+    const originalDescription = screen.getByRole("textbox", { name: "Оригинал: Описание" });
+    expect(originalDescription.parentElement?.parentElement).toHaveClass("[&>div]:bg-transparent", "[&>div>div]:bg-transparent");
 
     const titleInput = screen.getByRole("textbox", { name: "Казахский: Название" });
-    expect(titleInput).toHaveClass("border-0", "rounded-none", "focus-visible:border-0");
+    expect(titleInput).toHaveClass("border-0", "rounded-none", "focus:bg-transparent", "focus-visible:border-0");
     const titleAction = screen.getByRole("button", { name: /Перевести автоматически: Название|Перевести: Название/ });
     expect(titleAction).toHaveClass("size-[26px]", "rounded-[8px]", "bg-stone-200", "text-stone-900");
     expect(titleAction).toHaveTextContent("");
