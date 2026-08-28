@@ -17,7 +17,6 @@ import {
 import type { CatalogItem, CatalogLocalizedValue, CatalogSection, CatalogTranslations } from "@/data/catalog";
 import { DEFAULT_RECOMMENDATION_TEXTS, banners as seedBanners, type Banner } from "@/data/mock-data";
 import type { LanguageCode } from "@/data/languages";
-import { getLanguage } from "@/data/languages";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   useCatalogLabels,
@@ -189,6 +188,16 @@ const LANGUAGE_DETAILS: Record<TranslationLanguageCode, Pick<TranslationLanguage
   fr: { label: "Français", locale: "fr-FR" },
   es: { label: "Español", locale: "es-ES" },
   sr: { label: "Srpski", locale: "sr-RS" },
+};
+
+const PRIMARY_LANGUAGE_TOAST_LABELS: Record<TranslationLanguageCode, string> = {
+  ru: "русский",
+  kk: "казахский",
+  en: "английский",
+  zh: "китайский",
+  fr: "французский",
+  es: "испанский",
+  sr: "сербский",
 };
 
 const SEEDED_TRANSLATIONS: Record<string, Partial<Record<TranslationLanguageCode, Record<string, string>>>> = {
@@ -1422,7 +1431,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           : null,
       });
       setContentLanguage(language);
-      showToast(`${getLanguage(language).label} теперь основной язык`);
+      showToast(`Основной язык изменён на ${PRIMARY_LANGUAGE_TOAST_LABELS[language]}`);
       return;
     }
     if (!account.workspace.languages.some((item) => item.code === language)) return;
@@ -1448,7 +1457,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         : null,
     });
     setContentLanguage(language);
-    showToast(`${getLanguage(language).label} теперь основной язык`);
+    showToast(`Основной язык изменён на ${PRIMARY_LANGUAGE_TOAST_LABELS[language]}`);
   }, [account, setContentLanguage, showToast, updateWorkspace]);
 
   const confirmPrimaryLanguage = useCallback((language: TranslationLanguageCode) => {

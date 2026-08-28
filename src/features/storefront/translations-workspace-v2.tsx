@@ -18,6 +18,14 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -92,12 +100,9 @@ function languageLabel(code: TranslationLanguageCode) {
   return TRANSLATION_LANGUAGE_LABELS[code];
 }
 
-function LanguageCodeBadge({ code, active = false }: { code: TranslationLanguageCode; active?: boolean }) {
+function LanguageCodeBadge({ code }: { code: TranslationLanguageCode }) {
   return (
-    <span className={cn(
-      "flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-[#e7e5e4] text-[9px] font-semibold leading-none",
-      active ? "text-[#292524]" : "text-[#78716c]",
-    )}>
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] border border-[#e7e5e4] bg-white text-[9px] font-semibold leading-none text-[#292524]">
       {TRANSLATION_LANGUAGE_BADGES[code]}
     </span>
   );
@@ -257,69 +262,49 @@ function AddLanguagePopover({ children }: { children: ReactNode }) {
 }
 
 function OriginalLanguagePickerContent({
-  initialLanguage,
-  onCancel,
   onComplete,
 }: {
-  initialLanguage?: TranslationLanguageCode;
-  onCancel: () => void;
   onComplete: () => void;
 }) {
   const { account } = useMockAuth();
   const { languages, setPrimaryLanguage } = useTranslations();
   const primaryCode = account?.workspace.primaryLanguage ?? "ru";
-  const [selectedLanguage, setSelectedLanguage] = useState<TranslationLanguageCode>(initialLanguage ?? primaryCode);
-  const connectedLanguages = LANGUAGES.filter((item) => item.code === primaryCode || languages.some((language) => language.code === item.code));
-
-  useEffect(() => {
-    setSelectedLanguage(initialLanguage ?? primaryCode);
-  }, [initialLanguage, primaryCode]);
+  const connectedLanguages = LANGUAGES.filter((item) => (
+    item.code !== primaryCode && languages.some((language) => language.code === item.code)
+  ));
 
   return (
-    <div className="w-[260px] p-1">
-      <div className="px-2 pb-2 pt-1.5">
-        <div className="text-[11px] leading-4 text-[#79716b]">Текущий язык оригинала</div>
-        <div className="mt-1 flex items-center gap-2 text-[13px] font-medium text-[#333]">
-          <LanguageCodeBadge code={primaryCode} active />
-          <span>{languageLabel(primaryCode)}</span>
+    <div className="w-full overflow-hidden rounded-[12px]">
+      <div className="border-b border-[#e7e5e4] bg-[#fafaf9] p-1">
+        <div className="flex min-h-8 items-center gap-2 rounded-[8px] py-1.5 pl-2 pr-2">
+          <LanguageCodeBadge code={primaryCode} />
+          <div className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap leading-4">
+            <span className="truncate text-[13px] text-[#0c0a09]">{languageLabel(primaryCode)}</span>
+            <span className="text-[13px] text-[#999]">·</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-[#999]">основной</span>
+          </div>
         </div>
+        <p className="px-1.5 py-1.5 text-[11px] leading-4 text-[#666]">С этого языка создаются переводы на остальные</p>
       </div>
-      <div className="border-t border-[#e7e5e4] p-1">
-        {connectedLanguages.map((language) => {
-          const selected = selectedLanguage === language.code;
-          return (
-            <button
-              key={language.code}
-              type="button"
-              onClick={() => setSelectedLanguage(language.code)}
-              className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-                selected && "bg-[#f5f5f4]",
-              )}
-            >
-              <LanguageCodeBadge code={language.code} active={selected} />
-              <span className="min-w-0 flex-1 truncate">{languageLabel(language.code)}</span>
-              {selected && <Check size={13} weight="bold" />}
-            </button>
-          );
-        })}
-      </div>
-      {languages.length > 0 && selectedLanguage !== primaryCode && (
-        <p className="mx-1 mb-1 rounded-[8px] bg-[#fff7ed] px-2 py-1.5 text-[11px] leading-4 text-[#9a3412]">
-          Смена языка оригинала повлияет на существующие переводы. Проверьте их после смены.
-        </p>
-      )}
-      <div className="flex items-center justify-end gap-1 border-t border-[#e7e5e4] px-1 pt-1">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="h-7 rounded-[7px] px-2 text-[12px]">Отмена</Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={selectedLanguage === primaryCode}
-          onClick={() => { setPrimaryLanguage(selectedLanguage); onComplete(); }}
-          className="h-7 rounded-[7px] bg-[#292524] px-2.5 text-[12px] hover:bg-[#1c1917]"
-        >
-          Сделать основным
-        </Button>
+      <div className="bg-white p-1">
+        {connectedLanguages.map((language) => (
+          <button
+            key={language.code}
+            type="button"
+            aria-label={languageLabel(language.code)}
+            onClick={() => {
+              setPrimaryLanguage(language.code);
+              onComplete();
+            }}
+            className="flex min-h-8 w-full items-center gap-2 rounded-[8px] py-1.5 pl-2 pr-2 text-left text-[13px] leading-4 text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <LanguageCodeBadge code={language.code} />
+            <span className="min-w-0 flex-1 truncate">{languageLabel(language.code)}</span>
+          </button>
+        ))}
+        {connectedLanguages.length === 0 && (
+          <p className="px-2 py-3 text-center text-[11px] leading-4 text-[#666]">Других языков пока нет</p>
+        )}
       </div>
     </div>
   );
@@ -341,7 +326,7 @@ function TranslationsHeaderMenu() {
           <DotsThree size={20} weight="bold" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={5} className={cn("overflow-hidden rounded-[12px] p-0 shadow-md", stage === "menu" ? "w-[224px]" : "w-auto")}>
+      <PopoverContent align="end" sideOffset={5} className={cn("overflow-hidden rounded-[12px] p-0 shadow-md", stage === "menu" ? "w-[224px]" : "w-[214px]")}>
         {stage === "menu" ? (
           <div className="p-1">
             <button
@@ -349,11 +334,11 @@ function TranslationsHeaderMenu() {
               onClick={() => setStage("original")}
               className="flex h-7 w-full items-center rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
             >
-              Изменить язык оригинала
+              Изменить основной язык
             </button>
           </div>
         ) : (
-          <OriginalLanguagePickerContent onCancel={() => setStage("menu")} onComplete={close} />
+          <OriginalLanguagePickerContent onComplete={close} />
         )}
       </PopoverContent>
     </Popover>
@@ -361,15 +346,15 @@ function TranslationsHeaderMenu() {
 }
 
 function LanguageActionsPopover({ language }: { language: TranslationLanguage }) {
-  const { removeLanguage, setPublished } = useTranslations();
+  const { removeLanguage, setPrimaryLanguage, setPublished } = useTranslations();
   const [open, setOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [stage, setStage] = useState<"menu" | "original" | "hide">("menu");
-  const close = () => { setOpen(false); setStage("menu"); };
+  const [hideDialogOpen, setHideDialogOpen] = useState(false);
+  const close = () => setOpen(false);
 
   return (
     <>
-      <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setStage("menu"); }}>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -379,51 +364,80 @@ function LanguageActionsPopover({ language }: { language: TranslationLanguage })
             <DotsThree size={20} weight="bold" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" sideOffset={5} className={cn("overflow-hidden rounded-[12px] p-0 shadow-md", stage === "menu" ? "w-[200px]" : stage === "hide" ? "w-[268px]" : "w-auto")}>
-          {stage === "menu" && (
-            <>
-              <div className="p-1">
-                <button type="button" onClick={() => setStage("original")} className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                  <Star size={16} /><span>Сделать основным</span>
-                </button>
-              </div>
-              <div className="border-t border-[#e7e5e4] p-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (language.published) setStage("hide");
-                    else { setPublished(language.code, true); close(); }
-                  }}
-                  className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-                >
-                  {language.published ? <EyeSlash size={16} /> : <Eye size={16} />}
-                  <span>{language.published ? "Скрыть из меню" : "Показать в меню"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { close(); setDeleteDialogOpen(true); }}
-                  className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#c10007] hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
-                >
-                  <Trash size={16} /><span>Удалить</span>
-                </button>
-              </div>
-            </>
-          )}
-          {stage === "hide" && (
-            <div className="p-2">
-              <p className="px-1 text-[13px] font-medium leading-5 text-[#292524]">Скрыть «{languageLabel(language.code)}» из меню?</p>
-              <p className="mt-1 px-1 text-[12px] leading-4 text-[#79716b]">Гости больше не смогут выбрать этот язык. Все переводы сохранятся.</p>
-              <div className="mt-2 flex justify-end gap-1">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setStage("menu")} className="h-7 rounded-[7px] px-2 text-[12px]">Отмена</Button>
-                <Button type="button" size="sm" onClick={() => { setPublished(language.code, false); close(); }} className="h-7 rounded-[7px] bg-[#292524] px-2.5 text-[12px] hover:bg-[#1c1917]">Скрыть</Button>
-              </div>
-            </div>
-          )}
-          {stage === "original" && (
-            <OriginalLanguagePickerContent initialLanguage={language.code} onCancel={() => setStage("menu")} onComplete={close} />
-          )}
+        <PopoverContent align="end" sideOffset={5} className="w-[200px] overflow-hidden rounded-[12px] p-0 shadow-md">
+          <div className="p-1">
+            <button type="button" onClick={() => { setPrimaryLanguage(language.code); close(); }} className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+              <Star size={16} /><span>Сделать основным</span>
+            </button>
+          </div>
+          <div className="border-t border-[#e7e5e4] p-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (language.published) {
+                  close();
+                  setHideDialogOpen(true);
+                } else {
+                  setPublished(language.code, true);
+                  close();
+                }
+              }}
+              className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {language.published ? <EyeSlash size={16} /> : <Eye size={16} />}
+              <span>{language.published ? "Скрыть из меню" : "Показать в меню"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { close(); setDeleteDialogOpen(true); }}
+              className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#c10007] hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
+            >
+              <Trash size={16} /><span>Удалить</span>
+            </button>
+          </div>
         </PopoverContent>
       </Popover>
+      <Dialog open={hideDialogOpen} onOpenChange={setHideDialogOpen}>
+        <DialogContent
+          aria-modal="true"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            (event.currentTarget as HTMLElement | null)?.focus();
+          }}
+          className="max-w-[343px] gap-0 overflow-hidden rounded-[16px] border-[#e4e4e7] bg-[#fefefc] p-0 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)]"
+        >
+          <div className="border-b border-[#e7e5e4] p-4 pr-12">
+            <DialogTitle className="text-[14px] font-semibold leading-normal tracking-[-0.35px] text-[#333]">
+              Скрыть «{languageLabel(language.code)}» из меню?
+            </DialogTitle>
+          </div>
+          <DialogDescription className="px-4 py-3 text-[13px] leading-5 text-[#666]">
+            Гости не смогут выбрать этот язык. Все переводы сохранятся.
+          </DialogDescription>
+          <DialogFooter className="flex-row gap-2 border-t border-[#e7e5e4] p-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" className="h-7 flex-1 rounded-[8px] border-[#e4e4e7] bg-white px-2.5 text-[13px] font-medium text-[#333] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafaf9]">
+                Отмена
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={() => {
+                setPublished(language.code, false);
+                setHideDialogOpen(false);
+              }}
+              className="h-7 flex-1 rounded-[8px] bg-[#4f39f6] px-2.5 text-[13px] font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#4030d4]"
+            >
+              Скрыть
+            </Button>
+          </DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="ghost" size="icon" aria-label="Закрыть" className="absolute right-2 top-2 size-[30px] rounded-[8px] text-[#333] hover:bg-[#f5f5f4]">
+              <X size={16} />
+            </Button>
+          </DialogClose>
+        </DialogContent>
+      </Dialog>
       <DeleteConfirmationDialog
         kind="language"
         open={deleteDialogOpen}
@@ -522,27 +536,25 @@ function TranslationLanguageRow({
     <button
       type="button"
       aria-current={selected ? "page" : undefined}
-      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : stopped ? ". Перевод остановлен" : `, ${completeness}%`}`}
+      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : stopped ? ". Перевод остановлен" : !item.published ? `. Скрыт, ${completeness}%` : `, ${completeness}%`}`}
       onClick={() => onLanguageChange(item.code)}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
         selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
       )}
     >
-      <LanguageCodeBadge code={item.code} active={selected} />
-      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
+      <LanguageCodeBadge code={item.code} />
+      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected || !item.published ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
       {translating ? (
         <span className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
       ) : !failed && !stopped && (
-        <span className="mr-0.5 flex shrink-0 items-center gap-1 text-[11px] leading-[18px] tabular-nums text-[#666] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+        <span className={cn(
+          "mr-0.5 flex shrink-0 items-center whitespace-nowrap leading-[18px] tabular-nums transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+          item.published ? "text-[11px] text-[#666]" : "gap-[3px] text-[10px] text-[#999]",
+        )}>
+          {!item.published && <span>Скрыт</span>}
+          {!item.published && <span>·</span>}
           <span>{completeness}%</span>
-          {!item.published && (
-            <Tooltip label="Скрыт из меню" side="top" delayDuration={250}>
-              <span tabIndex={0} role="img" aria-label="Скрыт из меню" className="flex size-4 items-center justify-center rounded-[4px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-                <EyeSlash size={14} />
-              </span>
-            </Tooltip>
-          )}
         </span>
       )}
     </button>
@@ -669,8 +681,9 @@ function TranslationSidebar({
           );
         })}
         <AddLanguagePopover>
-          <button type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left text-[13px] font-medium leading-[18px] text-[#666] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-            <Plus size={14} /><span className="min-w-0 flex-1 truncate">Добавить</span>
+          <button data-translation-add-language type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] py-1 pl-1 pr-2 text-left text-[13px] font-normal leading-[18px] text-[#999] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+            <span data-translation-add-language-icon className="flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-[#e7e5e4]"><Plus size={14} /></span>
+            <span className="min-w-0 flex-1 truncate">Добавить...</span>
           </button>
         </AddLanguagePopover>
       </div>
@@ -836,7 +849,10 @@ function EmptyTranslations() {
           <div className="flex h-[48px] items-end justify-between border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]"><h1 className="min-w-0 truncate text-[13px] text-[#1c1917]">Переводы</h1><TranslationsHeaderMenu /></div>
           <div data-translations-language-block className="flex flex-col gap-1 bg-white px-1.5 pb-1 pt-2">
             <AddLanguagePopover>
-              <button type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] font-medium text-[#666] hover:bg-[#f5f5f4]"><Plus size={14} />Добавить</button>
+              <button data-translation-add-language type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] py-1 pl-1 pr-2 text-left text-[13px] font-normal leading-[18px] text-[#999] hover:bg-[#f5f5f4]">
+                <span data-translation-add-language-icon className="flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-[#e7e5e4]"><Plus size={14} /></span>
+                <span>Добавить...</span>
+              </button>
             </AddLanguagePopover>
           </div>
         </aside>
