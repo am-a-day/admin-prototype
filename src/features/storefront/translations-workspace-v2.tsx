@@ -833,13 +833,13 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
 
   return (
     <div data-translation-field-row className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
-      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · /, "")}</span></div>
-      <div data-translation-source-field className={cn("min-w-0 border-r border-[#eeeeec]", isDescription ? "p-0" : "flex h-12 items-center px-3")}>
+      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · /, "")}</span></div>
+      <div data-translation-source-field className={cn("min-w-0 border-r border-[#eeeeec] bg-[#fafaf9]", isDescription ? "p-0" : "flex h-12 items-center px-3")}>
         {isDescription
           ? <DescriptionRichTextEditor value={field.source} readOnly hideLabel label={`Оригинал: ${field.label}`} placeholder="Не заполнено" limit={300} compact className="h-full [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div>div]:bg-transparent" />
           : <div className="min-w-0 truncate text-[13px] leading-5 text-[#44403b]">{sourceFilled ? field.source : <span className="text-[#a8a29e]">Не заполнено</span>}</div>}
       </div>
-      <div data-translation-target-field className={cn("group relative min-w-0", isDescription ? "p-0" : "flex h-12 items-center px-1.5")}>
+      <div data-translation-target-field className={cn("group relative min-w-0 bg-white", isDescription ? "p-0" : "flex h-12 items-center px-1.5")}>
         {sourceFilled && (!machineTranslated || translating || translationFailed) && (
           <Tooltip label={translating ? "Перевод выполняется" : translateLabel} side="top" delayDuration={250}>
             <Button
@@ -920,13 +920,9 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
       </header>
       <div data-translations-table-gap aria-hidden="true" className="h-1.5 shrink-0 bg-[#f5f5f4]" />
       <div data-translations-table-header className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] bg-white text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
-      <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white">
-        <div className="grid min-h-full grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)]">
-          <div data-translations-original-background aria-hidden="true" className="pointer-events-none col-span-2 col-start-1 row-start-1 bg-[#fafaf9]" />
-          <div data-translations-target-background aria-hidden="true" className="pointer-events-none col-start-3 row-start-1 bg-white" />
-          <div className="relative col-span-3 col-start-1 row-start-1 min-w-0 self-start">
-            {entity.fields.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} />)}
-          </div>
+      <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f5f4]">
+        <div data-translations-table className="border-b border-stone-200">
+          {entity.fields.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} />)}
         </div>
       </div>
     </main>

@@ -776,16 +776,17 @@ describe("translations workspace v2", () => {
     expect(container.querySelector("[data-translations-sidebar]")).toHaveClass("border-r", "border-stone-200");
     expect(container.querySelector("[data-translations-table-gap]")).toHaveClass("h-1.5");
     expect(container.querySelector("[data-translations-table-header]")).toHaveClass("bg-white");
-    expect(container.querySelector("[data-translations-table-body]")).toHaveClass("bg-white");
-    expect(container.querySelector("[data-translations-original-background]")).toHaveClass("col-span-2", "bg-[#fafaf9]");
-    expect(container.querySelector("[data-translations-target-background]")).toHaveClass("col-start-3", "bg-white");
+    expect(container.querySelector("[data-translations-table-body]")).toHaveClass("bg-[#f5f5f4]");
+    expect(container.querySelector("[data-translations-table]")).toHaveClass("border-b", "border-stone-200");
+    expect(container.querySelector("[data-translations-original-background]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-translations-target-background]")).not.toBeInTheDocument();
 
     const fieldRows = Array.from(container.querySelectorAll("[data-translation-field-row]"));
     expect(fieldRows).toHaveLength(2);
     fieldRows.forEach((row) => {
-      expect(row.querySelector("[data-translation-field-label]")).not.toHaveClass("bg-white");
-      expect(row.querySelector("[data-translation-source-field]")).not.toHaveClass("bg-white");
-      expect(row.querySelector("[data-translation-target-field]")).not.toHaveClass("bg-[#fafaf9]");
+      expect(row.querySelector("[data-translation-field-label]")).toHaveClass("bg-white");
+      expect(row.querySelector("[data-translation-source-field]")).toHaveClass("bg-[#fafaf9]");
+      expect(row.querySelector("[data-translation-target-field]")).toHaveClass("bg-white");
     });
 
     const originalDescription = screen.getByRole("textbox", { name: "Оригинал: Описание" });
