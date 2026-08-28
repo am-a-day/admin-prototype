@@ -646,7 +646,6 @@ function TranslationSidebar({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const entityListRef = useRef<HTMLDivElement | null>(null);
   const restoredScrollRef = useRef(false);
-  const previousContentTypeRef = useRef(contentType);
   const typeLabel = CONTENT_TYPES.find((item) => item.id === contentType)?.label ?? "Позиции";
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const visibleEntities = entities.filter((entity) => !normalizedQuery || [entity.title, entity.subtitle].filter(Boolean).some((value) => value!.toLocaleLowerCase("ru").includes(normalizedQuery)));
@@ -660,12 +659,6 @@ function TranslationSidebar({
     const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [searchOpen]);
-  useEffect(() => {
-    if (previousContentTypeRef.current === contentType) return;
-    previousContentTypeRef.current = contentType;
-    setQuery("");
-    setSearchOpen(false);
-  }, [contentType]);
   useLayoutEffect(() => {
     if (restoredScrollRef.current || !entityListRef.current) return;
     entityListRef.current.scrollTop = initialScrollTop;
@@ -724,8 +717,26 @@ function TranslationSidebar({
               <DropdownMenuTrigger asChild>
                 <button type="button" aria-label="Выбрать тип контента" className="flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[13px] text-[#333] transition hover:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><span className="truncate">{typeLabel}</span><CaretDown size={14} className="shrink-0 text-[#666]" /></button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-[210px]">
-                {CONTENT_TYPES.map((item) => <DropdownMenuItem key={item.id} onSelect={() => onContentTypeChange(item.id)}><span className="flex size-4 items-center justify-center">{contentType === item.id && <Check size={12} weight="bold" />}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></DropdownMenuItem>)}
+              <DropdownMenuContent
+                align="start"
+                className="w-[170px] min-w-[128px] rounded-[12px] border-[#e7e5e4] p-1 text-[#666] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-2px_rgba(0,0,0,0.1)]"
+              >
+                {CONTENT_TYPES.map((item) => {
+                  const selected = contentType === item.id;
+                  return (
+                    <DropdownMenuItem
+                      key={item.id}
+                      onSelect={() => onContentTypeChange(item.id)}
+                      className={cn(
+                        "h-7 cursor-pointer rounded-[8px] px-2 py-1.5 text-[13px] font-normal leading-4 text-[#666] data-[highlighted]:bg-[#f5f5f4] data-[highlighted]:text-[#333]",
+                        selected && "bg-[#f5f5f4] text-[#333]",
+                      )}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {selected && <Check size={16} weight="regular" className="shrink-0" aria-hidden="true" />}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
             {contentType !== "about" && <Tooltip label="Поиск" side="top" delayDuration={250}><Button type="button" variant="ghost" size="icon" aria-label="Открыть поиск" aria-expanded={searchOpen} onClick={() => { if (searchOpen) searchInputRef.current?.focus(); else setSearchOpen(true); }} className={cn("size-5 rounded-[6px] text-[#666] hover:bg-[#f5f5f4] hover:text-[#333]", searchOpen && "bg-[#f5f5f4] text-[#333]")}><MagnifyingGlass size={14} /></Button></Tooltip>}

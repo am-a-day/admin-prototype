@@ -247,6 +247,7 @@ describe("translations workspace v2", () => {
   });
 
   it("shows real field progress while a newly added language is translated", async () => {
+    const user = userEvent.setup();
     let releaseRequests = () => {};
     const requestsGate = new Promise<void>((resolve) => { releaseRequests = resolve; });
     vi.mocked(fetch).mockImplementation(async (_input, init) => {
@@ -286,6 +287,13 @@ describe("translations workspace v2", () => {
     expect(languageButton).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Выбрать тип контента" }));
+    await user.click(screen.getByRole("menuitem", { name: "Разделы" }));
+    expect(screen.getByRole("button", { name: "Выбрать тип контента" })).toHaveTextContent("Разделы");
+    expect(languageButton).toHaveAttribute("aria-current", "page");
+    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating");
+    expect(container.querySelector("[data-translation-progress-shimmer]")).toHaveTextContent(/0 из \d+ полей/);
 
     releaseRequests();
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
@@ -519,7 +527,7 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: "Повторить" })).toBeEnabled();
   });
 
-  it("switches entity types, keeps options separate, and searches only the current list", async () => {
+  it("matches the compact entity selector and preserves language, search, and scroll while switching", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
@@ -539,8 +547,42 @@ describe("translations workspace v2", () => {
       }],
     });
 
-    await user.click(screen.getByRole("button", { name: "Выбрать тип контента" }));
-    await user.click(screen.getByRole("menuitem", { name: /Опции/ }));
+    const typeTrigger = screen.getByRole("button", { name: "Выбрать тип контента" });
+    const activeLanguage = screen.getByRole("button", { name: "Казахский. Скрыт" });
+    expect(activeLanguage).toHaveAttribute("aria-current", "page");
+
+    await user.click(typeTrigger);
+    let typeMenu = screen.getByRole("menu");
+    expect(typeMenu).toHaveClass("w-[170px]", "min-w-[128px]", "rounded-[12px]", "p-1");
+    const typeItems = within(typeMenu).getAllByRole("menuitem");
+    expect(typeItems.map((menuItem) => menuItem.textContent)).toEqual([
+      "Позиции",
+      "Опции",
+      "Разделы",
+      "Теги",
+      "Стикеры",
+      "Баннеры",
+      "О заведении",
+      "Заголовки и кнопки",
+    ]);
+    const positionsItem = within(typeMenu).getByRole("menuitem", { name: "Позиции" });
+    const tagsItem = within(typeMenu).getByRole("menuitem", { name: "Теги" });
+    expect(positionsItem).toHaveClass("h-7", "rounded-[8px]", "bg-[#f5f5f4]", "text-[#333]");
+    expect(positionsItem.querySelector("svg")).toBeInTheDocument();
+    expect(tagsItem.querySelector("svg")).not.toBeInTheDocument();
+    await user.hover(tagsItem);
+    expect(tagsItem).toHaveAttribute("data-highlighted");
+    expect(tagsItem).toHaveClass("data-[highlighted]:bg-[#f5f5f4]", "data-[highlighted]:text-[#333]");
+    expect(typeTrigger).toHaveTextContent("Позиции");
+    expect(tagsItem.querySelector("svg")).not.toBeInTheDocument();
+    expect(positionsItem.querySelector("svg")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    await user.click(typeTrigger);
+    await screen.findByRole("menu");
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(typeTrigger).toHaveTextContent("Опции");
     expect(screen.getAllByText("Острота").length).toBeGreaterThan(0);
     expect(screen.getAllByText(item.title).length).toBeGreaterThan(0);
 
@@ -548,14 +590,27 @@ describe("translations workspace v2", () => {
     const search = screen.getByRole("textbox", { name: "Поиск: Опции" });
     await user.type(search, "нет такого варианта");
     expect(screen.getByText("Ничего не найдено")).toBeInTheDocument();
-    fireEvent.keyDown(search, { key: "Escape" });
-    expect(screen.queryByRole("textbox", { name: "Поиск: Опции" })).not.toBeInTheDocument();
+    const entityList = document.querySelector("[data-translations-entity-list]") as HTMLElement;
+    entityList.scrollTop = 18;
+
+    await user.click(typeTrigger);
+    typeMenu = screen.getByRole("menu");
+    await user.click(within(typeMenu).getByRole("menuitem", { name: "Разделы" }));
+    expect(typeTrigger).toHaveTextContent("Разделы");
+    expect(screen.getByRole("textbox", { name: "Поиск: Разделы" })).toHaveValue("нет такого варианта");
+    expect(entityList.scrollTop).toBe(18);
+    expect(activeLanguage).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("main")).getAllByText(section.name).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("textbox", { name: "Поиск: Разделы" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Поиск: Разделы" })).not.toBeInTheDocument();
 
     const resizer = screen.getByRole("separator", { name: "Изменить ширину панели переводов" });
     expect(resizer).toHaveAttribute("aria-valuenow", "230");
     fireEvent.keyDown(resizer, { key: "ArrowRight" });
     expect(resizer).toHaveAttribute("aria-valuenow", "232");
-    expect(screen.getByRole("button", { name: "Выбрать тип контента" })).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
+    expect(typeTrigger).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
   });
 
   it("switches languages after restoring history without losing the selected position or search", async () => {
