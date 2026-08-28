@@ -7,7 +7,7 @@ import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { CatalogStoreProvider, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
 import { MockAuthProvider } from "@/contexts/mock-auth-context";
 import { TranslationsProvider, useTranslations, type TranslationMaterial } from "@/contexts/translations-context";
-import { catalogItems, catalogSections } from "@/data/catalog";
+import { catalogItems, catalogSections, type CatalogItem } from "@/data/catalog";
 import { TranslationsWorkspace } from "./translations-workspace-v2";
 
 function ToastProbe() {
@@ -33,6 +33,16 @@ function TranslationTestControls() {
         }}
       >
         Тест: дважды перевести недостающие на сербский
+      </button>
+      <button
+        type="button"
+        onClick={() => startAutoTranslate(
+          ["en"],
+          materials.filter((material) => material.kind === "position").map((material) => material.id),
+          "Тестовая массовая проверка",
+        )}
+      >
+        Тест: массовый перевод позиций на английский
       </button>
     </>
   );
@@ -767,11 +777,140 @@ describe("translations workspace v2", () => {
     expect(longRow.querySelector("[data-translation-entity-slot]")).toBeEmptyDOMElement();
   });
 
+  it("isolates field values and AI state by entity, field, and language across reload", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    window.localStorage.setItem("tasko.translations.reset-languages.v1.seed-owner", JSON.stringify(["kk", "en"]));
+    const positionA: CatalogItem = {
+      ...item,
+      id: "translation-state-a",
+      title: "Позиция A",
+      description: "Оригинальное описание A",
+      hasDescription: true,
+      titleTranslations: {},
+      descriptionTranslations: {},
+      optionGroups: [],
+    };
+    const positionB: CatalogItem = {
+      ...item,
+      id: "translation-state-b",
+      title: "Позиция B",
+      description: "Оригинальное описание B",
+      hasDescription: true,
+      titleTranslations: {},
+      descriptionTranslations: {},
+      optionGroups: [],
+    };
+    const setDescription = (language: "Казахский" | "Английский", value: string) => {
+      const editor = screen.getByRole("textbox", { name: `${language}: Описание` });
+      fireEvent.input(editor, { target: { innerHTML: value ? `<p>${value}</p>` : "" } });
+      return editor;
+    };
+
+    const firstRender = renderWorkspace({ sections: [section], items: [positionA, positionB] });
+    const rowA = screen.getByRole("button", { name: "Выбрать позицию «Позиция A»" });
+    const rowB = screen.getByRole("button", { name: "Выбрать позицию «Позиция B»" });
+    expect(rowA).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Перевести: Название" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Перевести: Описание" })).toBeInTheDocument();
+
+    const titleA = screen.getByRole("textbox", { name: "Казахский: Название" });
+    await user.type(titleA, "Атауы A");
+    const descriptionA = setDescription("Казахский", "Описание A");
+    expect(descriptionA).toHaveTextContent("Описание A");
+    expect(descriptionA.closest("[data-translation-field-row]")).toHaveAttribute(
+      "data-translation-field-key",
+      "position:translation-state-a:kk:description",
+    );
+    expect(screen.queryByRole("button", { name: "Перевести автоматически: Название" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Перевести автоматически: Описание" })).not.toBeInTheDocument();
+
+    await user.click(rowB);
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue("");
+    const emptyDescriptionB = screen.getByRole("textbox", { name: "Казахский: Описание" });
+    expect(emptyDescriptionB).toBeEmptyDOMElement();
+    expect(emptyDescriptionB.closest("[data-translation-field-row]")).toHaveAttribute(
+      "data-translation-field-key",
+      "position:translation-state-b:kk:description",
+    );
+    await user.type(screen.getByRole("textbox", { name: "Казахский: Название" }), "Атауы B");
+    setDescription("Казахский", "Описание B");
+
+    await user.click(rowA);
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue("Атауы A");
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("Описание A");
+
+    await user.click(screen.getByRole("button", { name: "Английский" }));
+    expect(screen.getByRole("textbox", { name: "Английский: Название" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Английский: Описание" })).toBeEmptyDOMElement();
+    expect(screen.getByRole("button", { name: "Перевести: Название" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Перевести: Описание" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Казахский. Скрыт" }));
+    setDescription("Казахский", "");
+    const aiDescription = screen.getByRole("button", { name: "Перевести: Описание" });
+    await user.click(aiDescription);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("[kk] Оригинальное описание A"));
+
+    await user.click(rowB);
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue("Атауы B");
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("Описание B");
+    await user.click(rowA);
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("[kk] Оригинальное описание A");
+
+    await waitFor(() => {
+      const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}") as Record<string, CatalogItem>;
+      expect(records[positionA.id]?.titleTranslations?.kk).toBe("Атауы A");
+      expect(records[positionA.id]?.descriptionTranslations?.kk).toContain("[kk] Оригинальное описание A");
+      expect(records[positionB.id]?.titleTranslations?.kk).toBe("Атауы B");
+      expect(records[positionB.id]?.descriptionTranslations?.kk).toContain("Описание B");
+    });
+
+    const persistedItems = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}") as Record<string, CatalogItem>;
+    firstRender.unmount();
+    renderWorkspace({ sections: [section], items: [persistedItems[positionA.id], persistedItems[positionB.id]] });
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue("Атауы A");
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("[kk] Оригинальное описание A");
+    await user.click(screen.getByRole("button", { name: "Выбрать позицию «Позиция B»" }));
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue("Атауы B");
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toHaveTextContent("Описание B");
+
+    await user.click(screen.getByRole("button", { name: "Английский" }));
+    expect(screen.getAllByRole("img", { name: "Перевод не заполнен" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Перевести: Название" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Перевести: Описание" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Тест: массовый перевод позиций на английский" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Английский: Название" })).toHaveValue("[en] Позиция B"));
+    expect(screen.getByRole("textbox", { name: "Английский: Описание" })).toHaveTextContent("[en] Оригинальное описание B");
+    await user.click(screen.getByRole("button", { name: "Выбрать позицию «Позиция A»" }));
+    expect(screen.getByRole("textbox", { name: "Английский: Название" })).toHaveValue("[en] Позиция A");
+    expect(screen.getByRole("textbox", { name: "Английский: Описание" })).toHaveTextContent("[en] Оригинальное описание A");
+    expect(screen.queryByRole("img", { name: "Перевод не заполнен" })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}") as Record<string, CatalogItem>;
+      expect(records[positionA.id]?.descriptionTranslations?.en).toContain("[en] Оригинальное описание A");
+      expect(records[positionB.id]?.descriptionTranslations?.en).toContain("[en] Оригинальное описание B");
+    });
+  });
+
   it("translates fields independently and clears the AI indicator after manual editing", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
-    const { container } = renderWorkspace({ sections: [section], items: [{ ...item, description: "Сытное блюдо на завтрак", hasDescription: true }] });
+    window.localStorage.setItem("tasko.translations.reset-languages.v1.seed-owner", JSON.stringify(["kk"]));
+    const { container } = renderWorkspace({
+      sections: [section],
+      items: [{
+        ...item,
+        description: "Сытное блюдо на завтрак",
+        hasDescription: true,
+        titleTranslations: {},
+        descriptionTranslations: {},
+      }],
+    });
 
     expect(container.querySelector("[data-translations-sidebar]")).toHaveClass("border-r", "border-stone-200");
     expect(container.querySelector("[data-translations-table-gap]")).toHaveClass("h-1.5");
@@ -807,7 +946,7 @@ describe("translations workspace v2", () => {
 
     fireEvent.change(titleInput, { target: { value: "Қолмен өзгертілген атау" } });
     await waitFor(() => expect(screen.queryByRole("img", { name: "Переведено автоматически: Название" })).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Перевести автоматически: Название" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Перевести автоматически: Название" })).not.toBeInTheDocument();
     await waitFor(() => expect(container.querySelector("[data-position-save-status]")).toHaveAttribute("data-save-status", "saved"));
 
     const descriptionAction = screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ });
@@ -830,7 +969,17 @@ describe("translations workspace v2", () => {
     const item = catalogItems[0];
     const description = "Сытное блюдо на завтрак";
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
-    renderWorkspace({ sections: [section], items: [{ ...item, description, hasDescription: true }] });
+    window.localStorage.setItem("tasko.translations.reset-languages.v1.seed-owner", JSON.stringify(["kk"]));
+    renderWorkspace({
+      sections: [section],
+      items: [{
+        ...item,
+        description,
+        hasDescription: true,
+        titleTranslations: {},
+        descriptionTranslations: {},
+      }],
+    });
 
     await user.click(screen.getByRole("button", { name: /Перевести автоматически: Название|Перевести: Название/ }));
     await user.click(screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ }));

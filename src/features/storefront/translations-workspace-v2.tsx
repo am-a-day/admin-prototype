@@ -832,7 +832,7 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   ));
 
   return (
-    <div data-translation-field-row className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
+    <div data-translation-field-row data-translation-field-key={`${material.kind}:${material.entityId}:${language}:${field.id}`} className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
       <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · /, "")}</span></div>
       <div data-translation-source-field className={cn("min-w-0 border-r border-[#eeeeec] bg-[#fafaf9]", isDescription ? "p-0" : "flex h-12 items-center px-3")}>
         {isDescription
@@ -840,7 +840,7 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
           : <div className="min-w-0 truncate text-[13px] leading-5 text-[#44403b]">{sourceFilled ? field.source : <span className="text-[#a8a29e]">Не заполнено</span>}</div>}
       </div>
       <div data-translation-target-field className={cn("group relative min-w-0 bg-white", isDescription ? "p-0" : "flex h-12 items-center px-1.5")}>
-        {sourceFilled && (!machineTranslated || translating || translationFailed) && (
+        {sourceFilled && (!targetValue.trim() || translating || translationFailed) && (
           <Tooltip label={translating ? "Перевод выполняется" : translateLabel} side="top" delayDuration={250}>
             <Button
               data-ai-translate-action
@@ -922,7 +922,10 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
       <div data-translations-table-header className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] bg-white text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f5f4]">
         <div data-translations-table className="border-b border-stone-200">
-          {entity.fields.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} />)}
+          {entity.fields.map((field) => {
+            const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
+            return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
+          })}
         </div>
       </div>
     </main>
