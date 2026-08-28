@@ -81,6 +81,15 @@ export type TranslationLanguage = {
   autoTranslate: boolean;
 };
 
+export type CatalogPositionLanguageProgress = {
+  code: TranslationLanguageCode;
+  label: string;
+  filled: number;
+  total: number;
+  outdated: boolean;
+  tooltip: string;
+};
+
 export type TranslationJob = {
   id: string;
   language: TranslationLanguageCode;
@@ -149,7 +158,7 @@ type TranslationsContextValue = {
   addBanner: (imageUrl?: string) => string;
   dismissToast: () => void;
   consumeWorkspaceRequest: () => void;
-  getCatalogSummary: (item: CatalogItem) => { filled: number; total: number; outdated: boolean; tooltip: string };
+  getCatalogSummary: (item: CatalogItem) => { languages: CatalogPositionLanguageProgress[] };
 };
 
 const TranslationsContext = createContext<TranslationsContextValue | null>(null);
@@ -850,6 +859,44 @@ export function summarizeLanguageProgress(
   });
 
   return { totalFields, doneFields, missing, outdated };
+}
+
+export function summarizeCatalogPositionTranslations(
+  material: Pick<TranslationMaterial, "fields">,
+  languageCodes: TranslationLanguageCode[],
+): CatalogPositionLanguageProgress[] {
+  const fields = material.fields.filter((field) => (
+    (field.id === "title" || field.id === "description") && field.source.trim()
+  ));
+
+  return languageCodes.map((code) => {
+    const missingFields = fields.filter((field) => !field.values[code]?.trim());
+    const outdatedFields = fields.filter((field) => (
+      Boolean(field.values[code]?.trim()) && field.reviewLanguages?.includes(code)
+    ));
+    const filled = fields.length - missingFields.length - outdatedFields.length;
+    const detailLines = [
+      missingFields.length > 0
+        ? `Не переведено: ${missingFields.map((field) => field.label.toLocaleLowerCase("ru")).join(", ")}`
+        : null,
+      outdatedFields.length > 0
+        ? `Требует обновления: ${outdatedFields.map((field) => field.label.toLocaleLowerCase("ru")).join(", ")}`
+        : null,
+    ].filter((line): line is string => Boolean(line));
+
+    return {
+      code,
+      label: LANGUAGE_DETAILS[code].label,
+      filled,
+      total: fields.length,
+      outdated: outdatedFields.length > 0,
+      tooltip: fields.length === 0
+        ? "Нет заполненных полей оригинала"
+        : detailLines.length > 0
+          ? detailLines.join("\n")
+          : "Все поля переведены",
+    };
+  });
 }
 
 function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMaterial[]) {
@@ -1784,15 +1831,21 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const getCatalogSummary = useCallback((item: CatalogItem) => {
     const material = materials.find((candidate) => candidate.catalogItemId === item.id && candidate.kind === "position");
     const activeCodes = languages.map((language) => language.code);
-    if (!material) return { filled: 0, total: activeCodes.length, outdated: false, tooltip: "Переводы ещё не созданы" };
-    const filled = activeCodes.filter((code) => material.statuses[code] !== "missing").length;
-    const outdated = activeCodes.some((code) => material.statuses[code] === "outdated");
-    const statusLabels: Record<TranslationStatus, string> = { missing: "не переведено", machine: "автоперевод", translated: "переведено", outdated: "требует обновления" };
+    const fallbackMaterial: Pick<TranslationMaterial, "fields"> = {
+      fields: [{
+        id: "title",
+        label: "Название",
+        source: item.title,
+        values: item.titleTranslations ?? {},
+      }, {
+        id: "description",
+        label: "Описание",
+        source: stripHtml(item.description),
+        values: item.descriptionTranslations ?? {},
+      }],
+    };
     return {
-      filled,
-      total: activeCodes.length,
-      outdated,
-      tooltip: activeCodes.map((code) => `${LANGUAGE_DETAILS[code].label} — ${statusLabels[material.statuses[code]]}`).join("\n"),
+      languages: summarizeCatalogPositionTranslations(material ?? fallbackMaterial, activeCodes),
     };
   }, [languages, materials]);
 

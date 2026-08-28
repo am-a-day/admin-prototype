@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MockWorkspace } from "@/contexts/mock-auth-context";
 import {
   buildTranslationMaterials,
+  summarizeCatalogPositionTranslations,
   summarizeLanguageProgress,
   type TranslationMaterial,
 } from "@/contexts/translations-context";
@@ -161,6 +162,73 @@ describe("translation material structure", () => {
 });
 
 describe("translation field progress", () => {
+  it("summarizes each added language using only a position's filled title and description", () => {
+    const material = {
+      fields: [{
+        id: "title",
+        label: "Название",
+        source: "Паста",
+        values: { kk: "Паста", en: "Pasta" },
+      }, {
+        id: "description",
+        label: "Описание",
+        source: "С томатами",
+        values: { kk: "Қызанақпен", en: "" },
+      }, {
+        id: "option:size:large",
+        label: "Опция · Большая",
+        source: "Большая",
+        kind: "option",
+        values: { kk: "", en: "" },
+      }],
+    } as TranslationMaterial;
+
+    expect(summarizeCatalogPositionTranslations(material, ["kk", "en", "sr"])).toEqual([{
+      code: "kk",
+      label: "Қазақша",
+      filled: 2,
+      total: 2,
+      outdated: false,
+      tooltip: "Все поля переведены",
+    }, {
+      code: "en",
+      label: "English",
+      filled: 1,
+      total: 2,
+      outdated: false,
+      tooltip: "Не переведено: описание",
+    }, {
+      code: "sr",
+      label: "Srpski",
+      filled: 0,
+      total: 2,
+      outdated: false,
+      tooltip: "Не переведено: название, описание",
+    }]);
+  });
+
+  it("does not include an empty original description in position progress", () => {
+    const material = {
+      fields: [{
+        id: "title",
+        label: "Название",
+        source: "Паста",
+        values: { en: "Pasta" },
+      }, {
+        id: "description",
+        label: "Описание",
+        source: "",
+        values: { en: "" },
+      }],
+    } as TranslationMaterial;
+
+    expect(summarizeCatalogPositionTranslations(material, ["en"])[0]).toMatchObject({
+      filled: 1,
+      total: 1,
+      tooltip: "Все поля переведены",
+    });
+  });
+
   it("excludes empty source fields from the total", () => {
     const material = {
       statuses: { kk: "missing", en: "missing", sr: "missing" },

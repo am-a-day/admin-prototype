@@ -34,14 +34,14 @@ import {
   SealPercent,
   Trash,
   Translate,
-  WarningCircle,
   X,
   XCircle,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
@@ -78,7 +78,11 @@ import { getLocalCatalogItemLabels, getLocalCatalogLabelText } from "../labels/l
 import { USE_SHARED_TAGS_AND_STICKERS } from "../feature-flags";
 import { usePositionSidePeekOverlayLayer } from "../editor/side-peek-context";
 import binocularsAsset from "../ui/binoculars.svg";
-import { useTranslationsOptional } from "@/contexts/translations-context";
+import {
+  useTranslationsOptional,
+  type CatalogPositionLanguageProgress,
+  type TranslationLanguageCode,
+} from "@/contexts/translations-context";
 
 type MovePopoverAnchor = CatalogSectionActionAnchor;
 function getMovePopoverAnchor(event: Event | React.MouseEvent<HTMLElement>): MovePopoverAnchor {
@@ -93,6 +97,164 @@ function getDescriptionPreview(description: string) {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const CATALOG_TRANSLATION_LANGUAGE_CODES: Record<TranslationLanguageCode, string> = {
+  ru: "RU",
+  kk: "KZ",
+  en: "EN",
+  zh: "CN",
+  fr: "FR",
+  es: "ES",
+  sr: "SR",
+};
+const CATALOG_TRANSLATION_BADGE_WIDTH = 43;
+const CATALOG_TRANSLATION_MORE_WIDTH = 23;
+const CATALOG_TRANSLATION_BADGE_GAP = 4;
+const CATALOG_TRANSLATION_CELL_PADDING = 8;
+
+function getVisibleTranslationBadgeCount(languageCount: number, columnWidth: number) {
+  if (languageCount === 0) return 0;
+  const contentWidth = Math.max(0, columnWidth - CATALOG_TRANSLATION_CELL_PADDING);
+  const allBadgesWidth = languageCount * CATALOG_TRANSLATION_BADGE_WIDTH
+    + Math.max(0, languageCount - 1) * CATALOG_TRANSLATION_BADGE_GAP;
+  if (allBadgesWidth <= contentWidth) return languageCount;
+  return Math.max(0, Math.min(
+    languageCount - 1,
+    Math.floor((contentWidth - CATALOG_TRANSLATION_MORE_WIDTH) / (
+      CATALOG_TRANSLATION_BADGE_WIDTH + CATALOG_TRANSLATION_BADGE_GAP
+    )),
+  ));
+}
+
+function CatalogTranslationBadge({
+  progress,
+  onOpen,
+}: {
+  progress: CatalogPositionLanguageProgress;
+  onOpen: (language: TranslationLanguageCode) => void;
+}) {
+  return (
+    <Tooltip
+      side="top"
+      label={<span className="whitespace-pre-line leading-5">{progress.tooltip}</span>}
+      contentClassName="max-w-[240px]"
+    >
+      <button
+        type="button"
+        data-no-dnd
+        aria-label={`${progress.label}: переведено ${progress.filled} из ${progress.total} полей`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen(progress.code);
+        }}
+        onKeyDown={(event) => event.stopPropagation()}
+        className={cn(
+          badgeVariants({ variant: "secondary" }),
+          "h-[18px] w-[43px] rounded-[5px] border border-[#e7e5e4] bg-[#f5f5f4] px-1 py-0 text-[10px] font-medium leading-none tabular-nums text-[#57534d] hover:bg-[#eeecea]",
+          progress.outdated && "text-amber-700",
+        )}
+      >
+        {CATALOG_TRANSLATION_LANGUAGE_CODES[progress.code]} {progress.filled}/{progress.total}
+      </button>
+    </Tooltip>
+  );
+}
+
+function CatalogTranslationOverflow({
+  languages,
+  onOpen,
+}: {
+  languages: CatalogPositionLanguageProgress[];
+  onOpen: (language: TranslationLanguageCode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const openTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const clearOpenTimer = () => {
+    if (openTimerRef.current == null) return;
+    window.clearTimeout(openTimerRef.current);
+    openTimerRef.current = null;
+  };
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current == null) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  const scheduleOpen = () => {
+    clearOpenTimer();
+    clearCloseTimer();
+    openTimerRef.current = window.setTimeout(() => setOpen(true), 250);
+  };
+  const scheduleClose = () => {
+    clearOpenTimer();
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), 120);
+  };
+  useEffect(() => () => {
+    clearOpenTimer();
+    clearCloseTimer();
+  }, []);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-no-dnd
+          aria-label={`Показать ещё ${languages.length} языков`}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onPointerEnter={scheduleOpen}
+          onPointerLeave={scheduleClose}
+          className={cn(
+            badgeVariants({ variant: "secondary" }),
+            "h-[18px] min-w-[23px] rounded-[5px] border border-[#e7e5e4] bg-[#f5f5f4] px-1 py-0 text-[10px] font-medium leading-none tabular-nums text-[#57534d] hover:bg-[#eeecea]",
+          )}
+        >
+          +{languages.length}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={6}
+        className="w-[190px] rounded-[10px] p-1"
+        onPointerEnter={() => {
+          clearOpenTimer();
+          clearCloseTimer();
+        }}
+        onPointerLeave={scheduleClose}
+      >
+        <div className="space-y-0.5">
+          {languages.map((progress) => (
+            <button
+              key={progress.code}
+              type="button"
+              className="flex h-8 w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12px] text-[#57534d] transition hover:bg-[#f5f5f4] hover:text-[#292524]"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onOpen(progress.code);
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{progress.label}</span>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "h-[18px] w-[43px] rounded-[5px] border border-[#e7e5e4] bg-[#f5f5f4] px-1 py-0 text-[10px] font-medium leading-none tabular-nums text-[#57534d]",
+                  progress.outdated && "text-amber-700",
+                )}
+                title={progress.tooltip}
+              >
+                {CATALOG_TRANSLATION_LANGUAGE_CODES[progress.code]} {progress.filled}/{progress.total}
+              </Badge>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -1609,30 +1771,43 @@ function AuditDishRowContent({
               </span>
             );
           case "translation": {
-            const summary = translations?.getCatalogSummary(item) ?? {
-              filled: item.translationFilledCount,
-              total: item.translationTotalCount,
-              outdated: false,
-              tooltip: `Переведено ${item.translationFilledCount} из ${item.translationTotalCount} языков`,
+            const languageProgress = translations?.getCatalogSummary(item).languages ?? [];
+            const visibleCount = getVisibleTranslationBadgeCount(languageProgress.length, cell.column.getSize());
+            const visibleLanguages = languageProgress.slice(0, visibleCount);
+            const overflowLanguages = languageProgress.slice(visibleCount);
+            const openTranslations = (language: TranslationLanguageCode) => {
+              translations?.openWorkspace({
+                language,
+                category: "positions",
+                materialId: item.id,
+              });
             };
             return (
-              <span key={cell.id} data-catalog-table-content-cell={cell.column.id} style={getColumnWidthStyle(cell.column.getSize())} className={cn("flex h-full shrink-0 items-center justify-center px-3 text-[13px] leading-5 text-[#292524]", dividerClass)}>
-                <Tooltip side="top" label={<span className="whitespace-pre-line leading-5">{summary.tooltip}</span>}>
-                  <button
-                    type="button"
-                    data-no-dnd
-                    aria-label={`Открыть переводы для ${item.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      translations?.openWorkspace({ category: "positions", materialId: item.id });
-                    }}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    className={cn("inline-flex h-7 items-center gap-1 rounded-[6px] px-1.5 tabular-nums transition hover:bg-stone-100", summary.outdated && "text-amber-700")}
-                  >
-                    {summary.outdated && <WarningCircle size={13} weight="fill" />}
-                    {summary.filled}/{summary.total}
-                  </button>
-                </Tooltip>
+              <span
+                key={cell.id}
+                data-catalog-table-content-cell={cell.column.id}
+                style={getColumnWidthStyle(cell.column.getSize())}
+                className={cn("flex h-full min-w-0 shrink-0 items-center justify-center overflow-hidden px-1", dividerClass)}
+              >
+                {languageProgress.length > 0 ? (
+                  <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                    {visibleLanguages.map((progress) => (
+                      <CatalogTranslationBadge
+                        key={progress.code}
+                        progress={progress}
+                        onOpen={openTranslations}
+                      />
+                    ))}
+                    {overflowLanguages.length > 0 && (
+                      <CatalogTranslationOverflow
+                        languages={overflowLanguages}
+                        onOpen={openTranslations}
+                      />
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-[#a6a09b]">—</span>
+                )}
               </span>
             );
           }
