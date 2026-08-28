@@ -46,7 +46,7 @@ import { useAppSettings } from "@/contexts/app-settings-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import { formatPrice, catalogSections, type CatalogItem } from "@/data/catalog";
 import { cn } from "@/lib/utils";
-import { countItemsByFilter, getSectionScopeIds } from "../model/selectors";
+import { countItemsByFilter, getSectionScopeIds, type CatalogFilterOptions } from "../model/selectors";
 import {
   CATALOG_TABLE_FILTER_GROUPS,
   CATALOG_TABLE_FILTER_LABELS,
@@ -364,7 +364,6 @@ export const CATALOG_SORTABLE_TABLE_COLUMN_IDS = [
   "section",
   "weight",
   "kbju",
-  "translation",
   "price",
   "discount",
   "upsells",
@@ -384,7 +383,6 @@ function getCatalogSortValue(item: CatalogItem, columnId: CatalogSortableTableCo
     case "section": return item.sectionName;
     case "weight": return item.weightLabel || null;
     case "kbju": return item.nutritionFilledCount;
-    case "translation": return item.translationFilledCount;
     case "price": return item.price > 0 ? item.price : null;
     case "discount":
       return item.hasDiscount && item.priceWithSale != null
@@ -1365,6 +1363,7 @@ export function CatalogTableToolbar({
   onTagCategoryChange,
   onStickerCategoryChange,
   onActiveFilterChange,
+  filterOptions,
   showFilter = true,
 }: {
   query: string;
@@ -1380,6 +1379,7 @@ export function CatalogTableToolbar({
   onTagCategoryChange?: (active: boolean) => void;
   onStickerCategoryChange?: (active: boolean) => void;
   onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
+  filterOptions?: CatalogFilterOptions;
   showFilter?: boolean;
 }) {
   return (
@@ -1397,6 +1397,7 @@ export function CatalogTableToolbar({
           table={table}
           onResetColumns={onResetColumns}
           onActiveFilterChange={onActiveFilterChange}
+          filterOptions={filterOptions}
           headerActionsOnly
           tagCategoryActive={tagCategoryActive}
           stickerCategoryActive={stickerCategoryActive}
@@ -2254,6 +2255,7 @@ export function CatalogTableFilterBar({
   sectionScopeId,
   items,
   onActiveFilterChange,
+  filterOptions,
   table,
   onResetColumns,
   simple = false,
@@ -2264,6 +2266,7 @@ export function CatalogTableFilterBar({
   sectionScopeId: string | null;
   items: CatalogItem[];
   onActiveFilterChange: (id: OverviewFilterId, active: boolean) => void;
+  filterOptions?: CatalogFilterOptions;
   table: TanStackTable<CatalogItem>;
   onResetColumns: () => void;
   simple?: boolean;
@@ -2276,7 +2279,9 @@ export function CatalogTableFilterBar({
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [openFilterGroup, setOpenFilterGroup] = useState<string | null>(null);
   const scopeIds = useMemo(() => getSectionScopeIds(sectionScopeId, catalogSections), [sectionScopeId]);
-  const countByFilter = (id: OverviewFilterId) => countItemsByFilter([id], items, scopeIds, mandatoryFilterId)[id] ?? 0;
+  const countByFilter = (id: OverviewFilterId) => (
+    countItemsByFilter([id], items, scopeIds, mandatoryFilterId, filterOptions)[id] ?? 0
+  );
   const filterGroups = CATALOG_TABLE_FILTER_GROUPS
     .map((group) => ({
       ...group,

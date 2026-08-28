@@ -35,14 +35,13 @@ function Providers({ children }: { children: ReactNode }) {
 
 function CatalogSummaryProbe() {
   const { items } = useCatalogStore();
-  const { autoTranslateField, getCatalogSummary, languages, materials, updateField } = useTranslations();
+  const { autoTranslateField, hasIncompleteCatalogTranslations, languages, materials, updateField } = useTranslations();
   const item = items[0];
   const material = materials.find((candidate) => candidate.catalogItemId === item.id)!;
-  const english = getCatalogSummary(item).languages.find(({ code }) => code === "en")!;
 
   return (
     <>
-      <output aria-label="Статус английского">{english.complete ? "complete" : "incomplete"}</output>
+      <output aria-label="Статус переводов">{hasIncompleteCatalogTranslations(item) ? "incomplete" : "complete"}</output>
       <output aria-label="Языки каталога">
         {languages.map(({ code, published }) => `${code}:${published ? "visible" : "hidden"}`).join(",")}
       </output>
@@ -77,15 +76,15 @@ describe("catalog translation summary", () => {
 
     expect(screen.getByLabelText("Языки каталога")).not.toHaveTextContent("ru:");
     expect(screen.getByLabelText("Языки каталога")).toHaveTextContent("kk:hidden");
-    expect(screen.getByLabelText("Статус английского")).toHaveTextContent("incomplete");
+    expect(screen.getByLabelText("Статус переводов")).toHaveTextContent("incomplete");
 
     await user.click(screen.getByRole("button", { name: "Ввести название вручную" }));
-    expect(screen.getByLabelText("Статус английского")).toHaveTextContent("incomplete");
+    expect(screen.getByLabelText("Статус переводов")).toHaveTextContent("incomplete");
 
     await user.click(screen.getByRole("button", { name: "Перевести описание AI" }));
-    await waitFor(() => expect(screen.getByLabelText("Статус английского")).toHaveTextContent("complete"));
+    await waitFor(() => expect(screen.getByLabelText("Статус переводов")).toHaveTextContent("complete"));
 
     await user.click(screen.getByRole("button", { name: "Удалить перевод описания" }));
-    expect(screen.getByLabelText("Статус английского")).toHaveTextContent("incomplete");
+    expect(screen.getByLabelText("Статус переводов")).toHaveTextContent("incomplete");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CatalogItem } from "@/data/catalog";
 import { CATALOG_TABLE_FILTER_GROUPS } from "./filter-config";
-import { countItemsByFilter } from "./selectors";
+import { countItemsByFilter, getOverviewItems } from "./selectors";
 
 function item(overrides: Partial<CatalogItem>): CatalogItem {
   return {
@@ -70,5 +70,24 @@ describe("catalog table filter counts", () => {
       "display:no-price-only": 1,
     });
     expect(Object.prototype.hasOwnProperty.call(counts, "quick:with-labels")).toBe(true);
+  });
+
+  it("uses the shared translation resolver for filtering and counts", () => {
+    const items = [
+      item({ id: "complete" }),
+      item({ id: "missing-english" }),
+      item({ id: "missing-kazakh" }),
+    ];
+    const filterOptions = {
+      hasIncompleteTranslations: (candidate: CatalogItem) => candidate.id.startsWith("missing-"),
+    };
+
+    expect(getOverviewItems("quick:no-translation", items, filterOptions).map(({ id }) => id)).toEqual([
+      "missing-english",
+      "missing-kazakh",
+    ]);
+    expect(countItemsByFilter(["quick:no-translation"], items, null, undefined, filterOptions)).toEqual({
+      "quick:no-translation": 2,
+    });
   });
 });

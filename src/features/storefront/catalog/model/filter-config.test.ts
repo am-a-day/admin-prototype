@@ -10,7 +10,7 @@ describe("catalog table active filter", () => {
   it("matches the current primary and nested filter structure", () => {
     expect(CATALOG_TABLE_FILTER_GROUPS).toEqual([
       { key: "primary", label: "Позиции", ids: ["status:active", "status:archived", "status:stop", "status:schedule"] },
-      { key: "missing", label: "Не заполнено", ids: ["quick:no-photo", "quick:no-description", "quick:no-recommendations", "quick:no-kbju", "quick:no-translation"] },
+      { key: "missing", label: "Не заполнено", ids: ["quick:no-photo", "quick:no-translation", "quick:no-description", "quick:no-recommendations", "quick:no-kbju"] },
       { key: "contains", label: "Содержит", ids: ["quick:with-recommendations", "quick:with-tags", "quick:discount", "quick:with-labels"] },
       { key: "view", label: "Вид", ids: ["display:full", "display:no-price", "display:no-button", "display:no-price-only"] },
     ]);
@@ -23,7 +23,7 @@ describe("catalog table active filter", () => {
   it("uses concise nested filter labels", () => {
     expect(CATALOG_TABLE_FILTER_LABELS).toMatchObject({
       "quick:no-kbju": "Без КБЖУ",
-      "quick:no-translation": "Без перевода",
+      "quick:no-translation": "Есть непереведённые",
       "quick:with-recommendations": "Рекомендации",
       "quick:with-tags": "Теги",
       "quick:discount": "Скидка",

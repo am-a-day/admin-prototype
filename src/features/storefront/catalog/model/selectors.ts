@@ -2,13 +2,19 @@ import type { CatalogItem } from "@/data/catalog";
 import type { OverviewFilterId } from "./types";
 import type { CatalogPriceSortDirection } from "../navigation/types";
 
-export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogItem) => boolean> = {
+export type CatalogFilterOptions = {
+  hasIncompleteTranslations?: (item: CatalogItem) => boolean;
+};
+
+type CatalogFilterPredicate = (item: CatalogItem, options?: CatalogFilterOptions) => boolean;
+
+export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, CatalogFilterPredicate> = {
   "quick:all": () => true,
   "quick:no-description": (item) => !item.hasDescription,
   "quick:no-photo": (item) => !item.thumbnailUrl,
   "quick:no-weight": (item) => !item.weightLabel,
   "quick:no-kbju": (item) => item.nutritionFilledCount === 0,
-  "quick:no-translation": (item) => item.translationFilledCount < item.translationTotalCount,
+  "quick:no-translation": (item, options) => options?.hasIncompleteTranslations?.(item) ?? false,
   "quick:discount": (item) => item.hasDiscount,
   "quick:with-tags": (item) => item.tags.length > 0 || Boolean(item.tagIds?.length),
   "quick:with-labels": (item) => item.guestLabels.length > 0 || Boolean(item.stickerId),
@@ -27,8 +33,12 @@ export const CATALOG_FILTER_PREDICATES: Record<OverviewFilterId, (item: CatalogI
   "status:schedule": (item) => item.scheduled,
 };
 
-export function getOverviewItems(filterId: OverviewFilterId, items: CatalogItem[]) {
-  return items.filter(CATALOG_FILTER_PREDICATES[filterId]);
+export function getOverviewItems(
+  filterId: OverviewFilterId,
+  items: CatalogItem[],
+  options?: CatalogFilterOptions,
+) {
+  return items.filter((item) => CATALOG_FILTER_PREDICATES[filterId](item, options));
 }
 
 export function getItemSearchText(item: CatalogItem) {
@@ -39,9 +49,10 @@ export function getCombinedOverviewItems(
   filterId: OverviewFilterId,
   items: CatalogItem[],
   mandatoryFilterId?: OverviewFilterId,
+  options?: CatalogFilterOptions,
 ) {
-  const mandatoryItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-  return getOverviewItems(filterId, mandatoryItems);
+  const mandatoryItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items, options) : items;
+  return getOverviewItems(filterId, mandatoryItems, options);
 }
 
 export function countItemsByFilter(
@@ -49,12 +60,13 @@ export function countItemsByFilter(
   items: CatalogItem[],
   scopeIds: Set<string> | null,
   mandatoryFilterId?: OverviewFilterId,
+  options?: CatalogFilterOptions,
 ) {
   const counts = Object.fromEntries(filterIds.map((id) => [id, 0])) as Record<OverviewFilterId, number>;
-  getCombinedOverviewItems("quick:all", items, mandatoryFilterId).forEach((item) => {
+  getCombinedOverviewItems("quick:all", items, mandatoryFilterId, options).forEach((item) => {
     if (scopeIds && !scopeIds.has(item.sectionId)) return;
     filterIds.forEach((id) => {
-      if (CATALOG_FILTER_PREDICATES[id](item)) counts[id] += 1;
+      if (CATALOG_FILTER_PREDICATES[id](item, options)) counts[id] += 1;
     });
   });
   return counts;

@@ -174,6 +174,7 @@ type TranslationsContextValue = {
   dismissToast: () => void;
   consumeWorkspaceRequest: () => void;
   getCatalogSummary: (item: CatalogItem) => { languages: CatalogPositionLanguageProgress[] };
+  hasIncompleteCatalogTranslations: (item: CatalogItem) => boolean;
 };
 
 const TranslationsContext = createContext<TranslationsContextValue | null>(null);
@@ -2231,6 +2232,10 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     };
   }, [languages, materials]);
 
+  const hasIncompleteCatalogTranslations = useCallback((item: CatalogItem) => (
+    getCatalogSummary(item).languages.some(({ complete }) => !complete)
+  ), [getCatalogSummary]);
+
   const updateBanner = useCallback((id: string, patch: Partial<Banner>) => {
     setBanners((current) => current.map((banner) => banner.id === id ? { ...banner, ...patch } : banner));
   }, []);
@@ -2296,6 +2301,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     dismissToast: () => setToast(null),
     consumeWorkspaceRequest: () => setWorkspaceRequested(false),
     getCatalogSummary,
+    hasIncompleteCatalogTranslations,
   }), [
     activeCategory,
     activeLanguage,
@@ -2310,6 +2316,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     confirmPrimaryLanguage,
     getCatalogSummary,
     getFieldTranslationState,
+    hasIncompleteCatalogTranslations,
     jobs,
     languages,
     materials,

@@ -180,7 +180,7 @@ async function createAndOpenEmptySection(user: ReturnType<typeof userEvent.setup
 async function chooseCatalogTableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
   await user.click(screen.getByRole("button", { name: /Фильтр таблицы:/ }));
   const filterMenu = screen.getByRole("menu");
-  const groupLabel = ["Без фото и видео", "Без описания", "Без рекомендаций", "Без КБЖУ", "Без перевода"].includes(label)
+  const groupLabel = ["Без фото и видео", "Есть непереведённые", "Без описания", "Без рекомендаций", "Без КБЖУ"].includes(label)
     ? "Не заполнено"
     : ["Рекомендации", "Теги", "Скидка", "Стикеры"].includes(label)
       ? "Содержит"
@@ -580,6 +580,12 @@ describe("catalog observable behavior baseline", () => {
     expect(nameHeader).not.toHaveAttribute("data-sort-direction");
     expect(priceHeader).toHaveAttribute("data-sort-direction", "desc");
 
+    const translationHeader = screen.getByRole("button", { name: "Настройки колонки «Переводы»" });
+    await user.click(translationHeader);
+    expect(screen.queryByRole("menuitemradio", { name: /Сначала/ })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(translationHeader).not.toHaveAttribute("data-sort-direction");
+
     await user.click(screen.getByRole("button", { name: "Настройки колонки «Вес или объём»" }));
     expect(screen.queryByRole("menuitemradio", { name: /Сначала/ })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Сдвинуть вправо" })).toBeInTheDocument();
@@ -640,9 +646,19 @@ describe("catalog observable behavior baseline", () => {
     await user.click(missingGroup);
     const contentSubmenu = screen.getAllByRole("menu").find((menu) => within(menu).queryByRole("menuitem", { name: /Без описания/ }));
     expect(contentSubmenu).toBeDefined();
-    ["Без описания", "Без фото и видео", "Без рекомендаций"].forEach((label) => {
+    ["Без фото и видео", "Есть непереведённые", "Без описания", "Без рекомендаций"].forEach((label) => {
       expect(within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     });
+    expect(Array.from((contentSubmenu as HTMLElement).querySelectorAll("[data-catalog-filter-item]"))
+      .map((item) => item.getAttribute("data-catalog-filter-item"))).toEqual([
+        "quick:no-photo",
+        "quick:no-translation",
+        "quick:no-description",
+        "quick:no-recommendations",
+        "quick:no-kbju",
+      ]);
+    expect(within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: /Есть непереведённые/ }))
+      .toHaveTextContent(/Есть непереведённые\d+/);
     const withoutDescription = within(contentSubmenu as HTMLElement).getByRole("menuitem", { name: /Без описания/ });
     await user.click(withoutDescription);
     const filterTrigger = screen.getByRole("button", { name: /Фильтр таблицы:/ });

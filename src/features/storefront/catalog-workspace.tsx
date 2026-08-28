@@ -107,6 +107,7 @@ import {
   getOverviewItems,
   getSectionScopeIds,
   sortItemsByPrice,
+  type CatalogFilterOptions,
 } from "./catalog/model/selectors";
 import {
   moveCatalogIdToIndex,
@@ -521,9 +522,9 @@ const OVERVIEW_FILTER_META: Record<OverviewFilterId, OverviewFilterMeta> = {
     emptyText: "У всех позиций заполнены данные КБЖУ.",
   },
   "quick:no-translation": {
-    label: "Без перевода",
-    countText: (count) => `${count} ${plural(count, "позиция требует", "позиции требуют", "позиций требуют")} перевод`,
-    emptyTitle: "Нет позиций без перевода",
+    label: "Есть непереведённые",
+    countText: (count) => `${count} ${plural(count, "позиция имеет", "позиции имеют", "позиций имеют")} незавершённый перевод`,
+    emptyTitle: "Нет позиций с непереведёнными полями",
     emptyText: "У всех позиций заполнены переводы.",
   },
   "quick:discount": {
@@ -765,15 +766,23 @@ function getQueueItemIds(
   sectionScopeId: string | null,
   priceSort: PriceSortDirection = "none",
   mandatoryFilterId?: OverviewFilterId,
+  filterOptions?: CatalogFilterOptions,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
   const scopeIds = getSectionScopeIds(sectionScopeId, catalogSections);
-  const filtered = getCombinedOverviewItems(filterId, items, mandatoryFilterId)
+  const filtered = getCombinedOverviewItems(filterId, items, mandatoryFilterId, filterOptions)
     .filter((item) => !scopeIds || scopeIds.has(item.sectionId))
     .filter((item) =>
       !normalizedQuery || [item.title, item.sectionName].some((value) => value.toLowerCase().includes(normalizedQuery)),
     );
   return sortItemsByPrice(orderItemsByStoredPositionOrder(filtered), priceSort).map((item) => item.id);
+}
+
+function useCatalogTranslationFilterOptions(): CatalogFilterOptions | undefined {
+  const translations = useTranslationsOptional();
+  return useMemo(() => translations ? {
+    hasIncompleteTranslations: translations.hasIncompleteCatalogTranslations,
+  } : undefined, [translations]);
 }
 
 function CatalogSidePanel({
@@ -3813,6 +3822,7 @@ function PopulatedWorkspace({
   onFirstItemCreated?: () => void;
 }) {
   const { contentLanguage } = useAppSettings();
+  const filterOptions = useCatalogTranslationFilterOptions();
   const { registerChange } = usePublish();
   const {
     items: catalogStoreItems,
@@ -5900,8 +5910,8 @@ function PopulatedWorkspace({
   };
 
   const scopedItemCount = selectedSectionId
-    ? getQueueItemIds(filterId, allItems, query, selectedSectionId, "none", mandatoryFilterId).length
-    : getQueueItemIds(filterId, allItems, query, null, "none", mandatoryFilterId).length;
+    ? getQueueItemIds(filterId, allItems, query, selectedSectionId, "none", mandatoryFilterId, filterOptions).length
+    : getQueueItemIds(filterId, allItems, query, null, "none", mandatoryFilterId, filterOptions).length;
   const subsectionDisabledReason = section ? (() => {
     const availability = getParentAvailability(section, allItems, allSections);
     return availability.available ? null : availability.label;
@@ -7312,6 +7322,7 @@ function UnifiedFlatCatalogPanel({
   onSelectItem: (item: CatalogItem) => void;
   onCreatePosition?: () => void;
 }) {
+  const filterOptions = useCatalogTranslationFilterOptions();
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const previousSelectionRef = useRef({ filterId, scopeSectionId });
@@ -7330,8 +7341,8 @@ function UnifiedFlatCatalogPanel({
     [allFilterIds],
   );
   const filterCounts = useMemo(
-    () => countItemsByFilter(allFilterIds, allItems, scopeIds),
-    [allFilterIds, allItems, scopeIds],
+    () => countItemsByFilter(allFilterIds, allItems, scopeIds, undefined, filterOptions),
+    [allFilterIds, allItems, filterOptions, scopeIds],
   );
   const countByFilter = (id: OverviewFilterId) => filterCounts[id] ?? 0;
   const [addedFilterIds, setAddedFilterIds] = useState<OverviewFilterId[]>(() =>
@@ -7770,6 +7781,7 @@ function OverviewWorkspace({
   onFirstItemCreated?: () => void;
 }) {
   const translations = useTranslationsOptional();
+  const filterOptions = useCatalogTranslationFilterOptions();
   const { registerChange } = usePublish();
   const editorFirstEnabled = positionsWorkspaceMode === "editor-first";
   const fixedStopListMode = mandatoryFilterId === "status:stop";
@@ -8065,10 +8077,10 @@ function OverviewWorkspace({
     [fixedStopListMode, items],
   );
   const filtered = useMemo(() => {
-    const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items) : items;
-    const nextItems = activeFilterId ? getOverviewItems(activeFilterId, baseItems) : baseItems;
+    const baseItems = mandatoryFilterId ? getOverviewItems(mandatoryFilterId, items, filterOptions) : items;
+    const nextItems = activeFilterId ? getOverviewItems(activeFilterId, baseItems, filterOptions) : baseItems;
     return nextItems.filter((item) => !scopeIds || scopeIds.has(item.sectionId));
-  }, [activeFilterId, items, mandatoryFilterId, scopeIds]);
+  }, [activeFilterId, filterOptions, items, mandatoryFilterId, scopeIds]);
   const scopeTotalCount = useMemo(
     () => items.filter((item) => !scopeIds || scopeIds.has(item.sectionId)).length,
     [items, scopeIds],
@@ -8509,7 +8521,7 @@ function OverviewWorkspace({
     snapshotPriceSort = workspacePriceSort,
     explicitItemIds?: string[],
   ): DescriptionAuditQueueSnapshot => ({
-    itemIds: explicitItemIds ?? getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort, mandatoryFilterId),
+    itemIds: explicitItemIds ?? getQueueItemIds(nextFilterId, items, snapshotQuery, snapshotSectionScopeId, snapshotPriceSort, mandatoryFilterId, filterOptions),
     filterId: nextFilterId,
     entryFilterId: mandatoryFilterId ?? nextFilterId,
     filterLabel: activeSelectionLabel || undefined,
@@ -8811,7 +8823,7 @@ function OverviewWorkspace({
   const rebrowse = (nextFilterId: OverviewFilterId, nextScopeId: string | null) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, current.snapshot.sort, mandatoryFilterId);
+      const itemIds = getQueueItemIds(nextFilterId, items, "", nextScopeId, current.snapshot.sort, mandatoryFilterId, filterOptions);
       return {
         ...current,
         snapshot: {
@@ -8830,7 +8842,7 @@ function OverviewWorkspace({
   const rebrowseQuery = (nextQuery: string) => {
     setQueue((current) => {
       if (!current) return current;
-      const itemIds = getQueueItemIds(current.snapshot.filterId, items, nextQuery, current.snapshot.sectionScopeId, current.snapshot.sort, mandatoryFilterId);
+      const itemIds = getQueueItemIds(current.snapshot.filterId, items, nextQuery, current.snapshot.sectionScopeId, current.snapshot.sort, mandatoryFilterId, filterOptions);
       return { ...current, snapshot: { ...current.snapshot, itemIds, query: nextQuery } };
     });
   };
@@ -9432,6 +9444,7 @@ function OverviewWorkspace({
                 table={catalogTable}
                 onResetColumns={resetTableColumns}
                 onActiveFilterChange={setWorkspaceActiveFilter}
+                filterOptions={filterOptions}
                 showFilter={!fixedStopListMode}
                 tagCategoryActive={USE_SHARED_TAGS_AND_STICKERS && tagFilter != null}
                 stickerCategoryActive={USE_SHARED_TAGS_AND_STICKERS && stickerFilter != null}
