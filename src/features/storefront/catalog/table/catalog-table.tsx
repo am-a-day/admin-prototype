@@ -111,8 +111,10 @@ const CATALOG_TRANSLATION_LANGUAGE_CODES: Record<TranslationLanguageCode, string
 
 export function CatalogTranslationBadge({
   progress,
+  onOpen,
 }: {
   progress: CatalogPositionLanguageProgress;
+  onOpen: (language: TranslationLanguageCode) => void;
 }) {
   const statusLabel = progress.complete ? "Переведено" : "Не всё переведено";
   const StatusIcon = progress.complete ? Check : CircleDashed;
@@ -122,19 +124,28 @@ export function CatalogTranslationBadge({
       label={statusLabel}
     >
       <Badge
+        asChild
         variant="outline"
-        tabIndex={0}
-        role="img"
-        aria-label={`${progress.label}: ${statusLabel}`}
         className={cn(
-          "h-[14px] gap-[2px] rounded-[4px] border-[0.714px] bg-white py-0 pl-[2px] pr-[4px] text-[9px] font-semibold leading-none",
+          "h-[17px] cursor-pointer gap-[2.429px] rounded-[6px] border-[0.867px] bg-white py-[1.64px] pl-[2.429px] pr-[4.857px] text-[12px] leading-none transition-colors hover:bg-[#f5f5f4] focus-visible:ring-[#292524]/10",
           progress.complete
-            ? "border-[#d6d3d1] text-[#333]"
-            : "border-[#e7e5e4] text-[#999]",
+            ? "border-[#d6d3d1] font-medium text-[#333]"
+            : "border-[#e7e5e4] font-normal text-[#999] hover:border-[#d6d3d1]",
         )}
       >
-        <StatusIcon size={10} weight="regular" aria-hidden="true" className="size-[10px] shrink-0" />
-        <span>{CATALOG_TRANSLATION_LANGUAGE_CODES[progress.code]}</span>
+        <button
+          type="button"
+          data-no-dnd
+          aria-label={`${progress.label}: ${statusLabel}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(progress.code);
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <StatusIcon size={13} weight="regular" aria-hidden="true" className="size-[13px] shrink-0" />
+          <span>{CATALOG_TRANSLATION_LANGUAGE_CODES[progress.code]}</span>
+        </button>
       </Badge>
     </Tooltip>
   );
@@ -1666,12 +1677,17 @@ function AuditDishRowContent({
                 {languageProgress.length > 0 ? (
                   <span
                     data-catalog-translation-badges
-                    className="flex min-w-0 items-center gap-[6px] overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="flex min-w-0 items-center gap-[6.857px] overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {languageProgress.map((progress) => (
                       <CatalogTranslationBadge
                         key={progress.code}
                         progress={progress}
+                        onOpen={(language) => translations?.openWorkspace({
+                          language,
+                          category: "positions",
+                          materialId: item.id,
+                        })}
                       />
                     ))}
                   </span>
