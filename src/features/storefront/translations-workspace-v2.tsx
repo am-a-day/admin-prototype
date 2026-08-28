@@ -557,7 +557,7 @@ function TranslationLanguageRow({
       )}
     >
       <LanguageCodeBadge code={item.code} />
-      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected || !item.published ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected && item.published ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
       {translating ? (
         <span className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
       ) : !failed && !item.published && (

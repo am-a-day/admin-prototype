@@ -184,6 +184,7 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Скрыть «Английский» из меню?" })).not.toBeInTheDocument());
     const hiddenRow = container.querySelector('[data-translation-language="en"]') as HTMLElement;
     expect(hiddenRow).toHaveTextContent("Скрыт");
+    expect(within(hiddenRow).getByText("Английский")).toHaveClass("text-[#666]");
     expect(within(hiddenRow).getByRole("button", { name: "Английский. Скрыт" })).toBeEnabled();
     await user.click(within(hiddenRow).getByRole("button", { name: "Английский. Скрыт" }));
     expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeEnabled();
