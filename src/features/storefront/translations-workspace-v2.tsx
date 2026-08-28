@@ -4,15 +4,11 @@ import {
   Check,
   CircleDashed,
   DotsThree,
-  Eye,
-  EyeSlash,
   MagnifyingGlass,
   Plus,
   SpinnerGap,
-  Star,
   StarFour,
   StopCircle,
-  Trash,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -307,96 +303,32 @@ function AddLanguagePopover({ children }: { children: ReactNode }) {
   );
 }
 
-function OriginalLanguagePickerContent({
-  onComplete,
-}: {
-  onComplete: () => void;
-}) {
-  const { account } = useMockAuth();
-  const { languages, setPrimaryLanguage } = useTranslations();
-  const primaryCode = account?.workspace.primaryLanguage ?? "ru";
-  const connectedLanguages = LANGUAGES.filter((item) => (
-    item.code !== primaryCode && languages.some((language) => language.code === item.code)
-  ));
-
-  return (
-    <div className="w-full overflow-hidden rounded-[12px]">
-      <div className="border-b border-[#e7e5e4] bg-[#fafaf9] p-1">
-        <div className="flex min-h-8 items-center gap-2 rounded-[8px] py-1.5 pl-2 pr-2">
-          <LanguageCodeBadge code={primaryCode} />
-          <div className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap leading-4">
-            <span className="truncate text-[13px] text-[#0c0a09]">{languageLabel(primaryCode)}</span>
-            <span className="text-[13px] text-[#999]">·</span>
-            <span className="min-w-0 flex-1 truncate text-[11px] text-[#999]">основной</span>
-          </div>
-        </div>
-        <p className="px-1.5 py-1.5 text-[11px] leading-4 text-[#666]">С этого языка создаются переводы на остальные</p>
-      </div>
-      <div className="bg-white p-1">
-        {connectedLanguages.map((language) => (
-          <button
-            key={language.code}
-            type="button"
-            aria-label={languageLabel(language.code)}
-            onClick={() => {
-              setPrimaryLanguage(language.code);
-              onComplete();
-            }}
-            className="flex min-h-8 w-full items-center gap-2 rounded-[8px] py-1.5 pl-2 pr-2 text-left text-[13px] leading-4 text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-          >
-            <LanguageCodeBadge code={language.code} />
-            <span className="min-w-0 flex-1 truncate">{languageLabel(language.code)}</span>
-          </button>
-        ))}
-        {connectedLanguages.length === 0 && (
-          <p className="px-2 py-3 text-center text-[11px] leading-4 text-[#666]">Других языков пока нет</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TranslationsHeaderMenu() {
-  const [open, setOpen] = useState(false);
-  const [stage, setStage] = useState<"menu" | "original">("menu");
-  const close = () => { setOpen(false); setStage("menu"); };
-
-  return (
-    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setStage("menu"); }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Действия переводов"
-          className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[#333] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-        >
-          <DotsThree size={20} weight="bold" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={5} className={cn("overflow-hidden rounded-[12px] p-0 shadow-md", stage === "menu" ? "w-[224px]" : "w-[214px]")}>
-        {stage === "menu" ? (
-          <div className="p-1">
-            <button
-              type="button"
-              onClick={() => setStage("original")}
-              className="flex h-7 w-full items-center rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              Изменить основной язык
-            </button>
-          </div>
-        ) : (
-          <OriginalLanguagePickerContent onComplete={close} />
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function LanguageActionsPopover({ language }: { language: TranslationLanguage }) {
-  const { removeLanguage, setPrimaryLanguage, setPublished } = useTranslations();
+  const { account } = useMockAuth();
+  const {
+    jobs,
+    materials,
+    removeLanguage,
+    setPrimaryLanguage,
+    setPublished,
+    translateMissingFields,
+  } = useTranslations();
   const [open, setOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [hideDialogOpen, setHideDialogOpen] = useState(false);
   const close = () => setOpen(false);
+  const isOriginal = language.code === (account?.workspace.primaryLanguage ?? "ru");
+  const hasActiveJob = jobs.some((job) => (
+    job.language === language.code && (job.status === "idle" || job.status === "running")
+  ));
+  const missingFieldCount = useMemo(() => materials.reduce((count, material) => (
+    count + material.fields.filter((field) => (
+      field.source.trim() && !field.values[language.code]?.trim()
+    )).length
+  ), 0), [language.code, materials]);
+  const canTranslateMissing = missingFieldCount > 0 && !hasActiveJob;
+  const hasTranslationActions = !isOriginal || canTranslateMissing;
+  const actionClassName = "flex min-h-7 w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13px] font-normal leading-4 text-[#0c0a09] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10";
 
   return (
     <>
@@ -410,35 +342,54 @@ function LanguageActionsPopover({ language }: { language: TranslationLanguage })
             <DotsThree size={20} weight="bold" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" sideOffset={5} className="w-[200px] overflow-hidden rounded-[12px] p-0 shadow-md">
-          <div className="p-1">
-            <button type="button" onClick={() => { setPrimaryLanguage(language.code); close(); }} className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-              <Star size={16} /><span>Сделать основным</span>
-            </button>
+        <PopoverContent
+          align="end"
+          sideOffset={5}
+          className="w-[221px] min-w-[128px] overflow-hidden rounded-[12px] border border-[#e7e5e4] p-0 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-2px_rgba(0,0,0,0.1)]"
+        >
+          {hasTranslationActions && (
+            <div className="p-1">
+              {!isOriginal && (
+                <button type="button" onClick={() => { setPrimaryLanguage(language.code); close(); }} className={actionClassName}>
+                  <span className="min-w-0 flex-1 truncate">Сделать оригиналом</span>
+                </button>
+              )}
+              {canTranslateMissing && (
+                <button type="button" onClick={() => { close(); translateMissingFields(language.code); }} className={actionClassName}>
+                  <span className="min-w-0 flex-1 truncate">Перевести недостающие</span>
+                  <StarFour size={16} className="shrink-0 text-[#0c0a09]" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className={cn("p-1", hasTranslationActions && "border-t border-[#e7e5e4]")}>
+            <label className={cn(actionClassName, "cursor-pointer")}>
+              <span className="min-w-0 flex-1 truncate">Показывать в меню</span>
+              <Checkbox
+                checked={language.published}
+                aria-label="Показывать в меню"
+                onCheckedChange={(checked) => {
+                  if (checked === false && language.published) {
+                    close();
+                    setHideDialogOpen(true);
+                    return;
+                  }
+                  if (checked === true && !language.published) {
+                    setPublished(language.code, true);
+                    close();
+                  }
+                }}
+                className="size-4 shrink-0 rounded-[5px] border-[#d6d3d1] data-[state=checked]:border-[#4f39f6] data-[state=checked]:bg-[#4f39f6]"
+              />
+            </label>
           </div>
           <div className="border-t border-[#e7e5e4] p-1">
             <button
               type="button"
-              onClick={() => {
-                if (language.published) {
-                  close();
-                  setHideDialogOpen(true);
-                } else {
-                  setPublished(language.code, true);
-                  close();
-                }
-              }}
-              className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#0c0a09] hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              {language.published ? <EyeSlash size={16} /> : <Eye size={16} />}
-              <span>{language.published ? "Скрыть из меню" : "Показать в меню"}</span>
-            </button>
-            <button
-              type="button"
               onClick={() => { close(); setDeleteDialogOpen(true); }}
-              className="flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#c10007] hover:bg-[#fff1f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c10007]/15"
+              className={cn(actionClassName, "text-[#c10007] hover:bg-[#fff1f2] focus-visible:ring-[#c10007]/15")}
             >
-              <Trash size={16} /><span>Удалить</span>
+              <span className="min-w-0 flex-1 truncate">Удалить</span>
             </button>
           </div>
         </PopoverContent>
@@ -592,7 +543,7 @@ function TranslationLanguageRow({
           </button>
         </Tooltip>
       )}
-      {!job && <LanguageActionsPopover language={item} />}
+      {!translating && <LanguageActionsPopover language={item} />}
       {job && (
         <div data-translation-job-details className="w-full">
           {failed ? (
@@ -707,7 +658,6 @@ function TranslationSidebar({
       <div className="flex h-[48px] shrink-0 items-end border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]">
         <div className="flex w-full items-center justify-between">
           <h1 className="min-w-0 truncate text-[13px] font-normal leading-[18px] text-[#1c1917]">Переводы</h1>
-          <TranslationsHeaderMenu />
         </div>
       </div>
 
@@ -904,7 +854,7 @@ function TranslationEditor({ entity, language }: {
         <PositionSaveStatus status={saveState} />
       </header>
       <div data-translations-table-gap aria-hidden="true" className="h-1.5 shrink-0 bg-[#f5f5f4]" />
-      <div className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} (оригинал)</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
+      <div className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#fafaf9]"><div className="bg-white">{entity.fields.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} />)}</div></div>
     </main>
   );
@@ -915,7 +865,7 @@ function EmptyTranslations() {
     <div className="flex min-h-0 flex-1 bg-[#fbfbf9]">
       <ResizableTranslationsSidebar>
         <aside data-translations-sidebar className="flex h-full w-full min-w-0 flex-col border-r border-stone-200 bg-[#f5f5f4]">
-          <div className="flex h-[48px] items-end justify-between border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]"><h1 className="min-w-0 truncate text-[13px] text-[#1c1917]">Переводы</h1><TranslationsHeaderMenu /></div>
+          <div className="flex h-[48px] items-end border-b border-[#e7e5e4] bg-white pb-3 pl-[11px] pr-[10px]"><h1 className="min-w-0 truncate text-[13px] text-[#1c1917]">Переводы</h1></div>
           <div data-translations-language-block className="flex flex-col gap-1 bg-white px-1.5 pb-1 pt-2">
             <AddLanguagePopover>
               <button data-translation-add-language type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] py-1 pl-1 pr-2 text-left text-[13px] font-normal leading-[18px] text-[#999] hover:bg-[#f5f5f4]">

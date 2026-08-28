@@ -168,6 +168,7 @@ type TranslationsContextValue = {
   confirmMaterial: (materialId: string, language: TranslationLanguageCode) => void;
   confirmField: (materialId: string, fieldId: string, language: TranslationLanguageCode) => void;
   startAutoTranslate: (languageCodes: TranslationLanguageCode[], materialIds: string[], source: string, publishAfterComplete?: boolean) => void;
+  translateMissingFields: (language: TranslationLanguageCode) => void;
   autoTranslateField: (materialId: string, fieldId: string, language: TranslationLanguageCode) => Promise<void>;
   getFieldTranslationState: (materialId: string, fieldId: string, language: TranslationLanguageCode) => FieldTranslationState;
   updateBanner: (id: string, patch: Partial<Banner>) => void;
@@ -190,14 +191,14 @@ const LANGUAGE_DETAILS: Record<TranslationLanguageCode, Pick<TranslationLanguage
   sr: { label: "Srpski", locale: "sr-RS" },
 };
 
-const PRIMARY_LANGUAGE_TOAST_LABELS: Record<TranslationLanguageCode, string> = {
-  ru: "русский",
-  kk: "казахский",
-  en: "английский",
-  zh: "китайский",
-  fr: "французский",
-  es: "испанский",
-  sr: "сербский",
+const ORIGINAL_LANGUAGE_TOAST_LABELS: Record<TranslationLanguageCode, string> = {
+  ru: "Русский",
+  kk: "Казахский",
+  en: "Английский",
+  zh: "Китайский",
+  fr: "Французский",
+  es: "Испанский",
+  sr: "Сербский",
 };
 
 const SEEDED_TRANSLATIONS: Record<string, Partial<Record<TranslationLanguageCode, Record<string, string>>>> = {
@@ -1374,6 +1375,9 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   ) => {
     const uniqueIds = [...new Set(materialIds)].filter((id) => materialsRef.current.some((material) => material.id === id));
     if (uniqueIds.length === 0 || languageCodes.length === 0) return;
+    const activeJobLanguages = new Set(jobsRef.current
+      .filter((job) => job.status === "idle" || job.status === "running")
+      .map((job) => job.language));
     const startedAt = Date.now();
     if (preserveManualTranslations && reviewFieldIdsByMaterial) {
       let reviewStateChanged = false;
@@ -1408,6 +1412,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       }
     }
     const additions = languageCodes.flatMap((language, index): TranslationJob[] => {
+      if (activeJobLanguages.has(language)) return [];
       const failedFields = new Set(jobsRef.current
         .filter((job) => job.language === language)
         .flatMap((job) => (job.fieldProgress ?? [])
@@ -1454,9 +1459,39 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       }];
     });
     if (additions.length === 0) return;
-    setJobs((current) => [...additions, ...current]);
+    const additionLanguages = new Set(additions.map((job) => job.language));
+    const nextJobs = [
+      ...additions,
+      ...jobsRef.current.filter((job) => !additionLanguages.has(job.language)),
+    ];
+    jobsRef.current = nextJobs;
+    setJobs(nextJobs);
     showToast("Перевод запущен. Можно закрыть админку — процесс продолжится в фоне.");
   }, [account?.id, showToast]);
+
+  const translateMissingFields = useCallback((language: TranslationLanguageCode) => {
+    if (jobsRef.current.some((job) => (
+      job.language === language && (job.status === "idle" || job.status === "running")
+    ))) return;
+
+    const fieldIdsByMaterial = Object.fromEntries(materialsRef.current.flatMap((material) => {
+      const missingFieldIds = material.fields
+        .filter((field) => field.source.trim() && !field.values[language]?.trim())
+        .map((field) => field.id);
+      return missingFieldIds.length > 0 ? [[material.id, missingFieldIds]] : [];
+    }));
+    const materialIds = Object.keys(fieldIdsByMaterial);
+    if (materialIds.length === 0) return;
+
+    startAutoTranslate(
+      [language],
+      materialIds,
+      "Недостающие переводы",
+      false,
+      "preserve",
+      fieldIdsByMaterial,
+    );
+  }, [startAutoTranslate]);
 
   const addLanguage = useCallback((language: TranslationLanguageCode, publishAfterComplete: boolean) => {
     addWorkspaceLanguage(language);
@@ -1616,7 +1651,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           : null,
       });
       setContentLanguage(language);
-      showToast(`Основной язык изменён на ${PRIMARY_LANGUAGE_TOAST_LABELS[language]}`);
+      showToast(`${ORIGINAL_LANGUAGE_TOAST_LABELS[language]} теперь язык оригинала`);
       return;
     }
     if (!account.workspace.languages.some((item) => item.code === language)) return;
@@ -1642,7 +1677,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         : null,
     });
     setContentLanguage(language);
-    showToast(`Основной язык изменён на ${PRIMARY_LANGUAGE_TOAST_LABELS[language]}`);
+    showToast(`${ORIGINAL_LANGUAGE_TOAST_LABELS[language]} теперь язык оригинала`);
   }, [account, setContentLanguage, showToast, updateWorkspace]);
 
   const confirmPrimaryLanguage = useCallback((language: TranslationLanguageCode) => {
@@ -2267,6 +2302,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     confirmMaterial,
     confirmField,
     startAutoTranslate,
+    translateMissingFields,
     autoTranslateField,
     getFieldTranslationState,
     updateBanner,
@@ -2305,6 +2341,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setJobPublishAfterComplete,
     stopTranslationJob,
     startAutoTranslate,
+    translateMissingFields,
     suggestedPrimaryLanguage,
     toast,
     updateBanner,

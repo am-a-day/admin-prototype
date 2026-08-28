@@ -16,14 +16,25 @@ function ToastProbe() {
 }
 
 function TranslationTestControls() {
-  const { materials, startAutoTranslate } = useTranslations();
+  const { materials, startAutoTranslate, translateMissingFields } = useTranslations();
   return (
-    <button
-      type="button"
-      onClick={() => startAutoTranslate(["sr"], materials.map((material) => material.id), "Повторный запуск")}
-    >
-      Тест: обычный автоперевод на сербский
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => startAutoTranslate(["sr"], materials.map((material) => material.id), "Повторный запуск")}
+      >
+        Тест: обычный автоперевод на сербский
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          translateMissingFields("sr");
+          translateMissingFields("sr");
+        }}
+      >
+        Тест: дважды перевести недостающие на сербский
+      </button>
+    </>
   );
 }
 
@@ -104,38 +115,31 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Добавить язык" })).toBeInTheDocument());
   });
 
-  it("changes the primary language directly from the Figma-matched popover", async () => {
+  it("changes the original language only from the Figma-matched language menu", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     renderWorkspace({ sections: [section], items: [item] });
 
     expect(screen.getByRole("heading", { name: "Переводы" })).toBeInTheDocument();
-    expect(screen.getByText("Русский (оригинал)")).toBeInTheDocument();
+    expect(screen.getByText("Русский · оригинал")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Действия переводов" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Основной язык/)).not.toBeInTheDocument();
     expect(screen.getAllByText("Казахский").length).toBeGreaterThan(0);
     const kazakhTitleBefore = screen.getByRole("textbox", { name: "Казахский: Название" }).getAttribute("value");
 
     await user.click(screen.getByRole("button", { name: "Английский" }));
     expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Действия переводов" }));
+    await user.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
     const menu = screen.getByRole("dialog");
-    expect(within(menu).getAllByRole("button")).toHaveLength(1);
-    await user.click(within(menu).getByRole("button", { name: "Изменить основной язык" }));
-    expect(within(menu).getAllByText("Русский")).toHaveLength(1);
-    expect(within(menu).getByText("основной")).toBeInTheDocument();
-    expect(within(menu).getByText("С этого языка создаются переводы на остальные")).toBeInTheDocument();
-    expect(within(menu).queryByRole("button", { name: "Русский" })).not.toBeInTheDocument();
-    expect(within(menu).queryByRole("button", { name: "Сделать основным" })).not.toBeInTheDocument();
-    expect(within(menu).queryByRole("button", { name: "Отмена" })).not.toBeInTheDocument();
-    const englishOption = within(menu).getByRole("button", { name: "Английский" });
-    expect(englishOption).toHaveClass("hover:bg-[#f5f5f4]");
-    expect(englishOption).not.toHaveClass("bg-[#f5f5f4]");
-    expect(englishOption.querySelector("svg")).not.toBeInTheDocument();
-    await user.click(englishOption);
-    await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
-    expect(screen.queryByText("С этого языка создаются переводы на остальные")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Основной язык изменён на английский");
+    expect(menu).toHaveClass("w-[221px]", "rounded-[12px]", "p-0");
+    const makeOriginal = within(menu).getByRole("button", { name: "Сделать оригиналом" });
+    expect(makeOriginal).toHaveClass("min-h-7", "px-2", "py-1.5", "text-[13px]");
+    expect(makeOriginal.querySelector("svg")).not.toBeInTheDocument();
+    await user.click(makeOriginal);
+    await waitFor(() => expect(screen.getByText("Английский · оригинал")).toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent("Английский теперь язык оригинала");
     await user.click(screen.getByRole("button", { name: "Казахский. Скрыт" }));
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue(kazakhTitleBefore ?? "");
   });
@@ -148,11 +152,14 @@ describe("translations workspace v2", () => {
 
     await user.click(screen.getByRole("button", { name: "Действия языка «Испанский»" }));
     let languageMenu = screen.getByRole("dialog");
-    expect(within(languageMenu).getByRole("button", { name: "Сделать основным" })).toBeInTheDocument();
-    expect(within(languageMenu).getByRole("button", { name: "Скрыть из меню" })).toBeInTheDocument();
-    expect(within(languageMenu).getByRole("button", { name: "Удалить" })).toHaveClass("text-[#c10007]");
+    expect(languageMenu).toHaveClass("w-[221px]", "rounded-[12px]", "p-0");
+    expect(within(languageMenu).getByRole("button", { name: "Сделать оригиналом" })).toBeInTheDocument();
+    expect(within(languageMenu).getByRole("checkbox", { name: "Показывать в меню" })).toBeChecked();
+    const deleteAction = within(languageMenu).getByRole("button", { name: "Удалить" });
+    expect(deleteAction).toHaveClass("text-[#c10007]");
+    expect(deleteAction.querySelector("svg")).not.toBeInTheDocument();
 
-    await user.click(within(languageMenu).getByRole("button", { name: "Удалить" }));
+    await user.click(deleteAction);
     const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить «Испанский»?" });
     expect(deleteDialog).toHaveAttribute("data-delete-confirmation-kind", "language");
     expect(within(deleteDialog).getByText("Все переводы на испанский будут удалены.")).toBeInTheDocument();
@@ -162,7 +169,8 @@ describe("translations workspace v2", () => {
     const actions = screen.getByRole("button", { name: "Действия языка «Английский»" });
     await user.click(actions);
     languageMenu = screen.getByRole("dialog");
-    await user.click(within(languageMenu).getByRole("button", { name: "Скрыть из меню" }));
+    expect(within(languageMenu).getByRole("checkbox", { name: "Показывать в меню" })).toBeChecked();
+    await user.click(within(languageMenu).getByRole("checkbox", { name: "Показывать в меню" }));
     let hideDialog = screen.getByRole("dialog", { name: "Скрыть «Английский» из меню?" });
     expect(hideDialog).toHaveAttribute("aria-modal", "true");
     expect(hideDialog).toHaveClass("max-w-[343px]", "rounded-[16px]", "p-0");
@@ -172,13 +180,14 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Скрыть «Английский» из меню?" })).not.toBeInTheDocument());
 
     await user.click(actions);
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Скрыть из меню" }));
+    expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Показывать в меню" })).toBeChecked();
+    await user.click(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Показывать в меню" }));
     hideDialog = screen.getByRole("dialog", { name: "Скрыть «Английский» из меню?" });
     await user.click(within(hideDialog).getByRole("button", { name: "Закрыть" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Скрыть «Английский» из меню?" })).not.toBeInTheDocument());
 
     await user.click(actions);
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Скрыть из меню" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Показывать в меню" }));
     hideDialog = screen.getByRole("dialog", { name: "Скрыть «Английский» из меню?" });
     await user.click(within(hideDialog).getByRole("button", { name: "Скрыть" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Скрыть «Английский» из меню?" })).not.toBeInTheDocument());
@@ -191,16 +200,16 @@ describe("translations workspace v2", () => {
 
     await user.click(actions);
     languageMenu = screen.getByRole("dialog");
-    expect(within(languageMenu).getByRole("button", { name: "Показать в меню" })).toBeInTheDocument();
-    await user.click(within(languageMenu).getByRole("button", { name: "Показать в меню" }));
+    expect(within(languageMenu).getByRole("checkbox", { name: "Показывать в меню" })).not.toBeChecked();
+    await user.click(within(languageMenu).getByRole("checkbox", { name: "Показывать в меню" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(hiddenRow).not.toHaveTextContent("Скрыт");
 
     await user.click(actions);
     languageMenu = screen.getByRole("dialog");
-    await user.click(within(languageMenu).getByRole("button", { name: "Сделать основным" }));
-    await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
-    expect(screen.getByRole("status")).toHaveTextContent("Основной язык изменён на английский");
+    await user.click(within(languageMenu).getByRole("button", { name: "Сделать оригиналом" }));
+    await waitFor(() => expect(screen.getByText("Английский · оригинал")).toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent("Английский теперь язык оригинала");
   });
 
   it("shows real field progress while a newly added language is translated", async () => {
@@ -297,7 +306,12 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("status")).toHaveTextContent(`Перевод остановлен. Переведено 1 из ${total} полей`);
 
     const requestsBeforeRestart = requestCount;
-    fireEvent.click(screen.getByRole("button", { name: "Тест: обычный автоперевод на сербский" }));
+    fireEvent.click(screen.getByRole("button", { name: "Действия языка «Сербский»" }));
+    const languageMenu = screen.getByRole("dialog");
+    const translateMissing = within(languageMenu).getByRole("button", { name: "Перевести недостающие" });
+    expect(translateMissing.querySelector("svg")).toBeInTheDocument();
+    fireEvent.click(translateMissing);
+    fireEvent.click(screen.getByRole("button", { name: "Тест: дважды перевести недостающие на сербский" }));
     await waitFor(() => expect(serbianRow).toHaveAttribute("data-translation-state", "translating"));
     await waitFor(() => expect(serbianRow).toHaveAttribute("data-translation-state", "ready"));
     expect(requestCount - requestsBeforeRestart).toBe(total - 1);
