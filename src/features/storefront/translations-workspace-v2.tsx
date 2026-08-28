@@ -19,7 +19,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { useCatalogStore } from "@/contexts/catalog-store-context";
@@ -194,25 +193,6 @@ function ResizableTranslationsSidebar({ children }: { children: ReactNode }) {
       >
         <span className="absolute inset-y-0 left-[4px] w-px bg-[#a8a29e] opacity-0 transition-opacity duration-150 group-hover/sidebar-resize:opacity-40 group-focus/sidebar-resize:opacity-50" />
       </div>
-    </div>
-  );
-}
-
-function FirstUseScreen() {
-  const { confirmPrimaryLanguage, suggestedPrimaryLanguage } = useTranslations();
-  const [language, setLanguage] = useState<TranslationLanguageCode>(suggestedPrimaryLanguage);
-
-  return (
-    <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto bg-[#fbfbf9] px-6 py-10">
-      <section className="w-full max-w-[430px]">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-stone-950">Основной язык контента</h1>
-        <p className="mt-2 text-[13px] leading-5 text-stone-500">Он будет использоваться как исходный для переводов.</p>
-        <Select value={language} onValueChange={(value) => setLanguage(value as TranslationLanguageCode)}>
-          <SelectTrigger aria-label="Основной язык контента" className="mt-5 h-10 w-full bg-white shadow-none"><SelectValue /></SelectTrigger>
-          <SelectContent>{LANGUAGES.map((item) => <SelectItem key={item.code} value={item.code}>{languageLabel(item.code)}</SelectItem>)}</SelectContent>
-        </Select>
-        <Button type="button" className="mt-4 h-9 bg-[#4f39f6] hover:bg-[#4030d4]" onClick={() => confirmPrimaryLanguage(language)}>Подтвердить</Button>
-      </section>
     </div>
   );
 }
@@ -802,9 +782,8 @@ function LanguageWorkspace({ initialContentType }: { initialContentType: Transla
 }
 
 export function TranslationsWorkspace(_props: { onOpenOriginal?: (material: TranslationMaterial) => void }) {
-  const { activeCategory, consumeWorkspaceRequest, languages, primaryLanguageConfirmed, workspaceRequested } = useTranslations();
+  const { activeCategory, consumeWorkspaceRequest, languages, workspaceRequested } = useTranslations();
   useEffect(() => { if (workspaceRequested) consumeWorkspaceRequest(); }, [consumeWorkspaceRequest, workspaceRequested]);
-  if (!primaryLanguageConfirmed) return <FirstUseScreen />;
   if (languages.length === 0) return <EmptyTranslations />;
   return <LanguageWorkspace initialContentType={workspaceRequested ? activeCategory : "positions"} />;
 }

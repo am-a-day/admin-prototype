@@ -10,8 +10,6 @@ import { TranslationsProvider } from "@/contexts/translations-context";
 import { catalogItems, catalogSections } from "@/data/catalog";
 import { TranslationsWorkspace } from "./translations-workspace-v2";
 
-const PRIMARY_CONFIRMED_KEY = "tasko.translations.primary-language-confirmed.v1.seed-owner";
-
 function Providers({ children, initialData }: { children: ReactNode; initialData?: CatalogStoreInitialData }) {
   return (
     <MockAuthProvider>
@@ -27,7 +25,6 @@ function Providers({ children, initialData }: { children: ReactNode; initialData
 }
 
 function renderWorkspace(initialData?: CatalogStoreInitialData) {
-  window.localStorage.setItem(PRIMARY_CONFIRMED_KEY, "true");
   return render(<TranslationsWorkspace />, { wrapper: ({ children }) => <Providers initialData={initialData}>{children}</Providers> });
 }
 
@@ -39,6 +36,15 @@ describe("translations workspace v2", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("opens the translations workspace immediately on first visit", () => {
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    renderWorkspace({ sections: [section], items: [item] });
+
+    expect(screen.getByRole("heading", { name: "Переводы" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Основной язык контента" })).not.toBeInTheDocument();
   });
 
   it("switches target languages and opens the shared original-language popover", async () => {
