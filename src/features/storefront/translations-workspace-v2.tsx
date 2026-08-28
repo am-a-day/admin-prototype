@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowUpRight,
   CaretDown,
   Check,
   CircleDashed,
@@ -492,6 +493,32 @@ function entityBatchState(entity: TranslationEntity, job: TranslationJob | undef
   return "pending" as const;
 }
 
+function OpenInCatalogButton({
+  entity,
+  onOpenCatalog,
+  revealClassName,
+}: {
+  entity: TranslationEntity;
+  onOpenCatalog: (entity: TranslationEntity) => void;
+  revealClassName: string;
+}) {
+  return (
+    <Tooltip label="Открыть в каталоге" side="top" delayDuration={250}>
+      <button
+        type="button"
+        aria-label={`Открыть «${entity.title}» в каталоге`}
+        onClick={() => onOpenCatalog(entity)}
+        className={cn(
+          "absolute right-1 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-white/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
+          revealClassName,
+        )}
+      >
+        <ArrowUpRight size={14} weight="bold" />
+      </button>
+    </Tooltip>
+  );
+}
+
 function TranslationLanguageRow({
   item,
   selected,
@@ -591,6 +618,7 @@ function TranslationSidebar({
   onContentTypeChange,
   onLanguageChange,
   onOpenCatalog,
+  openCatalogActionRef,
   onSelect,
   initialQuery,
   initialSearchOpen,
@@ -603,6 +631,7 @@ function TranslationSidebar({
   onContentTypeChange: (type: TranslationContentType) => void;
   onLanguageChange: (language: TranslationLanguageCode) => void;
   onOpenCatalog: (material: TranslationMaterial) => void;
+  openCatalogActionRef: { current: (entity: TranslationEntity) => void };
   onSelect: (entity: TranslationEntity) => void;
   initialQuery: string;
   initialSearchOpen: boolean;
@@ -640,7 +669,7 @@ function TranslationSidebar({
     restoredScrollRef.current = true;
   }, [initialScrollTop, visibleEntities.length]);
   const closeSearch = () => { setQuery(""); setSearchOpen(false); };
-  const openCatalog = (entity: TranslationEntity) => {
+  const openCatalog = useCallback((entity: TranslationEntity) => {
     onSelect(entity);
     writeTranslationsViewState({
       language: language.code,
@@ -651,7 +680,10 @@ function TranslationSidebar({
       scrollTop: entityListRef.current?.scrollTop ?? 0,
     });
     onOpenCatalog(entity.material);
-  };
+  }, [contentType, language.code, onOpenCatalog, onSelect, query, searchOpen]);
+  useLayoutEffect(() => {
+    openCatalogActionRef.current = openCatalog;
+  }, [openCatalog, openCatalogActionRef]);
 
   return (
     <aside data-translations-sidebar className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-r border-stone-200 bg-[#f5f5f4]">
@@ -726,20 +758,11 @@ function TranslationSidebar({
                     )}
                   </button>
                   {positionActions && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={`Действия позиции «${entity.title}»`}
-                          className="absolute right-1 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-white/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover/entity:opacity-100 group-focus-within/entity:opacity-100 data-[state=open]:opacity-100"
-                        >
-                          <DotsThree size={20} weight="bold" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-[180px]">
-                        <DropdownMenuItem onSelect={() => openCatalog(entity)}>Открыть в каталоге</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <OpenInCatalogButton
+                      entity={entity}
+                      onOpenCatalog={openCatalog}
+                      revealClassName="group-hover/entity:opacity-100 group-focus-within/entity:opacity-100"
+                    />
                   )}
                 </div>
               );
@@ -832,24 +855,33 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   );
 }
 
-function TranslationEditor({ entity, language }: {
+function TranslationEditor({ entity, language, onOpenCatalog }: {
   entity: TranslationEntity | null;
   language: TranslationLanguage;
+  onOpenCatalog: (entity: TranslationEntity) => void;
 }) {
   const { items } = useCatalogStore();
   const { account } = useMockAuth();
   const { saveState } = useTranslations();
   const primaryCode = account?.workspace.primaryLanguage ?? "ru";
   const imageUrl = entity?.material.catalogItemId ? items.find((item) => item.id === entity.material.catalogItemId)?.thumbnailUrl : null;
+  const canOpenCatalog = entity?.material.kind === "position" && Boolean(entity.material.catalogItemId);
 
   if (!entity) return <main className="grid min-h-0 min-w-0 flex-1 place-items-center bg-[#fafaf9] text-[13px] text-[#79716b]">Нет сущностей для перевода</main>;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f5f5f4]">
       <header className="flex h-[49px] shrink-0 items-center justify-between gap-3 bg-white px-4">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className={cn("group/editor-title relative flex min-w-0 items-center gap-1.5", canOpenCatalog && "pr-7")}>
           <CatalogThumbnail src={imageUrl} kind={entity.material.kind === "section" ? "section" : "item"} className="size-6 rounded-[6px]" />
           <span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span>
+          {canOpenCatalog && (
+            <OpenInCatalogButton
+              entity={entity}
+              onOpenCatalog={onOpenCatalog}
+              revealClassName="right-0 group-hover/editor-title:opacity-100 group-focus-within/editor-title:opacity-100"
+            />
+          )}
         </div>
         <PositionSaveStatus status={saveState} />
       </header>
@@ -893,14 +925,20 @@ function LanguageWorkspace({
   const { activeLanguage, activeMaterialId, languages, materials, setActiveCategory, setActiveLanguage, setActiveMaterialId } = useTranslations();
   const [contentType, setContentType] = useState<TranslationContentType>(initialContentType);
   const [selectedKey, setSelectedKey] = useState<string | null>(initialViewState?.selectedKey ?? null);
-  const restoredLanguage = initialViewState && languages.some((item) => item.code === initialViewState.language)
+  const initialLanguageRef = useRef<TranslationLanguageCode | null>(initialViewState && languages.some((item) => item.code === initialViewState.language)
     ? initialViewState.language
-    : activeLanguage;
-  const language = languages.find((item) => item.code === restoredLanguage) ?? languages[0];
+    : null);
+  const openCatalogActionRef = useRef<(entity: TranslationEntity) => void>((entity) => onOpenOriginal(entity.material));
+  const languageCode = initialLanguageRef.current ?? activeLanguage;
+  const language = languages.find((item) => item.code === languageCode) ?? languages[0];
   const entities = useMemo(() => entitiesForType(materials, contentType), [contentType, materials]);
   const selectedEntity = entities.find((entity) => entity.key === selectedKey) ?? null;
 
-  useEffect(() => { if (language && language.code !== activeLanguage) setActiveLanguage(language.code); }, [activeLanguage, language, setActiveLanguage]);
+  useEffect(() => {
+    const initialLanguage = initialLanguageRef.current;
+    initialLanguageRef.current = null;
+    if (initialLanguage && initialLanguage !== activeLanguage) setActiveLanguage(initialLanguage);
+  }, [activeLanguage, setActiveLanguage]);
   useEffect(() => {
     const requested = activeMaterialId ? entities.find((entity) => entity.material.id === activeMaterialId) : null;
     const next = requested ?? entities[0] ?? null;
@@ -924,10 +962,11 @@ function LanguageWorkspace({
           onContentTypeChange={(type) => { setContentType(type); setSelectedKey(null); setActiveCategory(type === "options" ? "positions" : type); }}
           onLanguageChange={setActiveLanguage}
           onOpenCatalog={onOpenOriginal}
+          openCatalogActionRef={openCatalogActionRef}
           onSelect={(entity) => { setSelectedKey(entity.key); setActiveMaterialId(entity.material.id); }}
         />
       </ResizableTranslationsSidebar>
-      <TranslationEditor entity={selectedEntity} language={language} />
+      <TranslationEditor entity={selectedEntity} language={language} onOpenCatalog={(entity) => openCatalogActionRef.current(entity)} />
     </div>
   );
 }

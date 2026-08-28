@@ -248,7 +248,9 @@ describe("translations workspace v2", () => {
     expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
     fireEvent.click(languageButton);
+    expect(languageButton).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeInTheDocument();
 
     releaseRequests();
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
@@ -521,7 +523,40 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: "Выбрать тип контента" })).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
   });
 
-  it("keeps row clicks inside translations and restores context after opening the position in catalog", async () => {
+  it("switches languages after restoring history without losing the selected position or search", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    window.history.replaceState({
+      taskoTranslationsView: {
+        language: "kk",
+        contentType: "positions",
+        selectedKey: item.id,
+        query: item.title,
+        searchOpen: true,
+        scrollTop: 18,
+      },
+    }, "", "/storefront/translations");
+    const workspace = renderWorkspace({ sections: [section], items: [item] });
+
+    const kazakh = screen.getByRole("button", { name: "Казахский. Скрыт" });
+    expect(kazakh).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Английский" }));
+    expect(screen.getByRole("button", { name: "Английский" })).toHaveAttribute("aria-current", "page");
+    expect(kazakh).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Поиск: Позиции" })).toHaveValue(item.title);
+    expect(screen.getByRole("button", { name: `Выбрать позицию «${item.title}»` })).toHaveAttribute("aria-current", "page");
+    expect((workspace.container.querySelector("[data-translations-entity-list]") as HTMLElement).scrollTop).toBe(18);
+
+    await user.click(kazakh);
+    expect(kazakh).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeInTheDocument();
+  });
+
+  it("keeps row clicks inside translations and opens the position directly from either catalog arrow", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
@@ -545,8 +580,13 @@ describe("translations workspace v2", () => {
     expect(window.location.href).toBe(routeBefore);
     expect(onOpenOriginal).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: `Действия позиции «${item.title}»` }));
-    await user.click(screen.getByRole("menuitem", { name: "Открыть в каталоге" }));
+    expect(screen.queryByRole("button", { name: `Действия позиции «${item.title}»` })).not.toBeInTheDocument();
+    const catalogActions = screen.getAllByRole("button", { name: `Открыть «${item.title}» в каталоге` });
+    expect(catalogActions).toHaveLength(2);
+    await user.hover(catalogActions[0]);
+    expect(await screen.findByRole("tooltip", { name: "Открыть в каталоге" })).toBeInTheDocument();
+    await user.unhover(catalogActions[0]);
+    await user.click(catalogActions[0]);
     expect(onOpenOriginal).toHaveBeenCalledWith(expect.objectContaining({ catalogItemId: item.id }));
     expect(window.location.href).toBe(routeBefore);
     expect(window.history.state.taskoTranslationsView).toMatchObject({
@@ -556,6 +596,10 @@ describe("translations workspace v2", () => {
       searchOpen: true,
       scrollTop: 18,
     });
+
+    onOpenOriginal.mockClear();
+    await user.click(catalogActions[1]);
+    expect(onOpenOriginal).toHaveBeenCalledWith(expect.objectContaining({ catalogItemId: item.id }));
 
     workspace.unmount();
     const restored = renderWorkspace({ sections: [section], items: [item] }, onOpenOriginal);
