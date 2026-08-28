@@ -153,9 +153,9 @@ describe("translations workspace v2", () => {
     expect(within(languageMenu).getByRole("button", { name: "Удалить" })).toHaveClass("text-[#c10007]");
 
     await user.click(within(languageMenu).getByRole("button", { name: "Удалить" }));
-    const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить язык «Испанский»?" });
+    const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить «Испанский»?" });
     expect(deleteDialog).toHaveAttribute("data-delete-confirmation-kind", "language");
-    expect(within(deleteDialog).getByText("Все переводы на этот язык будут удалены. Это действие нельзя отменить.")).toBeInTheDocument();
+    expect(within(deleteDialog).getByText("Все переводы на испанский будут удалены.")).toBeInTheDocument();
     await user.click(within(deleteDialog).getByRole("button", { name: "Удалить" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Действия языка «Испанский»" })).not.toBeInTheDocument());
 
@@ -302,6 +302,99 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(serbianRow).toHaveAttribute("data-translation-state", "ready"));
     expect(requestCount - requestsBeforeRestart).toBe(total - 1);
     expect(screen.queryByRole("button", { name: "Продолжить" })).not.toBeInTheDocument();
+  });
+
+  it("purges a deleted language across reload and starts its translation from scratch when added again", async () => {
+    type PendingRequest = {
+      text: string;
+      resolve: (response: Response) => void;
+    };
+    const responseFor = (translatedText: string) => new Response(JSON.stringify({
+      translatedText,
+      provider: "mymemory",
+      upstreamRequestCount: 1,
+      durationMs: 10,
+      artificialDelayMs: 0,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+    let phase: "initial" | "readded" = "initial";
+    let initialRequestCompleted = false;
+    const readdedRequests: PendingRequest[] = [];
+    vi.mocked(fetch).mockImplementation((_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text: string };
+      if (phase === "initial") {
+        if (!initialRequestCompleted) {
+          initialRequestCompleted = true;
+          return Promise.resolve(responseFor(`[old-sr] ${body.text}`));
+        }
+        return new Promise<Response>(() => undefined);
+      }
+      return new Promise<Response>((resolve) => {
+        readdedRequests.push({ text: body.text, resolve });
+      });
+    });
+
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const firstRender = renderWorkspace({ sections: [section], items: [item] });
+
+    await user.click(screen.getByRole("button", { name: "Добавить язык" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Сербский/ }));
+    const firstSerbianRow = await waitFor(() => {
+      const row = firstRender.container.querySelector('[data-translation-language="sr"]');
+      expect(row).toBeInTheDocument();
+      return row as HTMLElement;
+    });
+    await user.click(within(firstSerbianRow).getByRole("button", { name: /Сербский/ }));
+    const serbianTitle = await screen.findByRole("textbox", { name: "Сербский: Название" });
+    await waitFor(() => expect(serbianTitle).toHaveValue(`[old-sr] ${item.title}`));
+    await waitFor(() => {
+      const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}") as Record<string, { titleTranslations?: { sr?: string } }>;
+      expect(records[item.id]?.titleTranslations?.sr).toBe(`[old-sr] ${item.title}`);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Остановить перевод" }));
+    await user.click(screen.getByRole("button", { name: "Действия языка «Сербский»" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    const deleteDialog = screen.getByRole("alertdialog", { name: "Удалить «Сербский»?" });
+    expect(within(deleteDialog).getByText("Все переводы на сербский будут удалены.")).toBeInTheDocument();
+    await user.click(within(deleteDialog).getByRole("button", { name: "Удалить" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Действия языка «Сербский»" })).not.toBeInTheDocument());
+    await waitFor(() => {
+      const records = JSON.parse(window.localStorage.getItem("tasko.catalog.itemRecords") ?? "{}") as Record<string, { titleTranslations?: { sr?: string } }>;
+      expect(records[item.id]?.titleTranslations?.sr).toBeUndefined();
+    });
+    const storedJobs = JSON.parse(window.localStorage.getItem("tasko.translations.jobs.v1.seed-owner") ?? "[]") as Array<{ language: string }>;
+    expect(storedJobs.some((job) => job.language === "sr")).toBe(false);
+    expect(window.localStorage.getItem("tasko.translations.field-metadata.v1.seed-owner") ?? "").not.toContain('"sr"');
+    const storedAuth = JSON.parse(window.localStorage.getItem("tasko.mockAuth.v1") ?? "{}") as {
+      accounts?: Record<string, { workspace?: { languages?: Array<{ code: string }> } }>;
+    };
+    expect(storedAuth.accounts?.["seed-owner"]?.workspace?.languages?.some(({ code }) => code === "sr")).toBe(false);
+
+    firstRender.unmount();
+    phase = "readded";
+    const secondRender = renderWorkspace({ sections: [section], items: [item] });
+    expect(secondRender.container.querySelector('[data-translation-language="sr"]')).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Добавить язык" }));
+    const addDialog = screen.getByRole("dialog");
+    expect(within(addDialog).getByRole("button", { name: /Сербский/ })).toBeInTheDocument();
+    await user.click(within(addDialog).getByRole("button", { name: /Сербский/ }));
+
+    await waitFor(() => expect(secondRender.container.querySelector('[data-translation-language="sr"]')).toHaveAttribute("data-translation-state", "translating"));
+    const secondSerbianRow = secondRender.container.querySelector('[data-translation-language="sr"]') as HTMLElement;
+    await user.click(within(secondSerbianRow).getByRole("button", { name: /Сербский/ }));
+    expect(screen.getByRole("textbox", { name: "Сербский: Название" })).toHaveValue("");
+    expect(secondRender.container.querySelector("[data-translation-progress-shimmer]")).toHaveTextContent(/0 из \d+ полей/);
+    expect(screen.getByRole("button", { name: "Остановить перевод" })).toBeEnabled();
+    await waitFor(() => expect(readdedRequests.length).toBeGreaterThan(0));
+    const titleRequest = readdedRequests.find((request) => request.text === item.title);
+    expect(titleRequest).toBeDefined();
+    titleRequest?.resolve(responseFor(`[new-sr] ${item.title}`));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Сербский: Название" })).toHaveValue(`[new-sr] ${item.title}`));
+    expect(secondRender.container.querySelector("[data-translation-progress-shimmer]")).toHaveTextContent(/1 из \d+ полей/);
+    expect(secondRender.container).not.toHaveTextContent(`[old-sr] ${item.title}`);
   });
 
   it("restores a running job and requests only fields that were not completed", async () => {

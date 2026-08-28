@@ -73,6 +73,16 @@ const TRANSLATION_LANGUAGE_LABELS: Record<TranslationLanguageCode, string> = {
   sr: "Сербский",
 };
 
+const TRANSLATION_LANGUAGE_DELETE_LABELS: Record<TranslationLanguageCode, string> = {
+  ru: "русский",
+  kk: "казахский",
+  en: "английский",
+  zh: "китайский",
+  fr: "французский",
+  es: "испанский",
+  sr: "сербский",
+};
+
 const TRANSLATION_LANGUAGE_BADGES: Record<TranslationLanguageCode, string> = {
   ru: "RU",
   kk: "KK",
@@ -477,8 +487,8 @@ function LanguageActionsPopover({ language }: { language: TranslationLanguage })
       <DeleteConfirmationDialog
         kind="language"
         open={deleteDialogOpen}
-        title={`Удалить язык «${languageLabel(language.code)}»?`}
-        description="Все переводы на этот язык будут удалены. Это действие нельзя отменить."
+        title={`Удалить «${languageLabel(language.code)}»?`}
+        description={`Все переводы на ${TRANSLATION_LANGUAGE_DELETE_LABELS[language.code]} будут удалены.`}
         confirmLabel="Удалить"
         onOpenChange={setDeleteDialogOpen}
         onConfirm={() => removeLanguage(language.code)}

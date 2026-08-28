@@ -777,16 +777,25 @@ export function MockAuthProvider({
       }
       updateWorkspaceAccount(account.id, (workspace) => {
         const localizedNames = { ...workspace.localizedNames };
+        const localizedAddresses = { ...workspace.localizedAddresses };
+        const localizedDescriptions = { ...workspace.localizedDescriptions };
         delete localizedNames[language];
+        delete localizedAddresses[language];
+        delete localizedDescriptions[language];
+        const publishedLocalizedNames = { ...workspace.publishedSnapshot?.localizedNames };
+        delete publishedLocalizedNames[language];
         return {
           ...workspace,
           localizedNames,
+          localizedAddresses,
+          localizedDescriptions,
           languages: workspace.languages.filter(({ code }) => code !== language),
           publishedSnapshot: workspace.publishedSnapshot
             ? {
                 ...workspace.publishedSnapshot,
                 version: workspace.publishedSnapshot.version + 1,
                 publishedAt: Date.now(),
+                localizedNames: publishedLocalizedNames,
                 publishedLanguages: workspace.publishedSnapshot.publishedLanguages.filter(
                   (code) => code !== language,
                 ),
