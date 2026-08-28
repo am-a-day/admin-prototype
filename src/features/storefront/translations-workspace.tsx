@@ -305,8 +305,8 @@ function LanguageRail({ onAddLanguage }: { onAddLanguage: () => void }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {languages.map((language) => {
           const latestJob = latestLanguageJob(jobs, language.code);
-          const translating = latestJob?.status === "queued" || latestJob?.status === "running";
-          const failed = latestJob?.status === "error";
+          const translating = latestJob?.status === "idle" || latestJob?.status === "running";
+          const failed = latestJob?.status === "completed_with_errors";
           return (
             <div
               key={language.code}
@@ -393,7 +393,7 @@ function LanguageRail({ onAddLanguage }: { onAddLanguage: () => void }) {
 
 function TranslationJobNotice({ job, language }: { job: TranslationJob; language: TranslationLanguage }) {
   const { retryTranslationJob, setJobPublishAfterComplete } = useTranslations();
-  if (job.status === "error") {
+  if (job.status === "completed_with_errors") {
     return (
       <div className="flex shrink-0 items-center gap-3 border-b border-rose-100 bg-rose-50/70 px-4 py-3 text-rose-950">
         <WarningCircle size={17} className="shrink-0 text-rose-600" />
@@ -407,7 +407,7 @@ function TranslationJobNotice({ job, language }: { job: TranslationJob; language
       </div>
     );
   }
-  if (job.status !== "queued" && job.status !== "running") return null;
+  if (job.status !== "idle" && job.status !== "running") return null;
   const publishAfterComplete = job.publicationMode === "publish" || job.publishAfterComplete === true;
   return (
     <div className="shrink-0 border-b border-indigo-100 bg-indigo-50/65 px-4 py-3">

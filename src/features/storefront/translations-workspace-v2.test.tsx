@@ -151,19 +151,99 @@ describe("translations workspace v2", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
 
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating"));
-    expect(screen.getByRole("button", { name: /Английский\. Переведено 0 из \d+ полей/ })).toBeDisabled();
+    const languageButton = screen.getByRole("button", { name: /Английский\. Переведено 0 из \d+ полей/ });
+    expect(languageButton).toBeEnabled();
     expect(screen.getByText(/Переведено 0 из \d+ полей/)).toBeInTheDocument();
     expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeDisabled();
-    expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
+    expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
+    expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
+    fireEvent.click(languageButton);
+    expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
 
     releaseRequests();
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
     expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
-    expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
+  });
+
+  it("stops the queue immediately, keeps in-flight results, and continues only remaining fields", async () => {
+    let releaseRequests = () => {};
+    let requestCount = 0;
+    const requestsGate = new Promise<void>((resolve) => { releaseRequests = resolve; });
+    vi.mocked(fetch).mockImplementation(async (_input, init) => {
+      requestCount += 1;
+      await requestsGate;
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
+      return new Response(JSON.stringify({
+        translatedText: `[${body.targetLanguage}] ${body.text}`,
+        provider: "mymemory",
+        upstreamRequestCount: 1,
+        durationMs: 10,
+        artificialDelayMs: 0,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить язык" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
+
+    await waitFor(() => expect(requestCount).toBe(3));
+    fireEvent.click(screen.getByRole("button", { name: "Остановить перевод" }));
+    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "stopped");
+    expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Продолжить" })).toBeDisabled();
+
+    releaseRequests();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Продолжить" })).toBeEnabled());
+    expect(requestCount).toBe(3);
+    expect(screen.getByText(/Переведено 3 из \d+ полей/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
+    expect(requestCount).toBeGreaterThan(3);
+  });
+
+  it("restores a running job and requests only fields that were not completed", async () => {
+    const item = catalogItems.find((candidate) => candidate.description.trim()) ?? catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    window.localStorage.setItem("tasko.translations.jobs.v1.seed-owner", JSON.stringify([{
+      id: "restored-job",
+      language: "en",
+      source: "Новый язык",
+      materialIds: [item.id],
+      total: 2,
+      completed: 1,
+      successful: 1,
+      failed: 0,
+      status: "running",
+      publishAfterComplete: false,
+      publicationMode: "review",
+      fieldIdsByMaterial: { [item.id]: ["title", "description"] },
+      fieldProgress: [
+        { id: `${item.id}:title:en`, materialId: item.id, fieldId: "title", status: "completed" },
+        { id: `${item.id}:description:en`, materialId: item.id, fieldId: "description", status: "running" },
+      ],
+      startedAt: Date.now() - 1_000,
+      finishesAt: Date.now() - 500,
+    }]));
+
+    renderWorkspace({ sections: [section], items: [item] });
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const request = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body ?? "{}")) as { text?: string };
+    expect(request.text).toBeTruthy();
+    expect(request.text).not.toBe(item.title);
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("tasko.translations.jobs.v1.seed-owner") ?? "[]") as Array<{ status: string; completed: number }>;
+      expect(stored[0]).toMatchObject({ status: "completed", completed: 2 });
+    });
   });
 
   it("continues a batch after one field fails and reports the partial result", async () => {

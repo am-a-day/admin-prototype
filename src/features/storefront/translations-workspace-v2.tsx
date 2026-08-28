@@ -11,6 +11,7 @@ import {
   SpinnerGap,
   Star,
   StarFour,
+  StopCircle,
   Trash,
   WarningCircle,
   X,
@@ -467,43 +468,72 @@ function entityComplete(entity: TranslationEntity, language: TranslationLanguage
   return fields.length > 0 && fields.every((field) => field.values[language]?.trim());
 }
 
+function contentTypeCompleteness(
+  materials: TranslationMaterial[],
+  type: TranslationContentType,
+  language: TranslationLanguageCode,
+) {
+  const fields = entitiesForType(materials, type)
+    .flatMap((entity) => entity.fields)
+    .filter((field) => field.source.trim());
+  return fields.length === 0
+    ? 0
+    : Math.round((fields.filter((field) => field.values[language]?.trim()).length / fields.length) * 100);
+}
+
+function entityBatchState(entity: TranslationEntity, job: TranslationJob | undefined) {
+  if (!job?.fieldProgress) return null;
+  const fieldIds = new Set(entity.fields.map((field) => field.id));
+  const progress = job.fieldProgress.filter((field) => (
+    field.materialId === entity.material.id && fieldIds.has(field.fieldId)
+  ));
+  if (progress.length === 0) return null;
+  if (progress.some((field) => field.status === "running")) return "running" as const;
+  if (
+    (job.status === "idle" || job.status === "running")
+    && progress.some((field) => field.status !== "pending")
+    && progress.some((field) => field.status === "pending")
+  ) return "running" as const;
+  if (progress.some((field) => field.status === "error")) return "error" as const;
+  if (progress.every((field) => field.status === "completed")) return "completed" as const;
+  return "pending" as const;
+}
+
 function TranslationLanguageRow({
   item,
   materials,
   selected,
   job,
-  hidePercentage,
   onLanguageChange,
 }: {
   item: TranslationLanguage;
   materials: TranslationMaterial[];
   selected: boolean;
   job?: TranslationJob;
-  hidePercentage: boolean;
   onLanguageChange: (language: TranslationLanguageCode) => void;
 }) {
-  const { retryTranslationJob, setJobPublishAfterComplete } = useTranslations();
-  const translating = job?.status === "queued" || job?.status === "running";
-  const failed = job?.status === "error";
+  const { retryTranslationJob, setJobPublishAfterComplete, stopTranslationJob } = useTranslations();
+  const translating = job?.status === "idle" || job?.status === "running";
+  const failed = job?.status === "completed_with_errors";
+  const stopped = job?.status === "stopped";
+  const hasInFlightRequest = job?.fieldProgress?.some((field) => field.status === "running") ?? false;
   const completeness = languageCompleteness(materials, item.code);
   const row = (
     <button
       type="button"
-      disabled={translating}
       aria-current={selected ? "page" : undefined}
-      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "queued" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Не удалось завершить перевод" : `, ${completeness}%`}`}
+      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : stopped ? ". Перевод остановлен" : `, ${completeness}%`}`}
       onClick={() => onLanguageChange(item.code)}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        selected ? "bg-[#f5f5f4]" : !translating && "hover:bg-[#f5f5f4]",
-        translating && "cursor-not-allowed",
+        selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
       )}
     >
       <LanguageCodeBadge code={item.code} active={selected} />
-      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected ? "text-[#333]" : "text-[#666]", translating && "opacity-70")}>{languageLabel(item.code)}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
       {translating ? (
-        <SpinnerGap size={16} className="mr-0.5 shrink-0 animate-spin text-[#666]" aria-hidden="true" />
-      ) : !failed && !hidePercentage && (
+        <span className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
+      ) : !failed && !stopped && (
         <span className="mr-0.5 flex shrink-0 items-center gap-1 text-[11px] leading-[18px] tabular-nums text-[#666] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
           <span>{completeness}%</span>
           {!item.published && (
@@ -519,8 +549,21 @@ function TranslationLanguageRow({
   );
 
   return (
-    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : "ready"} className="group relative overflow-hidden">
+    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : stopped ? "stopped" : "ready"} className="group relative overflow-hidden">
       {row}
+      {translating && job && (
+        <Tooltip label="Остановить перевод" side="top" delayDuration={250}>
+          <button
+            type="button"
+            aria-label="Остановить перевод"
+            onClick={() => stopTranslationJob(job.id)}
+            className="group/stop absolute right-1 top-1 flex size-5 items-center justify-center rounded-[6px] text-[#666] transition hover:bg-white/70 hover:text-[#333] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+          >
+            <SpinnerGap size={16} className="animate-spin group-hover:hidden group-focus/stop:hidden" aria-hidden="true" />
+            <StopCircle size={18} weight="fill" className="hidden group-hover:block group-focus/stop:block" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      )}
       {!job && <LanguageActionsPopover language={item} />}
       {job && (
         <div data-translation-job-details className="w-full">
@@ -529,10 +572,15 @@ function TranslationLanguageRow({
               <span>Не переведено: {job.failed ?? 0} из {job.total} полей</span>
               <Button type="button" variant="ghost" size="sm" onClick={() => retryTranslationJob(job.id)} className="h-7 shrink-0 rounded-[7px] px-2 text-[12px] text-[#292524]">Повторить</Button>
             </div>
+          ) : stopped ? (
+            <div className="flex items-center justify-between gap-2 px-1.5 pb-2 pt-1 text-[12px] leading-4 text-[#78716c]">
+              <span>Переведено {job.completed} из {job.total} полей</span>
+              <Button type="button" variant="ghost" size="sm" disabled={hasInFlightRequest} onClick={() => retryTranslationJob(job.id)} className="h-7 shrink-0 rounded-[7px] px-2 text-[12px] text-[#292524]">Продолжить</Button>
+            </div>
           ) : (
             <>
               <p className="px-1.5 py-0.5 text-[12px] leading-[18px] text-[#78716c]">
-                {job.status === "queued" ? "Ожидание запуска" : `Переведено ${job.completed} из ${job.total} полей`}
+                {job.status === "idle" ? "Ожидание запуска" : `Переведено ${job.completed} из ${job.total} полей`}
               </p>
               <p className="px-1.5 py-0.5 text-[11px] leading-4 text-[#a8a29e]">Можно закрыть эту страницу — перевод продолжится в фоне</p>
               <label className="flex cursor-pointer items-center gap-[7px] px-1.5 py-2 text-[12px] font-medium text-[#666]">
@@ -576,9 +624,9 @@ function TranslationSidebar({
   const typeLabel = CONTENT_TYPES.find((item) => item.id === contentType)?.label ?? "Позиции";
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const visibleEntities = entities.filter((entity) => !normalizedQuery || [entity.title, entity.subtitle].filter(Boolean).some((value) => value!.toLocaleLowerCase("ru").includes(normalizedQuery)));
-  const visibleTranslationJobs = jobs.filter((job) => job.status === "queued" || job.status === "running" || job.status === "error");
-  const fullTranslationJob = visibleTranslationJobs.find((job) => job.source === "Новый язык");
-  const fullTranslationRunning = fullTranslationJob?.status === "queued" || fullTranslationJob?.status === "running";
+  const visibleTranslationJobs = jobs.filter((job) => job.status !== "completed");
+  const selectedLanguageJob = visibleTranslationJobs.find((job) => job.language === language.code);
+  const typeProgress = contentTypeCompleteness(materials, contentType, language.code);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -607,26 +655,15 @@ function TranslationSidebar({
               materials={materials}
               selected={language.code === item.code}
               job={languageJob}
-              hidePercentage={Boolean(fullTranslationRunning)}
               onLanguageChange={onLanguageChange}
             />
           );
         })}
-        {fullTranslationJob ? (
-          <Tooltip label={fullTranslationRunning ? "Дождитесь завершения текущего перевода" : "Сначала повторите текущий перевод"} side="right" delayDuration={250}>
-            <span tabIndex={0} className="block rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-              <button type="button" disabled aria-label="Добавить язык" className="flex h-7 w-full cursor-not-allowed items-center gap-2 rounded-[8px] px-1 py-1 text-left text-[13px] font-medium leading-[18px] text-[#a8a29e]">
-                <Plus size={14} /><span className="min-w-0 flex-1 truncate">Добавить</span>
-              </button>
-            </span>
-          </Tooltip>
-        ) : (
-          <AddLanguagePopover>
-            <button type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left text-[13px] font-medium leading-[18px] text-[#666] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
-              <Plus size={14} /><span className="min-w-0 flex-1 truncate">Добавить</span>
-            </button>
-          </AddLanguagePopover>
-        )}
+        <AddLanguagePopover>
+          <button type="button" aria-label="Добавить язык" className="flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left text-[13px] font-medium leading-[18px] text-[#666] transition hover:bg-[#f5f5f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10">
+            <Plus size={14} /><span className="min-w-0 flex-1 truncate">Добавить</span>
+          </button>
+        </AddLanguagePopover>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7e5e4] bg-white pt-2">
@@ -634,10 +671,10 @@ function TranslationSidebar({
           <div className="flex h-7 items-center justify-between">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" aria-label="Выбрать тип контента" className="flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[13px] text-[#333] transition hover:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><span className="truncate">{typeLabel}</span><CaretDown size={14} className="shrink-0 text-[#666]" /></button>
+                <button type="button" aria-label="Выбрать тип контента" className="flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[13px] text-[#333] transition hover:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><span className="truncate">{typeLabel}</span><span className="shrink-0 text-[11px] tabular-nums text-[#78716c]">{typeProgress}%</span><CaretDown size={14} className="shrink-0 text-[#666]" /></button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-[210px]">
-                {CONTENT_TYPES.map((item) => <DropdownMenuItem key={item.id} onSelect={() => onContentTypeChange(item.id)}><span className="flex size-4 items-center justify-center">{contentType === item.id && <Check size={12} weight="bold" />}</span>{item.label}</DropdownMenuItem>)}
+                {CONTENT_TYPES.map((item) => <DropdownMenuItem key={item.id} onSelect={() => onContentTypeChange(item.id)}><span className="flex size-4 items-center justify-center">{contentType === item.id && <Check size={12} weight="bold" />}</span><span className="min-w-0 flex-1 truncate">{item.label}</span><span className="shrink-0 text-[11px] tabular-nums text-[#78716c]">{contentTypeCompleteness(materials, item.id, language.code)}%</span></DropdownMenuItem>)}
               </DropdownMenuContent>
             </DropdownMenu>
             {contentType !== "about" && <Tooltip label="Поиск" side="top" delayDuration={250}><Button type="button" variant="ghost" size="icon" aria-label="Открыть поиск" aria-expanded={searchOpen} onClick={() => { if (searchOpen) searchInputRef.current?.focus(); else setSearchOpen(true); }} className={cn("size-5 rounded-[6px] text-[#666] hover:bg-[#f5f5f4] hover:text-[#333]", searchOpen && "bg-[#f5f5f4] text-[#333]")}><MagnifyingGlass size={14} /></Button></Tooltip>}
@@ -657,11 +694,18 @@ function TranslationSidebar({
             {visibleEntities.map((entity) => {
               const selected = entity.key === selectedKey;
               const complete = entityComplete(entity, language.code);
+              const batchState = entityBatchState(entity, selectedLanguageJob);
               return (
                 <button key={entity.key} type="button" aria-current={selected ? "page" : undefined} onClick={() => onSelect(entity)} className={cn("group flex h-7 w-full items-center gap-2 rounded-[8px] p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
                   <CatalogThumbnail kind={entity.material.kind === "section" ? "section" : "item"} className="size-5 rounded-[5px]" />
                   <span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] leading-4", selected ? "font-medium text-[#333]" : "text-[#666]")}>{entity.title}</span>{entity.subtitle && <span className="block truncate text-[10px] leading-3 text-[#666]">{entity.subtitle}</span>}</span>
-                  {!complete && <span role="img" aria-label="Перевод не заполнен" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><CircleDashed size={14} /></span>}
+                  {batchState === "running" ? (
+                    <span role="img" aria-label="Сущность переводится" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><SpinnerGap size={14} className="animate-spin" /></span>
+                  ) : batchState === "error" ? (
+                    <span role="img" aria-label="Ошибка перевода сущности" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><WarningCircle size={14} /></span>
+                  ) : !complete && batchState !== "pending" && (
+                    <span role="img" aria-label="Перевод не заполнен" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><CircleDashed size={14} /></span>
+                  )}
                 </button>
               );
             })}
@@ -678,7 +722,7 @@ function MachineIndicator({ field }: { field: TranslationField }) {
 }
 
 function TranslationFieldRow({ field, language, material }: { field: TranslationField; language: TranslationLanguageCode; material: TranslationMaterial }) {
-  const { autoTranslateField, getFieldTranslationState, updateField } = useTranslations();
+  const { autoTranslateField, getFieldTranslationState, jobs, updateField } = useTranslations();
   const sourceFilled = Boolean(field.source.trim());
   const targetValue = sourceFilled ? field.values[language] ?? "" : "";
   const machineTranslated = Boolean(targetValue.trim()) && (field.machineTranslatedLanguages?.includes(language) ?? false);
@@ -687,6 +731,14 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   const translationState = getFieldTranslationState(material.id, field.id, language);
   const translating = translationState.status === "loading";
   const translationFailed = translationState.status === "error";
+  const batchTranslating = jobs.some((job) => (
+    job.language === language
+    && job.fieldProgress?.some((progress) => (
+      progress.materialId === material.id
+      && progress.fieldId === field.id
+      && progress.status === "running"
+    ))
+  ));
 
   return (
     <div className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
@@ -704,7 +756,7 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
               type="button"
               variant="ghost"
               size="icon"
-              disabled={translating}
+              disabled={translating || batchTranslating}
               aria-label={`${translating ? "Перевод выполняется" : translateLabel}: ${field.label}`}
               onClick={() => { void autoTranslateField(material.id, field.id, language); }}
               className={cn(
@@ -732,11 +784,11 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
           </Tooltip>
         )}
         {isDescription ? (
-          <DescriptionRichTextEditor value={targetValue} onChange={(value) => { if (value !== targetValue) updateField(material.id, field.id, language, value); }} hideLabel label={`${languageLabel(language)}: ${field.label}`} placeholder={sourceFilled ? "Введите перевод" : "Не заполнено в оригинале"} limit={300} compact className={cn("h-full [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none", machineTranslated && "[&>div>div:last-child]:pl-7")} />
+          <DescriptionRichTextEditor value={targetValue} readOnly={batchTranslating} onChange={(value) => { if (value !== targetValue) updateField(material.id, field.id, language, value); }} hideLabel label={`${languageLabel(language)}: ${field.label}`} placeholder={sourceFilled ? "Введите перевод" : "Не заполнено в оригинале"} limit={300} compact className={cn("h-full [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none", machineTranslated && "[&>div>div:last-child]:pl-7")} />
         ) : (
           <div className="relative min-w-0 flex-1">
             {machineTranslated && <span className="absolute left-2 top-1/2 z-[1] -translate-y-1/2"><MachineIndicator field={field} /></span>}
-            <Input aria-label={`${languageLabel(language)}: ${field.label}`} value={targetValue} disabled={!sourceFilled} onChange={(event) => { if (event.target.value !== targetValue) updateField(material.id, field.id, language, event.target.value); }} placeholder={sourceFilled ? "Введите перевод" : "Не заполнено в оригинале"} className={cn("h-9 rounded-none border-0 bg-transparent px-2.5 text-[13px] shadow-none outline-none hover:border-0 focus:border-0 focus:bg-[#fafaf9] focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 disabled:bg-white disabled:opacity-100", machineTranslated && "pl-7")} />
+            <Input aria-label={`${languageLabel(language)}: ${field.label}`} value={targetValue} disabled={!sourceFilled || batchTranslating} onChange={(event) => { if (event.target.value !== targetValue) updateField(material.id, field.id, language, event.target.value); }} placeholder={sourceFilled ? "Введите перевод" : "Не заполнено в оригинале"} className={cn("h-9 rounded-none border-0 bg-transparent px-2.5 text-[13px] shadow-none outline-none hover:border-0 focus:border-0 focus:bg-[#fafaf9] focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 disabled:bg-white disabled:opacity-100", machineTranslated && "pl-7")} />
           </div>
         )}
         {isDescription && machineTranslated && <span className="absolute left-2 top-[46px] z-[1]"><MachineIndicator field={field} /></span>}

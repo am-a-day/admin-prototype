@@ -587,7 +587,7 @@ function AuthenticatedShell() {
     addBanner: addSharedBanner,
   } = useTranslations();
   const translationsLoading = translationJobs.some((job) =>
-    job.source === "Новый язык" && (job.status === "queued" || job.status === "running"));
+    job.source === "Новый язык" && (job.status === "idle" || job.status === "running"));
   const isInitialTrainingRoute = isTrainingPath(window.location.pathname);
   const initialStorefrontRoute = getInitialStorefrontRoute();
   const isWaiterTrainingRoute = isInitialTrainingRoute && new URLSearchParams(window.location.search).get("role") === "waiter";

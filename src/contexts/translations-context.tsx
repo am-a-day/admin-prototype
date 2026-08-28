@@ -35,8 +35,8 @@ export type TranslationLanguageCode = LanguageCode;
 export type TranslationStatus = "missing" | "machine" | "translated" | "outdated";
 export type TranslationCategory = "positions" | "sections" | "tags" | "stickers" | "banners" | "about" | "interface";
 export type TranslationFilter = "all" | "review" | "missing";
-export type TranslationJobStatus = "queued" | "running" | "completed" | "error";
-export type TranslationJobFieldStatus = "queued" | "running" | "completed" | "error";
+export type TranslationJobStatus = "idle" | "running" | "stopped" | "completed" | "completed_with_errors";
+export type TranslationJobFieldStatus = "pending" | "running" | "completed" | "error";
 export type TranslationMaterialKind = "position" | "section" | "tag" | "sticker" | "banner" | "about" | "interface";
 export type TranslationFieldKind = "standard" | "option-group" | "option" | "banner-tag";
 
@@ -162,6 +162,7 @@ type TranslationsContextValue = {
   setPrimaryLanguage: (language: TranslationLanguageCode) => void;
   setPublished: (language: TranslationLanguageCode, published: boolean) => void;
   setJobPublishAfterComplete: (jobId: string, enabled: boolean) => void;
+  stopTranslationJob: (jobId: string) => void;
   retryTranslationJob: (jobId: string) => void;
   setAutoTranslate: (language: TranslationLanguageCode, enabled: boolean) => void;
   updateField: (materialId: string, fieldId: string, language: TranslationLanguageCode, value: string, origin?: "manual" | "machine") => void;
@@ -278,8 +279,73 @@ function readStoredTranslationJobs(accountId: string | undefined): TranslationJo
   try {
     const raw = window.localStorage.getItem(`${TRANSLATION_JOBS_STORAGE_PREFIX}.${accountId}`);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as TranslationJob[];
-    return parsed.filter((job) => job?.id && job?.language && Array.isArray(job.materialIds));
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((stored): TranslationJob[] => {
+      if (!stored || typeof stored !== "object") return [];
+      const job = stored as Partial<TranslationJob> & { status?: string };
+      if (
+        typeof job.id !== "string"
+        || !TRANSLATION_LANGUAGE_CODES.includes(job.language as TranslationLanguageCode)
+        || !Array.isArray(job.materialIds)
+      ) return [];
+
+      const storedFieldProgress = Array.isArray(job.fieldProgress) ? job.fieldProgress : null;
+      const fieldProgress = storedFieldProgress?.flatMap((storedField) => {
+        if (
+          !storedField
+          || typeof storedField.id !== "string"
+          || typeof storedField.materialId !== "string"
+          || typeof storedField.fieldId !== "string"
+        ) return [];
+        const rawStatus = String(storedField.status);
+        if (!["queued", "pending", "running", "completed", "error"].includes(rawStatus)) return [];
+        const status: TranslationJobFieldStatus = rawStatus === "queued" || rawStatus === "pending" || rawStatus === "running"
+          ? "pending"
+          : rawStatus === "completed"
+            ? "completed"
+            : rawStatus === "error"
+              ? "error"
+              : "pending";
+        return [{
+          id: storedField.id,
+          materialId: storedField.materialId,
+          fieldId: storedField.fieldId,
+          status,
+          ...(typeof storedField.error === "string" ? { error: storedField.error } : {}),
+        }];
+      });
+      const storedStatus = String(job.status);
+      const recognizedStatus: TranslationJobStatus | null = storedStatus === "queued"
+        ? "idle"
+        : storedStatus === "error"
+          ? "completed_with_errors"
+          : ["idle", "running", "stopped", "completed", "completed_with_errors"].includes(storedStatus)
+            ? storedStatus as TranslationJobStatus
+            : null;
+      const restorable = Array.isArray(fieldProgress) && fieldProgress.length === storedFieldProgress?.length;
+      const status = recognizedStatus && restorable
+        ? recognizedStatus
+        : "stopped";
+      const successful = fieldProgress?.filter((field) => field.status === "completed").length ?? 0;
+      const failed = fieldProgress?.filter((field) => field.status === "error").length ?? 0;
+
+      return [{
+        ...job,
+        id: job.id,
+        language: job.language as TranslationLanguageCode,
+        source: typeof job.source === "string" ? job.source : "Автоперевод",
+        materialIds: job.materialIds.filter((id): id is string => typeof id === "string"),
+        total: fieldProgress?.length ?? 0,
+        completed: successful,
+        successful,
+        failed,
+        status,
+        fieldProgress: fieldProgress ?? undefined,
+        startedAt: typeof job.startedAt === "number" ? job.startedAt : Date.now(),
+        finishesAt: typeof job.finishesAt === "number" ? job.finishesAt : Date.now(),
+      }];
+    });
   } catch {
     return [];
   }
@@ -1011,6 +1077,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const timersRef = useRef<number[]>([]);
   const scheduledJobIdsRef = useRef(new Set<string>());
   const cancelledJobIdsRef = useRef(new Set<string>());
+  const lifecycleVersionRef = useRef(0);
   const materialsRef = useRef(materials);
   const persistTranslatedMaterialRef = useRef<(
     material: TranslationMaterial,
@@ -1124,11 +1191,16 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     );
   }, [account?.id, banners]);
 
-  useEffect(() => () => {
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    timersRef.current = [];
-    scheduledJobIdsRef.current.clear();
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+  useEffect(() => {
+    lifecycleVersionRef.current += 1;
+    const mountedVersion = lifecycleVersionRef.current;
+    return () => {
+      if (lifecycleVersionRef.current === mountedVersion) lifecycleVersionRef.current += 1;
+      timersRef.current.forEach((timer) => window.clearTimeout(timer));
+      timersRef.current = [];
+      scheduledJobIdsRef.current.clear();
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
   }, []);
 
   const showToast = useCallback((message: string, actionLabel?: string, onAction?: () => void) => {
@@ -1206,7 +1278,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
             id: `${materialId}:${field.id}:${language}`,
             materialId,
             fieldId: field.id,
-            status: "queued" as const,
+            status: "pending" as const,
           }));
       });
       if (fieldProgress.length === 0) return [];
@@ -1219,7 +1291,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         completed: 0,
         successful: 0,
         failed: 0,
-        status: "queued",
+        status: "idle",
         publishAfterComplete,
         publicationMode,
         fieldIdsByMaterial,
@@ -1294,30 +1366,39 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       : job));
   }, []);
 
+  const stopTranslationJob = useCallback((jobId: string) => {
+    cancelledJobIdsRef.current.add(jobId);
+    setJobs((current) => current.map((job) => job.id === jobId && (job.status === "idle" || job.status === "running")
+      ? { ...job, status: "stopped", finishesAt: Date.now() }
+      : job));
+    showToast("Перевод остановлен. Уже переведённые поля сохранены.");
+  }, [showToast]);
+
   const retryTranslationJob = useCallback((jobId: string) => {
+    const currentJob = jobs.find((job) => job.id === jobId);
+    if (!currentJob || currentJob.fieldProgress?.some((field) => field.status === "running")) return;
     const startedAt = Date.now();
     scheduledJobIdsRef.current.delete(jobId);
     cancelledJobIdsRef.current.delete(jobId);
-    setJobs((current) => current.map((job) => job.id === jobId
-      ? (() => {
-          const fieldProgress = job.fieldProgress?.map((field) => field.status === "error"
-            ? { ...field, status: "queued" as const, error: undefined }
-            : field);
-          const successful = fieldProgress?.filter((field) => field.status === "completed").length ?? 0;
-          return {
-          ...job,
-          completed: successful,
-          successful,
-          failed: 0,
-          status: "queued",
-          fieldProgress,
-          startedAt,
-          finishesAt: startedAt,
-          };
-        })()
-      : job));
-    showToast("Повторный перевод запущен");
-  }, [showToast]);
+    setJobs((current) => current.map((job) => {
+      if (job.id !== jobId) return job;
+      const fieldProgress = job.fieldProgress?.map((field) => field.status === "error"
+        ? { ...field, status: "pending" as const, error: undefined }
+        : field);
+      const successful = fieldProgress?.filter((field) => field.status === "completed").length ?? 0;
+      return {
+        ...job,
+        completed: successful,
+        successful,
+        failed: 0,
+        status: "idle",
+        fieldProgress,
+        startedAt,
+        finishesAt: startedAt,
+      };
+    }));
+    showToast("Перевод продолжен");
+  }, [jobs, showToast]);
 
   const setPrimaryLanguage = useCallback((language: TranslationLanguageCode) => {
     if (!account || language === account.workspace.primaryLanguage) return;
@@ -1545,14 +1626,15 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setMaterials(nextMaterials);
     const updatedField = fields.find((field) => field.id === fieldId);
     if (updatedField) persistFieldMetadata(account?.id, materialId, updatedField);
+    persistTranslatedMaterialRef.current(translatedMaterial, job.language, fields);
   }, [account?.id]);
 
   const runTranslationJob = useCallback(async (job: TranslationJob) => {
     if (cancelledJobIdsRef.current.has(job.id)) return;
+    const lifecycleVersion = lifecycleVersionRef.current;
+    const lifecycleExpired = () => lifecycleVersionRef.current !== lifecycleVersion;
     const sourceLanguage = primaryLanguageRef.current ?? "ru";
-    let fieldProgress = job.fieldProgress?.map((field) => (
-      field.status === "running" ? { ...field, status: "queued" as const } : field
-    )) ?? job.materialIds.flatMap((materialId) => {
+    let fieldProgress = job.fieldProgress ?? job.materialIds.flatMap((materialId) => {
       const material = materialsRef.current.find((candidate) => candidate.id === materialId);
       if (!material) return [];
       const requestedFieldIds = job.fieldIdsByMaterial?.[materialId];
@@ -1564,12 +1646,12 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           id: `${materialId}:${field.id}:${job.language}`,
           materialId,
           fieldId: field.id,
-          status: "queued" as const,
+          status: "pending" as const,
         }));
     });
-    const pendingFields = fieldProgress.filter((field) => field.status === "queued" || field.status === "error");
+    const pendingFields = fieldProgress.filter((field) => field.status === "pending");
     let successful = fieldProgress.filter((field) => field.status === "completed").length;
-    let failed = 0;
+    let failed = fieldProgress.filter((field) => field.status === "error").length;
     let runSuccessful = 0;
     let runFailed = 0;
     const operationStartedAt = performance.now();
@@ -1580,7 +1662,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           total: fieldProgress.length,
           completed: successful,
           successful,
-          failed: 0,
+          failed,
           status: "running",
           fieldProgress,
         }
@@ -1599,9 +1681,16 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       fieldProgress = fieldProgress.map((field) => field.id === progressId
         ? { ...field, status, error }
         : field);
-      const completed = fieldProgress.filter((field) => field.status === "completed" || field.status === "error").length;
       setJobs((current) => current.map((candidate) => candidate.id === job.id
-        ? { ...candidate, completed, successful, failed, status: "running", fieldProgress }
+        ? {
+            ...candidate,
+            completed: fieldProgress.filter((field) => field.status === "completed").length,
+            successful,
+            failed,
+            status: cancelledJobIdsRef.current.has(job.id) ? "stopped" : "running",
+            fieldProgress,
+            finishesAt: Date.now(),
+          }
         : candidate));
     };
 
@@ -1609,27 +1698,32 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     const runWorker = async () => {
       while (nextFieldIndex < pendingFields.length) {
         const progress = pendingFields[nextFieldIndex++];
-        if (!progress || cancelledJobIdsRef.current.has(job.id)) return;
+        if (!progress || lifecycleExpired() || cancelledJobIdsRef.current.has(job.id)) return;
         updateProgress(progress.id, "running");
         const material = materialsRef.current.find((candidate) => candidate.id === progress.materialId);
         const field = material?.fields.find((candidate) => candidate.id === progress.fieldId);
         try {
           if (!field?.source.trim()) throw new Error("Исходный текст больше не доступен");
+          if (field.manuallyEditedLanguages?.includes(job.language)) {
+            successful += 1;
+            runSuccessful += 1;
+            updateProgress(progress.id, "completed");
+            continue;
+          }
           const requestedSource = field.source;
-          const wasManuallyEdited = field.manuallyEditedLanguages?.includes(job.language) ?? false;
           const result = await translationService.translateText({
             text: requestedSource,
             sourceLanguage,
             targetLanguage: job.language,
           });
-          if (cancelledJobIdsRef.current.has(job.id)) return;
+          if (lifecycleExpired()) return;
           const currentField = materialsRef.current
             .find((candidate) => candidate.id === progress.materialId)
             ?.fields.find((candidate) => candidate.id === progress.fieldId);
           const manuallyEditedNow = currentField?.manuallyEditedLanguages?.includes(job.language) ?? false;
           if (
             currentField?.source !== requestedSource
-            || (manuallyEditedNow && (job.preserveManualTranslations || !wasManuallyEdited))
+            || manuallyEditedNow
           ) {
             successful += 1;
             runSuccessful += 1;
@@ -1653,7 +1747,15 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       { length: Math.min(3, pendingFields.length) },
       () => runWorker(),
     ));
-    if (cancelledJobIdsRef.current.has(job.id)) return;
+    if (lifecycleExpired()) return;
+    if (cancelledJobIdsRef.current.has(job.id)) {
+      console.info(`[translation] batch ${job.id} stopped after ${Math.round(performance.now() - operationStartedAt)}ms`, {
+        requests: runSuccessful + runFailed,
+        successful: runSuccessful,
+        failed: runFailed,
+      });
+      return;
+    }
 
     const translatedMaterialIds = new Set(fieldProgress
       .filter((field) => field.status === "completed")
@@ -1664,10 +1766,10 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     });
     if (translatedMaterialIds.size > 0) setWorkspaceLanguageHasContent(job.language, true);
 
-    const status: TranslationJobStatus = failed > 0 ? "error" : "completed";
-    const completed = fieldProgress.filter((field) => field.status === "completed" || field.status === "error").length;
+    const status: TranslationJobStatus = failed > 0 ? "completed_with_errors" : "completed";
+    const completed = fieldProgress.filter((field) => field.status === "completed").length;
     setJobs((current) => current.map((candidate) => candidate.id === job.id
-      ? { ...candidate, completed, successful, failed, status, fieldProgress }
+      ? { ...candidate, completed, successful, failed, status, fieldProgress, finishesAt: Date.now() }
       : candidate));
 
     if (status === "completed") {
@@ -1699,7 +1801,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     jobs.forEach((job) => {
-      if (job.status !== "queued" || scheduledJobIdsRef.current.has(job.id)) return;
+      if ((job.status !== "idle" && job.status !== "running") || scheduledJobIdsRef.current.has(job.id)) return;
       scheduledJobIdsRef.current.add(job.id);
       void runTranslationJob(job);
     });
@@ -1954,6 +2056,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setPrimaryLanguage,
     setPublished,
     setJobPublishAfterComplete,
+    stopTranslationJob,
     retryTranslationJob,
     setAutoTranslate,
     updateField,
@@ -1996,6 +2099,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     setPrimaryLanguage,
     setPublished,
     setJobPublishAfterComplete,
+    stopTranslationJob,
     startAutoTranslate,
     suggestedPrimaryLanguage,
     toast,
