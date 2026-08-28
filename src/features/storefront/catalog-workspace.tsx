@@ -6411,6 +6411,7 @@ const CATALOG_TABLE_COLUMNS_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.ta
 const CATALOG_TABLE_COLUMN_ORDER_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnOrder.v1");
 const CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY = catalogStorageKey("unifiedWorkspace.tableColumnSizing.v2");
 const CATALOG_TRANSLATION_COLUMN_DEFAULT_MIGRATION_KEY = catalogStorageKey("unifiedWorkspace.translationColumnDefault.v1");
+const CATALOG_TRANSLATION_COLUMN_WIDTH_MIGRATION_KEY = catalogStorageKey("unifiedWorkspace.translationColumnWidth.v2");
 function readTableColumnVisibility(): VisibilityState {
   const stored = readJsonRecord<VisibilityState>(CATALOG_TABLE_COLUMNS_STORAGE_KEY, {});
   const translationDefaultMigrated = readJsonRecord<boolean>(CATALOG_TRANSLATION_COLUMN_DEFAULT_MIGRATION_KEY, false);
@@ -6456,7 +6457,15 @@ function normalizeTableColumnSizing(input: Partial<ColumnSizingState>): ColumnSi
 }
 
 function readTableColumnSizing(): ColumnSizingState {
-  return normalizeTableColumnSizing(readJsonRecord<ColumnSizingState>(CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY, {}));
+  const stored = readJsonRecord<ColumnSizingState>(CATALOG_TABLE_COLUMN_SIZING_STORAGE_KEY, {});
+  const translationWidthMigrated = readJsonRecord<boolean>(CATALOG_TRANSLATION_COLUMN_WIDTH_MIGRATION_KEY, false);
+  if (!translationWidthMigrated) {
+    if (stored.translation == null || stored.translation === 92) {
+      stored.translation = DEFAULT_TABLE_COLUMN_SIZING.translation;
+    }
+    writeJsonRecord(CATALOG_TRANSLATION_COLUMN_WIDTH_MIGRATION_KEY, true);
+  }
+  return normalizeTableColumnSizing(stored);
 }
 
 function ToolbarDivider() {

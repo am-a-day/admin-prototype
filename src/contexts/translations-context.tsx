@@ -85,10 +85,7 @@ export type TranslationLanguage = {
 export type CatalogPositionLanguageProgress = {
   code: TranslationLanguageCode;
   label: string;
-  filled: number;
-  total: number;
-  outdated: boolean;
-  tooltip: string;
+  complete: boolean;
 };
 
 export type TranslationJob = {
@@ -1085,42 +1082,30 @@ export function summarizeLanguageProgress(
   return { totalFields, doneFields, missing, outdated };
 }
 
+export function getPositionTranslationFields(fields: TranslationField[]) {
+  return fields.filter((field) => field.kind !== "option-group" && field.kind !== "option");
+}
+
+export function areTranslationFieldsComplete(
+  fields: TranslationField[],
+  language: TranslationLanguageCode,
+) {
+  const requiredFields = fields.filter((field) => field.source.trim());
+  return requiredFields.length > 0
+    && requiredFields.every((field) => field.values[language]?.trim());
+}
+
 export function summarizeCatalogPositionTranslations(
   material: Pick<TranslationMaterial, "fields">,
   languageCodes: TranslationLanguageCode[],
 ): CatalogPositionLanguageProgress[] {
-  const fields = material.fields.filter((field) => (
-    (field.id === "title" || field.id === "description") && field.source.trim()
-  ));
+  const fields = getPositionTranslationFields(material.fields);
 
-  return languageCodes.map((code) => {
-    const missingFields = fields.filter((field) => !field.values[code]?.trim());
-    const outdatedFields = fields.filter((field) => (
-      Boolean(field.values[code]?.trim()) && field.reviewLanguages?.includes(code)
-    ));
-    const filled = fields.length - missingFields.length - outdatedFields.length;
-    const detailLines = [
-      missingFields.length > 0
-        ? `Не переведено: ${missingFields.map((field) => field.label.toLocaleLowerCase("ru")).join(", ")}`
-        : null,
-      outdatedFields.length > 0
-        ? `Требует обновления: ${outdatedFields.map((field) => field.label.toLocaleLowerCase("ru")).join(", ")}`
-        : null,
-    ].filter((line): line is string => Boolean(line));
-
-    return {
-      code,
-      label: LANGUAGE_DETAILS[code].label,
-      filled,
-      total: fields.length,
-      outdated: outdatedFields.length > 0,
-      tooltip: fields.length === 0
-        ? "Нет заполненных полей оригинала"
-        : detailLines.length > 0
-          ? detailLines.join("\n")
-          : "Все поля переведены",
-    };
-  });
+  return languageCodes.map((code) => ({
+    code,
+    label: LANGUAGE_DETAILS[code].label,
+    complete: areTranslationFieldsComplete(fields, code),
+  }));
 }
 
 function mergeRealMaterials(current: TranslationMaterial[], fresh: TranslationMaterial[]) {

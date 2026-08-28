@@ -31,6 +31,8 @@ import { DescriptionRichTextEditor } from "@/components/workspace/description-ri
 import { useCatalogStore } from "@/contexts/catalog-store-context";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 import {
+  areTranslationFieldsComplete,
+  getPositionTranslationFields,
   useTranslations,
   type TranslationCategory,
   type TranslationField,
@@ -458,7 +460,7 @@ function entitiesForType(materials: TranslationMaterial[], type: TranslationCont
       key: material.id,
       material,
       title: material.title,
-      fields: type === "positions" ? material.fields.filter((field) => field.kind !== "option-group" && field.kind !== "option") : material.fields,
+      fields: type === "positions" ? getPositionTranslationFields(material.fields) : material.fields,
     }));
   }
 
@@ -474,8 +476,7 @@ function entitiesForType(materials: TranslationMaterial[], type: TranslationCont
 }
 
 function entityComplete(entity: TranslationEntity, language: TranslationLanguageCode) {
-  const fields = entity.fields.filter((field) => field.source.trim());
-  return fields.length > 0 && fields.every((field) => field.values[language]?.trim());
+  return areTranslationFieldsComplete(entity.fields, language);
 }
 
 function entityBatchState(entity: TranslationEntity, job: TranslationJob | undefined) {

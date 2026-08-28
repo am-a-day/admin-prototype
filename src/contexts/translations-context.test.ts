@@ -162,7 +162,7 @@ describe("translation material structure", () => {
 });
 
 describe("translation field progress", () => {
-  it("summarizes each added language using only a position's filled title and description", () => {
+  it("summarizes every added language as complete or incomplete using the position fields", () => {
     const material = {
       fields: [{
         id: "title",
@@ -186,24 +186,15 @@ describe("translation field progress", () => {
     expect(summarizeCatalogPositionTranslations(material, ["kk", "en", "sr"])).toEqual([{
       code: "kk",
       label: "Қазақша",
-      filled: 2,
-      total: 2,
-      outdated: false,
-      tooltip: "Все поля переведены",
+      complete: true,
     }, {
       code: "en",
       label: "English",
-      filled: 1,
-      total: 2,
-      outdated: false,
-      tooltip: "Не переведено: описание",
+      complete: false,
     }, {
       code: "sr",
       label: "Srpski",
-      filled: 0,
-      total: 2,
-      outdated: false,
-      tooltip: "Не переведено: название, описание",
+      complete: false,
     }]);
   });
 
@@ -223,9 +214,28 @@ describe("translation field progress", () => {
     } as TranslationMaterial;
 
     expect(summarizeCatalogPositionTranslations(material, ["en"])[0]).toMatchObject({
-      filled: 1,
-      total: 1,
-      tooltip: "Все поля переведены",
+      complete: true,
+    });
+  });
+
+  it("does not treat an option translation as part of the position status", () => {
+    const material = {
+      fields: [{
+        id: "title",
+        label: "Название",
+        source: "Паста",
+        values: { en: "Pasta" },
+      }, {
+        id: "option:size:large",
+        label: "Опция · Большая",
+        source: "Большая",
+        kind: "option",
+        values: { en: "" },
+      }],
+    } as TranslationMaterial;
+
+    expect(summarizeCatalogPositionTranslations(material, ["en"])[0]).toMatchObject({
+      complete: true,
     });
   });
 
