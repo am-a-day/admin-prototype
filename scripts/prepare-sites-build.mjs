@@ -1,7 +1,13 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 
-const worker = `export default {
+const worker = `import { handleTranslateRequest } from "./translation-service.mjs";
+
+export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/api/translate") {
+      return handleTranslateRequest(request);
+    }
     const response = await env.ASSETS.fetch(request);
     if (
       response.status !== 404 ||
@@ -19,3 +25,4 @@ const worker = `export default {
 
 await mkdir("dist/server", { recursive: true });
 await writeFile("dist/server/index.js", worker, "utf8");
+await copyFile("server/translation-service.mjs", "dist/server/translation-service.mjs");

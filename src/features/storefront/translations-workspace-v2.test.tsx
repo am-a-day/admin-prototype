@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,10 +32,21 @@ describe("translations workspace v2", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.localStorage.setItem("tasko.mockAuth.session.v1", "seed-owner");
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
+      return new Response(JSON.stringify({
+        translatedText: `[${body.targetLanguage}] ${body.text}`,
+        provider: "mymemory",
+        upstreamRequestCount: 1,
+        durationMs: 10,
+        artificialDelayMs: 0,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("opens the translations workspace immediately on first visit", () => {
@@ -114,39 +125,80 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
   });
 
-  it("keeps a newly added language translating for at least 40 seconds", async () => {
-    vi.useFakeTimers();
+  it("shows real field progress while a newly added language is translated", async () => {
+    let releaseRequests = () => {};
+    const requestsGate = new Promise<void>((resolve) => { releaseRequests = resolve; });
+    vi.mocked(fetch).mockImplementation(async (_input, init) => {
+      await requestsGate;
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
+      return new Response(JSON.stringify({
+        translatedText: `[${body.targetLanguage}] ${body.text}`,
+        provider: "mymemory",
+        upstreamRequestCount: 1,
+        durationMs: 10,
+        artificialDelayMs: 0,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     const { container } = renderWorkspace({ sections: [section], items: [item] });
 
     fireEvent.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
-    await act(async () => {
-      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
-      await Promise.resolve();
-    });
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Добавить язык" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
-    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating");
-    expect(screen.getByRole("button", { name: /Английский\. Идёт автоматический перевод/ })).toBeDisabled();
+    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating"));
+    expect(screen.getByRole("button", { name: /Английский\. Переведено 0 из \d+ полей/ })).toBeDisabled();
+    expect(screen.getByText(/Переведено 0 из \d+ полей/)).toBeInTheDocument();
     expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeDisabled();
     expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(39_900); });
-    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating");
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
-    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready");
+    releaseRequests();
+    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
     expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
     expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
+  });
+
+  it("continues a batch after one field fails and reports the partial result", async () => {
+    let requestIndex = 0;
+    vi.mocked(fetch).mockImplementation(async (_input, init) => {
+      requestIndex += 1;
+      if (requestIndex === 1) {
+        return new Response(JSON.stringify({ error: "MyMemory unavailable" }), {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
+      return new Response(JSON.stringify({
+        translatedText: `[${body.targetLanguage}] ${body.text}`,
+        provider: "mymemory",
+        upstreamRequestCount: 1,
+        durationMs: 10,
+        artificialDelayMs: 0,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить язык" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
+
+    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "error"));
+    expect(requestIndex).toBeGreaterThan(1);
+    expect(screen.getByText(/Не переведено: 1 из \d+ полей/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeEnabled();
   });
 
   it("switches entity types, keeps options separate, and searches only the current list", async () => {
@@ -223,5 +275,38 @@ describe("translations workspace v2", () => {
     fireEvent.change(titleInput, { target: { value: "" } });
     await waitFor(() => expect(screen.getByRole("img", { name: "Перевод не заполнен" })).toBeInTheDocument());
     expect(screen.queryByRole("img", { name: "Перевод заполнен" })).not.toBeInTheDocument();
+  });
+
+  it("keeps manual AI loaders and errors local to each field", async () => {
+    const pending = new Map<string, { resolve: (response: Response) => void; reject: (error: Error) => void }>();
+    vi.mocked(fetch).mockImplementation((_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text: string };
+      return new Promise<Response>((resolve, reject) => pending.set(body.text, { resolve, reject }));
+    });
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const description = "Сытное блюдо на завтрак";
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    renderWorkspace({ sections: [section], items: [{ ...item, description, hasDescription: true }] });
+
+    await user.click(screen.getByRole("button", { name: /Перевести автоматически: Название|Перевести: Название/ }));
+    await user.click(screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ }));
+
+    expect(screen.getByRole("button", { name: "Перевод выполняется: Название" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Перевод выполняется: Описание" })).toBeDisabled();
+
+    pending.get(item.title)?.resolve(new Response(JSON.stringify({
+      translatedText: "Translated title",
+      provider: "mymemory",
+      upstreamRequestCount: 1,
+      durationMs: 10,
+      artificialDelayMs: 0,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    await waitFor(() => expect(screen.getByRole("img", { name: "Переведено автоматически: Название" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Перевод выполняется: Описание" })).toBeDisabled();
+
+    pending.get(description)?.reject(new Error("MyMemory unavailable"));
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Ошибка перевода: Описание" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ })).toBeEnabled();
   });
 });

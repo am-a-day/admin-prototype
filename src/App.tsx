@@ -37,6 +37,12 @@ import {
   selectCatalogDataScenario,
   type CatalogDataScenario,
 } from "@/lib/catalog-data-scenarios";
+import {
+  readTranslationDelayScenario,
+  TRANSLATION_DELAY_SCENARIOS,
+  writeTranslationDelayScenario,
+  type TranslationDelayScenario,
+} from "@/lib/translation/config";
 import { CatalogStoreProvider, useCatalogStore } from "@/contexts/catalog-store-context";
 import {
   TranslationsProvider,
@@ -266,6 +272,7 @@ function PrototypeToolsPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const [catalogDataScenario] = useState(readCatalogDataScenario);
+  const [translationDelayScenario, setTranslationDelayScenario] = useState(readTranslationDelayScenario);
   const { planId, setPlanId, daysLeft, setDaysLeftDemo } = usePlan();
   const { stage, forceStage } = useVitrineLaunch();
   const { totalChanges, injectDemoChanges, clearChanges } = usePublish();
@@ -452,6 +459,34 @@ function PrototypeToolsPanel({
               >
                 Сбросить сценарий
               </button>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                Скорость перевода
+              </div>
+              <div className="flex gap-1">
+                {TRANSLATION_DELAY_SCENARIOS.map((scenario) => (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    title={scenario.rangeLabel}
+                    aria-label={`${scenario.label}: ${scenario.rangeLabel}`}
+                    onClick={() => {
+                      setTranslationDelayScenario(scenario.id as TranslationDelayScenario);
+                      writeTranslationDelayScenario(scenario.id);
+                    }}
+                    className={cn(
+                      "flex-1 whitespace-nowrap rounded-lg border py-1 text-[11px] font-semibold transition",
+                      translationDelayScenario === scenario.id
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-border bg-white text-zinc-600 hover:bg-zinc-50",
+                    )}
+                  >
+                    {scenario.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
