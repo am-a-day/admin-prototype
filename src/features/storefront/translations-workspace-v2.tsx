@@ -529,14 +529,12 @@ function TranslationLanguageRow({
   const { retryTranslationJob, setJobPublishAfterComplete, stopTranslationJob } = useTranslations();
   const translating = job?.status === "idle" || job?.status === "running";
   const failed = job?.status === "completed_with_errors";
-  const stopped = job?.status === "stopped";
-  const hasInFlightRequest = job?.fieldProgress?.some((field) => field.status === "running") ?? false;
   const completeness = languageCompleteness(materials, item.code);
   const row = (
     <button
       type="button"
       aria-current={selected ? "page" : undefined}
-      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : stopped ? ". Перевод остановлен" : !item.published ? `. Скрыт, ${completeness}%` : `, ${completeness}%`}`}
+      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : !item.published ? `. Скрыт, ${completeness}%` : `, ${completeness}%`}`}
       onClick={() => onLanguageChange(item.code)}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
@@ -547,7 +545,7 @@ function TranslationLanguageRow({
       <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected || !item.published ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
       {translating ? (
         <span className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
-      ) : !failed && !stopped && (
+      ) : !failed && (
         <span className={cn(
           "mr-0.5 flex shrink-0 items-center whitespace-nowrap leading-[18px] tabular-nums transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
           item.published ? "text-[11px] text-[#666]" : "gap-[3px] text-[10px] text-[#999]",
@@ -561,7 +559,7 @@ function TranslationLanguageRow({
   );
 
   return (
-    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : stopped ? "stopped" : "ready"} className="group relative overflow-hidden">
+    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : "ready"} className="group relative overflow-hidden">
       {row}
       {translating && job && (
         <Tooltip label="Остановить перевод" side="top" delayDuration={250}>
@@ -583,11 +581,6 @@ function TranslationLanguageRow({
             <div className="flex items-center justify-between gap-2 px-1.5 pb-2 pt-1 text-[12px] leading-4 text-[#78716c]">
               <span>Не переведено: {job.failed ?? 0} из {job.total} полей</span>
               <Button type="button" variant="ghost" size="sm" onClick={() => retryTranslationJob(job.id)} className="h-7 shrink-0 rounded-[7px] px-2 text-[12px] text-[#292524]">Повторить</Button>
-            </div>
-          ) : stopped ? (
-            <div className="flex items-center justify-between gap-2 px-1.5 pb-2 pt-1 text-[12px] leading-4 text-[#78716c]">
-              <span>Переведено {job.completed} из {job.total} полей</span>
-              <Button type="button" variant="ghost" size="sm" disabled={hasInFlightRequest} onClick={() => retryTranslationJob(job.id)} className="h-7 shrink-0 rounded-[7px] px-2 text-[12px] text-[#292524]">Продолжить</Button>
             </div>
           ) : (
             <>
@@ -645,7 +638,9 @@ function TranslationSidebar({
   const typeLabel = CONTENT_TYPES.find((item) => item.id === contentType)?.label ?? "Позиции";
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const visibleEntities = entities.filter((entity) => !normalizedQuery || [entity.title, entity.subtitle].filter(Boolean).some((value) => value!.toLocaleLowerCase("ru").includes(normalizedQuery)));
-  const visibleTranslationJobs = jobs.filter((job) => job.status !== "completed");
+  const visibleTranslationJobs = jobs.filter((job) => (
+    job.status === "idle" || job.status === "running" || job.status === "completed_with_errors"
+  ));
   const selectedLanguageJob = visibleTranslationJobs.find((job) => job.language === language.code);
   const typeProgress = contentTypeCompleteness(materials, contentType, language.code);
 

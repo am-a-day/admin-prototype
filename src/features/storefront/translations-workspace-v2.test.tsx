@@ -15,6 +15,18 @@ function ToastProbe() {
   return toast ? <div role="status">{toast.message}</div> : null;
 }
 
+function TranslationTestControls() {
+  const { materials, startAutoTranslate } = useTranslations();
+  return (
+    <button
+      type="button"
+      onClick={() => startAutoTranslate(["sr"], materials.map((material) => material.id), "Повторный запуск")}
+    >
+      Тест: обычный автоперевод на сербский
+    </button>
+  );
+}
+
 function Providers({ children, initialData }: { children: ReactNode; initialData?: CatalogStoreInitialData }) {
   return (
     <MockAuthProvider>
@@ -24,6 +36,7 @@ function Providers({ children, initialData }: { children: ReactNode; initialData
             <TooltipProvider>
               {children}
               <ToastProbe />
+              <TranslationTestControls />
             </TooltipProvider>
           </TranslationsProvider>
         </CatalogStoreProvider>
@@ -212,13 +225,14 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
   });
 
-  it("stops the queue immediately, keeps in-flight results, and continues only remaining fields", async () => {
+  it("ends the current job on Stop and translates only missing fields on the next ordinary run", async () => {
     let releaseRequests = () => {};
+    let holdRequests = true;
     let requestCount = 0;
     const requestsGate = new Promise<void>((resolve) => { releaseRequests = resolve; });
     vi.mocked(fetch).mockImplementation(async (_input, init) => {
       requestCount += 1;
-      await requestsGate;
+      if (requestCount > 1 && holdRequests) await requestsGate;
       const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
       return new Response(JSON.stringify({
         translatedText: `[${body.targetLanguage}] ${body.text}`,
@@ -232,27 +246,39 @@ describe("translations workspace v2", () => {
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     const { container } = renderWorkspace({ sections: [section], items: [item] });
 
-    fireEvent.click(screen.getByRole("button", { name: "Действия языка «Английский»" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
     fireEvent.click(screen.getByRole("button", { name: "Добавить язык" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Английский/ }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Сербский/ }));
 
-    await waitFor(() => expect(requestCount).toBe(3));
+    const jobDetails = await waitFor(() => {
+      const details = container.querySelector("[data-translation-job-details]");
+      expect(details).toHaveTextContent(/Переведено 1 из \d+ полей/);
+      return details as HTMLElement;
+    });
+    const total = Number(jobDetails.textContent?.match(/1 из (\d+)/)?.[1]);
+    expect(total).toBeGreaterThan(1);
+    const requestsAtStop = requestCount;
     fireEvent.click(screen.getByRole("button", { name: "Остановить перевод" }));
-    expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "stopped");
+    const serbianRow = container.querySelector('[data-translation-language="sr"]') as HTMLElement;
+    expect(serbianRow).toHaveAttribute("data-translation-state", "ready");
+    expect(serbianRow).toHaveTextContent(/Скрыт·\d+%/);
+    expect(container.querySelector("[data-translation-job-details]")).not.toBeInTheDocument();
     expect(container.querySelector("[data-translation-progress-shimmer]")).not.toBeInTheDocument();
     expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Продолжить" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Продолжить" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(`Перевод остановлен. Переведено 1 из ${total} полей`);
 
+    holdRequests = false;
     releaseRequests();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Продолжить" })).toBeEnabled());
-    expect(requestCount).toBe(3);
-    expect(screen.getByText(/Переведено 3 из \d+ полей/)).toBeInTheDocument();
+    await waitFor(() => expect(requestCount).toBe(requestsAtStop));
+    expect(serbianRow).toHaveAttribute("data-translation-state", "ready");
+    expect(screen.getByRole("status")).toHaveTextContent(`Перевод остановлен. Переведено 1 из ${total} полей`);
 
-    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
-    await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "ready"));
-    expect(requestCount).toBeGreaterThan(3);
+    const requestsBeforeRestart = requestCount;
+    fireEvent.click(screen.getByRole("button", { name: "Тест: обычный автоперевод на сербский" }));
+    await waitFor(() => expect(serbianRow).toHaveAttribute("data-translation-state", "translating"));
+    await waitFor(() => expect(serbianRow).toHaveAttribute("data-translation-state", "ready"));
+    expect(requestCount - requestsBeforeRestart).toBe(total - 1);
+    expect(screen.queryByRole("button", { name: "Продолжить" })).not.toBeInTheDocument();
   });
 
   it("restores a running job and requests only fields that were not completed", async () => {

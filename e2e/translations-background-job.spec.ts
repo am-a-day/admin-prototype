@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const JOBS_KEY = "tasko.translations.jobs.v1.seed-owner";
 
-test("keeps a translation job interactive, stoppable, and recoverable across reloads", async ({ page }, testInfo) => {
+test("ends a translation job on Stop and restores the ordinary language row", async ({ page }, testInfo) => {
   test.setTimeout(30_000);
   const now = Date.now();
   await page.addInitScript(({ jobsKey, startedAt }) => {
@@ -37,15 +37,11 @@ test("keeps a translation job interactive, stoppable, and recoverable across rel
   }, { jobsKey: JOBS_KEY, startedAt: now });
 
   let firstRelease = () => {};
-  let resumedRelease = () => {};
   let requestCount = 0;
-  let resumedPhase = false;
   const firstGate = new Promise<void>((resolve) => { firstRelease = resolve; });
-  const resumedGate = new Promise<void>((resolve) => { resumedRelease = resolve; });
   await page.route("**/api/translate", async (route) => {
     requestCount += 1;
-    const requestGate = resumedPhase ? resumedGate : firstGate;
-    await requestGate;
+    await firstGate;
     const body = route.request().postDataJSON() as { text?: string; targetLanguage?: string };
     await route.fulfill({
       status: 200,
@@ -109,38 +105,33 @@ test("keeps a translation job interactive, stoppable, and recoverable across rel
   await stopButton.hover();
   await expect(page.getByRole("tooltip")).toHaveText("Остановить перевод");
   await page.screenshot({ path: testInfo.outputPath("active-stop-hover.png") });
-  resumedPhase = true;
   const requestsAtStop = requestCount;
   await stopButton.click();
-  await expect(englishRow).toHaveAttribute("data-translation-state", "stopped");
+  await expect(englishRow).toHaveAttribute("data-translation-state", "ready");
   await expect(progressShimmer).toHaveCount(0);
   await expect(page.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Продолжить" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Продолжить" })).toHaveCount(0);
+  await expect(page.locator("[data-translation-job-details]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Английский, \d+%/ })).toBeEnabled();
+  await expect(page.getByText("Перевод остановлен. Переведено 1 из 5 полей")).toBeVisible();
 
   firstRelease();
-  await expect(page.getByRole("button", { name: "Продолжить" })).toBeEnabled();
-  await expect(page.getByText("Переведено 4 из 5 полей")).toBeVisible();
+  await page.waitForTimeout(200);
   expect(requestCount).toBe(requestsAtStop);
-
-  await page.reload();
-  await expect(englishRow).toHaveAttribute("data-translation-state", "stopped");
-  await page.getByRole("button", { name: "Продолжить" }).click();
-  await expect.poll(() => requestCount).toBeGreaterThan(requestsAtStop);
-  const requestsBeforeReload = requestCount;
-  await page.reload();
-  await expect.poll(() => requestCount).toBeGreaterThan(requestsBeforeReload);
-  const requestsBeforeSecondReload = requestCount;
-  await page.reload();
-  await expect.poll(() => requestCount).toBeGreaterThan(requestsBeforeSecondReload);
-  resumedRelease();
-
   await expect(englishRow).toHaveAttribute("data-translation-state", "ready");
+  await expect(page.getByText("Перевод остановлен. Переведено 1 из 5 полей")).toBeVisible();
+
+  await page.reload();
+  await expect(englishRow).toHaveAttribute("data-translation-state", "ready");
+  await expect(page.getByRole("button", { name: "Продолжить" })).toHaveCount(0);
+  await expect(page.locator("[data-translation-job-details]")).toHaveCount(0);
   const storedJob = await page.evaluate((jobsKey) => JSON.parse(window.localStorage.getItem(jobsKey) ?? "[]")[0], JOBS_KEY) as {
     status: string;
     completed: number;
     failed: number;
     fieldProgress: Array<{ status: string }>;
   };
-  expect(storedJob).toMatchObject({ status: "completed", completed: 5, failed: 0 });
-  expect(storedJob.fieldProgress.every((field) => field.status === "completed")).toBe(true);
+  expect(storedJob).toMatchObject({ status: "stopped", completed: 1, failed: 0 });
+  expect(storedJob.fieldProgress.filter((field) => field.status === "completed")).toHaveLength(1);
+  expect(storedJob.fieldProgress.every((field) => field.status === "completed" || field.status === "pending")).toBe(true);
 });

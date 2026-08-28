@@ -1088,6 +1088,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   const cancelledJobIdsRef = useRef(new Set<string>());
   const lifecycleVersionRef = useRef(0);
   const materialsRef = useRef(materials);
+  const jobsRef = useRef(jobs);
   const persistTranslatedMaterialRef = useRef<(
     material: TranslationMaterial,
     language: TranslationLanguageCode,
@@ -1170,6 +1171,10 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMaterials((current) => mergeRealMaterials(current, realMaterials));
   }, [realMaterials]);
+
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
 
   useEffect(() => {
     setLanguages((current) => current.map((language) => {
@@ -1275,6 +1280,11 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
       }
     }
     const additions = languageCodes.flatMap((language, index): TranslationJob[] => {
+      const failedFields = new Set(jobsRef.current
+        .filter((job) => job.language === language)
+        .flatMap((job) => (job.fieldProgress ?? [])
+          .filter((field) => field.status === "error")
+          .map((field) => `${field.materialId}:${field.fieldId}`)));
       const fieldProgress = uniqueIds.flatMap((materialId) => {
         const material = materialsRef.current.find((candidate) => candidate.id === materialId);
         if (!material) return [];
@@ -1282,6 +1292,10 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
         return material.fields
           .filter((field) => field.source.trim())
           .filter((field) => !requestedFieldIds || requestedFieldIds.includes(field.id))
+          .filter((field) => Boolean(fieldIdsByMaterial)
+            || !field.values[language]?.trim()
+            || field.reviewLanguages?.includes(language)
+            || failedFields.has(`${materialId}:${field.id}`))
           .filter((field) => !(preserveManualTranslations && field.manuallyEditedLanguages?.includes(language)))
           .map((field) => ({
             id: `${materialId}:${field.id}:${language}`,
@@ -1376,16 +1390,35 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopTranslationJob = useCallback((jobId: string) => {
+    const currentJob = jobs.find((job) => job.id === jobId);
+    if (!currentJob || (currentJob.status !== "idle" && currentJob.status !== "running")) return;
     cancelledJobIdsRef.current.add(jobId);
-    setJobs((current) => current.map((job) => job.id === jobId && (job.status === "idle" || job.status === "running")
-      ? { ...job, status: "stopped", finishesAt: Date.now() }
+    const fieldProgress = currentJob.fieldProgress?.map((field) => field.status === "running"
+      ? { ...field, status: "pending" as const }
+      : field);
+    const completed = fieldProgress?.filter((field) => field.status === "completed").length
+      ?? currentJob.completed;
+    const failed = fieldProgress?.filter((field) => field.status === "error").length
+      ?? currentJob.failed
+      ?? 0;
+    setJobs((current) => current.map((job) => job.id === jobId
+      ? {
+          ...job,
+          completed,
+          successful: completed,
+          failed,
+          status: "stopped",
+          fieldProgress,
+          finishesAt: Date.now(),
+        }
       : job));
-    showToast("Перевод остановлен. Уже переведённые поля сохранены.");
-  }, [showToast]);
+    showToast(`Перевод остановлен. Переведено ${completed} из ${currentJob.total} полей`);
+  }, [jobs, showToast]);
 
   const retryTranslationJob = useCallback((jobId: string) => {
     const currentJob = jobs.find((job) => job.id === jobId);
-    if (!currentJob || currentJob.fieldProgress?.some((field) => field.status === "running")) return;
+    if (currentJob?.status !== "completed_with_errors"
+      || currentJob.fieldProgress?.some((field) => field.status === "running")) return;
     const startedAt = Date.now();
     scheduledJobIdsRef.current.delete(jobId);
     cancelledJobIdsRef.current.delete(jobId);
@@ -1725,7 +1758,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
             sourceLanguage,
             targetLanguage: job.language,
           });
-          if (lifecycleExpired()) return;
+          if (lifecycleExpired() || cancelledJobIdsRef.current.has(job.id)) return;
           const currentField = materialsRef.current
             .find((candidate) => candidate.id === progress.materialId)
             ?.fields.find((candidate) => candidate.id === progress.fieldId);
@@ -1744,6 +1777,7 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           runSuccessful += 1;
           updateProgress(progress.id, "completed");
         } catch (error) {
+          if (lifecycleExpired() || cancelledJobIdsRef.current.has(job.id)) return;
           const message = error instanceof Error ? error.message : "Не удалось перевести поле";
           failed += 1;
           runFailed += 1;
