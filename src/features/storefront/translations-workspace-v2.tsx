@@ -4,7 +4,7 @@ import {
   CaretDown,
   Check,
   CircleDashed,
-  DotsThree,
+  DotsThreeVertical,
   MagnifyingGlass,
   Plus,
   SpinnerGap,
@@ -334,15 +334,18 @@ function LanguageActionsPopover({ language }: { language: TranslationLanguage })
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Действия языка «${languageLabel(language.code)}»`}
-            className="absolute right-1 top-1/2 z-10 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-white/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
-          >
-            <DotsThree size={20} weight="bold" />
-          </button>
-        </PopoverTrigger>
+        <Tooltip label="Действия" side="top">
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Действия языка «${languageLabel(language.code)}»`}
+              onClick={(event) => event.stopPropagation()}
+              className="absolute right-1 top-1/2 z-10 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-[#e7e5e4] focus:opacity-100 focus-visible:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:bg-[#e7e5e4] data-[state=open]:opacity-100"
+            >
+              <DotsThreeVertical size={14} weight="regular" />
+            </button>
+          </PopoverTrigger>
+        </Tooltip>
         <PopoverContent
           align="end"
           sideOffset={5}
@@ -541,7 +544,7 @@ function TranslationLanguageRow({
       onClick={() => onLanguageChange(item.code)}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
-        selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]",
+        selected ? "bg-[#f5f5f4]" : "group-hover:bg-[#f5f5f4] group-focus-within:bg-[#f5f5f4]",
       )}
     >
       <LanguageCodeBadge code={item.code} />
@@ -555,7 +558,7 @@ function TranslationLanguageRow({
   );
 
   return (
-    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : "ready"} className="group relative overflow-hidden">
+    <div data-translation-language={item.code} data-translation-state={translating ? "translating" : failed ? "error" : "ready"} className="group relative overflow-hidden rounded-[8px]">
       {row}
       {translating && job && (
         <Tooltip label="Остановить перевод" side="top" delayDuration={250}>

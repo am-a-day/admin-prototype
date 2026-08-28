@@ -115,6 +115,40 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Добавить язык" })).toBeInTheDocument());
   });
 
+  it("keeps the language row hovered while More has its own hover and does not change selection", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
+
+    const kazakh = screen.getByRole("button", { name: "Казахский. Скрыт" });
+    await user.click(kazakh);
+    expect(kazakh).toHaveAttribute("aria-current", "page");
+
+    const english = screen.getByRole("button", { name: "Английский" });
+    const englishRow = container.querySelector('[data-translation-language="en"]') as HTMLElement;
+    const more = within(englishRow).getByRole("button", { name: "Действия языка «Английский»" });
+    expect(englishRow).toHaveClass("rounded-[8px]", "overflow-hidden");
+    expect(english).toHaveClass("group-hover:bg-[#f5f5f4]", "group-focus-within:bg-[#f5f5f4]");
+    expect(more).toHaveClass("size-5", "hover:bg-[#e7e5e4]", "focus-visible:bg-[#e7e5e4]", "focus-visible:ring-2");
+    expect(more.querySelector("svg")).toBeInTheDocument();
+
+    await user.hover(more);
+    await waitFor(() => expect(more).toHaveAttribute("aria-describedby"));
+    await user.unhover(more);
+
+    await user.click(more);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(kazakh).toHaveAttribute("aria-current", "page");
+    expect(english).not.toHaveAttribute("aria-current");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(kazakh).toHaveAttribute("aria-current", "page");
+
+    fireEvent.focus(more);
+    await waitFor(() => expect(more).toHaveAttribute("aria-describedby"));
+  });
+
   it("changes the original language only from the Figma-matched language menu", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
@@ -240,6 +274,7 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating"));
     const languageButton = screen.getByRole("button", { name: /Английский\. Переведено 0 из \d+ полей/ });
     expect(languageButton).toBeEnabled();
+    expect(languageButton).toHaveClass("group-hover:bg-[#f5f5f4]", "group-focus-within:bg-[#f5f5f4]");
     expect(container.querySelector("[data-translation-job-details]")).toHaveTextContent(/Переведено 0 из \d+ полей/);
     expect(container.querySelector("[data-translation-progress-shimmer]")).toHaveTextContent(/0 из \d+ полей/);
     expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
