@@ -6,8 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { CatalogStoreProvider, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
 import { MockAuthProvider } from "@/contexts/mock-auth-context";
-import { PublishProvider } from "@/contexts/publish-context";
-import { TranslationsProvider, useTranslations } from "@/contexts/translations-context";
+import { TranslationsProvider, useTranslations, type TranslationMaterial } from "@/contexts/translations-context";
 import { catalogItems, catalogSections } from "@/data/catalog";
 import { TranslationsWorkspace } from "./translations-workspace-v2";
 
@@ -32,29 +31,28 @@ function Providers({ children, initialData }: { children: ReactNode; initialData
   return (
     <MockAuthProvider>
       <AppSettingsProvider>
-        <PublishProvider persistence={false}>
-          <CatalogStoreProvider initialData={initialData}>
-            <TranslationsProvider>
-              <TooltipProvider>
-                {children}
-                <ToastProbe />
-                <TranslationTestControls />
-              </TooltipProvider>
-            </TranslationsProvider>
-          </CatalogStoreProvider>
-        </PublishProvider>
+        <CatalogStoreProvider initialData={initialData}>
+          <TranslationsProvider>
+            <TooltipProvider>
+              {children}
+              <ToastProbe />
+              <TranslationTestControls />
+            </TooltipProvider>
+          </TranslationsProvider>
+        </CatalogStoreProvider>
       </AppSettingsProvider>
     </MockAuthProvider>
   );
 }
 
-function renderWorkspace(initialData?: CatalogStoreInitialData) {
-  return render(<TranslationsWorkspace />, { wrapper: ({ children }) => <Providers initialData={initialData}>{children}</Providers> });
+function renderWorkspace(initialData?: CatalogStoreInitialData, onOpenOriginal?: (material: TranslationMaterial) => void) {
+  return render(<TranslationsWorkspace onOpenOriginal={onOpenOriginal} />, { wrapper: ({ children }) => <Providers initialData={initialData}>{children}</Providers> });
 }
 
 describe("translations workspace v2", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.replaceState({}, "", "/storefront/translations");
     window.localStorage.setItem("tasko.mockAuth.session.v1", "seed-owner");
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string; targetLanguage?: string };
@@ -84,7 +82,7 @@ describe("translations workspace v2", () => {
     expect(addLanguage).toHaveTextContent("Добавить...");
     expect(addLanguage).toHaveClass("h-7", "pl-1", "pr-2", "font-normal", "text-[#999]");
     expect(addLanguage.querySelector("[data-translation-add-language-icon]")).toHaveClass("size-5", "rounded-[4px]", "border-[#e7e5e4]");
-    expect(container.querySelector("[data-position-editor-surface]")).not.toHaveTextContent(/\d+%/);
+    expect(container).not.toHaveTextContent(/\d+%/);
   });
 
   it("hides Add when every supported language is connected and restores it after deletion", async () => {
@@ -415,33 +413,48 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: "Выбрать тип контента" })).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
   });
 
-  it("opens a position Side Peek without changing the translations route or list context", async () => {
+  it("keeps row clicks inside translations and restores context after opening the position in catalog", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
     window.history.replaceState({ translations: true }, "", "/storefront/translations");
-    const { container } = renderWorkspace({ sections: [section], items: [item] });
+    const onOpenOriginal = vi.fn();
+    const workspace = renderWorkspace({ sections: [section], items: [item] }, onOpenOriginal);
 
     await user.click(screen.getByRole("button", { name: "Английский" }));
     await user.click(screen.getByRole("button", { name: "Открыть поиск" }));
     const search = screen.getByRole("textbox", { name: "Поиск: Позиции" });
     await user.type(search, item.title);
-    const entityList = container.querySelector("[data-translations-entity-list]") as HTMLElement;
+    const entityList = workspace.container.querySelector("[data-translations-entity-list]") as HTMLElement;
     entityList.scrollTop = 18;
     const routeBefore = window.location.href;
 
-    await user.click(screen.getByRole("button", { name: `Открыть позицию «${item.title}»` }));
-    const sidePeek = await screen.findByRole("complementary", { name: item.title });
+    const positionRow = screen.getByRole("button", { name: `Выбрать позицию «${item.title}»` });
+    await user.click(positionRow);
+    expect(positionRow).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: item.title })).not.toBeInTheDocument();
     expect(window.location.href).toBe(routeBefore);
-    expect(search).toHaveValue(item.title);
-    expect(screen.getByRole("button", { name: "Английский" })).toHaveAttribute("aria-current", "page");
-    expect(entityList.scrollTop).toBe(18);
+    expect(onOpenOriginal).not.toHaveBeenCalled();
 
-    await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: item.title })).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: `Действия позиции «${item.title}»` }));
+    await user.click(screen.getByRole("menuitem", { name: "Открыть в каталоге" }));
+    expect(onOpenOriginal).toHaveBeenCalledWith(expect.objectContaining({ catalogItemId: item.id }));
     expect(window.location.href).toBe(routeBefore);
+    expect(window.history.state.taskoTranslationsView).toMatchObject({
+      language: "en",
+      contentType: "positions",
+      query: item.title,
+      searchOpen: true,
+      scrollTop: 18,
+    });
+
+    workspace.unmount();
+    const restored = renderWorkspace({ sections: [section], items: [item] }, onOpenOriginal);
     expect(screen.getByRole("textbox", { name: "Поиск: Позиции" })).toHaveValue(item.title);
-    expect(entityList.scrollTop).toBe(18);
+    expect(screen.getByRole("button", { name: "Английский" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: `Выбрать позицию «${item.title}»` })).toHaveAttribute("aria-current", "page");
+    expect((restored.container.querySelector("[data-translations-entity-list]") as HTMLElement).scrollTop).toBe(18);
   });
 
   it("translates fields independently and clears the AI indicator after manual editing", async () => {

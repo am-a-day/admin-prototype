@@ -3320,7 +3320,7 @@ function readPositionSidePeekWidth() {
   return { width: getDefaultPositionSidePeekWidth(), userSized: false };
 }
 
-export function PositionEditorDialogShell({
+function PositionEditorDialogShell({
   label,
   onClose,
   children,

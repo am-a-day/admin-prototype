@@ -101,17 +101,29 @@ test("ends a translation job on Stop and restores the ordinary language row", as
     element.scrollTop = 12;
     return element.scrollTop;
   });
-  await page.getByRole("button", { name: /^Открыть позицию «/ }).click();
-  const sidePeek = page.locator("[data-position-editor-pane]");
-  await expect(sidePeek).toBeVisible();
+  const positionRow = page.getByRole("button", { name: "Выбрать позицию «Омлет с томатами и сыром»" });
+  await positionRow.click();
+  await expect(positionRow).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
   expect(page.url()).toBe(translationsUrl);
   await expect(positionSearch).toHaveValue("Омлет");
   await expect(page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ })).toHaveAttribute("aria-current", "page");
   expect(await page.locator("[data-translations-entity-list]").evaluate((element) => element.scrollTop)).toBe(entityListScrollTop);
-  await sidePeek.getByRole("button", { name: "Свернуть редактор" }).click();
-  await expect(sidePeek).toHaveCount(0);
-  expect(page.url()).toBe(translationsUrl);
+
+  await page.getByRole("button", { name: "Действия позиции «Омлет с томатами и сыром»" }).click();
+  await page.getByRole("menuitem", { name: "Открыть в каталоге" }).click();
+  await expect(page).toHaveURL(/\/storefront\/catalog\?.*positionId=/);
+  await expect(page.locator("[data-position-editor-pane]")).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(translationsUrl);
+  await expect(page.getByRole("heading", { name: "Переводы" })).toBeVisible();
   await expect(positionSearch).toHaveValue("Омлет");
+  await expect(page.getByRole("button", { name: "Выбрать тип контента" })).toHaveText("Позиции");
+  await expect(page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "Выбрать позицию «Омлет с томатами и сыром»" })).toHaveAttribute("aria-current", "page");
+  expect(await page.locator("[data-translations-entity-list]").evaluate((element) => element.scrollTop)).toBe(entityListScrollTop);
+  await expect(page.locator("[data-position-editor-pane]")).toHaveCount(0);
   await page.getByRole("button", { name: "Закрыть поиск" }).click();
   await page.getByRole("button", { name: "Добавить язык" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();

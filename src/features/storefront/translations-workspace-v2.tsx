@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CaretDown,
   Check,
@@ -43,8 +43,6 @@ import {
   type TranslationMaterial,
 } from "@/contexts/translations-context";
 import { LANGUAGES } from "@/data/languages";
-import { PositionEditorDialogShell } from "@/features/storefront/catalog-workspace";
-import { PositionEditorHost, type OpenPositionIntent } from "@/features/storefront/catalog/editor/position-editor-host";
 import { PositionSaveStatus } from "@/features/storefront/catalog/editor/position-editor";
 import { readCatalogJson, writeCatalogJson } from "@/features/storefront/catalog/persistence";
 import { DeleteConfirmationDialog } from "@/features/storefront/catalog/ui/delete-confirmation-dialog";
@@ -89,6 +87,16 @@ const TRANSLATIONS_SIDEBAR_WIDTH_STORAGE_KEY = catalogStorageKey("translations.s
 const TRANSLATIONS_SIDEBAR_DEFAULT_WIDTH = 230;
 const TRANSLATIONS_SIDEBAR_MIN_WIDTH = 200;
 const TRANSLATIONS_SIDEBAR_MAX_WIDTH = 420;
+const TRANSLATIONS_HISTORY_STATE_KEY = "taskoTranslationsView";
+
+type TranslationsViewState = {
+  language: TranslationLanguageCode;
+  contentType: TranslationContentType;
+  selectedKey: string | null;
+  query: string;
+  searchOpen: boolean;
+  scrollTop: number;
+};
 
 type TranslationEntity = {
   key: string;
@@ -97,6 +105,28 @@ type TranslationEntity = {
   subtitle?: string;
   fields: TranslationField[];
 };
+
+function readTranslationsViewState(): TranslationsViewState | null {
+  if (typeof window === "undefined" || !window.history.state || typeof window.history.state !== "object") return null;
+  const candidate = (window.history.state as Record<string, unknown>)[TRANSLATIONS_HISTORY_STATE_KEY] as Partial<TranslationsViewState> | undefined;
+  if (!candidate
+    || !Object.hasOwn(TRANSLATION_LANGUAGE_LABELS, candidate.language ?? "")
+    || !CONTENT_TYPES.some((item) => item.id === candidate.contentType)) return null;
+  return {
+    language: candidate.language as TranslationLanguageCode,
+    contentType: candidate.contentType as TranslationContentType,
+    selectedKey: typeof candidate.selectedKey === "string" ? candidate.selectedKey : null,
+    query: typeof candidate.query === "string" ? candidate.query : "",
+    searchOpen: candidate.searchOpen === true,
+    scrollTop: typeof candidate.scrollTop === "number" && Number.isFinite(candidate.scrollTop) ? Math.max(0, candidate.scrollTop) : 0,
+  };
+}
+
+function writeTranslationsViewState(viewState: TranslationsViewState) {
+  if (typeof window === "undefined") return;
+  const currentState = window.history.state && typeof window.history.state === "object" ? window.history.state : {};
+  window.history.replaceState({ ...currentState, [TRANSLATIONS_HISTORY_STATE_KEY]: viewState }, "", window.location.href);
+}
 
 function languageLabel(code: TranslationLanguageCode) {
   return TRANSLATION_LANGUAGE_LABELS[code];
@@ -599,7 +629,11 @@ function TranslationSidebar({
   selectedKey,
   onContentTypeChange,
   onLanguageChange,
+  onOpenCatalog,
   onSelect,
+  initialQuery,
+  initialSearchOpen,
+  initialScrollTop,
 }: {
   language: TranslationLanguage;
   contentType: TranslationContentType;
@@ -607,12 +641,19 @@ function TranslationSidebar({
   selectedKey: string | null;
   onContentTypeChange: (type: TranslationContentType) => void;
   onLanguageChange: (language: TranslationLanguageCode) => void;
+  onOpenCatalog: (material: TranslationMaterial) => void;
   onSelect: (entity: TranslationEntity) => void;
+  initialQuery: string;
+  initialSearchOpen: boolean;
+  initialScrollTop: number;
 }) {
   const { jobs, languages } = useTranslations();
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(initialSearchOpen);
+  const [query, setQuery] = useState(initialQuery);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const entityListRef = useRef<HTMLDivElement | null>(null);
+  const restoredScrollRef = useRef(false);
+  const previousContentTypeRef = useRef(contentType);
   const typeLabel = CONTENT_TYPES.find((item) => item.id === contentType)?.label ?? "Позиции";
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const visibleEntities = entities.filter((entity) => !normalizedQuery || [entity.title, entity.subtitle].filter(Boolean).some((value) => value!.toLocaleLowerCase("ru").includes(normalizedQuery)));
@@ -626,8 +667,30 @@ function TranslationSidebar({
     const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [searchOpen]);
-  useEffect(() => { setQuery(""); setSearchOpen(false); }, [contentType]);
+  useEffect(() => {
+    if (previousContentTypeRef.current === contentType) return;
+    previousContentTypeRef.current = contentType;
+    setQuery("");
+    setSearchOpen(false);
+  }, [contentType]);
+  useLayoutEffect(() => {
+    if (restoredScrollRef.current || !entityListRef.current) return;
+    entityListRef.current.scrollTop = initialScrollTop;
+    restoredScrollRef.current = true;
+  }, [initialScrollTop, visibleEntities.length]);
   const closeSearch = () => { setQuery(""); setSearchOpen(false); };
+  const openCatalog = (entity: TranslationEntity) => {
+    onSelect(entity);
+    writeTranslationsViewState({
+      language: language.code,
+      contentType,
+      selectedKey: entity.key,
+      query,
+      searchOpen,
+      scrollTop: entityListRef.current?.scrollTop ?? 0,
+    });
+    onOpenCatalog(entity.material);
+  };
 
   return (
     <aside data-translations-sidebar className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-r border-stone-200 bg-[#f5f5f4]">
@@ -683,23 +746,42 @@ function TranslationSidebar({
         </div>
 
         {contentType !== "about" && (
-          <div data-translations-entity-list className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
+          <div ref={entityListRef} data-translations-entity-list className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
             {visibleEntities.map((entity) => {
               const selected = entity.key === selectedKey;
               const complete = entityComplete(entity, language.code);
               const batchState = entityBatchState(entity, selectedLanguageJob);
+              const positionActions = contentType === "positions" && Boolean(entity.material.catalogItemId);
               return (
-                <button key={entity.key} type="button" aria-current={selected ? "page" : undefined} onClick={() => onSelect(entity)} className={cn("group flex h-7 w-full items-center gap-2 rounded-[8px] p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
-                  <CatalogThumbnail kind={entity.material.kind === "section" ? "section" : "item"} className="size-5 rounded-[5px]" />
-                  <span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] leading-4", selected ? "font-medium text-[#333]" : "text-[#666]")}>{entity.title}</span>{entity.subtitle && <span className="block truncate text-[10px] leading-3 text-[#666]">{entity.subtitle}</span>}</span>
-                  {batchState === "running" ? (
-                    <span role="img" aria-label="Сущность переводится" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><SpinnerGap size={14} className="animate-spin" /></span>
-                  ) : batchState === "error" ? (
-                    <span role="img" aria-label="Ошибка перевода сущности" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><WarningCircle size={14} /></span>
-                  ) : !complete && batchState !== "pending" && (
-                    <span role="img" aria-label="Перевод не заполнен" className="flex size-4 shrink-0 items-center justify-center text-[#78716c]"><CircleDashed size={14} /></span>
+                <div key={entity.key} className="group/entity relative">
+                  <button type="button" aria-label={contentType === "positions" ? `Выбрать позицию «${entity.title}»` : undefined} aria-current={selected ? "page" : undefined} onClick={() => onSelect(entity)} className={cn("flex h-7 w-full items-center gap-2 rounded-[8px] p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10", positionActions && "pr-7", selected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
+                    <CatalogThumbnail kind={entity.material.kind === "section" ? "section" : "item"} className="size-5 rounded-[5px]" />
+                    <span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] leading-4", selected ? "font-medium text-[#333]" : "text-[#666]")}>{entity.title}</span>{entity.subtitle && <span className="block truncate text-[10px] leading-3 text-[#666]">{entity.subtitle}</span>}</span>
+                    {batchState === "running" ? (
+                      <span role="img" aria-label="Сущность переводится" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><SpinnerGap size={14} className="animate-spin" /></span>
+                    ) : batchState === "error" ? (
+                      <span role="img" aria-label="Ошибка перевода сущности" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><WarningCircle size={14} /></span>
+                    ) : !complete && batchState !== "pending" && (
+                      <span role="img" aria-label="Перевод не заполнен" className={cn("flex size-4 shrink-0 items-center justify-center text-[#78716c]", positionActions && "transition-opacity group-hover/entity:opacity-0 group-focus-within/entity:opacity-0")}><CircleDashed size={14} /></span>
+                    )}
+                  </button>
+                  {positionActions && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Действия позиции «${entity.title}»`}
+                          className="absolute right-1 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#333] opacity-0 transition hover:bg-white/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover/entity:opacity-100 group-focus-within/entity:opacity-100 data-[state=open]:opacity-100"
+                        >
+                          <DotsThree size={20} weight="bold" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-[180px]">
+                        <DropdownMenuItem onSelect={() => openCatalog(entity)}>Открыть в каталоге</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
-                </button>
+                </div>
               );
             })}
             {visibleEntities.length === 0 && <p className="px-2 py-2 text-[13px] leading-4 text-[#666]">Ничего не найдено</p>}
@@ -790,14 +872,9 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   );
 }
 
-function TranslationEditor({
-  entity,
-  language,
-  onOpenPosition,
-}: {
+function TranslationEditor({ entity, language }: {
   entity: TranslationEntity | null;
   language: TranslationLanguage;
-  onOpenPosition: (itemId: string) => void;
 }) {
   const { items } = useCatalogStore();
   const { account } = useMockAuth();
@@ -812,18 +889,7 @@ function TranslationEditor({
       <header className="flex h-[49px] shrink-0 items-center justify-between gap-3 bg-white px-4">
         <div className="flex min-w-0 items-center gap-1.5">
           <CatalogThumbnail src={imageUrl} kind={entity.material.kind === "section" ? "section" : "item"} className="size-6 rounded-[6px]" />
-          {entity.material.catalogItemId ? (
-            <button
-              type="button"
-              aria-label={`Открыть позицию «${entity.material.title}»`}
-              onClick={() => onOpenPosition(entity.material.catalogItemId!)}
-              className="min-w-0 truncate rounded-[5px] text-left text-[13px] font-medium text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
-            >
-              {entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}
-            </button>
-          ) : (
-            <span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span>
-          )}
+          <span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span>
         </div>
         <PositionSaveStatus status={saveState} />
       </header>
@@ -855,28 +921,24 @@ function EmptyTranslations() {
   );
 }
 
-function LanguageWorkspace({ initialContentType }: { initialContentType: TranslationContentType }) {
+function LanguageWorkspace({
+  initialContentType,
+  initialViewState,
+  onOpenOriginal,
+}: {
+  initialContentType: TranslationContentType;
+  initialViewState: TranslationsViewState | null;
+  onOpenOriginal: (material: TranslationMaterial) => void;
+}) {
   const { activeLanguage, activeMaterialId, languages, materials, setActiveCategory, setActiveLanguage, setActiveMaterialId } = useTranslations();
-  const { items, sections } = useCatalogStore();
   const [contentType, setContentType] = useState<TranslationContentType>(initialContentType);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [sidePeekItemId, setSidePeekItemId] = useState<string | null>(null);
-  const language = languages.find((item) => item.code === activeLanguage) ?? languages[0];
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialViewState?.selectedKey ?? null);
+  const restoredLanguage = initialViewState && languages.some((item) => item.code === initialViewState.language)
+    ? initialViewState.language
+    : activeLanguage;
+  const language = languages.find((item) => item.code === restoredLanguage) ?? languages[0];
   const entities = useMemo(() => entitiesForType(materials, contentType), [contentType, materials]);
   const selectedEntity = entities.find((entity) => entity.key === selectedKey) ?? null;
-  const sidePeekItem = sidePeekItemId ? items.find((item) => item.id === sidePeekItemId) ?? null : null;
-  const sidePeekIntent = useMemo<OpenPositionIntent | null>(() => {
-    if (!sidePeekItem) return null;
-    const orderedIds = items.filter((item) => item.status !== "archive").map((item) => item.id);
-    return {
-      origin: "structure",
-      currentId: sidePeekItem.id,
-      orderedIds: orderedIds.includes(sidePeekItem.id) ? orderedIds : [...orderedIds, sidePeekItem.id],
-      sectionId: sidePeekItem.sectionId,
-      returnContext: { label: "Вернуться к переводам" },
-      revision: 0,
-    };
-  }, [items, sidePeekItem]);
 
   useEffect(() => { if (language && language.code !== activeLanguage) setActiveLanguage(language.code); }, [activeLanguage, language, setActiveLanguage]);
   useEffect(() => {
@@ -889,40 +951,37 @@ function LanguageWorkspace({ initialContentType }: { initialContentType: Transla
   if (!language) return null;
 
   return (
-    <div data-position-editor-surface className="relative flex min-h-0 flex-1 overflow-hidden bg-white">
+    <div className="flex min-h-0 flex-1 bg-white">
       <ResizableTranslationsSidebar>
         <TranslationSidebar
           language={language}
           contentType={contentType}
           entities={entities}
           selectedKey={selectedKey}
+          initialQuery={initialViewState?.query ?? ""}
+          initialSearchOpen={initialViewState?.searchOpen ?? false}
+          initialScrollTop={initialViewState?.scrollTop ?? 0}
           onContentTypeChange={(type) => { setContentType(type); setSelectedKey(null); setActiveCategory(type === "options" ? "positions" : type); }}
           onLanguageChange={setActiveLanguage}
+          onOpenCatalog={onOpenOriginal}
           onSelect={(entity) => { setSelectedKey(entity.key); setActiveMaterialId(entity.material.id); }}
         />
       </ResizableTranslationsSidebar>
-      <TranslationEditor entity={selectedEntity} language={language} onOpenPosition={setSidePeekItemId} />
-      {sidePeekIntent && sidePeekItem && (
-        <PositionEditorDialogShell
-          label={sidePeekItem.title || "Позиция"}
-          onClose={() => setSidePeekItemId(null)}
-          presentation="pane"
-        >
-          <PositionEditorHost
-            intent={sidePeekIntent}
-            onCurrentIdChange={setSidePeekItemId}
-            onClose={() => setSidePeekItemId(null)}
-            structureSections={sections}
-          />
-        </PositionEditorDialogShell>
-      )}
+      <TranslationEditor entity={selectedEntity} language={language} />
     </div>
   );
 }
 
-export function TranslationsWorkspace(_props: { onOpenOriginal?: (material: TranslationMaterial) => void }) {
+export function TranslationsWorkspace({ onOpenOriginal = () => {} }: { onOpenOriginal?: (material: TranslationMaterial) => void }) {
   const { activeCategory, consumeWorkspaceRequest, languages, workspaceRequested } = useTranslations();
+  const initialViewState = useMemo(readTranslationsViewState, []);
   useEffect(() => { if (workspaceRequested) consumeWorkspaceRequest(); }, [consumeWorkspaceRequest, workspaceRequested]);
   if (languages.length === 0) return <EmptyTranslations />;
-  return <LanguageWorkspace initialContentType={workspaceRequested ? activeCategory : "positions"} />;
+  return (
+    <LanguageWorkspace
+      initialContentType={initialViewState?.contentType ?? (workspaceRequested ? activeCategory : "positions")}
+      initialViewState={initialViewState}
+      onOpenOriginal={onOpenOriginal}
+    />
+  );
 }
