@@ -580,7 +580,16 @@ function TranslationLanguageRow({
           ) : (
             <>
               <p className="px-1.5 py-0.5 text-[12px] leading-[18px] text-[#78716c]">
-                {job.status === "idle" ? "Ожидание запуска" : `Переведено ${job.completed} из ${job.total} полей`}
+                {job.status === "idle" ? "Ожидание запуска" : job.status === "running" ? (
+                  <>
+                    Переведено{" "}
+                    <span
+                      data-translation-progress-shimmer={`${job.completed} из ${job.total} полей`}
+                    >
+                      {job.completed} из {job.total} полей
+                    </span>
+                  </>
+                ) : `Переведено ${job.completed} из ${job.total} полей`}
               </p>
               <p className="px-1.5 py-0.5 text-[11px] leading-4 text-[#a8a29e]">Можно закрыть эту страницу — перевод продолжится в фоне</p>
               <label className="flex cursor-pointer items-center gap-[7px] px-1.5 py-2 text-[12px] font-medium text-[#666]">

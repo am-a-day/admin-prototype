@@ -67,6 +67,23 @@ test("keeps a translation job interactive, stoppable, and recoverable across rel
   await expect(page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ })).toBeEnabled();
   await expect(page.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeVisible();
   await expect(page.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
+  const progressShimmer = page.locator("[data-translation-progress-shimmer]");
+  await expect(progressShimmer).toHaveText("1 из 5 полей");
+  await expect.poll(() => progressShimmer.evaluate((element) => (
+    window.getComputedStyle(element, "::after").animationName
+  ))).toBe("translation-progress-shimmer");
+  const progressBounds = await progressShimmer.boundingBox();
+  await page.waitForTimeout(900);
+  expect(await progressShimmer.boundingBox()).toEqual(progressBounds);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => progressShimmer.evaluate((element) => (
+    window.getComputedStyle(element, "::after").display
+  ))).toBe("none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect.poll(() => progressShimmer.evaluate((element) => (
+    window.getComputedStyle(element, "::after").animationName
+  ))).toBe("translation-progress-shimmer");
 
   await page.getByRole("button", { name: /^Казахский/ }).click();
   await page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ }).click();
@@ -96,6 +113,7 @@ test("keeps a translation job interactive, stoppable, and recoverable across rel
   const requestsAtStop = requestCount;
   await stopButton.click();
   await expect(englishRow).toHaveAttribute("data-translation-state", "stopped");
+  await expect(progressShimmer).toHaveCount(0);
   await expect(page.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Продолжить" })).toBeDisabled();
 

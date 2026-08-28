@@ -153,7 +153,8 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "translating"));
     const languageButton = screen.getByRole("button", { name: /Английский\. Переведено 0 из \d+ полей/ });
     expect(languageButton).toBeEnabled();
-    expect(screen.getByText(/Переведено 0 из \d+ полей/)).toBeInTheDocument();
+    expect(container.querySelector("[data-translation-job-details]")).toHaveTextContent(/Переведено 0 из \d+ полей/);
+    expect(container.querySelector("[data-translation-progress-shimmer]")).toHaveTextContent(/0 из \d+ полей/);
     expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
@@ -197,6 +198,7 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(requestCount).toBe(3));
     fireEvent.click(screen.getByRole("button", { name: "Остановить перевод" }));
     expect(container.querySelector('[data-translation-language="en"]')).toHaveAttribute("data-translation-state", "stopped");
+    expect(container.querySelector("[data-translation-progress-shimmer]")).not.toBeInTheDocument();
     expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Продолжить" })).toBeDisabled();
 

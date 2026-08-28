@@ -199,7 +199,47 @@ body {
   opacity: 1;
 }
 
+[data-translation-progress-shimmer] {
+  position: relative;
+  display: inline-block;
+}
+
+[data-translation-progress-shimmer]::after {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  content: attr(data-translation-progress-shimmer);
+  pointer-events: none;
+  background-image: linear-gradient(
+    100deg,
+    transparent 42%,
+    rgb(255 255 255 / 58%) 50%,
+    transparent 58%
+  );
+  background-position: 140% 0;
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: translation-progress-shimmer 2.7s linear infinite;
+}
+
+@keyframes translation-progress-shimmer {
+  0% {
+    background-position: 140% 0;
+  }
+
+  58%,
+  100% {
+    background-position: -140% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  [data-translation-progress-shimmer]::after {
+    display: none;
+    animation: none;
+  }
+
   [data-catalog-tree-shell],
   [data-catalog-tree-shell] > aside,
   [data-catalog-show-sections],
