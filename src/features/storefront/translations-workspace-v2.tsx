@@ -43,6 +43,8 @@ import {
   type TranslationMaterial,
 } from "@/contexts/translations-context";
 import { LANGUAGES } from "@/data/languages";
+import { PositionEditorDialogShell } from "@/features/storefront/catalog-workspace";
+import { PositionEditorHost, type OpenPositionIntent } from "@/features/storefront/catalog/editor/position-editor-host";
 import { PositionSaveStatus } from "@/features/storefront/catalog/editor/position-editor";
 import { readCatalogJson, writeCatalogJson } from "@/features/storefront/catalog/persistence";
 import { DeleteConfirmationDialog } from "@/features/storefront/catalog/ui/delete-confirmation-dialog";
@@ -211,10 +213,12 @@ function AddLanguagePopover({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState("");
   const primaryLanguage = account?.workspace.primaryLanguage ?? "ru";
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
-  const available = LANGUAGES.filter((language) => language.code !== primaryLanguage
-    && !languages.some((item) => item.code === language.code)
-    && (!normalizedQuery || [language.code, language.short, language.label, languageLabel(language.code)]
-      .some((value) => value.toLocaleLowerCase("ru").includes(normalizedQuery))));
+  const addableLanguages = LANGUAGES.filter((language) => language.code !== primaryLanguage
+    && !languages.some((item) => item.code === language.code));
+  const available = addableLanguages.filter((language) => (
+    !normalizedQuery || [language.code, language.short, language.label, languageLabel(language.code)]
+      .some((value) => value.toLocaleLowerCase("ru").includes(normalizedQuery))
+  ));
 
   const chooseLanguage = (code: TranslationLanguageCode) => {
     const previousLanguage = activeLanguage;
@@ -223,6 +227,8 @@ function AddLanguagePopover({ children }: { children: ReactNode }) {
     setOpen(false);
     setQuery("");
   };
+
+  if (addableLanguages.length === 0) return null;
 
   return (
     <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setQuery(""); }}>
@@ -472,27 +478,9 @@ function entitiesForType(materials: TranslationMaterial[], type: TranslationCont
     })));
 }
 
-function languageCompleteness(materials: TranslationMaterial[], language: TranslationLanguageCode) {
-  const fields = materials.flatMap((material) => material.fields).filter((field) => field.source.trim());
-  return fields.length === 0 ? 0 : Math.round((fields.filter((field) => field.values[language]?.trim()).length / fields.length) * 100);
-}
-
 function entityComplete(entity: TranslationEntity, language: TranslationLanguageCode) {
   const fields = entity.fields.filter((field) => field.source.trim());
   return fields.length > 0 && fields.every((field) => field.values[language]?.trim());
-}
-
-function contentTypeCompleteness(
-  materials: TranslationMaterial[],
-  type: TranslationContentType,
-  language: TranslationLanguageCode,
-) {
-  const fields = entitiesForType(materials, type)
-    .flatMap((entity) => entity.fields)
-    .filter((field) => field.source.trim());
-  return fields.length === 0
-    ? 0
-    : Math.round((fields.filter((field) => field.values[language]?.trim()).length / fields.length) * 100);
 }
 
 function entityBatchState(entity: TranslationEntity, job: TranslationJob | undefined) {
@@ -515,13 +503,11 @@ function entityBatchState(entity: TranslationEntity, job: TranslationJob | undef
 
 function TranslationLanguageRow({
   item,
-  materials,
   selected,
   job,
   onLanguageChange,
 }: {
   item: TranslationLanguage;
-  materials: TranslationMaterial[];
   selected: boolean;
   job?: TranslationJob;
   onLanguageChange: (language: TranslationLanguageCode) => void;
@@ -529,12 +515,11 @@ function TranslationLanguageRow({
   const { retryTranslationJob, setJobPublishAfterComplete, stopTranslationJob } = useTranslations();
   const translating = job?.status === "idle" || job?.status === "running";
   const failed = job?.status === "completed_with_errors";
-  const completeness = languageCompleteness(materials, item.code);
   const row = (
     <button
       type="button"
       aria-current={selected ? "page" : undefined}
-      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : !item.published ? `. Скрыт, ${completeness}%` : `, ${completeness}%`}`}
+      aria-label={`${languageLabel(item.code)}${translating ? job?.status === "idle" ? ". Перевод ожидает запуска" : `. Переведено ${job?.completed ?? 0} из ${job?.total ?? 0} полей` : failed ? ". Перевод завершён с ошибками" : !item.published ? ". Скрыт" : ""}`}
       onClick={() => onLanguageChange(item.code)}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-[8px] px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10",
@@ -545,15 +530,8 @@ function TranslationLanguageRow({
       <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px]", selected || !item.published ? "text-[#333]" : "text-[#666]")}>{languageLabel(item.code)}</span>
       {translating ? (
         <span className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
-      ) : !failed && (
-        <span className={cn(
-          "mr-0.5 flex shrink-0 items-center whitespace-nowrap leading-[18px] tabular-nums transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
-          item.published ? "text-[11px] text-[#666]" : "gap-[3px] text-[10px] text-[#999]",
-        )}>
-          {!item.published && <span>Скрыт</span>}
-          {!item.published && <span>·</span>}
-          <span>{completeness}%</span>
-        </span>
+      ) : !failed && !item.published && (
+        <span className="mr-0.5 shrink-0 whitespace-nowrap text-[10px] leading-[18px] text-[#999] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">Скрыт</span>
       )}
     </button>
   );
@@ -631,7 +609,7 @@ function TranslationSidebar({
   onLanguageChange: (language: TranslationLanguageCode) => void;
   onSelect: (entity: TranslationEntity) => void;
 }) {
-  const { jobs, languages, materials } = useTranslations();
+  const { jobs, languages } = useTranslations();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -642,7 +620,6 @@ function TranslationSidebar({
     job.status === "idle" || job.status === "running" || job.status === "completed_with_errors"
   ));
   const selectedLanguageJob = visibleTranslationJobs.find((job) => job.language === language.code);
-  const typeProgress = contentTypeCompleteness(materials, contentType, language.code);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -668,7 +645,6 @@ function TranslationSidebar({
             <TranslationLanguageRow
               key={item.code}
               item={item}
-              materials={materials}
               selected={language.code === item.code}
               job={languageJob}
               onLanguageChange={onLanguageChange}
@@ -688,10 +664,10 @@ function TranslationSidebar({
           <div className="flex h-7 items-center justify-between">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" aria-label="Выбрать тип контента" className="flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[13px] text-[#333] transition hover:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><span className="truncate">{typeLabel}</span><span className="shrink-0 text-[11px] tabular-nums text-[#78716c]">{typeProgress}%</span><CaretDown size={14} className="shrink-0 text-[#666]" /></button>
+                <button type="button" aria-label="Выбрать тип контента" className="flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] bg-[#f5f5f4] px-2 text-[13px] text-[#333] transition hover:bg-[#e7e5e4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"><span className="truncate">{typeLabel}</span><CaretDown size={14} className="shrink-0 text-[#666]" /></button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-[210px]">
-                {CONTENT_TYPES.map((item) => <DropdownMenuItem key={item.id} onSelect={() => onContentTypeChange(item.id)}><span className="flex size-4 items-center justify-center">{contentType === item.id && <Check size={12} weight="bold" />}</span><span className="min-w-0 flex-1 truncate">{item.label}</span><span className="shrink-0 text-[11px] tabular-nums text-[#78716c]">{contentTypeCompleteness(materials, item.id, language.code)}%</span></DropdownMenuItem>)}
+                {CONTENT_TYPES.map((item) => <DropdownMenuItem key={item.id} onSelect={() => onContentTypeChange(item.id)}><span className="flex size-4 items-center justify-center">{contentType === item.id && <Check size={12} weight="bold" />}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></DropdownMenuItem>)}
               </DropdownMenuContent>
             </DropdownMenu>
             {contentType !== "about" && <Tooltip label="Поиск" side="top" delayDuration={250}><Button type="button" variant="ghost" size="icon" aria-label="Открыть поиск" aria-expanded={searchOpen} onClick={() => { if (searchOpen) searchInputRef.current?.focus(); else setSearchOpen(true); }} className={cn("size-5 rounded-[6px] text-[#666] hover:bg-[#f5f5f4] hover:text-[#333]", searchOpen && "bg-[#f5f5f4] text-[#333]")}><MagnifyingGlass size={14} /></Button></Tooltip>}
@@ -707,7 +683,7 @@ function TranslationSidebar({
         </div>
 
         {contentType !== "about" && (
-          <div className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
+          <div data-translations-entity-list className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
             {visibleEntities.map((entity) => {
               const selected = entity.key === selectedKey;
               const complete = entityComplete(entity, language.code);
@@ -814,7 +790,15 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   );
 }
 
-function TranslationEditor({ entity, language }: { entity: TranslationEntity | null; language: TranslationLanguage }) {
+function TranslationEditor({
+  entity,
+  language,
+  onOpenPosition,
+}: {
+  entity: TranslationEntity | null;
+  language: TranslationLanguage;
+  onOpenPosition: (itemId: string) => void;
+}) {
   const { items } = useCatalogStore();
   const { account } = useMockAuth();
   const { saveState } = useTranslations();
@@ -826,7 +810,21 @@ function TranslationEditor({ entity, language }: { entity: TranslationEntity | n
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f5f5f4]">
       <header className="flex h-[49px] shrink-0 items-center justify-between gap-3 bg-white px-4">
-        <div className="flex min-w-0 items-center gap-1.5"><CatalogThumbnail src={imageUrl} kind={entity.material.kind === "section" ? "section" : "item"} className="size-6 rounded-[6px]" /><span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <CatalogThumbnail src={imageUrl} kind={entity.material.kind === "section" ? "section" : "item"} className="size-6 rounded-[6px]" />
+          {entity.material.catalogItemId ? (
+            <button
+              type="button"
+              aria-label={`Открыть позицию «${entity.material.title}»`}
+              onClick={() => onOpenPosition(entity.material.catalogItemId!)}
+              className="min-w-0 truncate rounded-[5px] text-left text-[13px] font-medium text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10"
+            >
+              {entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}
+            </button>
+          ) : (
+            <span className="truncate text-[13px] font-medium text-[#292524]">{entity.subtitle ? `${entity.subtitle} · ${entity.title}` : entity.title}</span>
+          )}
+        </div>
         <PositionSaveStatus status={saveState} />
       </header>
       <div data-translations-table-gap aria-hidden="true" className="h-1.5 shrink-0 bg-[#f5f5f4]" />
@@ -859,11 +857,26 @@ function EmptyTranslations() {
 
 function LanguageWorkspace({ initialContentType }: { initialContentType: TranslationContentType }) {
   const { activeLanguage, activeMaterialId, languages, materials, setActiveCategory, setActiveLanguage, setActiveMaterialId } = useTranslations();
+  const { items, sections } = useCatalogStore();
   const [contentType, setContentType] = useState<TranslationContentType>(initialContentType);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [sidePeekItemId, setSidePeekItemId] = useState<string | null>(null);
   const language = languages.find((item) => item.code === activeLanguage) ?? languages[0];
   const entities = useMemo(() => entitiesForType(materials, contentType), [contentType, materials]);
   const selectedEntity = entities.find((entity) => entity.key === selectedKey) ?? null;
+  const sidePeekItem = sidePeekItemId ? items.find((item) => item.id === sidePeekItemId) ?? null : null;
+  const sidePeekIntent = useMemo<OpenPositionIntent | null>(() => {
+    if (!sidePeekItem) return null;
+    const orderedIds = items.filter((item) => item.status !== "archive").map((item) => item.id);
+    return {
+      origin: "structure",
+      currentId: sidePeekItem.id,
+      orderedIds: orderedIds.includes(sidePeekItem.id) ? orderedIds : [...orderedIds, sidePeekItem.id],
+      sectionId: sidePeekItem.sectionId,
+      returnContext: { label: "Вернуться к переводам" },
+      revision: 0,
+    };
+  }, [items, sidePeekItem]);
 
   useEffect(() => { if (language && language.code !== activeLanguage) setActiveLanguage(language.code); }, [activeLanguage, language, setActiveLanguage]);
   useEffect(() => {
@@ -876,7 +889,7 @@ function LanguageWorkspace({ initialContentType }: { initialContentType: Transla
   if (!language) return null;
 
   return (
-    <div className="flex min-h-0 flex-1 bg-white">
+    <div data-position-editor-surface className="relative flex min-h-0 flex-1 overflow-hidden bg-white">
       <ResizableTranslationsSidebar>
         <TranslationSidebar
           language={language}
@@ -888,7 +901,21 @@ function LanguageWorkspace({ initialContentType }: { initialContentType: Transla
           onSelect={(entity) => { setSelectedKey(entity.key); setActiveMaterialId(entity.material.id); }}
         />
       </ResizableTranslationsSidebar>
-      <TranslationEditor entity={selectedEntity} language={language} />
+      <TranslationEditor entity={selectedEntity} language={language} onOpenPosition={setSidePeekItemId} />
+      {sidePeekIntent && sidePeekItem && (
+        <PositionEditorDialogShell
+          label={sidePeekItem.title || "Позиция"}
+          onClose={() => setSidePeekItemId(null)}
+          presentation="pane"
+        >
+          <PositionEditorHost
+            intent={sidePeekIntent}
+            onCurrentIdChange={setSidePeekItemId}
+            onClose={() => setSidePeekItemId(null)}
+            structureSections={sections}
+          />
+        </PositionEditorDialogShell>
+      )}
     </div>
   );
 }

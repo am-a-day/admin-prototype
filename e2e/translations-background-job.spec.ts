@@ -84,17 +84,34 @@ test("ends a translation job on Stop and restores the ordinary language row", as
   await page.getByRole("button", { name: /^Казахский/ }).click();
   await page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ }).click();
   await page.getByRole("button", { name: "Выбрать тип контента" }).click();
-  await expect(page.getByRole("menuitem", { name: /Позиции \d+%/ })).toBeVisible();
-  const aboutType = page.getByRole("menuitem", { name: /О заведении \d+%/ });
+  await expect(page.getByRole("menuitem", { name: "Позиции", exact: true })).toBeVisible();
+  const aboutType = page.getByRole("menuitem", { name: "О заведении", exact: true });
   await expect(aboutType).toBeVisible();
   await aboutType.click();
   await expect(page.getByRole("textbox", { name: "Английский: Название заведения" })).toBeEnabled();
   await expect(page.getByRole("textbox", { name: "Английский: Адрес" })).toBeDisabled();
   await page.getByRole("button", { name: "Выбрать тип контента" }).click();
-  await page.getByRole("menuitem", { name: /Позиции \d+%/ }).click();
+  await page.getByRole("menuitem", { name: "Позиции", exact: true }).click();
   await page.getByRole("button", { name: "Открыть поиск" }).click();
-  await page.getByRole("textbox", { name: "Поиск: Позиции" }).fill("Омлет");
+  const positionSearch = page.getByRole("textbox", { name: "Поиск: Позиции" });
+  await positionSearch.fill("Омлет");
   await expect(page.getByRole("button", { name: /Омлет/ }).first()).toBeVisible();
+  const translationsUrl = page.url();
+  const entityListScrollTop = await page.locator("[data-translations-entity-list]").evaluate((element) => {
+    element.scrollTop = 12;
+    return element.scrollTop;
+  });
+  await page.getByRole("button", { name: /^Открыть позицию «/ }).click();
+  const sidePeek = page.locator("[data-position-editor-pane]");
+  await expect(sidePeek).toBeVisible();
+  expect(page.url()).toBe(translationsUrl);
+  await expect(positionSearch).toHaveValue("Омлет");
+  await expect(page.getByRole("button", { name: /Английский\. Переведено 1 из 5 полей/ })).toHaveAttribute("aria-current", "page");
+  expect(await page.locator("[data-translations-entity-list]").evaluate((element) => element.scrollTop)).toBe(entityListScrollTop);
+  await sidePeek.getByRole("button", { name: "Свернуть редактор" }).click();
+  await expect(sidePeek).toHaveCount(0);
+  expect(page.url()).toBe(translationsUrl);
+  await expect(positionSearch).toHaveValue("Омлет");
   await page.getByRole("button", { name: "Закрыть поиск" }).click();
   await page.getByRole("button", { name: "Добавить язык" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -112,7 +129,8 @@ test("ends a translation job on Stop and restores the ordinary language row", as
   await expect(page.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Продолжить" })).toHaveCount(0);
   await expect(page.locator("[data-translation-job-details]")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Английский, \d+%/ })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Английский", exact: true })).toBeEnabled();
+  await expect(page.locator("[data-translations-language-block]")).not.toContainText("%");
   await expect(page.getByText("Перевод остановлен. Переведено 1 из 5 полей")).toBeVisible();
 
   firstRelease();

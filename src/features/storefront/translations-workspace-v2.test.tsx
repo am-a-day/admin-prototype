@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
 import { CatalogStoreProvider, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
 import { MockAuthProvider } from "@/contexts/mock-auth-context";
+import { PublishProvider } from "@/contexts/publish-context";
 import { TranslationsProvider, useTranslations } from "@/contexts/translations-context";
 import { catalogItems, catalogSections } from "@/data/catalog";
 import { TranslationsWorkspace } from "./translations-workspace-v2";
@@ -31,15 +32,17 @@ function Providers({ children, initialData }: { children: ReactNode; initialData
   return (
     <MockAuthProvider>
       <AppSettingsProvider>
-        <CatalogStoreProvider initialData={initialData}>
-          <TranslationsProvider>
-            <TooltipProvider>
-              {children}
-              <ToastProbe />
-              <TranslationTestControls />
-            </TooltipProvider>
-          </TranslationsProvider>
-        </CatalogStoreProvider>
+        <PublishProvider persistence={false}>
+          <CatalogStoreProvider initialData={initialData}>
+            <TranslationsProvider>
+              <TooltipProvider>
+                {children}
+                <ToastProbe />
+                <TranslationTestControls />
+              </TooltipProvider>
+            </TranslationsProvider>
+          </CatalogStoreProvider>
+        </PublishProvider>
       </AppSettingsProvider>
     </MockAuthProvider>
   );
@@ -73,7 +76,7 @@ describe("translations workspace v2", () => {
   it("opens the translations workspace immediately on first visit", () => {
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
-    renderWorkspace({ sections: [section], items: [item] });
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
 
     expect(screen.getByRole("heading", { name: "Переводы" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Основной язык контента" })).not.toBeInTheDocument();
@@ -81,6 +84,26 @@ describe("translations workspace v2", () => {
     expect(addLanguage).toHaveTextContent("Добавить...");
     expect(addLanguage).toHaveClass("h-7", "pl-1", "pr-2", "font-normal", "text-[#999]");
     expect(addLanguage.querySelector("[data-translation-add-language-icon]")).toHaveClass("size-5", "rounded-[4px]", "border-[#e7e5e4]");
+    expect(container.querySelector("[data-position-editor-surface]")).not.toHaveTextContent(/\d+%/);
+  });
+
+  it("hides Add when every supported language is connected and restores it after deletion", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    renderWorkspace({ sections: [section], items: [item] });
+
+    await user.click(screen.getByRole("button", { name: "Добавить язык" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: /Казахский/ })).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Сербский/ }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Добавить язык" })).not.toBeInTheDocument());
+    expect(screen.queryByText("Все языки добавлены")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Действия языка «Сербский»" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Удалить" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Добавить язык" })).toBeInTheDocument());
   });
 
   it("changes the primary language directly from the Figma-matched popover", async () => {
@@ -94,7 +117,7 @@ describe("translations workspace v2", () => {
     expect(screen.getAllByText("Казахский").length).toBeGreaterThan(0);
     const kazakhTitleBefore = screen.getByRole("textbox", { name: "Казахский: Название" }).getAttribute("value");
 
-    await user.click(screen.getByRole("button", { name: /^Английский, / }));
+    await user.click(screen.getByRole("button", { name: "Английский" }));
     expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Действия переводов" }));
@@ -115,7 +138,7 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByText("Английский (оригинал)")).toBeInTheDocument());
     expect(screen.queryByText("С этого языка создаются переводы на остальные")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Основной язык изменён на английский");
-    await user.click(screen.getByRole("button", { name: /^Казахский\. Скрыт, \d+%$/ }));
+    await user.click(screen.getByRole("button", { name: "Казахский. Скрыт" }));
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toHaveValue(kazakhTitleBefore ?? "");
   });
 
@@ -163,8 +186,8 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Скрыть «Английский» из меню?" })).not.toBeInTheDocument());
     const hiddenRow = container.querySelector('[data-translation-language="en"]') as HTMLElement;
     expect(hiddenRow).toHaveTextContent("Скрыт");
-    expect(within(hiddenRow).getByRole("button", { name: /^Английский\. Скрыт, \d+%$/ })).toBeEnabled();
-    await user.click(within(hiddenRow).getByRole("button", { name: /^Английский\. Скрыт, \d+%$/ }));
+    expect(within(hiddenRow).getByRole("button", { name: "Английский. Скрыт" })).toBeEnabled();
+    await user.click(within(hiddenRow).getByRole("button", { name: "Английский. Скрыт" }));
     expect(screen.getByRole("textbox", { name: "Английский: Название" })).toBeEnabled();
 
     await user.click(actions);
@@ -214,7 +237,7 @@ describe("translations workspace v2", () => {
     expect(screen.getByText("Можно закрыть эту страницу — перевод продолжится в фоне")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Опубликовать после перевода" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Добавить язык" })).toBeEnabled();
-    expect(container.querySelector('[data-translation-language="kk"]')).toHaveTextContent("%");
+    expect(container.querySelector('[data-translation-language="kk"]')).not.toHaveTextContent("%");
     expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeEnabled();
     fireEvent.click(languageButton);
     expect(screen.getByText("Английский", { selector: "div" })).toBeInTheDocument();
@@ -260,7 +283,8 @@ describe("translations workspace v2", () => {
     fireEvent.click(screen.getByRole("button", { name: "Остановить перевод" }));
     const serbianRow = container.querySelector('[data-translation-language="sr"]') as HTMLElement;
     expect(serbianRow).toHaveAttribute("data-translation-state", "ready");
-    expect(serbianRow).toHaveTextContent(/Скрыт·\d+%/);
+    expect(serbianRow).toHaveTextContent("Скрыт");
+    expect(serbianRow).not.toHaveTextContent("%");
     expect(container.querySelector("[data-translation-job-details]")).not.toBeInTheDocument();
     expect(container.querySelector("[data-translation-progress-shimmer]")).not.toBeInTheDocument();
     expect(screen.queryByText("Можно закрыть эту страницу — перевод продолжится в фоне")).not.toBeInTheDocument();
@@ -389,6 +413,35 @@ describe("translations workspace v2", () => {
     fireEvent.keyDown(resizer, { key: "ArrowRight" });
     expect(resizer).toHaveAttribute("aria-valuenow", "232");
     expect(screen.getByRole("button", { name: "Выбрать тип контента" })).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
+  });
+
+  it("opens a position Side Peek without changing the translations route or list context", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    window.history.replaceState({ translations: true }, "", "/storefront/translations");
+    const { container } = renderWorkspace({ sections: [section], items: [item] });
+
+    await user.click(screen.getByRole("button", { name: "Английский" }));
+    await user.click(screen.getByRole("button", { name: "Открыть поиск" }));
+    const search = screen.getByRole("textbox", { name: "Поиск: Позиции" });
+    await user.type(search, item.title);
+    const entityList = container.querySelector("[data-translations-entity-list]") as HTMLElement;
+    entityList.scrollTop = 18;
+    const routeBefore = window.location.href;
+
+    await user.click(screen.getByRole("button", { name: `Открыть позицию «${item.title}»` }));
+    const sidePeek = await screen.findByRole("complementary", { name: item.title });
+    expect(window.location.href).toBe(routeBefore);
+    expect(search).toHaveValue(item.title);
+    expect(screen.getByRole("button", { name: "Английский" })).toHaveAttribute("aria-current", "page");
+    expect(entityList.scrollTop).toBe(18);
+
+    await user.click(within(sidePeek).getByRole("button", { name: "Свернуть редактор" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: item.title })).not.toBeInTheDocument());
+    expect(window.location.href).toBe(routeBefore);
+    expect(screen.getByRole("textbox", { name: "Поиск: Позиции" })).toHaveValue(item.title);
+    expect(entityList.scrollTop).toBe(18);
   });
 
   it("translates fields independently and clears the AI indicator after manual editing", async () => {
