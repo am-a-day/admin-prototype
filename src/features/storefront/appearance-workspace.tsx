@@ -61,6 +61,11 @@ export function AppearanceWorkspace() {
       <PageContent className="space-y-8 pt-4">
         <PillTabs tabs={APPEARANCE_TABS} value={activeTab} onValueChange={setActiveTab} ariaLabel="Оформление витрины" />
 
+        <div>
+          <h1 className="text-[14px] font-medium leading-tight text-stone-950">Оформление</h1>
+          <p className="mt-1 text-sm text-zinc-500">Стиль карточек, цвет и фон витрины.</p>
+        </div>
+
         <LaunchPageHint
           checkId="appearance"
           title="Выберите стиль витрины"

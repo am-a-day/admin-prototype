@@ -592,7 +592,7 @@ export function DeliveryWorkspace({
 
   return (
     <PageScroll>
-      <PageContent className="space-y-0">
+      <PageContent className="space-y-0 pt-4">
         <CompactContent className="space-y-4">
         <div
           data-secondary-navigation-scope="order-settings-content"

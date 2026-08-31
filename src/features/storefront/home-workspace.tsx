@@ -533,7 +533,7 @@ export function HomeWorkspace({
   return (
     <PageScroll>
       <input ref={addFileRef} type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
-      <PageContent className="space-y-0">
+      <PageContent className="space-y-0 pt-4">
         <CompactContent className="space-y-6">
           <div data-secondary-navigation-scope="home-content">
             <HomeTabs value={tab} onChange={setTab} />

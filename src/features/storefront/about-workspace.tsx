@@ -2105,7 +2105,7 @@ export function AboutWorkspace({
 
   return (
     <PageScroll>
-      <PageContent>
+      <PageContent className="pt-4">
         <CompactContent className="space-y-6">
           <div data-secondary-navigation-scope="about-content">
             <AboutTabs value={tab} onChange={onAboutTabChange} />

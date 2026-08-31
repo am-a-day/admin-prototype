@@ -1386,6 +1386,7 @@ function AuthenticatedShell() {
   const isCatalogPage = section === "storefront" && storeTab === "catalog";
   const isTranslationsPage = section === "storefront" && storeTab === "translations";
   const isAboutPage = section === "storefront" && storeTab === "about";
+  const isAppearancePage = section === "storefront" && storeTab === "appearance";
   const isOrderSettingsPage = section === "management" && manageTab === "order-settings";
   const isTrainingPage = section === "training";
   const isPublicDisplayPage = section === "storefront" && storeTab === "about" && storeAboutTab === "public-display";
@@ -1529,8 +1530,8 @@ function AuthenticatedShell() {
               )}
             >
               <ContentHeader
-                title={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
-                description={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
+                title={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isAppearancePage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].title : pageMeta.title}
+                description={isLaunchPage || isCatalogPage || isTranslationsPage || isAboutPage || isAppearancePage || isTrainingPage || isOrderSettingsPage ? undefined : isHomePage ? HOME_TAB_META[homeTab].description : pageMeta.description}
                 onRenewPlan={() => guardedNavigate("management", "billing")}
               />
               <div className="flex min-h-0 min-w-0 flex-1">
