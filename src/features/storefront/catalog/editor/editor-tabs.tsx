@@ -32,6 +32,7 @@ export function WorkspaceLocalTabs<T extends string>({
   className?: string;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const tabMeasureRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const overflowMeasureRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const [visibleTabIds, setVisibleTabIds] = useState<readonly T[]>(() => tabs.map((tab) => tab.id));
@@ -42,9 +43,17 @@ export function WorkspaceLocalTabs<T extends string>({
     if (!viewport) return;
 
     const recalculate = () => {
-      const availableWidth = Math.max(0, (viewport.clientWidth || viewport.getBoundingClientRect().width) - 12);
+      const viewportStyles = window.getComputedStyle(viewport);
+      const availableWidth = Math.max(
+        0,
+        viewport.getBoundingClientRect().width
+          - Number.parseFloat(viewportStyles.paddingLeft)
+          - Number.parseFloat(viewportStyles.paddingRight),
+      );
       const tabWidths = tabs.map((tab) => tabMeasureRefs.current[tab.id]?.getBoundingClientRect().width ?? 0);
-      const totalTabWidth = tabWidths.reduce((sum, width) => sum + width, 0);
+      const measurementList = tabMeasureRefs.current[tabs[0]?.id ?? ""]?.parentElement;
+      const gap = measurementList ? Number.parseFloat(window.getComputedStyle(measurementList).gap) || 0 : 0;
+      const totalTabWidth = tabWidths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, tabs.length - 1);
       if (!availableWidth || tabWidths.some((width) => width <= 0)) return;
 
       if (totalTabWidth <= availableWidth) {
@@ -61,7 +70,8 @@ export function WorkspaceLocalTabs<T extends string>({
 
         const overflowCount = tabs.length - candidateIds.length;
         const candidateWidth = candidateIds.reduce((sum, id) => sum + getTabWidth(id), 0)
-          + (overflowCount > 0 ? getOverflowWidth(overflowCount) : 0);
+          + gap * Math.max(0, candidateIds.length - 1)
+          + (overflowCount > 0 ? gap + getOverflowWidth(overflowCount) : 0);
         if (candidateWidth <= availableWidth) {
           setVisibleTabIds((current) => sameIds(current, candidateIds) ? current : candidateIds);
           return;
@@ -83,9 +93,13 @@ export function WorkspaceLocalTabs<T extends string>({
     };
     const observer = new ResizeObserver(scheduleRecalculate);
     observer.observe(viewport);
+    if (containerRef.current) observer.observe(containerRef.current);
+    window.addEventListener("resize", scheduleRecalculate);
+    void document.fonts?.ready.then(scheduleRecalculate);
 
     return () => {
       observer.disconnect();
+      window.removeEventListener("resize", scheduleRecalculate);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, [tabs]);
@@ -122,9 +136,7 @@ export function WorkspaceLocalTabs<T extends string>({
         aria-hidden="true"
         data-workspace-local-tab-measure-label={tab.label}
         className="min-w-0 truncate"
-      >
-        {tab.label}
-      </span>
+      />
       {tab.count != null && (
         <span
           aria-hidden="true"
@@ -137,6 +149,7 @@ export function WorkspaceLocalTabs<T extends string>({
 
   return (
     <div
+      ref={containerRef}
       data-workspace-local-tabs
       className={cn("relative flex min-h-[42px] min-w-0 items-start py-1", className)}
     >
