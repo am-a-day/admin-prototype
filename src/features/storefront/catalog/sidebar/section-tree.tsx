@@ -767,7 +767,7 @@ export function UnifiedCatalogTreePanel({
       {secondaryNavigation && (
         <div
           data-secondary-navigation-scope="catalog-sidebar"
-          className="shrink-0 px-2 py-2"
+          className="shrink-0 pb-2 pl-4 pr-3 pt-4"
         >
           {secondaryNavigation}
         </div>

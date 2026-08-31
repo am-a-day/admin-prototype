@@ -58,14 +58,14 @@ export function AppearanceWorkspace() {
 
   return (
     <PageScroll>
-      <PageContent className="space-y-8">
+      <PageContent className="space-y-8 pt-4">
+        <PillTabs tabs={APPEARANCE_TABS} value={activeTab} onValueChange={setActiveTab} ariaLabel="Оформление витрины" />
+
         <LaunchPageHint
           checkId="appearance"
           title="Выберите стиль витрины"
           description="Оформление формирует первое впечатление — выберите стиль карточек, цвета и фон."
         />
-
-        <PillTabs tabs={APPEARANCE_TABS} value={activeTab} onValueChange={setActiveTab} ariaLabel="Оформление витрины" />
 
         {/* ── Карточки ── */}
         {activeTab === "cards" && (

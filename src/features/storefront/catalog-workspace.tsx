@@ -361,8 +361,8 @@ type CatalogTreeMoveUndoState = {
 } | null;
 
 const CATALOG_TABS = [
-  { id: "sections", label: "Меню", icon: <ForkKnife size={16} aria-hidden="true" /> },
-  { id: "upsell", label: "Рекомендации", icon: <Sparkle size={16} aria-hidden="true" /> },
+  { id: "sections", label: "Меню" },
+  { id: "upsell", label: "Рекомендации" },
 ] satisfies readonly PillTab<CatalogPrimaryTab>[];
 
 function createRealPositionId() {
@@ -390,7 +390,7 @@ export function CatalogTabs({
   value: CatalogPrimaryTab;
   onChange: (tab: CatalogPrimaryTab) => void;
 }) {
-  return <PillTabs tabs={CATALOG_TABS} value={value} onValueChange={onChange} ariaLabel="Разделы каталога" variant="sidePeek" />;
+  return <PillTabs tabs={CATALOG_TABS} value={value} onValueChange={onChange} ariaLabel="Разделы каталога" variant="catalog" />;
 }
 
 type CatalogWorkspaceProps = {
@@ -10135,7 +10135,7 @@ export function RecommendationsContextWorkspace({
           {secondaryNavigation && (
             <div
               data-secondary-navigation-scope="catalog-sidebar"
-              className="shrink-0 px-2 py-2"
+              className="shrink-0 pb-2 pl-4 pr-3 pt-4"
             >
               {secondaryNavigation}
             </div>
