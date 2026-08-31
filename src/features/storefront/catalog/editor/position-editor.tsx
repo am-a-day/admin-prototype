@@ -12,10 +12,11 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, Coin, DotsThree, DotsThreeVertical, DotsSixVertical, HouseSimple, ImageBroken, Layout, ListDashes, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
+import { Asterisk, ArrowLeft, ArrowUUpLeft, CalendarDots, CaretDoubleRight, CaretDown, CaretRight, Check, CheckCircle, Clock, Coin, DotsThree, DotsThreeVertical, DotsSixVertical, GearSix, HouseSimple, ImageBroken, Layout, ListDashes, Lock, LockLaminated, MagnifyingGlass, MinusCircle, Play, Plus, PlusCircle, Prohibit, ShootingStar, SpinnerGap, Trash, X, XCircle } from "@phosphor-icons/react";
 import { UtensilsCrossed } from "lucide-react";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
+import { PillTabs } from "@/components/workspace/pill-tabs";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
@@ -2587,28 +2588,16 @@ function OptionGroupPopoverContent({
 
       <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto pr-0.5">
         <div className="space-y-2">
-          <div className="flex items-center" role="tablist" aria-label="Настройки опции">
-            {([
-              { id: "variants", label: "Варианты" },
-              { id: "settings", label: "Настройки" },
-            ] as const).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex h-[26px] items-center rounded-[7px] px-2.5 text-[12px] transition",
-                  activeTab === tab.id
-                    ? "border border-[#e7e5e4] bg-white text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "text-[#79716b] hover:text-[#44403b]",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            tabs={[
+              { id: "variants", label: "Варианты", icon: <ListDashes size={16} aria-hidden="true" /> },
+              { id: "settings", label: "Настройки", icon: <GearSix size={16} aria-hidden="true" /> },
+            ]}
+            value={activeTab}
+            onValueChange={setActiveTab}
+            ariaLabel="Настройки опции"
+            variant="sidePeek"
+          />
 
           {activeTab === "settings" ? (
             <div className="space-y-0">

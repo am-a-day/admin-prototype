@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { CardsThree, Image as ImageIcon, Palette } from "@phosphor-icons/react";
 import { PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { PillTabs, type PillTab } from "@/components/workspace/pill-tabs";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { SectionCard } from "@/components/workspace/section-card";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +15,12 @@ const TAB_LABELS: Record<AppearanceTab, string> = {
   theme: "Тема",
   masks: "Маски",
 };
+
+const APPEARANCE_TABS = [
+  { id: "cards", label: TAB_LABELS.cards, icon: <CardsThree size={16} aria-hidden="true" /> },
+  { id: "theme", label: TAB_LABELS.theme, icon: <Palette size={16} aria-hidden="true" /> },
+  { id: "masks", label: TAB_LABELS.masks, icon: <ImageIcon size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<AppearanceTab>[];
 
 const cardStyles = ["Плитка", "Лента", "Гастро"];
 const accentColors = [
@@ -57,24 +65,7 @@ export function AppearanceWorkspace() {
           description="Оформление формирует первое впечатление — выберите стиль карточек, цвета и фон."
         />
 
-        {/* Tab bar */}
-        <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 w-fit">
-          {(["cards", "theme", "masks"] as AppearanceTab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setActiveTab(t)}
-              className={cn(
-                "rounded-lg px-4 py-1.5 text-sm font-semibold transition",
-                activeTab === t
-                  ? "bg-white text-zinc-950 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-800",
-              )}
-            >
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <PillTabs tabs={APPEARANCE_TABS} value={activeTab} onValueChange={setActiveTab} ariaLabel="Оформление витрины" />
 
         {/* ── Карточки ── */}
         {activeTab === "cards" && (

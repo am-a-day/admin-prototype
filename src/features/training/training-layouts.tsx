@@ -96,7 +96,7 @@ export function WaiterTrainingLayout() {
         </div>
 
         <nav className="hidden md:block">
-          <TrainingTabs value={activeTab} onChange={navigate} />
+          <TrainingTabs value={activeTab} onChange={navigate} variant="sidePeek" />
         </nav>
 
         {!quizActive && (

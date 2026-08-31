@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
+import { ForkKnife, GlobeSimple, HouseSimple, MagnifyingGlass, Package, ShoppingCartSimple, TextT, UserCircle, WarningCircle } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DescriptionRichTextEditor, getDescriptionTextLength } from "@/components/workspace/description-rich-text-editor";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { PillTabs, type PillTab } from "@/components/workspace/pill-tabs";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   DEFAULT_WORKSPACE_ADDRESS,
@@ -54,38 +56,15 @@ const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
   "rec-titles": { title: "Заголовки и кнопки", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
 };
 
-const ABOUT_TABS: { id: AboutTab; label: string }[] = [
-  { id: "info", label: TAB_LABELS.info },
-  { id: "guest-rules", label: TAB_LABELS["guest-rules"] },
-  { id: "rec-titles", label: TAB_LABELS["rec-titles"] },
-  { id: "public-display", label: TAB_LABELS["public-display"] },
-];
+const ABOUT_TABS = [
+  { id: "info", label: TAB_LABELS.info, icon: <UserCircle size={16} aria-hidden="true" /> },
+  { id: "guest-rules", label: TAB_LABELS["guest-rules"], icon: <WarningCircle size={16} aria-hidden="true" /> },
+  { id: "rec-titles", label: TAB_LABELS["rec-titles"], icon: <TextT size={16} aria-hidden="true" /> },
+  { id: "public-display", label: TAB_LABELS["public-display"], icon: <GlobeSimple size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<AboutTab>[];
 
 export function AboutTabs({ value, onChange }: { value: AboutTab; onChange: (t: AboutTab) => void }) {
-  return (
-    <div className="w-full max-w-full overflow-x-auto rounded-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="inline-flex min-w-max items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-        {ABOUT_TABS.map((t) => {
-          const active = value === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onChange(t.id)}
-              className={cn(
-                "whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] transition",
-                active
-                  ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                  : "text-[#79716b] hover:text-zinc-700",
-              )}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return <PillTabs tabs={ABOUT_TABS} value={value} onValueChange={onChange} ariaLabel="О заведении" />;
 }
 
 type PublicPreviewTab = "search" | "social" | "tasko";
@@ -95,6 +74,12 @@ const PUBLIC_PREVIEW_LABELS: Record<PublicPreviewTab, string> = {
   social: "В соцсетях",
   tasko: "Tasko Гид",
 };
+
+const PUBLIC_PREVIEW_TABS = [
+  { id: "search", label: PUBLIC_PREVIEW_LABELS.search, icon: <MagnifyingGlass size={16} aria-hidden="true" /> },
+  { id: "social", label: PUBLIC_PREVIEW_LABELS.social, icon: <GlobeSimple size={16} aria-hidden="true" /> },
+  { id: "tasko", label: PUBLIC_PREVIEW_LABELS.tasko, icon: <UserCircle size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<PublicPreviewTab>[];
 
 const PUBLIC_FIELD_TOOLTIPS = {
   title:
@@ -187,6 +172,13 @@ const TEXTS_TAB_LABELS: Record<TextsTab, string> = {
   order: "Заказ и доставка",
 };
 
+const TEXTS_TABS = [
+  { id: "home", label: TEXTS_TAB_LABELS.home, icon: <HouseSimple size={16} aria-hidden="true" /> },
+  { id: "dish", label: TEXTS_TAB_LABELS.dish, icon: <ForkKnife size={16} aria-hidden="true" /> },
+  { id: "cart", label: TEXTS_TAB_LABELS.cart, icon: <ShoppingCartSimple size={16} aria-hidden="true" /> },
+  { id: "order", label: TEXTS_TAB_LABELS.order, icon: <Package size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<TextsTab>[];
+
 const TEXTS_FIELDS: Record<TextsTab, { key: string; label: string; default: string }[]> = {
   home: [{ key: "homeRec", label: "Заголовок рекомендаций на главной", default: "Рекомендуем попробовать" }],
   dish: [{ key: "dishRec", label: "Заголовок рекомендаций в карточке блюда", default: "С этим блюдом часто заказывают" }],
@@ -213,22 +205,7 @@ function TextsWorkspace({ onChange }: { onChange: () => void }) {
 
   return (
     <div className="w-full space-y-5">
-      <div className="flex items-end gap-4 border-b border-[#e7e5e4]">
-        {(Object.keys(TEXTS_TAB_LABELS) as TextsTab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`-mb-px h-9 border-b-2 px-1 text-[14px] transition ${
-              tab === key
-                ? "border-[#292524] text-[#292524]"
-                : "border-transparent text-[#79716b] hover:text-[#44403b]"
-            }`}
-          >
-            {TEXTS_TAB_LABELS[key]}
-          </button>
-        ))}
-      </div>
+      <PillTabs tabs={TEXTS_TABS} value={tab} onValueChange={setTab} ariaLabel="Тексты витрины" variant="sidePeek" />
 
       <div className="space-y-3">
         {TEXTS_FIELDS[tab].map((f) => (
@@ -417,24 +394,14 @@ function PublicDisplayWorkspace({
       </div>
 
       <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <div className="flex h-11 items-end bg-white px-4">
-          {(Object.keys(PUBLIC_PREVIEW_LABELS) as PublicPreviewTab[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setPreviewTab(key)}
-              className={`mr-4 h-9 border-b-2 px-1 text-[14px] transition ${
-                previewTab === key
-                  ? "border-[#292524] text-[#292524]"
-                  : "border-transparent text-[#79716b] hover:text-[#44403b]"
-              }`}
-            >
-              {PUBLIC_PREVIEW_LABELS[key]}
-            </button>
-          ))}
-        </div>
-
-        <div className="border-t border-[#e7e5e4]" />
+        <PillTabs
+          tabs={PUBLIC_PREVIEW_TABS}
+          value={previewTab}
+          onValueChange={setPreviewTab}
+          ariaLabel="Предпросмотр публикации"
+          variant="sidePeek"
+          className="px-3 pt-3"
+        />
 
         <div className="space-y-5 bg-white p-4">
           {previewTab === "search" && (

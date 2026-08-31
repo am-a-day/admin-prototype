@@ -15,7 +15,9 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { CardsThree, FolderSimple, Star } from "@phosphor-icons/react";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { PillTabs, type PillTab } from "@/components/workspace/pill-tabs";
 import { LaunchPageHint } from "@/components/workspace/launch-hint";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -58,35 +60,14 @@ function tagStyle(type: BannerTagType) {
 }
 
 export type HomeTab = "banners" | "sections" | "promoted";
-const HOME_TABS: { id: HomeTab; label: string }[] = [
-  { id: "banners",  label: "Баннеры" },
-  { id: "sections", label: "Подборка разделов" },
-  { id: "promoted", label: "Подборка позиций" },
-];
+const HOME_TABS = [
+  { id: "banners", label: "Баннеры", icon: <CardsThree size={16} aria-hidden="true" /> },
+  { id: "sections", label: "Подборка разделов", icon: <FolderSimple size={16} aria-hidden="true" /> },
+  { id: "promoted", label: "Подборка позиций", icon: <Star size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<HomeTab>[];
 
 export function HomeTabs({ value, onChange }: { value: HomeTab; onChange: (t: HomeTab) => void }) {
-  return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-      {HOME_TABS.map((t) => {
-        const active = value === t.id;
-        return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onChange(t.id)}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-[12px] transition",
-              active
-                ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                : "text-[#79716b] hover:text-zinc-700",
-            )}
-          >
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <PillTabs tabs={HOME_TABS} value={value} onValueChange={onChange} ariaLabel="Настройка главной" />;
 }
 
 function EditorEmpty({

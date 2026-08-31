@@ -1,40 +1,25 @@
+import { CardsThree, ChartLine, CheckSquare, GraduationCap } from "@phosphor-icons/react";
+import { PillTabs, type PillTab, type PillTabsVariant } from "@/components/workspace/pill-tabs";
 import { cn } from "@/lib/utils";
 import type { TrainingTab } from "./training-data";
 
-const TRAINING_TABS: { id: TrainingTab; label: string }[] = [
-  { id: "cards", label: "Карточки" },
-  { id: "trainer", label: "Практика" },
-  { id: "check", label: "Проверка" },
-  { id: "progress", label: "Прогресс" },
-];
+const TRAINING_TABS = [
+  { id: "cards", label: "Карточки", icon: <CardsThree size={16} aria-hidden="true" /> },
+  { id: "trainer", label: "Практика", icon: <GraduationCap size={16} aria-hidden="true" /> },
+  { id: "check", label: "Проверка", icon: <CheckSquare size={16} aria-hidden="true" /> },
+  { id: "progress", label: "Прогресс", icon: <ChartLine size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<TrainingTab>[];
 
 export function TrainingTabs({
   value,
   onChange,
   compact = false,
+  variant = "page",
 }: {
   value: TrainingTab;
   onChange: (tab: TrainingTab) => void;
   compact?: boolean;
+  variant?: PillTabsVariant;
 }) {
-  return (
-    <div className={cn("inline-flex items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5", compact && "w-full")}>
-      {TRAINING_TABS.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          className={cn(
-            "rounded-lg px-2.5 py-1 text-[12px] transition",
-            compact && "flex-1 py-1.5",
-            value === tab.id
-              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-              : "text-[#79716b] hover:text-zinc-700",
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
+  return <PillTabs tabs={TRAINING_TABS} value={value} onValueChange={onChange} ariaLabel="Обучение" variant={variant} className={cn(compact && "w-full")} />;
 }

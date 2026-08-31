@@ -32,7 +32,7 @@ describe("restaurant profile information architecture", () => {
     render(<AboutTabs value="info" onChange={() => {}} />);
 
     expect(screen.queryByRole("button", { name: "Язык и регион" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Профиль" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Профиль" })).toBeInTheDocument();
   });
 
   it("does not move currency, timezone or language management into Profile", () => {

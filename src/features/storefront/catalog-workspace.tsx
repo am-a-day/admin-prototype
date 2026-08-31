@@ -43,6 +43,7 @@ import {
   CaretRight,
   Check,
   CameraSlash,
+  CalendarDots,
   DotsThree,
   DotsThreeVertical,
   DotsSixVertical,
@@ -66,6 +67,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { PillTabs, type PillTab } from "@/components/workspace/pill-tabs";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/contexts/app-settings-context";
@@ -358,10 +360,10 @@ type CatalogTreeMoveUndoState = {
   snapshot: CatalogTreeMoveSnapshot;
 } | null;
 
-const CATALOG_TABS: { id: CatalogPrimaryTab; label: string }[] = [
-  { id: "sections", label: "Меню" },
-  { id: "upsell", label: "Рекомендации" },
-];
+const CATALOG_TABS = [
+  { id: "sections", label: "Меню", icon: <ForkKnife size={16} aria-hidden="true" /> },
+  { id: "upsell", label: "Рекомендации", icon: <Sparkle size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<CatalogPrimaryTab>[];
 
 function createRealPositionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -388,27 +390,7 @@ export function CatalogTabs({
   value: CatalogPrimaryTab;
   onChange: (tab: CatalogPrimaryTab) => void;
 }) {
-  return (
-    <div role="tablist" aria-label="Разделы каталога" className="flex w-full items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-      {CATALOG_TABS.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          role="tab"
-          aria-selected={value === t.id}
-          onClick={() => onChange(t.id)}
-          className={cn(
-            "relative shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] transition",
-            value === t.id
-              ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-              : "text-[#79716b] hover:text-zinc-700",
-          )}
-        >
-          <span>{t.label}</span>
-        </button>
-      ))}
-    </div>
-  );
+  return <PillTabs tabs={CATALOG_TABS} value={value} onValueChange={onChange} ariaLabel="Разделы каталога" variant="sidePeek" />;
 }
 
 type CatalogWorkspaceProps = {
@@ -2558,9 +2540,10 @@ function SectionEditor({
                     {
                       id: "composition",
                       label: forcePositionsLabel ? "Позиции" : hasChildSections ? "Подразделы" : "Позиции",
+                      icon: <List size={16} aria-hidden="true" />,
                       count: compositionCountOverride ?? (hasChildSections ? childSections.length : compositionItems.length),
                     },
-                    { id: "availability", label: "Доступность" },
+                    { id: "availability", label: "Доступность", icon: <CalendarDots size={16} aria-hidden="true" /> },
                   ]}
                   value={activeTab}
                   onValueChange={onTabChange}
@@ -10152,7 +10135,7 @@ export function RecommendationsContextWorkspace({
           {secondaryNavigation && (
             <div
               data-secondary-navigation-scope="catalog-sidebar"
-              className="shrink-0 border-b border-[#e7e5e4] px-2 py-2"
+              className="shrink-0 px-2 py-2"
             >
               {secondaryNavigation}
             </div>

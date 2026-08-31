@@ -11,13 +11,14 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { Bell } from "@phosphor-icons/react";
+import { Bell, Coins, CreditCard as CreditCardIcon, Handbag, Truck } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { formatAuthPhone } from "@/components/auth/auth-phone-field";
 import { TranslatableField } from "@/components/workspace/translatable-field";
 import { CompactContent, PageContent, PageScroll } from "@/components/workspace/page-layout";
+import { PillTabs, type PillTab } from "@/components/workspace/pill-tabs";
 import {
   ChannelIcon,
   ChannelManagerDialog,
@@ -41,13 +42,13 @@ import { cn } from "@/lib/utils";
 export type OrderSettingsTab = "delivery" | "pickup" | "payment" | "service-fee" | "waiter";
 export type OrderSettingsSaveState = "saving" | "saved" | "error";
 
-const ORDER_TABS: { id: OrderSettingsTab; label: string }[] = [
-  { id: "delivery", label: "Доставка" },
-  { id: "pickup", label: "Самовывоз" },
-  { id: "payment", label: "Оплата" },
-  { id: "service-fee", label: "Сервисный сбор" },
-  { id: "waiter", label: "Вызов официанта" },
-];
+const ORDER_TABS = [
+  { id: "delivery", label: "Доставка", icon: <Truck size={16} aria-hidden="true" /> },
+  { id: "pickup", label: "Самовывоз", icon: <Handbag size={16} aria-hidden="true" /> },
+  { id: "payment", label: "Оплата", icon: <CreditCardIcon size={16} aria-hidden="true" /> },
+  { id: "service-fee", label: "Сервисный сбор", icon: <Coins size={16} aria-hidden="true" /> },
+  { id: "waiter", label: "Вызов официанта", icon: <Bell size={16} aria-hidden="true" /> },
+] satisfies readonly PillTab<OrderSettingsTab>[];
 
 export function OrderSettingsTabs({
   value,
@@ -56,29 +57,7 @@ export function OrderSettingsTabs({
   value: OrderSettingsTab;
   onChange: (tab: OrderSettingsTab) => void;
 }) {
-  return (
-    <div className="max-w-full overflow-x-auto rounded-lg scrollbar-none">
-      <div role="tablist" aria-label="Настройка заказов" className="inline-flex min-w-max items-center gap-0.5 rounded-lg bg-[#f5f5f4] p-0.5">
-        {ORDER_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={value === tab.id}
-            onClick={() => onChange(tab.id)}
-            className={cn(
-              "whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] transition",
-              value === tab.id
-                ? "bg-white text-[#292524] shadow-sm ring-1 ring-[#e7e5e4]"
-                : "text-[#79716b] hover:text-zinc-700",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  return <PillTabs tabs={ORDER_TABS} value={value} onValueChange={onChange} ariaLabel="Настройка заказов" />;
 }
 
 export function OrderSettingsSaveIndicator({ state }: { state: OrderSettingsSaveState }) {

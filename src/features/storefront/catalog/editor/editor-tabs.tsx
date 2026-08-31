@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CaretDown } from "@phosphor-icons/react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getPillTabClassName } from "@/components/workspace/pill-tabs";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceLocalTab<T extends string> = {
@@ -10,8 +11,8 @@ export type WorkspaceLocalTab<T extends string> = {
   count?: number;
 };
 
-const TAB_BUTTON_CLASS = "flex h-10 shrink-0 items-center gap-2 whitespace-nowrap border-b px-2 py-[10px] text-[13px] transition";
-const TAB_LIST_CLASS = "flex h-10 min-w-0 items-stretch";
+const TAB_BUTTON_CLASS = "inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2.5 text-[12px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#292524]/10";
+const TAB_LIST_CLASS = "flex min-w-0 items-center gap-1";
 
 function sameIds<T extends string>(first: readonly T[], second: readonly T[]) {
   return first.length === second.length && first.every((id, index) => id === second[index]);
@@ -41,7 +42,7 @@ export function WorkspaceLocalTabs<T extends string>({
     if (!viewport) return;
 
     const recalculate = () => {
-      const availableWidth = Math.max(0, (viewport.clientWidth || viewport.getBoundingClientRect().width) - 16);
+      const availableWidth = Math.max(0, (viewport.clientWidth || viewport.getBoundingClientRect().width) - 12);
       const tabWidths = tabs.map((tab) => tabMeasureRefs.current[tab.id]?.getBoundingClientRect().width ?? 0);
       const totalTabWidth = tabWidths.reduce((sum, width) => sum + width, 0);
       if (!availableWidth || tabWidths.some((width) => width <= 0)) return;
@@ -121,7 +122,9 @@ export function WorkspaceLocalTabs<T extends string>({
         aria-hidden="true"
         data-workspace-local-tab-measure-label={tab.label}
         className="min-w-0 truncate"
-      />
+      >
+        {tab.label}
+      </span>
       {tab.count != null && (
         <span
           aria-hidden="true"
@@ -135,24 +138,20 @@ export function WorkspaceLocalTabs<T extends string>({
   return (
     <div
       data-workspace-local-tabs
-      className={cn("relative flex h-[41px] min-w-0 items-stretch border-b border-[#e7e5e4]", className)}
+      className={cn("relative flex min-h-[42px] min-w-0 items-start py-1", className)}
     >
-      <div ref={viewportRef} className="min-w-0 flex-1 overflow-hidden px-2">
-        <div className={TAB_LIST_CLASS}>
+      <div ref={viewportRef} className="min-w-0 flex-1 overflow-hidden px-1.5">
+        <div role="tablist" aria-label="Разделы позиции" className={TAB_LIST_CLASS}>
           {visibleTabs.map((tab) => {
             const selected = value === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
+                role="tab"
                 onClick={() => onValueChange(tab.id)}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  TAB_BUTTON_CLASS,
-                  selected
-                    ? "border-[#1c1917] font-medium text-[#1c1917]"
-                    : "border-transparent font-normal text-[#79716b] hover:text-[#44403b]",
-                )}
+                aria-selected={selected}
+                className={getPillTabClassName(selected, "sidePeek")}
               >
                 {renderTabContents(tab)}
               </button>
@@ -168,8 +167,8 @@ export function WorkspaceLocalTabs<T extends string>({
                   className={cn(
                     TAB_BUTTON_CLASS,
                     activeTabIsInOverflow
-                      ? "border-[#1c1917] font-medium text-[#1c1917]"
-                      : "border-transparent font-normal text-[#79716b] hover:text-[#44403b]",
+                      ? "bg-[#f1f1f0] text-[#292524]"
+                      : "text-[#78716b] hover:bg-[#f5f5f4] hover:text-[#44403b]",
                   )}
                 >
                   <span>Еще {overflowTabs.length}</span>
@@ -199,7 +198,7 @@ export function WorkspaceLocalTabs<T extends string>({
           )}
         </div>
       </div>
-      {endAction && <div className="shrink-0">{endAction}</div>}
+      {endAction && <div className="flex shrink-0 items-start pr-1 pt-px">{endAction}</div>}
 
       <div aria-hidden="true" className="pointer-events-none absolute left-[-10000px] top-0 flex w-max opacity-0">
         <div className={TAB_LIST_CLASS}>
@@ -209,7 +208,7 @@ export function WorkspaceLocalTabs<T extends string>({
               ref={(element) => { tabMeasureRefs.current[tab.id] = element; }}
               type="button"
               tabIndex={-1}
-              className={cn(TAB_BUTTON_CLASS, "border-transparent font-normal text-[#79716b]")}
+              className={cn(TAB_BUTTON_CLASS, "text-[#78716b]")}
             >
               {renderMeasurementContents(tab)}
             </button>
@@ -222,7 +221,7 @@ export function WorkspaceLocalTabs<T extends string>({
                 ref={(element) => { overflowMeasureRefs.current[count] = element; }}
                 type="button"
                 tabIndex={-1}
-                className={cn(TAB_BUTTON_CLASS, "border-transparent font-normal text-[#79716b]")}
+                className={cn(TAB_BUTTON_CLASS, "text-[#78716b]")}
               >
                 <span aria-hidden="true" data-workspace-local-tab-measure-label={`Еще ${count}`} />
                 <CaretDown size={16} weight="regular" aria-hidden="true" />
