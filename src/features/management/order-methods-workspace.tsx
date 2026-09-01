@@ -4,6 +4,7 @@ import {
   BellSimpleSlash,
   CaretDown,
   Check,
+  CheckCircle,
   Copy,
   DownloadSimple,
   DotsThreeVertical,
@@ -365,6 +366,19 @@ function MethodRow({
 
 function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (message: string) => void }) {
   const qrContainerRef = useRef<HTMLDivElement>(null);
+  const copyResetTimer = useRef<number | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => () => {
+    if (copyResetTimer.current) window.clearTimeout(copyResetTimer.current);
+  }, []);
+
+  const copyLink = () => {
+    onCopy();
+    setCopied(true);
+    if (copyResetTimer.current) window.clearTimeout(copyResetTimer.current);
+    copyResetTimer.current = window.setTimeout(() => setCopied(false), 2_200);
+  };
 
   const getQrMarkup = () => qrContainerRef.current?.querySelector("svg")?.outerHTML ?? "";
 
@@ -404,8 +418,8 @@ function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (m
       <div className="mt-3 flex h-7 min-w-0 items-center gap-2">
         <div className="flex h-7 min-w-0 flex-1 items-center overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
           <LinkSimple size={14} className="ml-2 shrink-0 text-[#79716b]" />
-          <span className="min-w-0 flex-1 truncate px-2 text-[13px] text-[#79716b]">{SHARE_LINK}</span>
-          <button type="button" onClick={onCopy} className="flex h-full shrink-0 items-center gap-1.5 border-l border-[#e5e5e5] px-3 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20" aria-label="Скопировать ссылку"><Copy size={16} /> Скопировать</button>
+          <a href={SHARE_LINK} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate px-2 text-[13px] text-[#79716b] transition-colors hover:text-[#333] hover:underline focus-visible:text-[#333] focus-visible:underline focus-visible:outline-none" title={SHARE_LINK}>{SHARE_LINK}</a>
+          <button type="button" onClick={copyLink} className="flex h-full shrink-0 items-center gap-1.5 border-l border-[#e5e5e5] px-3 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20" aria-label={copied ? "Ссылка скопирована" : "Скопировать ссылку"}>{copied ? <CheckCircle size={16} weight="fill" className="text-[#059669]" /> : <Copy size={16} />} {copied ? "Скопировано" : "Скопировать"}</button>
         </div>
         <Popover>
           <PopoverTrigger asChild>
