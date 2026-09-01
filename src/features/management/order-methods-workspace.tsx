@@ -344,12 +344,11 @@ function MethodRow({
     : METHOD_DESCRIPTIONS[method];
 
   return (
-    <section className={cn("py-6", method !== "pickup" && "border-b border-[#e7e5e4]")}>
+    <section className={cn(showingWaiterHelper ? "pb-6 pt-1.5" : "py-6", method !== "pickup" && "border-b border-[#e7e5e4]")}>
       <div className="grid grid-cols-[minmax(0,1fr)_205px] items-center gap-4">
         <div className="min-w-0">
           <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{METHOD_LABELS[method]}</h2>
           <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{description}</p>
-          {showingWaiterHelper && <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Гость покажет заказ сотруднику на экране. Заказ не отправится в чат и не попадёт в аналитику.</p>}
         </div>
         <div className="min-w-0">
           <ChatSelect method={method} route={route} enabled={enabled} creatingType={creating?.draft.type} onChoice={onChoice} onCreate={onCreate} onRename={onRename} onDelete={onDelete} />
@@ -361,6 +360,14 @@ function MethodRow({
           )}
         </div>
       </div>
+      {showingWaiterHelper && (
+        <div className="mt-[18px] flex items-center gap-1.5">
+          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[4.909px] bg-[#f5f5f4] text-[#79716b]">
+            <BellSimpleSlash size={11.455} weight="regular" aria-hidden="true" />
+          </span>
+          <p className="text-[13px] leading-none text-[#999]">Гость покажет заказ сотруднику на экране. Заказ не отправится в чат и не попадёт в аналитику</p>
+        </div>
+      )}
       {enabled && method !== "dineIn" && children && <div className="mt-5">{children}</div>}
     </section>
   );
