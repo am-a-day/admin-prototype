@@ -704,7 +704,7 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
             placeholder="Например: минимальная сумма заказа — 5 000 ₸. Доставка занимает 45–60 минут."
             limit={300}
             compact
-            className="[&>div]:h-[120px] [&>div>div:first-child]:h-[38px] [&>div>div:last-child]:h-[80px] [&>div>div:last-child]:min-h-0"
+            className="[&>div:last-child]:h-[120px] [&>div:last-child>div:first-child]:h-[38px] [&>div:last-child>div:last-child]:h-[80px] [&>div:last-child>div:last-child]:min-h-0"
             onChange={(value) => { setDeliveryComment(value); onChange(); }}
           />
         </MethodRow>
@@ -729,7 +729,7 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
               placeholder="Например: заказ будет готов через 20–30 минут. Назовите номер заказа сотруднику."
               limit={300}
               compact
-              className="[&>div]:h-[120px] [&>div>div:first-child]:h-[38px] [&>div>div:last-child]:h-[80px] [&>div>div:last-child]:min-h-0"
+              className="[&>div:last-child]:h-[120px] [&>div:last-child>div:first-child]:h-[38px] [&>div:last-child>div:last-child]:h-[80px] [&>div:last-child>div:last-child]:min-h-0"
               onChange={(value) => { setPickupComment(value); onChange(); }}
             />
           </div>
