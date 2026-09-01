@@ -11,7 +11,7 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { Bell, Coins, CreditCard as CreditCardIcon, Handbag } from "@phosphor-icons/react";
+import { Bell, Coins, Handbag } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -45,7 +45,6 @@ export type OrderSettingsSaveState = "saving" | "saved" | "error";
 
 const ORDER_TABS = [
   { id: "methods", label: "Способы заказа", icon: <Handbag size={16} aria-hidden="true" /> },
-  { id: "payment", label: "Оплата", icon: <CreditCardIcon size={16} aria-hidden="true" /> },
   { id: "service-fee", label: "Сервисный сбор", icon: <Coins size={16} aria-hidden="true" /> },
 ] satisfies readonly PillTab<OrderSettingsTab>[];
 
