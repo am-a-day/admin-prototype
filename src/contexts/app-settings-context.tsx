@@ -9,7 +9,7 @@ import {
 import { getLanguage, type LanguageCode } from "@/data/languages";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 
-export type DineInOrderMode = "disabled" | "waiter" | "send-order";
+export type DineInOrderMode = "waiter" | "send-order";
 
 type AppSettingsContextValue = {
   contentLanguage: LanguageCode;
@@ -83,7 +83,7 @@ function readOrderSettings(accountId?: string): StoredOrderSettings {
     return {
       ...EMPTY_ORDER_SETTINGS,
       ...stored,
-      dineInOrderMode: stored.dineInOrderMode ?? (stored.waiterEnabled === false ? "disabled" : "waiter"),
+      dineInOrderMode: stored.dineInOrderMode === "send-order" ? "send-order" : "waiter",
     };
   } catch {
     return EMPTY_ORDER_SETTINGS;

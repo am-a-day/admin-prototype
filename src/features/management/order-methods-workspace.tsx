@@ -27,7 +27,7 @@ const METHOD_LABELS: Record<OrderMethod, string> = {
 };
 
 const METHOD_DESCRIPTIONS: Record<OrderMethod, string> = {
-  dineIn: "Выберите, как гости будут передавать заказ сотрудникам",
+  dineIn: "Как гости будут передавать заказ сотрудникам",
   delivery: "Настройте приём заказов на доставку",
   pickup: "Настройте приём заказов на самовывоз",
 };
@@ -63,17 +63,20 @@ function DineInOrderSelect({
   mode: DineInOrderMode;
   onModeChange: (mode: DineInOrderMode) => void;
 }) {
-  const label = mode === "disabled" ? "Выключено" : mode === "send-order" ? "Отправить заказ" : "Показать официанту";
+  const label = mode === "send-order" ? "Отправить заказ" : "Показать официанту";
 
   return (
     <Select value={mode} onValueChange={(value) => onModeChange(value as DineInOrderMode)}>
       <SelectTrigger aria-label={`Заказы в заведении: ${label}`} className="h-7 rounded-[8px] px-2 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent align="end" className="z-[100025] min-w-[205px]">
-        <SelectItem value="disabled">Выключено</SelectItem>
-        <SelectItem value="waiter">Показать официанту</SelectItem>
-        <SelectItem value="send-order">Отправить заказ</SelectItem>
+      <SelectContent align="end" className="z-[100025] min-w-[286px]">
+        <SelectItem value="waiter" description="Гость показывает собранный заказ сотруднику" className="h-auto min-h-[52px] items-start py-2">
+          Показать официанту
+        </SelectItem>
+        <SelectItem value="send-order" description="Гость отправляет заказ, он появляется на табло" className="h-auto min-h-[52px] items-start py-2">
+          Отправить заказ
+        </SelectItem>
       </SelectContent>
     </Select>
   );
@@ -205,7 +208,6 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
     setPickupEnabled,
     dineInOrderMode,
     setDineInOrderMode,
-    setWaiterEnabled,
     deliveryComment,
     setDeliveryComment,
     pickupComment,
@@ -228,7 +230,7 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
       <div className="px-[6px]">
         <MethodRow
           method="dineIn"
-          control={<DineInOrderSelect mode={dineInOrderMode} onModeChange={(mode) => { setDineInOrderMode(mode); setWaiterEnabled(mode !== "disabled"); onChange(); }} />}
+          control={<DineInOrderSelect mode={dineInOrderMode} onModeChange={(mode) => { setDineInOrderMode(mode); onChange(); }} />}
         />
 
         <MethodRow
