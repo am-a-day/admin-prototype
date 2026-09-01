@@ -455,7 +455,7 @@ function IntroBanner() {
         <p className="mt-1 max-w-[466px] text-[13px] leading-[17px] text-[#79716b]">Подключите чат и получайте заказы из зала, на доставку и самовывоз. Все заказы сохранятся в Tasko и попадут в аналитику.</p>
       </div>
       <div className="absolute right-2 top-2 hidden h-[111px] w-[248px] overflow-hidden rounded-[12px] sm:block">
-        <img src="/orders-settings-disclaimer.webp" alt="" className="size-full object-cover" />
+        <img src="/orders-settings-banner.png" alt="" className="size-full object-cover" />
         <button type="button" onClick={() => setVisible(false)} aria-label="Скрыть подсказку" className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-[8px] bg-black/10 text-white transition hover:bg-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><X size={14} /></button>
       </div>
     </section>
