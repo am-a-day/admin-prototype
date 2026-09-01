@@ -293,7 +293,7 @@ function ChatSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" disabled={creating} aria-label={`${METHOD_LABELS[method]}: ${label}`} className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white pl-0.5 pr-2 text-left text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition hover:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20 disabled:cursor-wait disabled:opacity-70">
-          {creating ? <ChatIcon type={creatingType} /> : defaultSelected ? <ChatIcon muted /> : route ? <ChatIcon type={route.type} /> : <ChatIcon muted />}
+          {creating ? <ChatIcon type={creatingType} /> : defaultSelected ? <ChatIcon muted /> : enabled && route ? <ChatIcon type={route.type} /> : <ChatIcon muted />}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {creating ? <SpinnerGap size={15} className="shrink-0 animate-spin text-[#79716b]" /> : <CaretDown size={12} className="shrink-0 text-[#79716b]" />}
         </button>
