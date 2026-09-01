@@ -11,7 +11,20 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { Bell, Coins, Handbag } from "@phosphor-icons/react";
+import {
+  ArrowUpRight,
+  Basket,
+  Bell,
+  BellRinging,
+  CheckCircle,
+  Coin,
+  Copy,
+  DotsThree,
+  Plus,
+  TelegramLogo,
+  Trash,
+  WhatsappLogo,
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -34,18 +47,20 @@ import {
   ORDER_EVENT_LABELS,
   useOrderRouting,
   type ChannelType,
+  type OrderChannel,
   type OrderEvent,
   type RouteChannel,
 } from "@/contexts/order-routing-context";
 import { usePublish } from "@/contexts/publish-context";
 import { cn } from "@/lib/utils";
 
-export type OrderSettingsTab = "methods" | "delivery" | "pickup" | "payment" | "service-fee" | "waiter";
+export type OrderSettingsTab = "methods" | "receiving" | "delivery" | "pickup" | "payment" | "service-fee" | "waiter";
 export type OrderSettingsSaveState = "saving" | "saved" | "error";
 
 const ORDER_TABS = [
-  { id: "methods", label: "Способы заказа", icon: <Handbag size={16} aria-hidden="true" /> },
-  { id: "service-fee", label: "Сервисный сбор", icon: <Coins size={16} aria-hidden="true" /> },
+  { id: "methods", label: "Способы заказа", icon: <Basket size={16} aria-hidden="true" /> },
+  { id: "receiving", label: "Получение заказов", icon: <BellRinging size={16} aria-hidden="true" /> },
+  { id: "service-fee", label: "Сервисный сбор", icon: <Coin size={16} aria-hidden="true" /> },
 ] satisfies readonly PillTab<OrderSettingsTab>[];
 
 export function OrderSettingsTabs({
@@ -487,6 +502,112 @@ function WorkspaceLoading() {
   );
 }
 
+const ORDER_BOARD_LINK = "https://tsqr.sweet-affair.me/orders";
+
+const NOTIFICATION_ASSIGNMENT_LABELS: Record<OrderEvent, string> = {
+  delivery: "Доставка",
+  pickup: "Самовывоз",
+  waiter: "Заказы в заведении",
+};
+
+function NotificationChannelIcon({ type }: { type: ChannelType }) {
+  const Icon = type === "telegram" ? TelegramLogo : WhatsappLogo;
+  return (
+    <span className={cn("flex size-[22px] shrink-0 items-center justify-center rounded-[7px]", type === "telegram" ? "bg-sky-50 text-sky-600" : "bg-emerald-50 text-emerald-600")}>
+      <Icon size={14} weight="fill" aria-hidden="true" />
+    </span>
+  );
+}
+
+function NotificationChatRow({
+  channel,
+  assignments,
+  onManage,
+}: {
+  channel: OrderChannel;
+  assignments: OrderEvent[];
+  onManage: (view: ChannelManagerInitialView) => void;
+}) {
+  const summary = assignments.length
+    ? assignments.map((event) => NOTIFICATION_ASSIGNMENT_LABELS[event]).join(", ")
+    : "Без назначений";
+
+  return (
+    <div className="group flex h-[53px] items-center gap-2.5 px-3">
+      <NotificationChannelIcon type={channel.type} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium leading-4 text-[#292524]">{channel.name}</p>
+        <p className="mt-0.5 truncate text-[12px] leading-4 text-[#666]">{summary}</p>
+      </div>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" aria-label={`Действия чата ${channel.name}`} className="flex size-7 shrink-0 items-center justify-center rounded-[8px] text-[#79716b] opacity-0 outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[#292524]/10 group-hover:opacity-100"><DotsThree size={16} weight="bold" aria-hidden="true" /></button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content sideOffset={6} align="end" className="z-[100012] min-w-[190px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
+            <DropdownMenu.Item onSelect={() => onManage({ type: "edit", channelId: channel.id })} className="flex h-8 cursor-pointer items-center rounded-[8px] px-2 text-[12px] text-[#57534d] outline-none data-[highlighted]:bg-[#f5f5f4]">Редактировать</DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-[#eceae7]" />
+            <DropdownMenu.Item onSelect={() => onManage({ type: "delete", channelId: channel.id })} className="flex h-8 cursor-pointer items-center gap-2 rounded-[8px] px-2 text-[12px] text-red-600 outline-none data-[highlighted]:bg-red-50"><Trash size={13} aria-hidden="true" />Удалить чат</DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
+  );
+}
+
+function OrderReceivingWorkspace({
+  channels,
+  getAssignments,
+  onManage,
+}: {
+  channels: OrderChannel[];
+  getAssignments: (channelId: string) => OrderEvent[];
+  onManage: (view: ChannelManagerInitialView) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+  }, []);
+
+  const copyBoardLink = () => {
+    void navigator.clipboard?.writeText(ORDER_BOARD_LINK);
+    setCopied(true);
+    if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopied(false), 2_200);
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-[741px] px-[6px]">
+      <section className="relative h-[151px] overflow-hidden rounded-[20px] border border-[#f5f5f4] bg-[#f5f5f4]">
+        <div className="relative z-10 max-w-[470px] px-[14px] pt-[27px]">
+          <h1 className="text-[14px] font-semibold leading-5 text-[#333]">Все заказы — на одном табло</h1>
+          <p className="mt-1 text-[13px] leading-[17px] text-[#79716b]">Заказы из зала, на доставку и самовывоз автоматически появляются на табло. Откройте его на отдельном экране, чтобы сотрудники сразу видели новые заказы.</p>
+          <div className="mt-3 flex items-center gap-2">
+            <button type="button" onClick={() => window.open(ORDER_BOARD_LINK, "_blank", "noopener,noreferrer")} className="flex h-7 items-center gap-1.5 rounded-[10px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20">Открыть табло<ArrowUpRight size={16} aria-hidden="true" /></button>
+            <button type="button" onClick={copyBoardLink} className="flex h-7 items-center gap-1.5 rounded-[10px] bg-[#ecece9] px-2 text-[13px] text-[#57534d] transition hover:bg-[#e4e4e1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20">{copied ? <CheckCircle size={16} weight="fill" className="text-[#059669]" aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}{copied ? "Скопировано" : "Скопировать ссылку"}</button>
+          </div>
+        </div>
+        <div className="absolute right-[7px] top-[7px] hidden h-[135px] w-[230px] overflow-hidden rounded-[12px] md:block"><img src="/orders-settings-banner.png" alt="" className="size-full object-cover object-left" /></div>
+      </section>
+
+      <section className="py-6">
+        <h2 className="text-[14px] font-medium leading-5 text-[#292524]">Уведомления в мессенджерах</h2>
+        <p className="mt-0.5 text-[13px] leading-4 text-[#666]">Можно дополнительно отправлять новые заказы сотрудникам в мессенджерах</p>
+        <div className="mt-[18px] overflow-hidden rounded-[16px] border border-[#e7e5e4] bg-white">
+          {channels.length ? (
+            <div className="divide-y divide-[#e7e5e4]">{channels.map((channel) => <NotificationChatRow key={channel.id} channel={channel} assignments={getAssignments(channel.id)} onManage={onManage} />)}</div>
+          ) : (
+            <p className="px-3 py-4 text-[13px] text-[#79716b]">Чатов пока нет. Добавьте чат, чтобы получать дополнительные уведомления.</p>
+          )}
+          <button type="button" onClick={() => onManage({ type: "create", sourceEvent: null, returnToList: false })} className="flex h-[42px] w-full items-center gap-2 border-t border-[#e7e5e4] px-3 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20"><Plus size={16} aria-hidden="true" />Добавить чат</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function DeliveryWorkspace({
   activeTab,
   onTabChange,
@@ -557,14 +678,6 @@ export function DeliveryWorkspace({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  useEffect(() => {
-    const missing: OrderEvent[] = [];
-    if (!routes.delivery && deliveryEnabled) { setDeliveryEnabled(false); missing.push("delivery"); }
-    if (!routes.pickup && pickupEnabled) { setPickupEnabled(false); missing.push("pickup"); }
-    if (activeTab !== "methods" && !routes.waiter && waiterEnabled) { setWaiterEnabled(false); missing.push("waiter"); }
-    if (missing.length) setRequiresSetupEvents((current) => Array.from(new Set([...current, ...missing])));
-  }, [activeTab, routes.delivery, routes.pickup, routes.waiter, deliveryEnabled, pickupEnabled, waiterEnabled, setDeliveryEnabled, setPickupEnabled, setWaiterEnabled]);
-
   const queueSave = (register = false, fail = false) => {
     if (register) registerChange("order-settings");
     onSaveStateChange("saving");
@@ -620,7 +733,6 @@ export function DeliveryWorkspace({
   };
 
   const handleAssignmentsRemoved = (events: OrderEvent[]) => {
-    events.forEach((event) => setFeatureEnabled(event, false));
     setRequiresSetupEvents((current) => current.filter((event) => !events.includes(event)));
     queueSave(true);
   };
@@ -685,7 +797,7 @@ export function DeliveryWorkspace({
         >
           <OrderSettingsTabs value={activeTab} onChange={onTabChange} />
         </div>
-        {activeTab !== "methods" && activeTab !== "service-fee" && <div className="flex min-h-8 items-center justify-end gap-2">
+        {activeTab !== "methods" && activeTab !== "receiving" && activeTab !== "service-fee" && <div className="flex min-h-8 items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -702,7 +814,9 @@ export function DeliveryWorkspace({
             <OrderSettingsSaveIndicator state={saveState} />
         </div>}
         {activeTab === "methods" ? (
-          <OrderMethodsWorkspace onChange={() => queueSave(true)} />
+          <OrderMethodsWorkspace onChange={() => queueSave(true)} onOpenReceiving={() => onTabChange("receiving")} />
+        ) : activeTab === "receiving" ? (
+          <OrderReceivingWorkspace channels={channels} getAssignments={getChannelAssignments} onManage={openChannelManager} />
         ) : activeTab !== "service-fee" && !loading && (activeTab === "payment" ? (
           <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
             <div className="min-w-0">
@@ -744,7 +858,7 @@ export function DeliveryWorkspace({
               }}
             />
           )
-        ) : activeTab !== "methods" && (loading ? (
+        ) : activeTab !== "methods" && activeTab !== "receiving" && (loading ? (
           <WorkspaceLoading />
         ) : (
           <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">

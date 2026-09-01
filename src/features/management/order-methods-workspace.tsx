@@ -8,7 +8,6 @@ import {
   Copy,
   DownloadSimple,
   DotsThreeVertical,
-  LinkSimple,
   NotePencil,
   Plus,
   Printer,
@@ -18,6 +17,8 @@ import {
   Trash,
   WarningCircle,
   WhatsappLogo,
+  ArrowRight,
+  Info,
   X,
 } from "@phosphor-icons/react";
 import QRCode from "react-qr-code";
@@ -49,15 +50,15 @@ import { cn } from "@/lib/utils";
 export type OrderMethod = "dineIn" | "delivery" | "pickup";
 
 const METHOD_LABELS: Record<OrderMethod, string> = {
-  dineIn: "Заказ в заведении",
+  dineIn: "Заказы в заведении",
   delivery: "Доставка",
   pickup: "Самовывоз",
 };
 
 const METHOD_DESCRIPTIONS: Record<OrderMethod, string> = {
   dineIn: "Выберите, как гости будут передавать заказ сотрудникам",
-  delivery: "Создайте или выберите чат для заказов, чтобы включить доставку",
-  pickup: "Создайте или выберите чат для заказов, чтобы включить самовывоз",
+  delivery: "Настройте приём заказов на доставку",
+  pickup: "Настройте приём заказов на самовывоз",
 };
 
 const ORDER_EVENTS: Record<OrderMethod, OrderEvent> = {
@@ -180,6 +181,7 @@ function ChatOption({
 function ChatPicker({
   method,
   currentChannelId,
+  enabled,
   defaultSelected,
   onSelect,
   onCreate,
@@ -188,6 +190,7 @@ function ChatPicker({
 }: {
   method: OrderMethod;
   currentChannelId: string | null;
+  enabled: boolean;
   defaultSelected: boolean;
   onSelect: (choice: ChatChoice) => void;
   onCreate: () => void;
@@ -199,6 +202,7 @@ function ChatPicker({
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState(false);
   const editingChannel = channels.find((channel) => channel.id === editingId) ?? null;
+  const disabledSelected = method !== "dineIn" && !enabled;
 
   const startRename = (channel: OrderChannel) => {
     setEditingId(channel.id);
@@ -228,10 +232,10 @@ function ChatPicker({
           </button>
         )}
         {method !== "dineIn" && (
-          <button type="button" role="option" aria-selected={!defaultSelected && !currentChannelId} onClick={() => onSelect("disabled")} className={cn("flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] text-[#333]", !defaultSelected && !currentChannelId ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
+          <button type="button" role="option" aria-selected={disabledSelected} onClick={() => onSelect("disabled")} className={cn("flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] text-[#333]", disabledSelected ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
             <ChatIcon muted />
             <span className="min-w-0 flex-1 truncate">Выключено</span>
-            {!defaultSelected && !currentChannelId && <Check size={16} className="shrink-0 text-[#292524]" />}
+            {disabledSelected && <Check size={16} className="shrink-0 text-[#292524]" />}
           </button>
         )}
       </div>
@@ -287,7 +291,7 @@ function ChatSelect({
   const [open, setOpen] = useState(false);
   const defaultSelected = method === "dineIn" && enabled && !route;
   const creating = Boolean(creatingType);
-  const label = creating ? "Создаём чат…" : defaultSelected ? "Показать официанту" : enabled && route ? route.name : "Выключено";
+  const label = creating ? "Создаём чат…" : defaultSelected ? "Показать официанту" : enabled && route ? route.name : enabled ? "Работает" : "Выключено";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -302,6 +306,7 @@ function ChatSelect({
         <ChatPicker
           method={method}
           currentChannelId={enabled ? route?.id ?? null : null}
+          enabled={enabled}
           defaultSelected={defaultSelected}
           onSelect={(choice) => { onChoice(choice); setOpen(false); }}
           onCreate={() => { onCreate(); setOpen(false); }}
@@ -338,17 +343,12 @@ function MethodRow({
   onRetry: () => void;
   children?: ReactNode;
 }) {
-  const showingWaiterHelper = method === "dineIn" && enabled && !route;
-  const description = enabled && method !== "dineIn"
-    ? method === "delivery" ? "Получайте заказы на доставку из онлайн-меню" : "Получайте заказы на самовывоз из онлайн-меню"
-    : METHOD_DESCRIPTIONS[method];
-
   return (
-    <section className={cn(showingWaiterHelper ? "pb-6 pt-1.5" : "py-6", method !== "pickup" && "border-b border-[#e7e5e4]")}>
+    <section className={cn("py-6", method !== "pickup" && "border-b border-[#e7e5e4]")}>
       <div className="grid grid-cols-[minmax(0,1fr)_205px] items-center gap-4">
         <div className="min-w-0">
           <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{METHOD_LABELS[method]}</h2>
-          <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{description}</p>
+          <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{METHOD_DESCRIPTIONS[method]}</p>
         </div>
         <div className="min-w-0">
           <ChatSelect method={method} route={route} enabled={enabled} creatingType={creating?.draft.type} onChoice={onChoice} onCreate={onCreate} onRename={onRename} onDelete={onDelete} />
@@ -360,20 +360,22 @@ function MethodRow({
           )}
         </div>
       </div>
-      {showingWaiterHelper && (
-        <div className="mt-[18px] flex items-center gap-1.5">
-          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[4.909px] bg-[#f5f5f4] text-[#79716b]">
-            <BellSimpleSlash size={11.455} weight="regular" aria-hidden="true" />
-          </span>
-          <p className="text-[13px] leading-none text-[#999]">Гость покажет заказ сотруднику на экране. Заказ не отправится в чат и не попадёт в аналитику</p>
-        </div>
-      )}
       {enabled && method !== "dineIn" && children && <div className="mt-5">{children}</div>}
     </section>
   );
 }
 
-function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (message: string) => void }) {
+function ShareLinkSection({
+  deliveryEnabled,
+  pickupEnabled,
+  onCopy,
+  onToast,
+}: {
+  deliveryEnabled: boolean;
+  pickupEnabled: boolean;
+  onCopy: () => void;
+  onToast: (message: string) => void;
+}) {
   const qrContainerRef = useRef<HTMLDivElement>(null);
   const copyResetTimer = useRef<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -420,16 +422,26 @@ function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (m
     window.setTimeout(() => printWindow.print(), 120);
   };
 
+  const title = deliveryEnabled && pickupEnabled
+    ? "Ссылка на доставку и самовывоз"
+    : deliveryEnabled
+      ? "Ссылка на доставку"
+      : "Ссылка на самовывоз";
+  const description = deliveryEnabled && pickupEnabled
+    ? "По этой ссылке гости смогут оформить доставку или самовывоз."
+    : deliveryEnabled
+      ? "По этой ссылке гости смогут оформить доставку."
+      : "По этой ссылке гости смогут оформить самовывоз.";
+
   return (
     <section className="border-b border-[#e7e5e4] py-6">
-      <h2 className="text-[14px] font-medium leading-5 text-[#292524]">Ссылка на доставку и самовывоз</h2>
-      <p className="mt-0.5 text-[13px] leading-4 text-[#666]">По этой ссылке гости смогут оформить доставку или самовывоз.</p>
-      <div className="mt-3 flex h-7 min-w-0 items-center gap-2">
-        <div className="flex h-7 min-w-0 flex-1 items-center overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-          <LinkSimple size={14} className="ml-2 shrink-0 text-[#79716b]" />
-          <a href={SHARE_LINK} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate px-2 text-[13px] text-[#79716b] transition-colors hover:text-[#333] hover:underline focus-visible:text-[#333] focus-visible:underline focus-visible:outline-none" title={SHARE_LINK}>{SHARE_LINK}</a>
-          <button type="button" onClick={copyLink} className="flex h-full shrink-0 items-center gap-1.5 border-l border-[#e5e5e5] px-3 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20" aria-label={copied ? "Ссылка скопирована" : "Скопировать ссылку"}>{copied ? <CheckCircle size={16} weight="fill" className="text-[#059669]" /> : <Copy size={16} />} {copied ? "Скопировано" : "Скопировать"}</button>
+      <div className="flex min-h-7 items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{title}</h2>
+          <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{description}</p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={copyLink} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20" aria-label={copied ? "Ссылка скопирована" : "Скопировать ссылку"}>{copied ? <CheckCircle size={16} weight="fill" className="text-[#059669]" /> : <Copy size={16} />} {copied ? "Скопировано" : "Скопировать"}</button>
         <Popover>
           <PopoverTrigger asChild>
             <button type="button" className="flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"><QrCode size={16} /> QR-код<CaretDown size={12} /></button>
@@ -439,25 +451,9 @@ function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (m
             <button type="button" onClick={printQr} className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#292524] transition hover:bg-[#f5f5f4]"><Printer size={16} />Печать QR-кода</button>
           </PopoverContent>
         </Popover>
+        </div>
       </div>
       <div ref={qrContainerRef} className="sr-only"><QRCode value={SHARE_LINK} size={240} /></div>
-    </section>
-  );
-}
-
-function IntroBanner() {
-  const [visible, setVisible] = useState(true);
-  if (!visible) return null;
-  return (
-    <section className="relative h-[127px] overflow-hidden rounded-[20px] border border-[#f5f5f4] bg-[#f5f5f4]">
-      <div className="relative z-10 max-w-[470px] pl-[14px] pr-3 pt-[29px]">
-        <h1 className="text-[14px] font-semibold leading-5 text-[#333]">Получайте заказы прямо из онлайн-меню</h1>
-        <p className="mt-1 max-w-[466px] text-[13px] leading-[17px] text-[#79716b]">Подключите чат и получайте заказы из зала, на доставку и самовывоз. Все заказы сохранятся в Tasko и попадут в аналитику.</p>
-      </div>
-      <div className="absolute right-2 top-2 hidden h-[111px] w-[248px] overflow-hidden rounded-[12px] sm:block">
-        <img src="/orders-settings-banner.png" alt="" className="size-full object-cover" />
-        <button type="button" onClick={() => setVisible(false)} aria-label="Скрыть подсказку" className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-[8px] bg-black/10 text-white transition hover:bg-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><X size={14} /></button>
-      </div>
     </section>
   );
 }
@@ -566,9 +562,9 @@ function DeleteChatDialog({
   onConfirm: () => void;
 }) {
   if (!channel) return null;
-  const consequences = assignments.length <= 1
-    ? `Чат «${channel.name}» будет удалён, а ${assignments[0] === "delivery" ? "доставка — выключена" : assignments[0] === "pickup" ? "самовывоз — выключен" : "заказы в заведении — выключены"}.`
-    : `Чат «${channel.name}» будет удалён, а ${assignments.includes("delivery") && assignments.includes("pickup") ? "доставка и самовывоз" : assignments.map((event) => event === "delivery" ? "доставка" : event === "pickup" ? "самовывоз" : "заказы в заведении").join(" и ")} — выключены.`;
+  const consequences = assignments.length
+    ? `Чат «${channel.name}» будет удалён. Способы заказа продолжат работать, а уведомления в этом чате прекратятся.`
+    : `Чат «${channel.name}» будет удалён.`;
 
   return (
     <Dialog open={Boolean(channel)} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -586,7 +582,7 @@ function DeleteChatDialog({
   );
 }
 
-export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
+export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange: () => void; onOpenReceiving: () => void }) {
   const { account } = useMockAuth();
   const {
     deliveryEnabled,
@@ -677,12 +673,7 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
   const confirmDelete = () => {
     if (!deleteTarget) return;
     const name = deleteTarget.name;
-    const assignments = getChannelAssignments(deleteTarget.id);
     deleteChannel(deleteTarget.id);
-    assignments.forEach((event) => {
-      const method = (Object.keys(ORDER_EVENTS) as OrderMethod[]).find((candidate) => ORDER_EVENTS[candidate] === event);
-      if (method) setEnabled(method, false);
-    });
     setDeleteTarget(null);
     onChange();
     setToast(`Чат «${name}» удалён`);
@@ -697,7 +688,6 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-[741px] space-y-4">
-      <IntroBanner />
       <div className="px-[6px]">
         <MethodRow
           method="dineIn"
@@ -711,8 +701,6 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
           onDelete={setDeleteTarget}
           onRetry={() => creationError?.event === "dineIn" && startCreation("dineIn", creationError.draft)}
         />
-
-        {hasDeliveryOrPickup && <ShareLinkSection onCopy={() => { void navigator.clipboard?.writeText(SHARE_LINK); setToast("Ссылка скопирована"); }} onToast={setToast} />}
 
         <MethodRow
           method="delivery"
@@ -750,7 +738,7 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
           onRetry={() => creationError?.event === "pickup" && startCreation("pickup", creationError.draft)}
         >
           <div className="space-y-5">
-            <label className="block"><span className="mb-1.5 block text-[13px] leading-5 text-[#333]">Откуда забирать</span><Input value={pickupAddress} onChange={(event) => { setPickupAddress(event.target.value); onChange(); }} placeholder="Астана, Абылай-хана 34, д 18" className="h-7 rounded-[8px] px-2 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]" /></label>
+            <label className="block"><span className="mb-1.5 block text-[13px] leading-5 text-[#333]">Откуда забирать заказы</span><Input value={pickupAddress} onChange={(event) => { setPickupAddress(event.target.value); onChange(); }} placeholder="Астана, Абылай-хана 34, д 18" className="h-7 rounded-[8px] px-2 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]" /></label>
             <DescriptionRichTextEditor
               label="Информация о самовывозе"
               value={pickupComment}
@@ -762,6 +750,13 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
             />
           </div>
         </MethodRow>
+
+        {hasDeliveryOrPickup && <ShareLinkSection deliveryEnabled={deliveryEnabled} pickupEnabled={pickupEnabled} onCopy={() => { void navigator.clipboard?.writeText(SHARE_LINK); setToast("Ссылка скопирована"); }} onToast={setToast} />}
+
+        <section className="flex flex-wrap items-center justify-between gap-3 py-6">
+          <p className="flex items-center gap-1.5 text-[13px] leading-4 text-[#666]"><span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[#f5f5f4] text-[#79716b]"><Info size={12} aria-hidden="true" /></span>Все заказы автоматически появляются на <span className="text-[#51a2ff]">табло</span></p>
+          <Button type="button" variant="outline" size="sm" onClick={onOpenReceiving} className="h-7 rounded-[10px] px-2 text-[13px] font-normal text-[#57534d]">Настроить получение заказов<ArrowRight size={16} aria-hidden="true" /></Button>
+        </section>
       </div>
 
       <AddChatDialog open={createMethod !== null} method={createMethod} workspaceName={account?.workspace.name} onClose={() => setCreateMethod(null)} onSubmit={(draft) => { if (createMethod) startCreation(createMethod, draft); }} />

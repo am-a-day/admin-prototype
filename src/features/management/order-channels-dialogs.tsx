@@ -32,7 +32,8 @@ export type ChannelManagerInitialView =
       returnToList: boolean;
       enableSourceEventAfterCreate?: boolean;
     }
-  | { type: "edit"; channelId: string };
+  | { type: "edit"; channelId: string }
+  | { type: "delete"; channelId: string };
 
 export function getChannelPopoverAnchor(target: Element): ChannelPopoverAnchor {
   const rect = target.getBoundingClientRect();
@@ -383,7 +384,7 @@ function ChannelForm({
   );
 }
 
-type ManagerView = ChannelManagerInitialView | { type: "delete"; channelId: string };
+type ManagerView = ChannelManagerInitialView;
 
 export function ChannelManagerDialog({
   initialView,
@@ -437,7 +438,7 @@ export function ChannelManagerDialog({
 
   const title = view.type === "list" ? "Чаты уведомлений" : view.type === "create" ? "Новый чат" : view.type === "edit" ? "Редактировать чат" : "Удалить чат?";
   const description = view.type === "list" ? "Управляйте чатами для заказов и вызовов гостей." : view.type === "create" ? "Подключите чат и выберите его назначения." : view.type === "edit" ? "Измените данные и назначения чата." : "Проверьте последствия перед удалением.";
-  const hasBack = view.type === "edit" || (view.type === "create" && view.returnToList);
+  const hasBack = view.type === "edit" || view.type === "delete" || (view.type === "create" && view.returnToList);
 
   return createPortal(
     <div className="fixed inset-0 z-[100008] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[1px]" onMouseDown={(event) => { if (event.target === event.currentTarget) safeClose(); }}>
