@@ -254,17 +254,17 @@ export function AuthPhoneField({
         </div>
 
         {countryOpen && (
-          <div role="listbox" aria-label="Страна" className={cn("absolute left-0 right-0 z-30 overflow-hidden rounded-[12px] border border-[#d6d3d1] bg-white p-2 shadow-lg", compact ? "top-[34px]" : "top-[58px]")}>
-            <div className="flex h-10 items-center gap-2 rounded-[8px] bg-[#f5f5f4] px-3 focus-within:ring-2 focus-within:ring-[#4f39f6]/20">
-              <Search size={16} className="shrink-0 text-[#79716b]" aria-hidden="true" />
-              <input autoFocus value={countrySearch} onChange={(event) => setCountrySearch(event.target.value)} placeholder="Страна или код" aria-label="Страна или код" className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#a6a09b]" />
+          <div role="listbox" aria-label="Страна" className={cn("absolute left-0 right-0 z-30 overflow-hidden rounded-[12px] border border-[#d6d3d1] bg-white shadow-lg", compact ? "top-[34px] p-1.5" : "top-[58px] p-2")}>
+            <div className={cn("flex items-center rounded-[8px] bg-[#f5f5f4] focus-within:ring-2 focus-within:ring-[#4f39f6]/20", compact ? "h-8 gap-1.5 px-2" : "h-10 gap-2 px-3")}>
+              <Search size={compact ? 14 : 16} className="shrink-0 text-[#79716b]" aria-hidden="true" />
+              <input autoFocus value={countrySearch} onChange={(event) => setCountrySearch(event.target.value)} placeholder="Страна или код" aria-label="Страна или код" className={cn("h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#a6a09b]", compact ? "text-[13px]" : "text-[14px]")} />
             </div>
-            <div className="mt-1 max-h-48 overflow-y-auto">
+            <div className={cn("overflow-y-auto", compact ? "mt-0.5 max-h-40" : "mt-1 max-h-48")}>
               {filteredCountries.map((item) => (
-                <button key={item.code} type="button" role="option" aria-selected={item.code === country.code} onClick={() => { setPhoneDigits(nationalNumber, item); setCountryOpen(false); setCountrySearch(""); window.requestAnimationFrame(() => phoneInputRef.current?.focus()); }} className={cn("flex min-h-11 w-full items-center gap-3 rounded-[8px] px-2 text-left transition hover:bg-[#f5f5f4]", item.code === country.code && "bg-[#f5f5f4]")}>
-                  <img src={item.flag} alt="" className="h-6 w-8 rounded-[4px] object-cover" />
-                  <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{item.name}</span>
-                  <span className="text-[14px] text-[#79716b]">{item.dialCode}</span>
+                <button key={item.code} type="button" role="option" aria-selected={item.code === country.code} onClick={() => { setPhoneDigits(nationalNumber, item); setCountryOpen(false); setCountrySearch(""); window.requestAnimationFrame(() => phoneInputRef.current?.focus()); }} className={cn("flex w-full items-center rounded-[8px] text-left transition hover:bg-[#f5f5f4]", compact ? "h-8 min-h-8 gap-2 px-1.5" : "min-h-11 gap-3 px-2", item.code === country.code && "bg-[#f5f5f4]")}>
+                  <img src={item.flag} alt="" className={cn("rounded-[4px] object-cover", compact ? "h-5 w-7" : "h-6 w-8")} />
+                  <span className={cn("min-w-0 flex-1 truncate font-medium", compact ? "text-[13px]" : "text-[14px]")}>{item.name}</span>
+                  <span className={cn("text-[#79716b]", compact ? "text-[12px]" : "text-[14px]")}>{item.dialCode}</span>
                 </button>
               ))}
             </div>

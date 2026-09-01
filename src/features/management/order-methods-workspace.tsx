@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip } from "@/components/ui/tooltip";
+import { TooltipContent, TooltipRoot, TooltipTrigger } from "@/components/ui/tooltip";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
@@ -74,8 +74,8 @@ type ChatDraft = { type: ChannelType; contact: string; name: string };
 type CreationState = { event: OrderMethod; draft: ChatDraft };
 type CreationError = CreationState & { message: string };
 
-function chatName(workspaceName: string | undefined, method: OrderMethod) {
-  return `${workspaceName?.trim() || "Sweet-affair"} · ${METHOD_LABELS[method]}`;
+function chatName(venueName: string | undefined, method: OrderMethod) {
+  return `${venueName?.trim() || "Sweet-affair"} · ${METHOD_LABELS[method]}`;
 }
 
 function ChatIcon({ type, muted = false }: { type?: ChannelType; muted?: boolean }) {
@@ -338,6 +338,7 @@ function MethodRow({
   onRetry: () => void;
   children?: ReactNode;
 }) {
+  const showingWaiterHelper = method === "dineIn" && enabled && !route;
   const description = enabled && method !== "dineIn"
     ? method === "delivery" ? "Получайте заказы на доставку из онлайн-меню" : "Получайте заказы на самовывоз из онлайн-меню"
     : METHOD_DESCRIPTIONS[method];
@@ -348,6 +349,7 @@ function MethodRow({
         <div className="min-w-0">
           <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{METHOD_LABELS[method]}</h2>
           <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{description}</p>
+          {showingWaiterHelper && <p className="mt-1 text-[12px] leading-4 text-[#79716b]">Гость покажет заказ сотруднику на экране. Заказ не отправится в чат и не попадёт в аналитику.</p>}
         </div>
         <div className="min-w-0">
           <ChatSelect method={method} route={route} enabled={enabled} creatingType={creating?.draft.type} onChoice={onChoice} onCreate={onCreate} onRename={onRename} onDelete={onDelete} />
@@ -503,9 +505,14 @@ function AddChatDialog({
 
         <div className="space-y-3 px-4 py-3">
           <div>
-            <Tooltip label="Используем этот номер, чтобы добавить вас в созданный чат." side="top" contentClassName="max-w-[220px] whitespace-normal px-2.5 py-2 text-[11px] leading-4">
-              <span tabIndex={0} className="mb-1.5 inline-block cursor-help border-b border-dashed border-[#78716c] text-[13px] leading-5 text-[#333]">Номер телефона</span>
-            </Tooltip>
+            <TooltipRoot delayDuration={300}>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="mb-1.5 inline-block cursor-help border-b border-dashed border-[#78716c] text-[13px] leading-5 text-[#333]">Номер телефона</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[220px] whitespace-normal px-2.5 py-2 text-[11px] leading-4" style={{ zIndex: 100_030 }}>
+                Используем этот номер, чтобы добавить вас в созданный чат.
+              </TooltipContent>
+            </TooltipRoot>
             <AuthPhoneField key={`${activeMethod}-${open}`} id="add-chat-phone" initialValue="" variant="compact" onValueChange={(value, valid) => { setPhone(value); setPhoneValid(valid); }} />
           </div>
 
