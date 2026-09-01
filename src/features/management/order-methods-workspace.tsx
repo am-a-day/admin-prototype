@@ -225,11 +225,13 @@ function ChatPicker({
             {defaultSelected && <Check size={16} className="shrink-0 text-[#292524]" />}
           </button>
         )}
-        <button type="button" role="option" aria-selected={!defaultSelected && !currentChannelId} onClick={() => onSelect("disabled")} className={cn("flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] text-[#333]", !defaultSelected && !currentChannelId ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
-          <ChatIcon muted />
-          <span className="min-w-0 flex-1 truncate">Выключено</span>
-          {!defaultSelected && !currentChannelId && <Check size={16} className="shrink-0 text-[#292524]" />}
-        </button>
+        {method !== "dineIn" && (
+          <button type="button" role="option" aria-selected={!defaultSelected && !currentChannelId} onClick={() => onSelect("disabled")} className={cn("flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[13px] text-[#333]", !defaultSelected && !currentChannelId ? "bg-[#f5f5f4]" : "hover:bg-[#f5f5f4]")}>
+            <ChatIcon muted />
+            <span className="min-w-0 flex-1 truncate">Выключено</span>
+            {!defaultSelected && !currentChannelId && <Check size={16} className="shrink-0 text-[#292524]" />}
+          </button>
+        )}
       </div>
 
       {channels.length > 0 && (
