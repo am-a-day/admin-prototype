@@ -11,7 +11,7 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { Bell, Coins, CreditCard as CreditCardIcon, Handbag, Truck } from "@phosphor-icons/react";
+import { Bell, Coins, CreditCard as CreditCardIcon, Handbag } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +27,7 @@ import {
   type ChannelManagerInitialView,
   type ChannelPopoverAnchor,
 } from "@/features/management/order-channels-dialogs";
+import { OrderMethodsWorkspace } from "@/features/management/order-methods-workspace";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   CHANNEL_LABELS,
@@ -39,15 +40,13 @@ import {
 import { usePublish } from "@/contexts/publish-context";
 import { cn } from "@/lib/utils";
 
-export type OrderSettingsTab = "delivery" | "pickup" | "payment" | "service-fee" | "waiter";
+export type OrderSettingsTab = "methods" | "delivery" | "pickup" | "payment" | "service-fee" | "waiter";
 export type OrderSettingsSaveState = "saving" | "saved" | "error";
 
 const ORDER_TABS = [
-  { id: "delivery", label: "Доставка", icon: <Truck size={16} aria-hidden="true" /> },
-  { id: "pickup", label: "Самовывоз", icon: <Handbag size={16} aria-hidden="true" /> },
+  { id: "methods", label: "Способы заказа", icon: <Handbag size={16} aria-hidden="true" /> },
   { id: "payment", label: "Оплата", icon: <CreditCardIcon size={16} aria-hidden="true" /> },
   { id: "service-fee", label: "Сервисный сбор", icon: <Coins size={16} aria-hidden="true" /> },
-  { id: "waiter", label: "Вызов официанта", icon: <Bell size={16} aria-hidden="true" /> },
 ] satisfies readonly PillTab<OrderSettingsTab>[];
 
 export function OrderSettingsTabs({
@@ -213,9 +212,9 @@ function eventGenitive(event: OrderEvent) {
 }
 
 function emptyChannelDescription(event: OrderEvent) {
-  if (event === "delivery") return "Создайте канал, чтобы получать новые заказы доставки.";
-  if (event === "pickup") return "Создайте канал, чтобы получать новые заказы самовывоза.";
-  return "Создайте канал, чтобы получать вызовы официанта.";
+  if (event === "delivery") return "Создайте чат, чтобы получать новые заказы доставки.";
+  if (event === "pickup") return "Создайте чат, чтобы получать новые заказы самовывоза.";
+  return "Создайте чат, чтобы получать вызовы официанта.";
 }
 
 function ChannelSection({
@@ -258,14 +257,14 @@ function ChannelSection({
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5 border-t border-[#f0efec] pt-2.5">
-            <Button type="button" variant="ghost" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Сменить канал</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Сменить чат</Button>
             <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testState === "sending"}>
               {testState === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               {testState === "sending" ? "Отправляем…" : testState === "error" ? "Повторить" : testLabel}
             </Button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <button type="button" aria-label="Действия канала" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><MoreHorizontal size={16} /></button>
+                <button type="button" aria-label="Действия чата" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#79716b] outline-none transition hover:bg-[#f5f5f4] hover:text-[#292524] focus-visible:ring-2 focus-visible:ring-[#292524]/10"><MoreHorizontal size={16} /></button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content sideOffset={6} align="end" className="z-[100007] min-w-[210px] rounded-[12px] border border-[#e7e5e4] bg-white p-1 shadow-[0_18px_42px_rgba(41,37,36,0.14)] outline-none">
@@ -278,15 +277,15 @@ function ChannelSection({
       ) : (
         availableChannelCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4">
-            <div className="min-w-0"><div className="text-[13px] font-medium text-[#292524]">Канал не выбран</div><p className="mt-1 text-[12px] leading-5 text-[#79716b]">Выберите существующий канал или создайте новый.</p></div>
-            <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Выбрать канал</Button><Button type="button" variant="ghost" size="sm" onClick={onCreate}>Создать новый</Button></div>
+            <div className="min-w-0"><div className="text-[13px] font-medium text-[#292524]">Чат не выбран</div><p className="mt-1 text-[12px] leading-5 text-[#79716b]">Выберите существующий чат или создайте новый.</p></div>
+            <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" onClick={(eventValue) => onSelect(getChannelPopoverAnchor(eventValue.currentTarget))}>Выбрать чат</Button><Button type="button" variant="ghost" size="sm" onClick={onCreate}>Создать чат</Button></div>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4"><div className="min-w-0"><div className="text-[13px] font-medium text-[#292524]">Канал не настроен</div><p className="mt-1 text-[12px] leading-5 text-[#79716b]">{emptyChannelDescription(event)}</p></div><Button type="button" size="sm" onClick={onCreate}>Создать канал</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-dashed border-[#d8d5d0] bg-[#fafaf9] px-4 py-4"><div className="min-w-0"><div className="text-[13px] font-medium text-[#292524]">Чат не настроен</div><p className="mt-1 text-[12px] leading-5 text-[#79716b]">{emptyChannelDescription(event)}</p></div><Button type="button" size="sm" onClick={onCreate}>Создать чат</Button></div>
         )
       )}
       {route && testState === "success" && <span role="status" className="sr-only">Тестовое сообщение отправлено</span>}
-      {route && testState === "error" && <p role="alert" className="mt-2 text-[11px] text-red-600">Не удалось отправить сообщение в этот канал.</p>}
+      {route && testState === "error" && <p role="alert" className="mt-2 text-[11px] text-red-600">Не удалось отправить сообщение в этот чат.</p>}
     </div>
   );
 }
@@ -300,7 +299,7 @@ function DetachChannelDialog({ event, onClose, onConfirm }: { event: OrderEvent;
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const title = event === "delivery" ? "Убрать канал из доставки?" : event === "pickup" ? "Убрать канал из самовывоза?" : "Убрать канал из вызова официанта?";
+  const title = event === "delivery" ? "Убрать чат из доставки?" : event === "pickup" ? "Убрать чат из самовывоза?" : "Убрать чат из вызова официанта?";
   const consequence = event === "delivery"
     ? "Доставка перестанет получать новые заказы. Остальные настройки сохранятся."
     : event === "pickup"
@@ -468,9 +467,9 @@ export function DeliveryWorkspace({
     const missing: OrderEvent[] = [];
     if (!routes.delivery && deliveryEnabled) { setDeliveryEnabled(false); missing.push("delivery"); }
     if (!routes.pickup && pickupEnabled) { setPickupEnabled(false); missing.push("pickup"); }
-    if (!routes.waiter && waiterEnabled) { setWaiterEnabled(false); missing.push("waiter"); }
+    if (activeTab !== "methods" && !routes.waiter && waiterEnabled) { setWaiterEnabled(false); missing.push("waiter"); }
     if (missing.length) setRequiresSetupEvents((current) => Array.from(new Set([...current, ...missing])));
-  }, [routes.delivery, routes.pickup, routes.waiter, deliveryEnabled, pickupEnabled, waiterEnabled, setDeliveryEnabled, setPickupEnabled, setWaiterEnabled]);
+  }, [activeTab, routes.delivery, routes.pickup, routes.waiter, deliveryEnabled, pickupEnabled, waiterEnabled, setDeliveryEnabled, setPickupEnabled, setWaiterEnabled]);
 
   const queueSave = (register = false, fail = false) => {
     if (register) registerChange("order-settings");
@@ -493,7 +492,7 @@ export function DeliveryWorkspace({
       setToast({
         message: success && route
           ? `Тест отправлен в ${CHANNEL_LABELS[route.type]} · ${formatAuthPhone(route.contact)}`
-          : "Не удалось отправить сообщение в этот канал.",
+          : "Не удалось отправить сообщение в этот чат.",
         tone: success ? "success" : "error",
       });
     }, 650);
@@ -523,7 +522,7 @@ export function DeliveryWorkspace({
     setRequiresSetupEvents((current) => current.filter((candidate) => candidate !== event));
     setTestState(event, "idle");
     queueSave(true);
-    setToast({ message: `Канал убран из ${eventGenitive(event)}`, tone: "success" });
+    setToast({ message: `Чат убран из ${eventGenitive(event)}`, tone: "success" });
   };
 
   const handleAssignmentsRemoved = (events: OrderEvent[]) => {
@@ -593,14 +592,14 @@ export function DeliveryWorkspace({
   return (
     <PageScroll>
       <PageContent className="space-y-0 pt-4">
-        <CompactContent className="space-y-4">
+        <CompactContent className={cn("space-y-4", activeTab === "methods" && "max-w-[741px]")}>
         <div
           data-secondary-navigation-scope="order-settings-content"
           className="min-w-0"
         >
           <OrderSettingsTabs value={activeTab} onChange={onTabChange} />
         </div>
-        <div className="flex min-h-8 items-center justify-end gap-2">
+        {activeTab !== "methods" && <div className="flex min-h-8 items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -612,11 +611,13 @@ export function DeliveryWorkspace({
               className="h-8 rounded-[10px] px-3 text-[13px]"
             >
               <Bell size={14} aria-hidden="true" />
-              Каналы уведомлений
+              Чаты уведомлений
             </Button>
             <OrderSettingsSaveIndicator state={saveState} />
-        </div>
-        {!loading && (activeTab === "payment" ? (
+        </div>}
+        {activeTab === "methods" ? (
+          <OrderMethodsWorkspace onChange={() => queueSave(true)} />
+        ) : !loading && (activeTab === "payment" ? (
           <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -643,13 +644,13 @@ export function DeliveryWorkspace({
             }}
           />
         ))}
-        {loading ? (
+        {activeTab !== "methods" && (loading ? (
           <WorkspaceLoading />
         ) : (
           <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             {activeTab === "delivery" && (
               <>
-                <SettingsSection title="Канал для заказов" description="Канал, куда будут приходить новые заказы.">
+                <SettingsSection title="Чат для заказов" description="Чат, куда будут приходить новые заказы.">
                   <ChannelSection
                     event="delivery"
                     route={routes.delivery}
@@ -685,7 +686,7 @@ export function DeliveryWorkspace({
 
             {activeTab === "pickup" && (
               <>
-                <SettingsSection title="Канал для заказов" description="Канал, куда будут приходить новые заказы.">
+                <SettingsSection title="Чат для заказов" description="Чат, куда будут приходить новые заказы.">
                   <ChannelSection event="pickup" route={routes.pickup} testState={testStates.pickup} testLabel="Отправить тест" onSelect={(anchor) => setPickerRequest({ event: "pickup", anchor, enableAfterSelect: false })} onRequestDetach={() => setDetachRequest("pickup")} availableChannelCount={channels.length} getAssignments={getChannelAssignments} onCreate={() => openChannelManager({ type: "create", sourceEvent: "pickup", returnToList: false })} onTest={() => sendTest("pickup")} />
                 </SettingsSection>
                 {routes.pickup && (
@@ -756,12 +757,12 @@ export function DeliveryWorkspace({
             )}
 
             {activeTab === "waiter" && (
-              <SettingsSection title="Канал для вызовов" description="Канал для уведомлений сотрудников зала.">
+              <SettingsSection title="Чат для вызовов" description="Чат для уведомлений сотрудников зала.">
                 <ChannelSection event="waiter" route={routes.waiter} testState={testStates.waiter} testLabel="Отправить тестовый вызов" onSelect={(anchor) => setPickerRequest({ event: "waiter", anchor, enableAfterSelect: false })} onRequestDetach={() => setDetachRequest("waiter")} availableChannelCount={channels.length} getAssignments={getChannelAssignments} onCreate={() => openChannelManager({ type: "create", sourceEvent: "waiter", returnToList: false })} onTest={() => sendTest("waiter")} />
               </SettingsSection>
             )}
           </div>
-        )}
+        ))}
         </CompactContent>
       </PageContent>
 
@@ -786,7 +787,7 @@ export function DeliveryWorkspace({
             setTestState(selectedEvent, "idle");
             queueSave(true);
             setPickerRequest(null);
-            setToast({ message: `Канал для ${eventGenitive(selectedEvent)} изменён`, tone: "success" });
+            setToast({ message: `Чат для ${eventGenitive(selectedEvent)} изменён`, tone: "success" });
           }}
         />
       )}

@@ -604,7 +604,7 @@ function AuthenticatedShell() {
   const [storeTab, setStoreTab] = useState<StoreTabId>(initialStorefrontRoute.storeTab);
   const [storeAboutTab, setStoreAboutTab] = useState<AboutTab>(initialStorefrontRoute.aboutTab);
   const [manageTab, setManageTab] = useState<ManageTabId>("order-settings");
-  const [orderSettingsTab, setOrderSettingsTab] = useState<OrderSettingsTab>("delivery");
+  const [orderSettingsTab, setOrderSettingsTab] = useState<OrderSettingsTab>("methods");
   const [orderSettingsSaveState, setOrderSettingsSaveState] = useState<OrderSettingsSaveState>("saved");
   const [orderChannelsOpen, setOrderChannelsOpen] = useState(false);
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTabId>("scans");

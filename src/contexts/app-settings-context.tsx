@@ -59,7 +59,7 @@ const EMPTY_ORDER_SETTINGS: StoredOrderSettings = {
   serviceFeeRequireConsent: false,
   deliveryEnabled: false,
   pickupEnabled: false,
-  waiterEnabled: false,
+  waiterEnabled: true,
   deliveryComment: "",
   pickupComment: "",
   pickupAddress: "",
