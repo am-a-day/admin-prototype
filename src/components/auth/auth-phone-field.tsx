@@ -97,11 +97,13 @@ export function AuthPhoneField({
   id,
   initialValue = "",
   disabled = false,
+  variant = "auth",
   onValueChange,
 }: {
   id: string;
   initialValue?: string;
   disabled?: boolean;
+  variant?: "auth" | "compact";
   onValueChange: (value: string, valid: boolean) => void;
 }) {
   const { validateAuthContact } = useMockAuth();
@@ -129,6 +131,7 @@ export function AuthPhoneField({
     const query = countrySearch.trim().toLocaleLowerCase("ru");
     return query ? COUNTRIES.filter((item) => `${item.name} ${item.code} ${item.dialCode}`.toLocaleLowerCase("ru").includes(query)) : COUNTRIES;
   }, [countrySearch]);
+  const compact = variant === "compact";
 
   useEffect(() => {
     onValueChangeRef.current = onValueChange;
@@ -195,7 +198,8 @@ export function AuthPhoneField({
       <div
         ref={countryPopoverRef}
         className={cn(
-          "relative flex h-[52px] items-center rounded-[12px] border bg-[#f5f5f4] px-[6px] transition",
+          "relative flex items-center border bg-[#f5f5f4] transition",
+          compact ? "h-7 rounded-[8px] px-0.5" : "h-[52px] rounded-[12px] px-[6px]",
           touched && !valid
             ? "border-rose-500 ring-2 ring-rose-500/15"
             : "border-[#d6d3d1] focus-within:border-[#4f39f6] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#4f39f6]/15",
@@ -208,13 +212,16 @@ export function AuthPhoneField({
           aria-expanded={countryOpen}
           disabled={disabled}
           onClick={() => { setCountryOpen((open) => !open); setCountrySearch(""); }}
-          className="flex h-10 w-[58px] shrink-0 items-center justify-center gap-1 rounded-[7px] bg-[#e7e5e4] transition hover:bg-[#ddd9d7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-[7px] bg-[#e7e5e4] transition hover:bg-[#ddd9d7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]",
+            compact ? "size-[22px] rounded-[5.739px] border border-[#e7e5e4] bg-white" : "h-10 w-[58px] gap-1",
+          )}
         >
-          {internationalDraft === null ? <img src={country.flag} alt="" className="size-7 rounded-full object-cover" /> : <Globe2 size={22} className="text-[#79716b]" aria-hidden="true" />}
-          <ChevronDown size={13} className="text-[#79716b]" aria-hidden="true" />
+          {internationalDraft === null ? <img src={country.flag} alt="" className={cn("rounded-full object-cover", compact ? "size-[14px]" : "size-7")} /> : <Globe2 size={compact ? 14 : 22} className="text-[#79716b]" aria-hidden="true" />}
+          {!compact && <ChevronDown size={13} className="text-[#79716b]" aria-hidden="true" />}
         </button>
-        <div className="relative ml-[7px] h-10 min-w-0 flex-1">
-          <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-1.5 text-[16px] font-semibold leading-6" aria-hidden="true">
+        <div className={cn("relative min-w-0 flex-1", compact ? "ml-1 h-[22px]" : "ml-[7px] h-10")}>
+          <div className={cn("pointer-events-none absolute inset-0 flex items-center overflow-hidden px-1.5", compact ? "text-[13px] font-normal leading-4" : "text-[16px] font-semibold leading-6")} aria-hidden="true">
             <span className="text-[#292524]">{phoneVisual.filled}</span>
             <span className="text-[#a6a09b]">{phoneVisual.remaining}</span>
           </div>
@@ -229,7 +236,7 @@ export function AuthPhoneField({
             onChange={(event) => handleInput(event.target.value)}
             onPaste={handlePaste}
             onBlur={() => setTouched(Boolean(normalizedPhone.replace(/\D/g, "")))}
-            className={cn("h-10 min-w-0 border-0 bg-transparent px-1.5 text-[16px] font-semibold text-transparent shadow-none caret-[#4f39f6] focus-visible:ring-0", editablePhone && "pr-10")}
+            className={cn(compact ? "h-[22px] min-w-0 border-0 bg-transparent px-1.5 text-[13px] font-normal text-transparent shadow-none caret-[#4f39f6] focus-visible:ring-0" : "h-10 min-w-0 border-0 bg-transparent px-1.5 text-[16px] font-semibold text-transparent shadow-none caret-[#4f39f6] focus-visible:ring-0", editablePhone && (compact ? "pr-6" : "pr-10"))}
             aria-invalid={touched && !valid}
             aria-describedby={touched && !valid ? `${id}-error` : undefined}
           />
@@ -239,15 +246,15 @@ export function AuthPhoneField({
               aria-label="Очистить номер"
               disabled={disabled}
               onClick={() => { setInternationalDraft(""); setNationalNumber(""); setTouched(false); window.requestAnimationFrame(() => phoneInputRef.current?.focus()); }}
-              className="absolute right-0 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#e7e5e4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]"
+              className={cn("absolute right-0 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-[8px] text-[#79716b] transition hover:bg-[#e7e5e4] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]", compact ? "size-5" : "size-9")}
             >
-              <X size={18} aria-hidden="true" />
+              <X size={compact ? 13 : 18} aria-hidden="true" />
             </button>
           )}
         </div>
 
         {countryOpen && (
-          <div role="listbox" aria-label="Страна" className="absolute left-0 right-0 top-[58px] z-30 overflow-hidden rounded-[12px] border border-[#d6d3d1] bg-white p-2 shadow-lg">
+          <div role="listbox" aria-label="Страна" className={cn("absolute left-0 right-0 z-30 overflow-hidden rounded-[12px] border border-[#d6d3d1] bg-white p-2 shadow-lg", compact ? "top-[34px]" : "top-[58px]")}>
             <div className="flex h-10 items-center gap-2 rounded-[8px] bg-[#f5f5f4] px-3 focus-within:ring-2 focus-within:ring-[#4f39f6]/20">
               <Search size={16} className="shrink-0 text-[#79716b]" aria-hidden="true" />
               <input autoFocus value={countrySearch} onChange={(event) => setCountrySearch(event.target.value)} placeholder="Страна или код" aria-label="Страна или код" className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#a6a09b]" />
@@ -264,7 +271,7 @@ export function AuthPhoneField({
           </div>
         )}
       </div>
-      {touched && !valid && <p id={`${id}-error`} role="alert" className="mt-2 text-[13px] leading-5 text-rose-600">Введите полный номер телефона</p>}
+      {touched && !valid && <p id={`${id}-error`} role="alert" className={cn("text-rose-600", compact ? "mt-1 text-[11px] leading-4" : "mt-2 text-[13px] leading-5")}>Введите полный номер телефона</p>}
     </div>
   );
 }

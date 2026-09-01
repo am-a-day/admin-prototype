@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   BellSimpleSlash,
   CaretDown,
   Check,
   Copy,
+  DownloadSimple,
   DotsThreeVertical,
   LinkSimple,
   NotePencil,
   Plus,
+  Printer,
   QrCode,
   SpinnerGap,
   TelegramLogo,
@@ -17,6 +19,9 @@ import {
   WhatsappLogo,
   X,
 } from "@phosphor-icons/react";
+import QRCode from "react-qr-code";
+import { AuthPhoneField } from "@/components/auth/auth-phone-field";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +32,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { TranslatableField } from "@/components/workspace/translatable-field";
+import { Tooltip } from "@/components/ui/tooltip";
+import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   CHANNEL_LABELS,
@@ -60,6 +66,7 @@ const ORDER_EVENTS: Record<OrderMethod, OrderEvent> = {
 };
 
 const CREATION_DELAY = 10_000;
+const SHARE_LINK = "https://tsqr.sweet-affair.me/delivery";
 
 type ChatChoice = "disabled" | "waiter-default" | string;
 type ChatDraft = { type: ChannelType; contact: string; name: string };
@@ -68,12 +75,6 @@ type CreationError = CreationState & { message: string };
 
 function chatName(workspaceName: string | undefined, method: OrderMethod) {
   return `${workspaceName?.trim() || "Sweet-affair"} · ${METHOD_LABELS[method]}`;
-}
-
-function eventIsEnabled(method: OrderMethod, values: { waiterEnabled: boolean; deliveryEnabled: boolean; pickupEnabled: boolean }) {
-  if (method === "dineIn") return values.waiterEnabled;
-  if (method === "delivery") return values.deliveryEnabled;
-  return values.pickupEnabled;
 }
 
 function ChatIcon({ type, muted = false }: { type?: ChannelType; muted?: boolean }) {
@@ -267,7 +268,7 @@ function ChatSelect({
   method,
   route,
   enabled,
-  creating,
+  creatingType,
   onChoice,
   onCreate,
   onRename,
@@ -276,7 +277,7 @@ function ChatSelect({
   method: OrderMethod;
   route: OrderChannel | null;
   enabled: boolean;
-  creating: boolean;
+  creatingType?: ChannelType;
   onChoice: (choice: ChatChoice) => void;
   onCreate: () => void;
   onRename: (channel: OrderChannel, name: string) => void;
@@ -284,15 +285,16 @@ function ChatSelect({
 }) {
   const [open, setOpen] = useState(false);
   const defaultSelected = method === "dineIn" && enabled && !route;
+  const creating = Boolean(creatingType);
   const label = creating ? "Создаём чат…" : defaultSelected ? "Показать официанту" : enabled && route ? route.name : "Выключено";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" disabled={creating} aria-label={`${METHOD_LABELS[method]}: ${label}`} className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-[8px] border border-[#e7e5e4] bg-white pl-0.5 pr-2 text-left text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition hover:border-[#c7c2bd] focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20 disabled:cursor-wait disabled:opacity-70">
-          {creating ? <SpinnerGap size={16} className="ml-1 animate-spin text-[#79716b]" /> : defaultSelected ? <ChatIcon muted /> : route ? <ChatIcon type={route.type} /> : <ChatIcon muted />}
+          {creating ? <ChatIcon type={creatingType} /> : defaultSelected ? <ChatIcon muted /> : route ? <ChatIcon type={route.type} /> : <ChatIcon muted />}
           <span className="min-w-0 flex-1 truncate">{label}</span>
-          {!creating && <CaretDown size={12} className="shrink-0 text-[#79716b]" />}
+          {creating ? <SpinnerGap size={15} className="shrink-0 animate-spin text-[#79716b]" /> : <CaretDown size={12} className="shrink-0 text-[#79716b]" />}
         </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" sideOffset={6} className="z-[100025] w-auto p-0">
@@ -321,76 +323,117 @@ function MethodRow({
   onRename,
   onDelete,
   onRetry,
+  children,
 }: {
   method: OrderMethod;
   route: OrderChannel | null;
   enabled: boolean;
-  creating: boolean;
+  creating?: CreationState | null;
   error?: CreationError;
   onChoice: (choice: ChatChoice) => void;
   onCreate: () => void;
   onRename: (channel: OrderChannel, name: string) => void;
   onDelete: (channel: OrderChannel) => void;
   onRetry: () => void;
+  children?: ReactNode;
 }) {
   const description = enabled && method !== "dineIn"
     ? method === "delivery" ? "Получайте заказы на доставку из онлайн-меню" : "Получайте заказы на самовывоз из онлайн-меню"
     : METHOD_DESCRIPTIONS[method];
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_205px] items-center gap-4 border-b border-[#e7e5e4] py-6">
-      <div className="min-w-0">
-        <h2 className="text-[14px] font-medium leading-[1.4] text-[#292524]">{METHOD_LABELS[method]}</h2>
-        <p className="mt-0.5 text-[13px] leading-[1.4] text-[#666]">{description}</p>
+    <section className={cn("py-6", method !== "pickup" && "border-b border-[#e7e5e4]")}>
+      <div className="grid grid-cols-[minmax(0,1fr)_205px] items-center gap-4">
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-medium leading-5 text-[#292524]">{METHOD_LABELS[method]}</h2>
+          <p className="mt-0.5 text-[13px] leading-4 text-[#666]">{description}</p>
+        </div>
+        <div className="min-w-0">
+          <ChatSelect method={method} route={route} enabled={enabled} creatingType={creating?.draft.type} onChoice={onChoice} onCreate={onCreate} onRename={onRename} onDelete={onDelete} />
+          {error && (
+            <p role="alert" className="mt-1 flex items-start gap-1 text-[11px] leading-4 text-[#c10007]">
+              <WarningCircle size={13} className="mt-0.5 shrink-0" />
+              <span>Не удалось создать чат. <button type="button" onClick={onRetry} className="font-medium underline underline-offset-2">Повторить</button></span>
+            </p>
+          )}
+        </div>
       </div>
-      <div className="min-w-0">
-        <ChatSelect method={method} route={route} enabled={enabled} creating={creating} onChoice={onChoice} onCreate={onCreate} onRename={onRename} onDelete={onDelete} />
-        {error && (
-          <p role="alert" className="mt-1 flex items-start gap-1 text-[11px] leading-4 text-[#c10007]">
-            <WarningCircle size={13} className="mt-0.5 shrink-0" />
-            <span>Не удалось создать чат. <button type="button" onClick={onRetry} className="font-medium underline underline-offset-2">Повторить</button></span>
-          </p>
-        )}
-      </div>
-    </div>
+      {enabled && method !== "dineIn" && children && <div className="mt-5">{children}</div>}
+    </section>
   );
 }
 
-function ShareLinkSection({ onCopy }: { onCopy: () => void }) {
+function ShareLinkSection({ onCopy, onToast }: { onCopy: () => void; onToast: (message: string) => void }) {
+  const qrContainerRef = useRef<HTMLDivElement>(null);
+
+  const getQrMarkup = () => qrContainerRef.current?.querySelector("svg")?.outerHTML ?? "";
+
+  const downloadQr = () => {
+    const markup = getQrMarkup();
+    if (!markup) return;
+    const blob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "tasko-delivery-qr.svg";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    onToast("QR-код скачан");
+  };
+
+  const printQr = () => {
+    const markup = getQrMarkup();
+    if (!markup) return;
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=420,height=520");
+    if (!printWindow) {
+      onToast("Разрешите всплывающие окна, чтобы распечатать QR-код");
+      return;
+    }
+    printWindow.document.write(`<html><head><title>QR-код Tasko</title><style>body{font-family:Inter,Arial,sans-serif;margin:48px;text-align:center;color:#292524}svg{width:240px;height:240px}p{font-size:14px;overflow-wrap:anywhere}</style></head><body><h1>Заказы онлайн</h1>${markup}<p>${SHARE_LINK}</p></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 120);
+  };
+
   return (
     <section className="border-b border-[#e7e5e4] py-6">
-      <h2 className="text-[14px] font-medium leading-[1.4] text-[#292524]">Ссылка на доставку и самовывоз</h2>
-      <p className="mt-0.5 text-[13px] leading-[1.4] text-[#666]">По этой ссылке гости смогут оформить доставку или самовывоз.</p>
-      <div className="mt-3 flex h-9 min-w-0 items-center gap-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-[#e5e5e5] bg-white px-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-          <LinkSimple size={14} className="shrink-0 text-[#79716b]" />
-          <span className="truncate text-[13px] text-[#79716b]">https://tsqr.sweet-affair.me/delivery</span>
+      <h2 className="text-[14px] font-medium leading-5 text-[#292524]">Ссылка на доставку и самовывоз</h2>
+      <p className="mt-0.5 text-[13px] leading-4 text-[#666]">По этой ссылке гости смогут оформить доставку или самовывоз.</p>
+      <div className="mt-3 flex h-7 min-w-0 items-center gap-2">
+        <div className="flex h-7 min-w-0 flex-1 items-center overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <LinkSimple size={14} className="ml-2 shrink-0 text-[#79716b]" />
+          <span className="min-w-0 flex-1 truncate px-2 text-[13px] text-[#79716b]">{SHARE_LINK}</span>
+          <button type="button" onClick={onCopy} className="flex h-full shrink-0 items-center gap-1.5 border-l border-[#e5e5e5] px-3 text-[13px] text-[#57534d] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4f39f6]/20" aria-label="Скопировать ссылку"><Copy size={16} /> Скопировать</button>
         </div>
-        <button type="button" onClick={onCopy} className="flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 text-[12px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafaf9]" aria-label="Скопировать ссылку"><Copy size={14} /> <span className="hidden sm:inline">Скопировать</span></button>
-        <button type="button" className="flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e5e5e5] bg-white px-2.5 text-[12px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafaf9]"><QrCode size={14} /> <span className="hidden sm:inline">QR-код</span><CaretDown size={11} /></button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button type="button" className="flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#57534d] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:bg-[#fafaf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"><QrCode size={16} /> QR-код<CaretDown size={12} /></button>
+          </PopoverTrigger>
+          <PopoverContent align="end" sideOffset={6} className="z-[100025] w-[194px] p-1">
+            <button type="button" onClick={downloadQr} className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#292524] transition hover:bg-[#f5f5f4]"><DownloadSimple size={16} />Скачать QR-код</button>
+            <button type="button" onClick={printQr} className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] text-[#292524] transition hover:bg-[#f5f5f4]"><Printer size={16} />Печать QR-кода</button>
+          </PopoverContent>
+        </Popover>
       </div>
+      <div ref={qrContainerRef} className="sr-only"><QRCode value={SHARE_LINK} size={240} /></div>
     </section>
   );
 }
 
 function IntroBanner() {
+  const [visible, setVisible] = useState(true);
+  if (!visible) return null;
   return (
-    <section className="relative min-h-[127px] overflow-hidden rounded-[20px] bg-[#f5f5f4] px-3 py-3">
-      <div className="relative z-10 max-w-[470px] pl-1">
-        <h1 className="text-[14px] font-semibold leading-[1.4] text-[#333]">Получайте заказы прямо из онлайн-меню</h1>
-        <p className="mt-1 max-w-[430px] text-[13px] leading-[1.3] text-[#79716b]">Подключите чаты и получайте заказы из зала, на доставку и самовывоз. Все заказы сохранятся в Tasko и попадут в аналитику.</p>
+    <section className="relative h-[127px] overflow-hidden rounded-[20px] border border-[#f5f5f4] bg-[#f5f5f4]">
+      <div className="relative z-10 max-w-[470px] pl-[14px] pr-3 pt-[29px]">
+        <h1 className="text-[14px] font-semibold leading-5 text-[#333]">Получайте заказы прямо из онлайн-меню</h1>
+        <p className="mt-1 max-w-[466px] text-[13px] leading-[17px] text-[#79716b]">Подключите чат и получайте заказы из зала, на доставку и самовывоз. Все заказы сохранятся в Tasko и попадут в аналитику.</p>
       </div>
-      <div className="absolute right-0 top-2 hidden h-[111px] w-[248px] overflow-hidden rounded-[12px] bg-[#7c86ff] sm:block">
-        <img src="/order-settings-banner.png" alt="" className="absolute inset-0 size-full object-cover" />
-        <div className="absolute inset-x-2 top-9 flex gap-1">
-          {[["Средний чек", "14 700 ₸"], ["Выручка", "11 994 700 ₸"]].map(([label, value]) => (
-            <div key={label} className="flex-1 rounded-[9px] border border-[#e7e5e4] bg-white p-2 shadow-sm">
-              <div className="text-[7px] text-[#79716b]">{label}</div>
-              <div className="mt-1 text-[12px] font-medium text-black">{value}</div>
-              <div className="mt-1 text-[6px] text-emerald-500">↑ с прошлого периода</div>
-            </div>
-          ))}
-        </div>
+      <div className="absolute right-2 top-2 hidden h-[111px] w-[248px] overflow-hidden rounded-[12px] sm:block">
+        <img src="/orders-settings-disclaimer.webp" alt="" className="size-full object-cover" />
+        <button type="button" onClick={() => setVisible(false)} aria-label="Скрыть подсказку" className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-[8px] bg-black/10 text-white transition hover:bg-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><X size={14} /></button>
       </div>
     </section>
   );
@@ -413,7 +456,6 @@ function AddChatDialog({
   const [type, setType] = useState<ChannelType>("whatsapp");
   const [phone, setPhone] = useState("");
   const [phoneValid, setPhoneValid] = useState(false);
-  const [phoneTouched, setPhoneTouched] = useState(false);
   const [name, setName] = useState("");
 
   useEffect(() => {
@@ -421,16 +463,12 @@ function AddChatDialog({
     setType("whatsapp");
     setPhone("");
     setPhoneValid(false);
-    setPhoneTouched(false);
     setName(chatName(workspaceName, activeMethod));
   }, [activeMethod, open, workspaceName]);
 
   const previewName = name.trim() || chatName(workspaceName, activeMethod);
   const submit = () => {
-    if (!phoneValid || !name.trim()) {
-      setPhoneTouched(true);
-      return;
-    }
+    if (!phoneValid || !name.trim()) return;
     onSubmit({ type, contact: phone, name: name.trim() });
   };
 
@@ -440,35 +478,22 @@ function AddChatDialog({
         <DialogHeader className="border-b border-[#e7e5e4] px-4 pb-3 pt-4">
           <DialogTitle className="text-[14px] tracking-[-0.35px]">Добавить чат</DialogTitle>
           <DialogDescription className="sr-only">Подключите WhatsApp или Telegram для заказов.</DialogDescription>
-          <div role="tablist" aria-label="Мессенджер" className="mt-3 inline-flex items-center gap-1 rounded-[8px] bg-transparent">
+          <div role="tablist" aria-label="Мессенджер" className="mt-3 inline-flex items-center gap-1">
             {(["whatsapp", "telegram"] as ChannelType[]).map((channelType) => (
-              <button key={channelType} type="button" role="tab" aria-selected={type === channelType} onClick={() => setType(channelType)} className={cn("rounded-[8px] px-2 py-1 text-[12px] transition", type === channelType ? "bg-[#f1f1f0] text-[#292524]" : "text-[#79716b] hover:bg-[#f5f5f4]")}>
+              <button key={channelType} type="button" role="tab" aria-selected={type === channelType} onClick={() => setType(channelType)} className={cn("rounded-[8px] px-2 py-[5px] text-[12px] leading-4 transition", type === channelType ? "bg-[#f1f1f0] text-[#292524]" : "text-[#57534e] shadow-[0_0.841px_0.841px_rgba(0,0,0,0.05)] hover:bg-[#f5f5f4]")}>
                 {CHANNEL_LABELS[channelType]}
               </button>
             ))}
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 px-4 py-3">
-          <label className="block">
-            <span className="mb-1.5 block text-[13px] text-[#333]">Номер телефона</span>
-            <Input
-              type="tel"
-              inputMode="tel"
-              value={phone}
-              placeholder="+7 (000) 000-00-00"
-              onChange={(event) => {
-                const nextPhone = event.target.value;
-                setPhone(nextPhone);
-                const digits = nextPhone.replace(/\D/g, "");
-                setPhoneValid(digits.length >= 10 && digits.length <= 15);
-              }}
-              onBlur={() => setPhoneTouched(true)}
-              aria-invalid={phoneTouched && !phoneValid}
-              className={cn("h-7 rounded-[8px] px-2 text-[13px] shadow-none", phoneTouched && !phoneValid && "border-rose-500 focus-visible:ring-rose-500/20")}
-            />
-            {phoneTouched && !phoneValid && <span role="alert" className="mt-1.5 block text-[11px] leading-4 text-rose-600">Введите полный номер телефона</span>}
-          </label>
+        <div className="space-y-3 px-4 py-3">
+          <div>
+            <Tooltip label="Используем этот номер, чтобы добавить вас в созданный чат." side="top" contentClassName="max-w-[220px] whitespace-normal px-2.5 py-2 text-[11px] leading-4">
+              <span tabIndex={0} className="mb-1.5 inline-block cursor-help border-b border-dashed border-[#78716c] text-[13px] leading-5 text-[#333]">Номер телефона</span>
+            </Tooltip>
+            <AuthPhoneField key={`${activeMethod}-${open}`} id="add-chat-phone" initialValue="" variant="compact" onValueChange={(value, valid) => { setPhone(value); setPhoneValid(valid); }} />
+          </div>
 
           <label className="block">
             <span className="mb-1.5 block text-[13px] text-[#333]">Название чата</span>
@@ -476,20 +501,25 @@ function AddChatDialog({
           </label>
 
           <div>
-            <div className="mb-1.5 text-[12px] text-[#999]">Пример сообщения</div>
-            <div className="flex items-center gap-1.5 rounded-[12px] bg-[#f5f5f4] px-2 py-2">
-              <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-[#d6d3d1] text-[#57534d]"><ChatIcon type={type} /></span>
-              <div className="min-w-0 text-[12px] leading-[14px] text-[#3f3f3f]">
-                <div className="flex items-center justify-between gap-2"><strong className="truncate font-semibold text-[#222]">{previewName}</strong><span className="shrink-0 text-[9px] opacity-50">сейчас</span></div>
-                <div>Стол 9 · 2 450 ₸</div>
+            <div className="mb-1.5 text-[12px] leading-5 text-[#999]">Пример сообщения</div>
+            <div className="flex h-[45px] items-center gap-1.5 overflow-hidden rounded-[13px] bg-[#f5f5f4] px-[7px] py-[7px]">
+              <span className="relative size-[30px] shrink-0 overflow-visible rounded-full bg-[#7c86ff]">
+                <img src="/order-settings-banner.png" alt="" className="size-full rounded-full object-cover" />
+                <span className={cn("absolute -bottom-0.5 -right-0.5 flex size-[13px] items-center justify-center rounded-[4px]", type === "telegram" ? "bg-sky-500 text-white" : "bg-[#00b900] text-white")}>
+                  {type === "telegram" ? <TelegramLogo size={10} weight="fill" /> : <WhatsappLogo size={10} weight="fill" />}
+                </span>
+              </span>
+              <div className="min-w-0 flex-1 text-[11px] leading-[14px] text-[#3f3f3f]">
+                <div className="flex items-center justify-between gap-2"><strong className="truncate text-[12px] font-semibold text-[#222]">{previewName}</strong><span className="shrink-0 text-[9px] text-[#78716c]">сейчас</span></div>
+                <div className="mt-0.5 text-[10px] text-[#57534e]">Стол 9 · 2 450 ₸</div>
               </div>
             </div>
           </div>
         </div>
 
         <DialogFooter className="border-t border-[#e7e5e4] p-2">
-          <button type="button" onClick={onClose} className="h-7 flex-1 rounded-[8px] border border-[#e4e4e7] bg-white text-[13px] text-[#18181b] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">Отмена</button>
-          <button type="button" disabled={!phoneValid || !name.trim()} onClick={submit} className="h-7 flex-1 rounded-[8px] bg-[#4f39f6] text-[13px] font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] disabled:cursor-not-allowed disabled:bg-[#d6d3d1]">Создать чат</button>
+          <Button type="button" variant="outline" size="sm" onClick={onClose} className="h-7 flex-1 rounded-[8px] text-[13px]">Отмена</Button>
+          <Button type="button" size="sm" disabled={!phoneValid || !name.trim()} onClick={submit} className="h-7 flex-1 rounded-[8px] bg-[#4f39f6] text-[13px] text-white hover:bg-[#4030d4] disabled:bg-[#d6d3d1]">Добавить чат</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -561,8 +591,6 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
     const timer = window.setTimeout(() => setToast(null), 2200);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  const settings = useMemo(() => ({ waiterEnabled, deliveryEnabled, pickupEnabled }), [deliveryEnabled, pickupEnabled, waiterEnabled]);
 
   const setEnabled = (method: OrderMethod, enabled: boolean) => {
     if (method === "dineIn") setWaiterEnabled(enabled);
@@ -637,56 +665,75 @@ export function OrderMethodsWorkspace({ onChange }: { onChange: () => void }) {
     setToast("Название чата обновлено");
   };
 
-  const methods: OrderMethod[] = ["dineIn", "delivery", "pickup"];
   const hasDeliveryOrPickup = deliveryEnabled || pickupEnabled;
 
   return (
     <div className="mx-auto w-full max-w-[741px] space-y-4">
       <IntroBanner />
-      <div className="px-1">
-        {methods.map((method) => {
-          const event = ORDER_EVENTS[method];
-          const enabled = eventIsEnabled(method, settings);
-          const route = routes[event];
-          const isCreating = creation?.event === method;
-          const error = creationError?.event === method ? creationError : undefined;
-          return (
-            <MethodRow
-              key={method}
-              method={method}
-              route={route}
-              enabled={enabled}
-              creating={isCreating}
-              error={error}
-              onChoice={(choice) => handleChoice(method, choice)}
-              onCreate={() => setCreateMethod(method)}
-              onRename={handleRename}
-              onDelete={setDeleteTarget}
-              onRetry={() => error && startCreation(method, error.draft)}
+      <div className="px-[6px]">
+        <MethodRow
+          method="dineIn"
+          route={routes.waiter}
+          enabled={waiterEnabled}
+          creating={creation?.event === "dineIn" ? creation : null}
+          error={creationError?.event === "dineIn" ? creationError : undefined}
+          onChoice={(choice) => handleChoice("dineIn", choice)}
+          onCreate={() => setCreateMethod("dineIn")}
+          onRename={handleRename}
+          onDelete={setDeleteTarget}
+          onRetry={() => creationError?.event === "dineIn" && startCreation("dineIn", creationError.draft)}
+        />
+
+        {hasDeliveryOrPickup && <ShareLinkSection onCopy={() => { void navigator.clipboard?.writeText(SHARE_LINK); setToast("Ссылка скопирована"); }} onToast={setToast} />}
+
+        <MethodRow
+          method="delivery"
+          route={routes.delivery}
+          enabled={deliveryEnabled}
+          creating={creation?.event === "delivery" ? creation : null}
+          error={creationError?.event === "delivery" ? creationError : undefined}
+          onChoice={(choice) => handleChoice("delivery", choice)}
+          onCreate={() => setCreateMethod("delivery")}
+          onRename={handleRename}
+          onDelete={setDeleteTarget}
+          onRetry={() => creationError?.event === "delivery" && startCreation("delivery", creationError.draft)}
+        >
+          <DescriptionRichTextEditor
+            label="Информация о доставке"
+            value={deliveryComment}
+            placeholder="Например: минимальная сумма заказа — 5 000 ₸. Доставка занимает 45–60 минут."
+            limit={300}
+            compact
+            className="[&>div]:h-[120px] [&>div>div:first-child]:h-[38px] [&>div>div:last-child]:h-[80px] [&>div>div:last-child]:min-h-0"
+            onChange={(value) => { setDeliveryComment(value); onChange(); }}
+          />
+        </MethodRow>
+
+        <MethodRow
+          method="pickup"
+          route={routes.pickup}
+          enabled={pickupEnabled}
+          creating={creation?.event === "pickup" ? creation : null}
+          error={creationError?.event === "pickup" ? creationError : undefined}
+          onChoice={(choice) => handleChoice("pickup", choice)}
+          onCreate={() => setCreateMethod("pickup")}
+          onRename={handleRename}
+          onDelete={setDeleteTarget}
+          onRetry={() => creationError?.event === "pickup" && startCreation("pickup", creationError.draft)}
+        >
+          <div className="space-y-5">
+            <label className="block"><span className="mb-1.5 block text-[13px] leading-5 text-[#333]">Откуда забирать</span><Input value={pickupAddress} onChange={(event) => { setPickupAddress(event.target.value); onChange(); }} placeholder="Астана, Абылай-хана 34, д 18" className="h-7 rounded-[8px] px-2 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]" /></label>
+            <DescriptionRichTextEditor
+              label="Информация о самовывозе"
+              value={pickupComment}
+              placeholder="Например: заказ будет готов через 20–30 минут. Назовите номер заказа сотруднику."
+              limit={300}
+              compact
+              className="[&>div]:h-[120px] [&>div>div:first-child]:h-[38px] [&>div>div:last-child]:h-[80px] [&>div>div:last-child]:min-h-0"
+              onChange={(value) => { setPickupComment(value); onChange(); }}
             />
-          );
-        })}
-
-        {hasDeliveryOrPickup && <ShareLinkSection onCopy={() => { void navigator.clipboard?.writeText("https://tsqr.sweet-affair.me/delivery"); setToast("Ссылка скопирована"); }} />}
-
-        {deliveryEnabled && (
-          <section className="border-b border-[#e7e5e4] py-6">
-            <h2 className="text-[14px] font-medium leading-[1.4] text-[#292524]">Доставка</h2>
-            <p className="mt-0.5 text-[13px] leading-[1.4] text-[#666]">Получайте заказы на доставку из онлайн-меню</p>
-            <div className="mt-5"><TranslatableField label="Информация о доставке" initialTranslations={{ ru: deliveryComment }} multiline rows={3} plain persist={false} placeholder="Например: минимальная сумма заказа — 5 000 ₸. Доставка занимает 45–60 минут." onValueChange={(value) => { setDeliveryComment(value); onChange(); }} /></div>
-          </section>
-        )}
-
-        {pickupEnabled && (
-          <section className="py-6">
-            <h2 className="text-[14px] font-medium leading-[1.4] text-[#292524]">Самовывоз</h2>
-            <p className="mt-0.5 text-[13px] leading-[1.4] text-[#666]">Получайте заказы на самовывоз из онлайн-меню</p>
-            <div className="mt-5 space-y-5">
-              <label className="block"><span className="mb-1.5 block text-[13px] text-[#333]">Откуда забирать</span><Input value={pickupAddress} onChange={(event) => { setPickupAddress(event.target.value); onChange(); }} placeholder="Астана, Абылай-хана 34, д 18" className="h-9 rounded-[8px] px-3 text-[13px] shadow-none" /></label>
-              <TranslatableField label="Информация о самовывозе" initialTranslations={{ ru: pickupComment }} multiline rows={3} plain persist={false} placeholder="Например: заказ будет готов через 20–30 минут. Назовите номер заказа сотруднику." onValueChange={(value) => { setPickupComment(value); onChange(); }} />
-            </div>
-          </section>
-        )}
+          </div>
+        </MethodRow>
       </div>
 
       <AddChatDialog open={createMethod !== null} method={createMethod} workspaceName={account?.workspace.name} onClose={() => setCreateMethod(null)} onSubmit={(draft) => { if (createMethod) startCreation(createMethod, draft); }} />
