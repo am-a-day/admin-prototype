@@ -9,6 +9,8 @@ import {
 import { getLanguage, type LanguageCode } from "@/data/languages";
 import { useMockAuth } from "@/contexts/mock-auth-context";
 
+export type DineInOrderMode = "disabled" | "waiter" | "send-order";
+
 type AppSettingsContextValue = {
   contentLanguage: LanguageCode;
   uiLanguage: LanguageCode;
@@ -33,6 +35,8 @@ type AppSettingsContextValue = {
   setPickupEnabled: (enabled: boolean) => void;
   waiterEnabled: boolean;
   setWaiterEnabled: (enabled: boolean) => void;
+  dineInOrderMode: DineInOrderMode;
+  setDineInOrderMode: (mode: DineInOrderMode) => void;
   deliveryComment: string;
   setDeliveryComment: (value: string) => void;
   pickupComment: string;
@@ -48,6 +52,7 @@ type StoredOrderSettings = {
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   waiterEnabled: boolean;
+  dineInOrderMode: DineInOrderMode;
   deliveryComment: string;
   pickupComment: string;
   pickupAddress: string;
@@ -60,6 +65,7 @@ const EMPTY_ORDER_SETTINGS: StoredOrderSettings = {
   deliveryEnabled: false,
   pickupEnabled: false,
   waiterEnabled: true,
+  dineInOrderMode: "waiter",
   deliveryComment: "",
   pickupComment: "",
   pickupAddress: "",
@@ -73,7 +79,12 @@ function readOrderSettings(accountId?: string): StoredOrderSettings {
   if (typeof window === "undefined") return EMPTY_ORDER_SETTINGS;
   try {
     const stored = JSON.parse(window.localStorage.getItem(orderSettingsStorageKey(accountId)) ?? "null") as Partial<StoredOrderSettings> | null;
-    return stored ? { ...EMPTY_ORDER_SETTINGS, ...stored } : EMPTY_ORDER_SETTINGS;
+    if (!stored) return EMPTY_ORDER_SETTINGS;
+    return {
+      ...EMPTY_ORDER_SETTINGS,
+      ...stored,
+      dineInOrderMode: stored.dineInOrderMode ?? (stored.waiterEnabled === false ? "disabled" : "waiter"),
+    };
   } catch {
     return EMPTY_ORDER_SETTINGS;
   }
@@ -105,6 +116,7 @@ export function AppSettingsProvider({
   const [deliveryEnabled, setDeliveryEnabled] = useState(initialOrderSettings.deliveryEnabled);
   const [pickupEnabled, setPickupEnabled] = useState(initialOrderSettings.pickupEnabled);
   const [waiterEnabled, setWaiterEnabled] = useState(initialOrderSettings.waiterEnabled);
+  const [dineInOrderMode, setDineInOrderMode] = useState(initialOrderSettings.dineInOrderMode);
   const [deliveryComment, setDeliveryComment] = useState(initialOrderSettings.deliveryComment);
   const [pickupComment, setPickupComment] = useState(initialOrderSettings.pickupComment);
   const [pickupAddress, setPickupAddress] = useState(initialOrderSettings.pickupAddress);
@@ -118,6 +130,7 @@ export function AppSettingsProvider({
       deliveryEnabled,
       pickupEnabled,
       waiterEnabled,
+      dineInOrderMode,
       deliveryComment,
       pickupComment,
       pickupAddress,
@@ -130,6 +143,7 @@ export function AppSettingsProvider({
     deliveryEnabled,
     pickupEnabled,
     waiterEnabled,
+    dineInOrderMode,
     deliveryComment,
     pickupComment,
     pickupAddress,
@@ -175,6 +189,8 @@ export function AppSettingsProvider({
       setPickupEnabled,
       waiterEnabled,
       setWaiterEnabled,
+      dineInOrderMode,
+      setDineInOrderMode,
       deliveryComment,
       setDeliveryComment,
       pickupComment,
@@ -193,6 +209,7 @@ export function AppSettingsProvider({
     deliveryEnabled,
     pickupEnabled,
     waiterEnabled,
+    dineInOrderMode,
     deliveryComment,
     pickupComment,
     pickupAddress,

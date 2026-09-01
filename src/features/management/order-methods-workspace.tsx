@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
-import { useAppSettings } from "@/contexts/app-settings-context";
+import { useAppSettings, type DineInOrderMode } from "@/contexts/app-settings-context";
 import { cn } from "@/lib/utils";
 
 export type OrderMethod = "dineIn" | "delivery" | "pickup";
@@ -51,6 +51,29 @@ function MethodStateSelect({
       <SelectContent align="end" className="z-[100025] min-w-[205px]">
         <SelectItem value="enabled">Работает</SelectItem>
         <SelectItem value="disabled">Выключено</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function DineInOrderSelect({
+  mode,
+  onModeChange,
+}: {
+  mode: DineInOrderMode;
+  onModeChange: (mode: DineInOrderMode) => void;
+}) {
+  const label = mode === "disabled" ? "Выключено" : mode === "send-order" ? "Отправить заказ" : "Показать официанту";
+
+  return (
+    <Select value={mode} onValueChange={(value) => onModeChange(value as DineInOrderMode)}>
+      <SelectTrigger aria-label={`Заказы в заведении: ${label}`} className="h-7 rounded-[8px] px-2 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end" className="z-[100025] min-w-[205px]">
+        <SelectItem value="disabled">Выключено</SelectItem>
+        <SelectItem value="waiter">Показать официанту</SelectItem>
+        <SelectItem value="send-order">Отправить заказ</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -180,6 +203,9 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
     setDeliveryEnabled,
     pickupEnabled,
     setPickupEnabled,
+    dineInOrderMode,
+    setDineInOrderMode,
+    setWaiterEnabled,
     deliveryComment,
     setDeliveryComment,
     pickupComment,
@@ -202,7 +228,7 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
       <div className="px-[6px]">
         <MethodRow
           method="dineIn"
-          control={<div className="flex h-7 items-center rounded-[8px] border border-[#e7e5e4] bg-white px-2 text-[13px] text-[#292524] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">Показать официанту</div>}
+          control={<DineInOrderSelect mode={dineInOrderMode} onModeChange={(mode) => { setDineInOrderMode(mode); setWaiterEnabled(mode !== "disabled"); onChange(); }} />}
         />
 
         <MethodRow
