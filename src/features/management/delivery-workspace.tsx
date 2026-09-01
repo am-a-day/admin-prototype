@@ -204,6 +204,14 @@ function CompactField({
 }
 
 type TestState = "idle" | "sending" | "success" | "error";
+type ServiceApplication = "delivery" | "pickup" | "dineIn";
+type ServiceApplications = Record<ServiceApplication, boolean>;
+
+const SERVICE_APPLICATION_OPTIONS: ReadonlyArray<{ key: ServiceApplication; label: string }> = [
+  { key: "delivery", label: "Доставка" },
+  { key: "pickup", label: "Самовывоз" },
+  { key: "dineIn", label: "В заведении" },
+];
 
 function eventGenitive(event: OrderEvent) {
   if (event === "delivery") return "доставки";
@@ -352,24 +360,113 @@ function PaymentConnectionDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ToggleSetting({
-  title,
-  description,
-  checked,
-  onChange,
+function ServiceFeeSettings({
+  enabled,
+  percent,
+  applications,
+  onSetFee,
+  onApplicationsChange,
 }: {
-  title: string;
-  description?: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+  enabled: boolean;
+  percent: number;
+  applications: ServiceApplications;
+  onSetFee: (percent: number, enabled: boolean) => void;
+  onApplicationsChange: (applications: ServiceApplications) => void;
 }) {
+  const [customMode, setCustomMode] = useState(enabled && percent > 0);
+  const [percentValue, setPercentValue] = useState(percent > 0 ? String(percent) : "");
+  const percentInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!customMode) return;
+    const frame = window.requestAnimationFrame(() => percentInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [customMode]);
+
+  const selectNoFee = () => {
+    setCustomMode(false);
+    setPercentValue("");
+    onSetFee(0, false);
+  };
+
+  const changePercent = (value: string) => {
+    if (!/^\d{0,3}(?:[.,]\d{0,2})?$/.test(value)) return;
+    const nextPercent = Number(value.replace(",", "."));
+    if (Number.isFinite(nextPercent) && nextPercent > 100) return;
+
+    setPercentValue(value);
+    onSetFee(Number.isFinite(nextPercent) ? nextPercent : 0, nextPercent > 0);
+  };
+
   return (
-    <div className="flex items-start justify-between gap-4 py-1">
-      <div>
-        <div className="text-[13px] text-[#292524]">{title}</div>
-        {description && <p className="mt-1 text-[12px] leading-5 text-[#79716b]">{description}</p>}
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5" />
+    <div className="px-1">
+      <section className="flex items-center gap-[15px] pb-6 pt-1.5">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[14px] font-medium leading-[1.4] text-[#292524]">Сервисный сбор</h1>
+          <p className="mt-1 text-[13px] leading-4 text-[#666]">Добавьте сервисный сбор к заказу</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {customMode ? (
+            <label className="flex h-7 items-center rounded-full border border-[#292524] bg-white pl-2.5 pr-2 text-[13px] text-[#292524]">
+              <Input
+                ref={percentInputRef}
+                value={percentValue}
+                onChange={(event) => changePercent(event.target.value)}
+                inputMode="decimal"
+                autoComplete="off"
+                aria-label="Размер сервисного сбора в процентах"
+                className="h-full w-10 border-0 bg-transparent p-0 text-center text-[13px] shadow-none outline-none focus-visible:ring-0"
+              />
+              <span className="ml-1 text-[#292524]">%</span>
+            </label>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCustomMode(true)}
+              aria-pressed={false}
+              className="flex h-7 items-center justify-center rounded-full border border-[#e7e5e4] px-2.5 text-[13px] text-[#78716c] transition hover:border-[#a8a29e] hover:text-[#292524] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20"
+            >
+              Свой %
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={selectNoFee}
+            aria-pressed={!customMode}
+            className={cn(
+              "flex h-7 items-center justify-center rounded-full border px-2.5 text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
+              customMode ? "border-[#e7e5e4] text-[#78716c] hover:border-[#a8a29e] hover:text-[#292524]" : "border-[#292524] text-black",
+            )}
+          >
+            Без сбора
+          </button>
+        </div>
+      </section>
+
+      {customMode && (
+        <section className="flex items-center gap-[15px] py-1.5 pb-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[14px] font-medium leading-[1.4] text-[#292524]">Применение сбора</h2>
+            <p className="mt-1 text-[13px] leading-4 text-[#666]">Выберите способы обслуживания, для которых действует сбор.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {SERVICE_APPLICATION_OPTIONS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={applications[key]}
+                onClick={() => onApplicationsChange({ ...applications, [key]: !applications[key] })}
+                className={cn(
+                  "flex h-7 items-center justify-center rounded-full border px-2.5 text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f39f6]/20",
+                  applications[key] ? "border-[#292524] text-black" : "border-[#e7e5e4] text-[#78716c] hover:border-[#a8a29e] hover:text-[#292524]",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -411,8 +508,6 @@ export function DeliveryWorkspace({
     setServiceFeeEnabled,
     serviceFeePercent,
     setServiceFeePercent,
-    serviceFeeRequireConsent,
-    setServiceFeeRequireConsent,
     deliveryEnabled,
     setDeliveryEnabled,
     pickupEnabled,
@@ -440,7 +535,7 @@ export function DeliveryWorkspace({
   const [requiresSetupEvents, setRequiresSetupEvents] = useState<OrderEvent[]>([]);
   const [pickupPoint, setPickupPoint] = useState(pickupAddress);
   const [pickupAddressEditing, setPickupAddressEditing] = useState(false);
-  const [serviceApplications, setServiceApplications] = useState({ delivery: false, pickup: false, dineIn: false });
+  const [serviceApplications, setServiceApplications] = useState<ServiceApplications>({ delivery: false, pickup: false, dineIn: false });
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -567,21 +662,13 @@ export function DeliveryWorkspace({
         status: "Не настроено" as const,
       };
     }
-    if (activeTab === "service-fee") {
-      return {
-        title: "Сервисный сбор",
-        description: "Добавьте сервисный сбор к заказу и сообщите об этом гостю до подтверждения.",
-        enabled: serviceFeeEnabled,
-        status: serviceFeeEnabled ? "Включено" as const : "Выключено" as const,
-      };
-    }
     return {
       title: "Вызов официанта",
       description: "Гость сможет позвать официанта прямо из витрины.",
       enabled: waiterEnabled,
       status: functionStatus("waiter", waiterEnabled),
     };
-  }, [activeTab, deliveryEnabled, pickupEnabled, serviceFeeEnabled, waiterEnabled, routes, requiresSetupEvents]);
+  }, [activeTab, deliveryEnabled, pickupEnabled, waiterEnabled, routes, requiresSetupEvents]);
 
   const enabledEvents = ([
     deliveryEnabled && "delivery",
@@ -592,14 +679,14 @@ export function DeliveryWorkspace({
   return (
     <PageScroll>
       <PageContent className="space-y-0 pt-4">
-        <CompactContent className={cn("space-y-4", activeTab === "methods" && "max-w-[741px]")}>
+        <CompactContent className={cn("space-y-4", (activeTab === "methods" || activeTab === "service-fee") && "max-w-[741px]")}>
         <div
           data-secondary-navigation-scope="order-settings-content"
           className="min-w-0"
         >
           <OrderSettingsTabs value={activeTab} onChange={onTabChange} />
         </div>
-        {activeTab !== "methods" && <div className="flex min-h-8 items-center justify-end gap-2">
+        {activeTab !== "methods" && activeTab !== "service-fee" && <div className="flex min-h-8 items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -617,7 +704,7 @@ export function DeliveryWorkspace({
         </div>}
         {activeTab === "methods" ? (
           <OrderMethodsWorkspace onChange={() => queueSave(true)} />
-        ) : !loading && (activeTab === "payment" ? (
+        ) : activeTab !== "service-fee" && !loading && (activeTab === "payment" ? (
           <div className="flex flex-wrap items-start justify-between gap-5 px-1 py-1">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -635,16 +722,30 @@ export function DeliveryWorkspace({
             enabled={content.enabled}
             status={content.status}
             onToggle={(enabled, anchor) => {
-              if (activeTab === "service-fee") {
-                setServiceFeeEnabled(enabled);
-                queueSave(true);
-              } else if (activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter") {
+              if (activeTab === "delivery" || activeTab === "pickup" || activeTab === "waiter") {
                 toggleRoutedFeature(activeTab, enabled, anchor);
               }
             }}
           />
         ))}
-        {activeTab !== "methods" && (loading ? (
+        {activeTab === "service-fee" ? (
+          loading ? <WorkspaceLoading /> : (
+            <ServiceFeeSettings
+              enabled={serviceFeeEnabled}
+              percent={serviceFeePercent}
+              applications={serviceApplications}
+              onSetFee={(percent, enabled) => {
+                setServiceFeePercent(percent);
+                setServiceFeeEnabled(enabled);
+                queueSave(true);
+              }}
+              onApplicationsChange={(applications) => {
+                setServiceApplications(applications);
+                queueSave(true);
+              }}
+            />
+          )
+        ) : activeTab !== "methods" && (loading ? (
           <WorkspaceLoading />
         ) : (
           <div className="overflow-hidden rounded-[12px] border border-[#e7e5e4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
@@ -714,46 +815,6 @@ export function DeliveryWorkspace({
                   Онлайн-оплата не подключена
                 </div>
               </SettingsSection>
-            )}
-
-            {activeTab === "service-fee" && (
-              <fieldset disabled={!serviceFeeEnabled} className={cn(!serviceFeeEnabled && "opacity-50")}>
-                <SettingsSection title="Размер сбора" description="Процент добавится к итоговой сумме заказа.">
-                  <div className="max-w-[220px]">
-                    <CompactField label="Сервисный сбор" value={String(serviceFeePercent)} onChange={(value) => { setServiceFeePercent(Math.min(100, Math.max(0, Number(value) || 0))); queueSave(); }} suffix="%" type="number" />
-                  </div>
-                </SettingsSection>
-                <SettingsSection title="Применение сбора" description="Выберите способы обслуживания, для которых действует сбор.">
-                  <div className="space-y-3">
-                    {([
-                      ["delivery", "Доставка"],
-                      ["pickup", "Самовывоз"],
-                      ["dineIn", "Заказ в заведении"],
-                    ] as const).map(([key, label]) => (
-                      <label key={key} className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[#292524]">
-                        <input
-                          type="checkbox"
-                          checked={serviceApplications[key]}
-                          onChange={(eventValue) => {
-                            setServiceApplications((current) => ({ ...current, [key]: eventValue.target.checked }));
-                            queueSave();
-                          }}
-                          className="h-4 w-4 rounded border-[#c7c2bd] accent-[#292524]"
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                </SettingsSection>
-                <SettingsSection title="Согласие гостя">
-                  <ToggleSetting
-                    title="Требовать согласие гостя"
-                    description="Гость должен подтвердить согласие с сервисным сбором перед продолжением."
-                    checked={serviceFeeRequireConsent}
-                    onChange={(checked) => { setServiceFeeRequireConsent(checked); queueSave(true); }}
-                  />
-                </SettingsSection>
-              </fieldset>
             )}
 
             {activeTab === "waiter" && (
