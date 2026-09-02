@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CirclePlus, Facebook, Globe, Image, Info, Instagram, MapPin, MessageCircle, MinusCircle, MoreVertical, Music2, Phone, Plus, PlusCircle, Search, Send, Trash2, X, Youtube, type LucideIcon } from "lucide-react";
-import { ForkKnife, GlobeSimple, HouseSimple, MagnifyingGlass, Package, ShoppingCartSimple, TextT, UserCircle, WarningCircle } from "@phosphor-icons/react";
+import { CurrencyKzt, ForkKnife, GlobeHemisphereEast, GlobeSimple, HouseSimple, MagnifyingGlass, Package, ShoppingCartSimple, TextT, UserCircle, WarningCircle, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 export type AboutTab =
   | "info"
+  | "language-region"
   | "guest-rules"
   | "public-display"
   | "rec-titles";
@@ -43,6 +45,7 @@ type AboutWorkspaceProps = {
 
 const TAB_LABELS: Record<AboutTab, string> = {
   "info": "Профиль",
+  "language-region": "Язык и регион",
   "guest-rules": "Предупреждения",
   "public-display": "Мой ресторан в сети",
   "rec-titles": "Заголовки и кнопки",
@@ -51,6 +54,7 @@ const TAB_LABELS: Record<AboutTab, string> = {
 // Один источник для заголовка/подзаголовка рабочей области по активной вкладке.
 const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
   "info": { title: "Основное", subtitle: "Информация, которая поможет гостям лучше узнать о вас" },
+  "language-region": { title: "Язык и регион", subtitle: "Настройки отображения цен и локального времени" },
   "guest-rules": { title: "Предупреждения", subtitle: "Настройте подтверждения, которые гости увидят перед открытием меню." },
   "public-display": { title: "Мой ресторан в сети", subtitle: "Настройте, как заведение выглядит в поиске, соцсетях и на Tasko Get." },
   "rec-titles": { title: "Заголовки и кнопки", subtitle: "Настройте подписи и заголовки, которые гости видят на витрине." },
@@ -58,6 +62,7 @@ const TAB_HEADERS: Record<AboutTab, { title: string; subtitle: string }> = {
 
 const ABOUT_TABS = [
   { id: "info", label: TAB_LABELS.info, icon: <UserCircle size={16} aria-hidden="true" /> },
+  { id: "language-region", label: TAB_LABELS["language-region"], icon: <GlobeSimple size={16} aria-hidden="true" /> },
   { id: "guest-rules", label: TAB_LABELS["guest-rules"], icon: <WarningCircle size={16} aria-hidden="true" /> },
   { id: "rec-titles", label: TAB_LABELS["rec-titles"], icon: <TextT size={16} aria-hidden="true" /> },
   { id: "public-display", label: TAB_LABELS["public-display"], icon: <GlobeSimple size={16} aria-hidden="true" /> },
@@ -65,6 +70,113 @@ const ABOUT_TABS = [
 
 export function AboutTabs({ value, onChange }: { value: AboutTab; onChange: (t: AboutTab) => void }) {
   return <PillTabs tabs={ABOUT_TABS} value={value} onValueChange={onChange} ariaLabel="О заведении" />;
+}
+
+const CURRENCY_OPTIONS = [
+  { value: "KZT", label: "Казахстанский тенге — KZT" },
+  { value: "RSD", label: "Сербский динар — RSD" },
+  { value: "RUB", label: "Российский рубль — RUB" },
+  { value: "USD", label: "Доллар США — USD" },
+  { value: "EUR", label: "Евро — EUR" },
+];
+
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Almaty", label: "Казахстан, UTC+5" },
+  { value: "Europe/Belgrade", label: "Белград, Центральная Европа" },
+  { value: "Europe/Moscow", label: "Москва, UTC+3" },
+  { value: "Europe/London", label: "Лондон" },
+  { value: "Europe/Berlin", label: "Берлин, Центральная Европа" },
+];
+
+function RegionalSelectField({
+  id,
+  label,
+  icon: Icon,
+  value,
+  options,
+  helperText,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  icon: PhosphorIcon;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  helperText: string;
+  onChange: (value: string) => void;
+}) {
+  const labelId = `${id}-label`;
+
+  return (
+    <div className="block">
+      <label id={labelId} htmlFor={id} className="mb-1.5 block text-[13px] font-medium leading-[18px] text-[#292524]">
+        {label}
+      </label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          id={id}
+          aria-labelledby={labelId}
+          className="h-9 rounded-[10px] border-[#e7e5e4] px-2.5 text-[13px] font-normal shadow-none"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon size={14} weight="fill" className="shrink-0 text-[#79716b]" aria-hidden="true" />
+            <SelectValue />
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="mt-1 text-[12px] leading-4 text-[#a8a29e]">{helperText}</div>
+    </div>
+  );
+}
+
+export function LanguageRegionWorkspace({ onChange }: { onChange: () => void }) {
+  const { account, updateWorkspace } = useMockAuth();
+
+  if (!account) return null;
+
+  const { workspace } = account;
+  const currency = CURRENCY_OPTIONS.some((option) => option.value === workspace.currency)
+    ? workspace.currency
+    : "KZT";
+  const timezone = TIMEZONE_OPTIONS.some((option) => option.value === workspace.timezone)
+    ? workspace.timezone
+    : "Asia/Almaty";
+
+  return (
+    <div className="w-full max-w-[520px] space-y-4" aria-label="Региональные настройки">
+      <RegionalSelectField
+        id="about-currency"
+        label="Валюта"
+        icon={CurrencyKzt}
+        value={currency}
+        options={CURRENCY_OPTIONS}
+        helperText="Используется для отображения цен в онлайн-меню."
+        onChange={(nextCurrency) => {
+          updateWorkspace({ currency: nextCurrency });
+          onChange();
+        }}
+      />
+      <RegionalSelectField
+        id="about-timezone"
+        label="Часовой пояс"
+        icon={GlobeHemisphereEast}
+        value={timezone}
+        options={TIMEZONE_OPTIONS}
+        helperText="Используется для расписаний, заказов, уведомлений и аналитики."
+        onChange={(nextTimezone) => {
+          updateWorkspace({ timezone: nextTimezone });
+          onChange();
+        }}
+      />
+    </div>
+  );
 }
 
 type PublicPreviewTab = "search" | "social" | "tasko";
@@ -2120,6 +2232,10 @@ export function AboutWorkspace({
             <div onMouseEnter={() => setPreviewScenario("about")}>
               <BasicInfoWorkspace onChange={() => registerChange("about")} setPreviewScenario={setPreviewScenario} />
             </div>
+          )}
+
+          {tab === "language-region" && (
+            <LanguageRegionWorkspace onChange={() => registerChange("about")} />
           )}
 
           {/* ── Правила для гостей ── */}

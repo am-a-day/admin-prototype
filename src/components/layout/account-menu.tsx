@@ -5,23 +5,13 @@ import {
   CaretLeft,
   CaretRight,
   Check,
-  CurrencyKzt,
   GlobeHemisphereEast,
   Plus,
   UsersThree,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useMockAuth } from "@/contexts/mock-auth-context";
 import { usePlan } from "@/contexts/plan-context";
-import { usePublish } from "@/contexts/publish-context";
 import {
   CURRENT_VITRINE_ID,
   MOCK_USER,
@@ -31,7 +21,7 @@ import {
 } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
 
-type MenuView = "root" | "locations" | "staff" | "regional";
+type MenuView = "root" | "locations" | "staff";
 
 const RESTAURANT_LABEL = "Мой ресторан 7470";
 const ACTIVE_LOCATION_STORAGE_KEY = "tasko.activeLocation.v1";
@@ -46,22 +36,6 @@ function readLocations() {
     return MOCK_VITRINES;
   }
 }
-
-const CURRENCY_OPTIONS = [
-  { value: "KZT", label: "Казахстанский тенге — KZT" },
-  { value: "RSD", label: "Сербский динар — RSD" },
-  { value: "RUB", label: "Российский рубль — RUB" },
-  { value: "USD", label: "Доллар США — USD" },
-  { value: "EUR", label: "Евро — EUR" },
-];
-
-const TIMEZONE_OPTIONS = [
-  { value: "Asia/Almaty", label: "Казахстан, UTC+5" },
-  { value: "Europe/Belgrade", label: "Белград, Центральная Европа" },
-  { value: "Europe/Moscow", label: "Москва, UTC+3" },
-  { value: "Europe/London", label: "Лондон" },
-  { value: "Europe/Berlin", label: "Берлин, Центральная Европа" },
-];
 
 function pointLabel(address: string) {
   if (/^ул\./i.test(address)) return address;
@@ -126,8 +100,6 @@ export function OrgMenu({
   variant?: "full" | "rail" | "text";
 }) {
   const { planId } = usePlan();
-  const { account, updateWorkspace } = useMockAuth();
-  const { registerChange } = usePublish();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<MenuView>("root");
   const [locations, setLocations] = useState<MockVitrine[]>(readLocations);
@@ -149,12 +121,6 @@ export function OrgMenu({
   const triggerLabel = `${RESTAURANT_LABEL} · ${address}`;
   const canAddLocation = planId === "Ultra" && locations.length < 3;
   const canInviteStaff = planId === "Lite" || planId === "Ultra";
-  const currencyValue = CURRENCY_OPTIONS.some((option) => option.value === account?.workspace.currency)
-    ? account!.workspace.currency
-    : "KZT";
-  const timezoneValue = TIMEZONE_OPTIONS.some((option) => option.value === account?.workspace.timezone)
-    ? account!.workspace.timezone
-    : "Asia/Almaty";
 
   useEffect(() => {
     window.localStorage.setItem(LOCATIONS_STORAGE_KEY, JSON.stringify(locations));
@@ -273,7 +239,6 @@ export function OrgMenu({
             </MenuSection>
             <MenuSection>
               <MenuRow icon={UsersThree} onClick={() => setView("staff")} trailing={<CaretRight size={12} weight="bold" className="text-[#79716b]" />}>Сотрудники</MenuRow>
-              <MenuRow icon={CurrencyKzt} onClick={() => setView("regional")} trailing={<CaretRight size={12} weight="bold" className="text-[#79716b]" />}>Валюта и часовой пояс</MenuRow>
             </MenuSection>
             <MenuSection>
               <Button type="button" variant="outline" size="sm" className="h-8 w-full rounded-[10px] text-[14px] font-normal" onClick={() => { close(); onNavigate("management", "billing"); }}>Улучшить тариф</Button>
@@ -335,27 +300,6 @@ export function OrgMenu({
           </>
         )}
 
-        {view === "regional" && (
-          <>
-            <SubmenuHeader title="Валюта и часовой пояс" onBack={() => setView("root")} />
-            <div className="space-y-3 p-3">
-              <label className="block text-[12px] font-medium text-[#292524]">
-                Валюта
-                <Select value={currencyValue} onValueChange={(currency) => { updateWorkspace({ currency }); registerChange("about"); }}>
-                  <SelectTrigger aria-label="Валюта" className="mt-1 h-8 text-[12px] shadow-none"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CURRENCY_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </label>
-              <label className="block text-[12px] font-medium text-[#292524]">
-                Часовой пояс
-                <Select value={timezoneValue} onValueChange={(timezone) => { updateWorkspace({ timezone }); registerChange("about"); }}>
-                  <SelectTrigger aria-label="Часовой пояс" className="mt-1 h-8 text-[12px] shadow-none"><SelectValue /></SelectTrigger>
-                  <SelectContent>{TIMEZONE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </label>
-            </div>
-          </>
-        )}
       </PopoverContent>
     </Popover>
   );

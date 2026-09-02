@@ -160,6 +160,7 @@ const ABOUT_PATH = `${STOREFRONT_PATH}/about`;
 
 const ABOUT_PATH_SEGMENTS: Record<AboutTab, string> = {
   info: "profile",
+  "language-region": "language-region",
   "guest-rules": "guest-rules",
   "rec-titles": "rec-titles",
   "public-display": "public-display",
@@ -168,6 +169,7 @@ const ABOUT_PATH_SEGMENTS: Record<AboutTab, string> = {
 function normalizeAboutTab(tab: string | null | undefined): AboutTab {
   if (tab === "profile" || tab === "info") return "info";
   if (
+    tab === "language-region" ||
     tab === "guest-rules" ||
     tab === "rec-titles" ||
     tab === "public-display"

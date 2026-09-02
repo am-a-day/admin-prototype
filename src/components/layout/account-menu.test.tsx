@@ -43,7 +43,7 @@ describe("restaurant menu", () => {
     expect(within(menu).getByRole("button", { name: /Мой ресторан 7470/ })).toBeInTheDocument();
     expect(within(menu).getByRole("link", { name: /aura\.tsqr\.me/ })).toBeInTheDocument();
     expect(within(menu).getByRole("button", { name: "Сотрудники" })).toBeInTheDocument();
-    expect(within(menu).getByRole("button", { name: "Валюта и часовой пояс" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("button", { name: "Валюта и часовой пояс" })).not.toBeInTheDocument();
     expect(within(menu).queryByText("Ваши точки")).not.toBeInTheDocument();
     expect(within(menu).queryByText("Добавить точку")).not.toBeInTheDocument();
     expect(within(menu).queryByText("LITE")).not.toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("restaurant menu", () => {
     expect(screen.getByRole("button", { name: "Мой ресторан 7470 · ул. Туран 37" })).toBeInTheDocument();
   });
 
-  it("keeps locations, staff limits and regional settings inside their submenus", async () => {
+  it("keeps locations and staff limits inside their submenus without regional settings", async () => {
     const user = userEvent.setup();
     renderMenu();
 
@@ -98,8 +98,8 @@ describe("restaurant menu", () => {
     expect(screen.getByText(/Приглашение сотрудников доступно на тарифе Lite/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Назад" }));
-    await user.click(screen.getByRole("button", { name: "Валюта и часовой пояс" }));
-    expect(screen.getByRole("combobox", { name: "Валюта" })).toHaveTextContent("Казахстанский тенге — KZT");
-    expect(screen.getByRole("combobox", { name: "Часовой пояс" })).toHaveTextContent("Казахстан, UTC+5");
+    expect(within(menu).queryByRole("button", { name: "Валюта и часовой пояс" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("combobox", { name: "Валюта" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("combobox", { name: "Часовой пояс" })).not.toBeInTheDocument();
   });
 });
