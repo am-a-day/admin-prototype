@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MockWorkspace } from "@/contexts/mock-auth-context";
 import {
   buildTranslationMaterials,
+  getPositionTranslationFields,
   summarizeCatalogPositionTranslations,
   summarizeLanguageProgress,
   type TranslationMaterial,
@@ -24,7 +25,7 @@ describe("translation material structure", () => {
   it("keeps fixed position fields and does not infer options from audit counters", () => {
     const [position] = buildTranslationMaterials([
       createItem({ optionsCount: 4, modifiersCount: 3 }),
-    ], [], [], [], undefined);
+    ], [], [], undefined);
 
     expect(position.fields.map((field) => field.id)).toEqual(["title", "description"]);
     expect(position.fields[1]).toMatchObject({ source: "", values: { kk: "", en: "", sr: "" } });
@@ -52,7 +53,7 @@ describe("translation material structure", () => {
         pricing: "surcharge",
         variants: [{ id: "cheese", name: "Сыр", price: "300" }],
       }],
-    })], [], [], [], undefined);
+    })], [], [], undefined);
 
     expect(position.fields.map((field) => field.id)).toEqual([
       "title",
@@ -65,6 +66,35 @@ describe("translation material structure", () => {
     ]);
     expect(position.fields.filter((field) => field.kind === "option-group")).toHaveLength(2);
     expect(position.category).toBe("positions");
+  });
+
+  it("keeps local tags and stickers as independent fields inside each position", () => {
+    const [first, second] = buildTranslationMaterials([
+      createItem({
+        id: "item-1",
+        tags: ["Острое", "Вегетарианское"],
+        guestLabels: ["Хит"],
+        upsell: {
+          tags: [{ ru: "Острое" }, { ru: "Вегетарианское" }],
+          sticker: { ru: "Хит" },
+        },
+      }),
+      createItem({
+        id: "item-2",
+        tags: ["Без сахара"],
+        guestLabels: ["Новинка"],
+        upsell: {
+          tags: [{ ru: "Без сахара" }],
+          sticker: { ru: "Новинка" },
+        },
+      }),
+    ], [], [], undefined);
+
+    expect(first.fields.map((field) => field.id)).toEqual(["title", "description", "tag:0", "tag:1", "sticker"]);
+    expect(first.fields.slice(2).map((field) => field.section)).toEqual(["tags", "tags", "stickers"]);
+    expect(getPositionTranslationFields(first.fields).map((field) => field.id)).toEqual(["title", "description"]);
+    expect(first.fields.find((field) => field.id === "tag:0")?.values).not.toBe(second.fields.find((field) => field.id === "tag:0")?.values);
+    expect(second.fields.map((field) => field.id)).toEqual(["title", "description", "tag:0", "sticker"]);
   });
 
   it("translates only guest-facing banner content and local banner tags", () => {
@@ -82,7 +112,7 @@ describe("translation material structure", () => {
       link: "",
     };
 
-    const [material] = buildTranslationMaterials([], [], [], [banner], undefined);
+    const [material] = buildTranslationMaterials([], [], [banner], undefined);
 
     expect(material.title).toBe("Внутреннее название");
     expect(material.fields.map((field) => field.id)).toEqual(["subtitle", "tag:tag-1"]);
@@ -99,7 +129,7 @@ describe("translation material structure", () => {
       localizedDescriptions: {},
     } as unknown as MockWorkspace;
 
-    const [material] = buildTranslationMaterials([], [], [], [], workspace);
+    const [material] = buildTranslationMaterials([], [], [], workspace);
 
     expect(material.fields.map((field) => field.id)).toEqual(["name", "address", "description"]);
     expect(material.fields[1].source).not.toBe("");
@@ -117,7 +147,7 @@ describe("translation material structure", () => {
       contactEntries: [{ id: 12, channel: "phone", link: "+7 777 123-45-67", text: "Позвонить" }],
     } as unknown as MockWorkspace;
 
-    const about = buildTranslationMaterials([], [], [], [], workspace).find((material) => material.id === "about:venue");
+    const about = buildTranslationMaterials([], [], [], workspace).find((material) => material.id === "about:venue");
 
     expect(about?.fields.slice(3).map((field) => field.id)).toEqual([
       "channel:social:11:label",
@@ -154,7 +184,7 @@ describe("translation material structure", () => {
       },
     } as unknown as MockWorkspace;
 
-    const network = buildTranslationMaterials([], [], [], [], workspace).find((material) => material.id === "about:public-display");
+    const network = buildTranslationMaterials([], [], [], workspace).find((material) => material.id === "about:public-display");
 
     expect(network?.title).toBe("В сети");
     expect(network?.fields.map((field) => field.id)).toEqual(["title", "description"]);
@@ -182,7 +212,7 @@ describe("translation material structure", () => {
     const [position] = buildTranslationMaterials([createItem({
       title: "Паста",
       titleTranslations: { ru: "Паста", en: "Pasta" },
-    })], [], [], [], workspace);
+    })], [], [], workspace);
 
     expect(position.fields[0]).toMatchObject({
       source: "Pasta",
@@ -190,7 +220,7 @@ describe("translation material structure", () => {
     });
   });
 
-  it("exposes the active local tags and sticker in the central translation materials", () => {
+  it("does not expose local tags and stickers as standalone translation materials", () => {
     const materials = buildTranslationMaterials([createItem({
       title: "Паста",
       tags: ["Острое", "Халяль"],
@@ -202,26 +232,16 @@ describe("translation material structure", () => {
         ],
         sticker: { ru: "Хит", en: "Popular" },
       },
-    })], [], [], [], undefined);
+    })], [], [], undefined);
 
-    const spicy = materials.find((material) => material.category === "tags" && material.title === "Острое");
-    const halal = materials.find((material) => material.category === "tags" && material.title === "Халяль");
-    const sticker = materials.find((material) => material.category === "stickers" && material.title === "Хит");
-
-    expect(spicy).toMatchObject({
-      ownerItemIds: ["item-1"],
-      category: "tags",
-      fields: [{ id: "name", values: { en: "Spicy" } }],
-    });
-    expect(halal).toMatchObject({
-      ownerItemIds: ["item-1"],
-      fields: [{ id: "name", values: { kk: "Халал" } }],
-    });
-    expect(sticker).toMatchObject({
-      ownerItemIds: ["item-1"],
-      category: "stickers",
-      fields: [{ id: "name", values: { en: "Popular" } }],
-    });
+    expect(materials.some((material) => material.category === "tags" || material.category === "stickers")).toBe(false);
+    expect(materials.find((material) => material.id === "item-1")?.fields.map((field) => field.id)).toEqual([
+      "title",
+      "description",
+      "tag:0",
+      "tag:1",
+      "sticker",
+    ]);
   });
 });
 

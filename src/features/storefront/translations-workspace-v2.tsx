@@ -49,14 +49,11 @@ import { CatalogThumbnail } from "@/features/storefront/catalog/ui/catalog-thumb
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { cn } from "@/lib/utils";
 
-type TranslationContentType = TranslationCategory | "options" | "my-restaurant";
+type TranslationContentType = Exclude<TranslationCategory, "tags" | "stickers" | "about" | "interface"> | "my-restaurant";
 
 const CONTENT_TYPES: Array<{ id: TranslationContentType; label: string }> = [
   { id: "positions", label: "Позиции" },
-  { id: "options", label: "Опции" },
   { id: "sections", label: "Разделы" },
-  { id: "tags", label: "Теги" },
-  { id: "stickers", label: "Стикеры" },
   { id: "banners", label: "Баннеры" },
   { id: "my-restaurant", label: "Мой ресторан" },
 ];
@@ -138,6 +135,12 @@ function writeTranslationsViewState(viewState: TranslationsViewState) {
 
 function languageLabel(code: TranslationLanguageCode) {
   return TRANSLATION_LANGUAGE_LABELS[code];
+}
+
+function contentTypeForCategory(category: TranslationCategory): TranslationContentType {
+  if (category === "about" || category === "interface") return "my-restaurant";
+  if (category === "tags" || category === "stickers") return "positions";
+  return category;
 }
 
 function LanguageCodeBadge({ code }: { code: TranslationLanguageCode }) {
@@ -470,28 +473,19 @@ function entitiesForType(materials: TranslationMaterial[], type: TranslationCont
       }));
   }
 
-  if (type !== "options") {
-    return materials.filter((material) => material.category === type).map((material) => ({
-      key: material.id,
-      material,
-      title: material.title,
-      fields: type === "positions" ? getPositionTranslationFields(material.fields) : material.fields,
-    }));
-  }
-
-  return materials.flatMap((material) => material.category !== "positions" ? [] : material.fields
-    .filter((field) => field.kind === "option-group" && field.optionGroupId)
-    .map((groupField) => ({
-      key: `${material.id}:${groupField.optionGroupId}`,
-      material,
-      title: groupField.source || groupField.label.replace(/^Группа · /, ""),
-      subtitle: material.title,
-      fields: material.fields.filter((field) => field.optionGroupId === groupField.optionGroupId),
-    })));
+  return materials.filter((material) => material.category === type).map((material) => ({
+    key: material.id,
+    material,
+    title: material.title,
+    fields: material.fields,
+  }));
 }
 
 function entityComplete(entity: TranslationEntity, language: TranslationLanguageCode) {
-  return areTranslationFieldsComplete(entity.fields, language);
+  const fields = entity.material.kind === "position"
+    ? getPositionTranslationFields(entity.fields)
+    : entity.fields;
+  return areTranslationFieldsComplete(fields, language);
 }
 
 function entityBatchState(entity: TranslationEntity, job: TranslationJob | undefined) {
@@ -847,7 +841,7 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
 
   return (
     <div data-translation-field-row data-translation-field-key={`${material.kind}:${material.entityId}:${language}:${field.id}`} className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
-      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · /, "")}</span></div>
+      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · |^Тег · |^Стикер · /, "")}</span></div>
       <div data-translation-source-field className={cn("min-w-0 border-r border-[#eeeeec] bg-[#fafaf9]", isDescription ? "p-0" : "flex h-12 items-center px-3")}>
         {isDescription
           ? <DescriptionRichTextEditor value={field.source} readOnly hideLabel label={`Оригинал: ${field.label}`} placeholder="Не заполнено" limit={300} compact className="h-full [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div>div]:bg-transparent" />
@@ -913,6 +907,11 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
   const primaryCode = account?.workspace.primaryLanguage ?? "ru";
   const imageUrl = entity?.material.catalogItemId ? items.find((item) => item.id === entity.material.catalogItemId)?.thumbnailUrl : null;
   const canOpenCatalog = entity?.material.kind === "position" && Boolean(entity.material.catalogItemId);
+  const positionSections = [
+    { id: "options", label: "Опции" },
+    { id: "tags", label: "Теги" },
+    { id: "stickers", label: "Стикеры" },
+  ] as const;
 
   if (!entity) return <main className="grid min-h-0 min-w-0 flex-1 place-items-center bg-[#fafaf9] text-[13px] text-[#79716b]">Нет сущностей для перевода</main>;
 
@@ -936,9 +935,22 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
       <div data-translations-table-header className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] bg-white text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f5f4]">
         <div data-translations-table className="border-b border-stone-200">
-          {entity.fields.map((field) => {
+          {(entity.material.kind === "position" ? entity.fields.filter((field) => !field.section) : entity.fields).map((field) => {
             const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
             return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
+          })}
+          {entity.material.kind === "position" && positionSections.map((section) => {
+            const fields = entity.fields.filter((field) => field.section === section.id);
+            if (fields.length === 0) return null;
+            return (
+              <section key={section.id} data-translation-section={section.id}>
+                <div className="flex h-8 items-center border-b border-[#eeeeec] bg-[#f5f5f4] px-3 text-[12px] font-medium text-[#57534d]">{section.label}</div>
+                {fields.map((field) => {
+                  const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
+                  return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
+                })}
+              </section>
+            );
           })}
         </div>
       </div>
@@ -1016,7 +1028,7 @@ function LanguageWorkspace({
           onContentTypeChange={(type) => {
             setContentType(type);
             setSelectedKey(null);
-            setActiveCategory(type === "options" ? "positions" : type === "my-restaurant" ? "about" : type);
+            setActiveCategory(type === "my-restaurant" ? "about" : type);
           }}
           onLanguageChange={setActiveLanguage}
           onOpenCatalog={onOpenOriginal}
@@ -1037,7 +1049,7 @@ export function TranslationsWorkspace({ onOpenOriginal = () => {} }: { onOpenOri
   return (
     <LanguageWorkspace
       initialContentType={initialViewState?.contentType ?? (workspaceRequested
-        ? activeCategory === "about" || activeCategory === "interface" ? "my-restaurant" : activeCategory
+        ? contentTypeForCategory(activeCategory)
         : "positions")}
       initialViewState={initialViewState}
       onOpenOriginal={onOpenOriginal}

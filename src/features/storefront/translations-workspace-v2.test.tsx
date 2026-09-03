@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/contexts/app-settings-context";
-import { CatalogStoreProvider, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
+import { CatalogStoreProvider, useCatalogStore, type CatalogStoreInitialData } from "@/contexts/catalog-store-context";
 import { MockAuthProvider } from "@/contexts/mock-auth-context";
 import { TranslationsProvider, useTranslations, type TranslationMaterial } from "@/contexts/translations-context";
 import { catalogItems, catalogSections, type CatalogItem } from "@/data/catalog";
@@ -13,6 +13,15 @@ import { TranslationsWorkspace } from "./translations-workspace-v2";
 function ToastProbe() {
   const { toast } = useTranslations();
   return toast ? <div role="status">{toast.message}</div> : null;
+}
+
+function CatalogStateProbe() {
+  const { items } = useCatalogStore();
+  return <output data-testid="catalog-state">{JSON.stringify(items.map((item) => ({
+    id: item.id,
+    tags: item.upsell?.tags ?? [],
+    sticker: item.upsell?.sticker ?? null,
+  })))}</output>;
 }
 
 function TranslationTestControls() {
@@ -66,8 +75,8 @@ function Providers({ children, initialData }: { children: ReactNode; initialData
   );
 }
 
-function renderWorkspace(initialData?: CatalogStoreInitialData, onOpenOriginal?: (material: TranslationMaterial) => void) {
-  return render(<TranslationsWorkspace onOpenOriginal={onOpenOriginal} />, { wrapper: ({ children }) => <Providers initialData={initialData}>{children}</Providers> });
+function renderWorkspace(initialData?: CatalogStoreInitialData, onOpenOriginal?: (material: TranslationMaterial) => void, includeCatalogProbe = false) {
+  return render(<><TranslationsWorkspace onOpenOriginal={onOpenOriginal} />{includeCatalogProbe && <CatalogStateProbe />}</>, { wrapper: ({ children }) => <Providers initialData={initialData}>{children}</Providers> });
 }
 
 describe("translations workspace v2", () => {
@@ -537,7 +546,7 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: "Повторить" })).toBeEnabled();
   });
 
-  it("matches the compact entity selector and preserves language, search, and scroll while switching", async () => {
+  it("keeps nested position content out of the selector and renders non-empty blocks", async () => {
     const user = userEvent.setup();
     const item = catalogItems[0];
     const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
@@ -545,6 +554,13 @@ describe("translations workspace v2", () => {
       sections: [section],
       items: [{
         ...item,
+        tags: ["Острое", "Вегетарианское"],
+        guestLabels: ["Хит"],
+        upsell: {
+          ...(item.upsell ?? {}),
+          tags: [{ ru: "Острое" }, { ru: "Вегетарианское" }],
+          sticker: { ru: "Хит" },
+        },
         optionGroups: [{
           id: "spice",
           name: "Острота",
@@ -567,36 +583,34 @@ describe("translations workspace v2", () => {
     const typeItems = within(typeMenu).getAllByRole("menuitem");
     expect(typeItems.map((menuItem) => menuItem.textContent)).toEqual([
       "Позиции",
-      "Опции",
       "Разделы",
-      "Теги",
-      "Стикеры",
       "Баннеры",
       "Мой ресторан",
     ]);
     const positionsItem = within(typeMenu).getByRole("menuitem", { name: "Позиции" });
-    const tagsItem = within(typeMenu).getByRole("menuitem", { name: "Теги" });
     expect(positionsItem).toHaveClass("h-7", "rounded-[8px]", "bg-[#f5f5f4]", "text-[#333]");
     expect(positionsItem.querySelector("svg")).toBeInTheDocument();
-    expect(tagsItem.querySelector("svg")).not.toBeInTheDocument();
-    await user.hover(tagsItem);
-    expect(tagsItem).toHaveAttribute("data-highlighted");
-    expect(tagsItem).toHaveClass("data-[highlighted]:bg-[#f5f5f4]", "data-[highlighted]:text-[#333]");
+    ["Опции", "Теги", "Стикеры"].forEach((label) => {
+      expect(within(typeMenu).queryByRole("menuitem", { name: label })).not.toBeInTheDocument();
+    });
     expect(typeTrigger).toHaveTextContent("Позиции");
-    expect(tagsItem.querySelector("svg")).not.toBeInTheDocument();
     expect(positionsItem.querySelector("svg")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
-    await user.click(typeTrigger);
-    await screen.findByRole("menu");
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    expect(typeTrigger).toHaveTextContent("Опции");
-    expect(screen.getAllByText("Острота").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(item.title).length).toBeGreaterThan(0);
+    expect(screen.getByRole("textbox", { name: "Казахский: Название" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Описание" })).toBeInTheDocument();
+    expect(document.querySelector('[data-translation-section="options"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-translation-section="tags"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-translation-section="stickers"]')).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Группа · Острота" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Опция · Неостро" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Тег · Острое" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Тег · Вегетарианское" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Стикер · Хит" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Открыть поиск" }));
-    const search = screen.getByRole("textbox", { name: "Поиск: Опции" });
+    const search = screen.getByRole("textbox", { name: "Поиск: Позиции" });
     await user.type(search, "нет такого варианта");
     expect(screen.getByText("Ничего не найдено")).toBeInTheDocument();
     const entityList = document.querySelector("[data-translations-entity-list]") as HTMLElement;
@@ -620,6 +634,38 @@ describe("translations workspace v2", () => {
     fireEvent.keyDown(resizer, { key: "ArrowRight" });
     expect(resizer).toHaveAttribute("aria-valuenow", "232");
     expect(typeTrigger).toHaveClass("bg-[#f5f5f4]", "hover:bg-[#e7e5e4]");
+  });
+
+  it("persists nested label edits only for the selected position", async () => {
+    const user = userEvent.setup();
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    const first = {
+      ...item,
+      id: "position-one",
+      tags: ["Острое"],
+      guestLabels: [],
+      upsell: { tags: [{ ru: "Острое" }], sticker: null },
+    };
+    const second = {
+      ...item,
+      id: "position-two",
+      title: "Второе блюдо",
+      tags: ["Острое"],
+      guestLabels: [],
+      upsell: { tags: [{ ru: "Острое" }], sticker: null },
+    };
+    renderWorkspace({ sections: [section], items: [first, second] }, undefined, true);
+
+    const tag = screen.getByRole("textbox", { name: "Казахский: Тег · Острое" });
+    await user.clear(tag);
+    await user.type(tag, "Ащы");
+
+    await waitFor(() => {
+      const state = JSON.parse(screen.getByTestId("catalog-state").textContent ?? "[]") as Array<{ id: string; tags: Array<{ kk?: string }> }>;
+      expect(state.find((candidate) => candidate.id === "position-one")?.tags[0]?.kk).toBe("Ащы");
+      expect(state.find((candidate) => candidate.id === "position-two")?.tags[0]?.kk).not.toBe("Ащы");
+    });
   });
 
   it("switches languages after restoring history without losing the selected position or search", async () => {
