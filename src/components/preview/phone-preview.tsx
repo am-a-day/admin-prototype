@@ -126,6 +126,7 @@ function PhonePreviewContent({
 }: PhonePreviewProps & { sharedLabels: CatalogLabel[] }) {
   const {
     serviceFeeRequireConsent,
+    waiterEnabled,
     deliveryComment,
     pickupComment,
     pickupAddress,
@@ -178,6 +179,10 @@ function PhonePreviewContent({
       setAboutOpen(false);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!waiterEnabled && previewTab === "waiter") setPreviewTab("home");
+  }, [previewTab, waiterEnabled]);
 
   const dish = getDish(selectedDishId);
   const recommended = getRecommendedDishes(dish);
@@ -389,7 +394,7 @@ function PhonePreviewContent({
           onPickDish={onNavCatalogDish}
         />
       );
-    } else if (previewTab === "waiter") {
+    } else if (previewTab === "waiter" && waiterEnabled) {
       screen = <PhoneWaiterScreen />;
     } else {
       screen = (
@@ -521,6 +526,7 @@ function PhonePreviewContent({
               {showBottomNav && (
                 <PhoneBottomNav
                   active={previewTab}
+                  waiterEnabled={waiterEnabled}
                   onSelect={(t) => {
                     setPreviewTab(t);
                     if (t !== "menu") setMenuCategory(null);

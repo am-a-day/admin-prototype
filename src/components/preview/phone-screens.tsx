@@ -799,20 +799,24 @@ const PHONE_NAV: { key: PreviewTab; label: string; Icon: typeof Home }[] = [
   { key: "home", label: "Главная", Icon: Home },
   { key: "sections", label: "Разделы", Icon: LayoutGrid },
   { key: "menu", label: "Меню", Icon: UtensilsCrossed },
-  { key: "waiter", label: "Официант", Icon: Bell },
+  { key: "waiter", label: "Позвать сотрудника", Icon: Bell },
   { key: "cart", label: "Корзина", Icon: ShoppingCart },
 ];
 
 export function PhoneBottomNav({
   active,
   onSelect,
+  waiterEnabled = true,
 }: {
   active: PreviewTab;
   onSelect: (tab: PreviewTab) => void;
+  waiterEnabled?: boolean;
 }) {
+  const visibleNav = waiterEnabled ? PHONE_NAV : PHONE_NAV.filter(({ key }) => key !== "waiter");
+
   return (
     <div className="flex shrink-0 items-stretch border-t border-zinc-200 bg-white/95 backdrop-blur">
-      {PHONE_NAV.map(({ key, label, Icon }) => (
+      {visibleNav.map(({ key, label, Icon }) => (
         <button
           key={key}
           type="button"
@@ -946,15 +950,15 @@ export function PhoneWaiterScreen() {
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-blue-50 text-blue-600">
         <Bell size={28} />
       </div>
-      <h2 className="text-xl font-black">Позвать официанта</h2>
+      <h2 className="text-xl font-black">Позвать сотрудника</h2>
       <p className="mt-2 text-sm leading-6 text-zinc-500">
-        Нужна помощь? Официант подойдёт к вашему столу.
+        Нужна помощь? Сотрудник подойдёт к вашему столу.
       </p>
       <button
         type="button"
         className="mt-6 w-full rounded-2xl bg-zinc-950 py-3.5 text-sm font-black text-white"
       >
-        Позвать официанта
+        Позвать сотрудника
       </button>
     </div>
   );

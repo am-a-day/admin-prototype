@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { DescriptionRichTextEditor } from "@/components/workspace/description-rich-text-editor";
 import { useAppSettings, type DineInOrderMode } from "@/contexts/app-settings-context";
 import { cn } from "@/lib/utils";
@@ -102,7 +103,7 @@ function MethodRow({
         </div>
         <div className="min-w-0">{control}</div>
       </div>
-      {enabled && method !== "dineIn" && children && <div className="mt-5">{children}</div>}
+      {enabled && children && <div className="mt-5">{children}</div>}
     </section>
   );
 }
@@ -206,6 +207,8 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
     setDeliveryEnabled,
     pickupEnabled,
     setPickupEnabled,
+    waiterEnabled,
+    setWaiterEnabled,
     dineInOrderMode,
     setDineInOrderMode,
     deliveryComment,
@@ -231,7 +234,19 @@ export function OrderMethodsWorkspace({ onChange, onOpenReceiving }: { onChange:
         <MethodRow
           method="dineIn"
           control={<DineInOrderSelect mode={dineInOrderMode} onModeChange={(mode) => { setDineInOrderMode(mode); onChange(); }} />}
-        />
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h3 className="text-[14px] font-medium leading-5 text-[#292524]">Вызов сотрудника</h3>
+              <p className="mt-0.5 text-[13px] leading-4 text-[#666]">Гости смогут позвать сотрудника из онлайн-меню</p>
+            </div>
+            <Switch
+              checked={waiterEnabled}
+              onCheckedChange={(enabled) => { setWaiterEnabled(enabled); onChange(); }}
+              aria-label={`${waiterEnabled ? "Выключить" : "Включить"} вызов сотрудника`}
+            />
+          </div>
+        </MethodRow>
 
         <MethodRow
           method="delivery"
