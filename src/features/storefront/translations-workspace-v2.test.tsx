@@ -562,13 +562,27 @@ describe("translations workspace v2", () => {
           sticker: { ru: "Хит" },
         },
         optionGroups: [{
-          id: "spice",
-          name: "Острота",
+          id: "size",
+          name: "Размер",
           expanded: true,
           required: false,
           selection: "single",
           pricing: "surcharge",
-          variants: [{ id: "mild", name: "Неостро", price: "0" }],
+          variants: [
+            { id: "small", name: "30 см", price: "300" },
+            { id: "large", name: "40 см", price: "500" },
+          ],
+        }, {
+          id: "toppings",
+          name: "Добавки",
+          expanded: true,
+          required: false,
+          selection: "multiple",
+          pricing: "surcharge",
+          variants: [
+            { id: "jalapeno", name: "Халапеньо", price: "250" },
+            { id: "mushrooms", name: "Шампиньоны", price: "200" },
+          ],
         }],
       }],
     });
@@ -603,11 +617,24 @@ describe("translations workspace v2", () => {
     expect(document.querySelector('[data-translation-section="options"]')).toBeInTheDocument();
     expect(document.querySelector('[data-translation-section="tags"]')).toBeInTheDocument();
     expect(document.querySelector('[data-translation-section="stickers"]')).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Казахский: Группа · Острота" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Казахский: Опция · Неостро" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Группа · Размер" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Значение · 30 см" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Значение · 40 см" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Группа · Добавки" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Значение · Халапеньо" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Казахский: Значение · Шампиньоны" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Казахский: Тег · Острое" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Казахский: Тег · Вегетарианское" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Казахский: Стикер · Хит" })).toBeInTheDocument();
+
+    const optionGroups = Array.from(document.querySelectorAll<HTMLElement>("[data-translation-option-group]"));
+    expect(optionGroups).toHaveLength(2);
+    expect(Array.from(optionGroups[0].querySelectorAll<HTMLElement>("[data-translation-field-label]")).map((label) => label.textContent)).toEqual(["Группа", "Значение", "Значение"]);
+    expect(Array.from(optionGroups[1].querySelectorAll<HTMLElement>("[data-translation-field-label]")).map((label) => label.textContent)).toEqual(["Группа", "Значение", "Значение"]);
+    expect(optionGroups[1]).toHaveClass("border-t", "border-[#e7e5e4]");
+    expect(optionGroups[0].querySelector('[data-translation-option-depth="1"] [data-translation-field-label]')).toHaveClass("pl-7");
+    expect(within(optionGroups[0]).getByText("Размер")).toBeInTheDocument();
+    expect(within(optionGroups[0]).queryByText("Опции")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Открыть поиск" }));
     const search = screen.getByRole("textbox", { name: "Поиск: Позиции" });
@@ -666,6 +693,25 @@ describe("translations workspace v2", () => {
       expect(state.find((candidate) => candidate.id === "position-one")?.tags[0]?.kk).toBe("Ащы");
       expect(state.find((candidate) => candidate.id === "position-two")?.tags[0]?.kk).not.toBe("Ащы");
     });
+  });
+
+  it("omits empty nested position blocks", () => {
+    const item = catalogItems[0];
+    const section = catalogSections.find((candidate) => candidate.id === item.sectionId) ?? catalogSections[0];
+    renderWorkspace({
+      sections: [section],
+      items: [{
+        ...item,
+        optionGroups: [],
+        tags: [],
+        guestLabels: [],
+        upsell: { ...(item.upsell ?? {}), tags: [], sticker: null },
+      }],
+    });
+
+    expect(document.querySelector('[data-translation-section="options"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-translation-section="tags"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-translation-section="stickers"]')).not.toBeInTheDocument();
   });
 
   it("switches languages after restoring history without losing the selected position or search", async () => {

@@ -842,7 +842,7 @@ function positionMaterial(
     values: translatedValues(group.name, group.nameTranslations),
   }, ...group.variants.map((variant) => ({
     id: `option:${group.id}:${variant.id}`,
-    label: `Опция · ${variant.name || "Без названия"}`,
+    label: `Значение · ${variant.name || "Без названия"}`,
     section: "options" as const,
     source: localizedSource(variant.name, variant.nameTranslations, primaryLanguage),
     kind: "option" as const,

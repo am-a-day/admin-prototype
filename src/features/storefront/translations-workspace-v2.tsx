@@ -820,12 +820,35 @@ function MachineIndicator({ field }: { field: TranslationField }) {
   return <Tooltip label="Переведено автоматически" side="top"><span tabIndex={0} role="img" aria-label={`Переведено автоматически: ${field.label}`} className="flex size-4 items-center justify-center text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"><StarFour size={12} /></span></Tooltip>;
 }
 
-function TranslationFieldRow({ field, language, material }: { field: TranslationField; language: TranslationLanguageCode; material: TranslationMaterial }) {
+type PositionOptionGroupRows = {
+  group: TranslationField;
+  values: TranslationField[];
+};
+
+function groupPositionOptionFields(fields: TranslationField[]) {
+  const groups: PositionOptionGroupRows[] = [];
+  fields.filter((field) => field.section === "options").forEach((field) => {
+    if (field.kind === "option-group") {
+      groups.push({ group: field, values: [] });
+      return;
+    }
+    const group = groups.find((candidate) => candidate.group.optionGroupId === field.optionGroupId);
+    if (group) group.values.push(field);
+  });
+  return groups;
+}
+
+function TranslationFieldRow({ field, language, material, nested = false }: { field: TranslationField; language: TranslationLanguageCode; material: TranslationMaterial; nested?: boolean }) {
   const { autoTranslateField, getFieldTranslationState, jobs, updateField } = useTranslations();
   const sourceFilled = Boolean(field.source.trim());
   const targetValue = sourceFilled ? field.values[language] ?? "" : "";
   const machineTranslated = Boolean(targetValue.trim()) && (field.machineTranslatedLanguages?.includes(language) ?? false);
   const isDescription = field.id === "description" || field.label.toLocaleLowerCase("ru").includes("описание");
+  const visibleLabel = field.kind === "option-group"
+    ? "Группа"
+    : field.kind === "option"
+      ? "Значение"
+      : field.label.replace(/^Группа · |^Значение · |^Тег · |^Стикер · /, "");
   const translateLabel = targetValue.trim() ? "Перевести автоматически" : "Перевести";
   const translationState = getFieldTranslationState(material.id, field.id, language);
   const translating = translationState.status === "loading";
@@ -840,8 +863,8 @@ function TranslationFieldRow({ field, language, material }: { field: Translation
   ));
 
   return (
-    <div data-translation-field-row data-translation-field-key={`${material.kind}:${material.entityId}:${language}:${field.id}`} className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
-      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white px-3 py-3 text-[13px] text-[#44403b]", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{field.label.replace(/^Группа · |^Опция · |^Тег · |^Стикер · /, "")}</span></div>
+    <div data-translation-field-row data-translation-field-key={`${material.kind}:${material.entityId}:${language}:${field.id}`} data-translation-option-depth={nested ? "1" : "0"} className="grid grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] last:border-b-0">
+      <div data-translation-field-label className={cn("flex min-w-0 border-r border-[#eeeeec] bg-white py-3 text-[13px] text-[#44403b]", nested ? "pl-7 pr-3" : "px-3", isDescription ? "min-h-[174px] items-start" : "h-12 items-center")}><span className="truncate">{visibleLabel}</span></div>
       <div data-translation-source-field className={cn("min-w-0 border-r border-[#eeeeec] bg-[#fafaf9]", isDescription ? "p-0" : "flex h-12 items-center px-3")}>
         {isDescription
           ? <DescriptionRichTextEditor value={field.source} readOnly hideLabel label={`Оригинал: ${field.label}`} placeholder="Не заполнено" limit={300} compact className="h-full [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div>div]:bg-transparent" />
@@ -942,13 +965,21 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
           {entity.material.kind === "position" && positionSections.map((section) => {
             const fields = entity.fields.filter((field) => field.section === section.id);
             if (fields.length === 0) return null;
+            const optionGroups = section.id === "options" ? groupPositionOptionFields(fields) : [];
             return (
               <section key={section.id} data-translation-section={section.id}>
                 <div className="flex h-8 items-center border-b border-[#eeeeec] bg-[#f5f5f4] px-3 text-[12px] font-medium text-[#57534d]">{section.label}</div>
-                {fields.map((field) => {
-                  const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
-                  return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
-                })}
+                {section.id === "options"
+                  ? optionGroups.map(({ group, values }, index) => (
+                    <div key={group.id} data-translation-option-group className={cn(index > 0 && "border-t border-[#e7e5e4]")}>
+                      <TranslationFieldRow field={group} language={language.code} material={entity.material} />
+                      {values.map((field) => <TranslationFieldRow key={field.id} field={field} language={language.code} material={entity.material} nested />)}
+                    </div>
+                  ))
+                  : fields.map((field) => {
+                    const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
+                    return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
+                  })}
               </section>
             );
           })}
