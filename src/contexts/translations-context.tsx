@@ -44,7 +44,6 @@ export type TranslationFieldKind = "standard" | "option-group" | "option" | "ban
 export type TranslationField = {
   id: string;
   label: string;
-  section?: string;
   source: string;
   previousSource?: string;
   kind?: TranslationFieldKind;
@@ -747,61 +746,33 @@ function publicDisplayFields(
   const display = {
     ...DEFAULT_PUBLIC_DISPLAY,
     ...workspace.publicDisplay,
-    keywords: workspace.publicDisplay?.keywords ?? DEFAULT_PUBLIC_DISPLAY.keywords,
+    title: workspace.publicDisplay?.title ?? DEFAULT_PUBLIC_DISPLAY.title,
+    description: workspace.publicDisplay?.description ?? DEFAULT_PUBLIC_DISPLAY.description,
   };
   const storedTranslations = display.translations ?? {};
+  const titleTranslations = storedTranslations.title
+    ?? storedTranslations["search:title"]
+    ?? storedTranslations["social:title"]
+    ?? storedTranslations["tasko:title"];
+  const descriptionTranslations = storedTranslations.description
+    ?? storedTranslations["search:description"]
+    ?? storedTranslations["social:description"]
+    ?? storedTranslations["tasko:description"];
   const fields: TranslationField[] = [
     {
-      id: "search:title",
-      section: "В поиске",
+      id: "title",
       label: "Заголовок",
       source: display.title,
-      values: publicDisplayTranslationValues(display.title, storedTranslations["search:title"], primaryLanguage),
+      values: publicDisplayTranslationValues(display.title, titleTranslations, primaryLanguage),
     },
     {
-      id: "search:description",
-      section: "В поиске",
+      id: "description",
       label: "Описание",
       source: display.description,
-      values: publicDisplayTranslationValues(display.description, storedTranslations["search:description"], primaryLanguage),
-    },
-    ...display.keywords.filter((keyword) => keyword.trim()).map((keyword, index) => ({
-      id: `search:keyword:${index}`,
-      section: "В поиске",
-      label: "Ключевое слово",
-      source: keyword,
-      values: publicDisplayTranslationValues(keyword, storedTranslations[`search:keyword:${index}`], primaryLanguage),
-    })),
-    {
-      id: "social:title",
-      section: "В соцсетях",
-      label: "Заголовок",
-      source: display.title,
-      values: publicDisplayTranslationValues(display.title, storedTranslations["social:title"], primaryLanguage),
-    },
-    {
-      id: "social:description",
-      section: "В соцсетях",
-      label: "Описание",
-      source: display.description,
-      values: publicDisplayTranslationValues(display.description, storedTranslations["social:description"], primaryLanguage),
-    },
-    {
-      id: "tasko:title",
-      section: "Tasko Гид",
-      label: "Заголовок",
-      source: display.title,
-      values: publicDisplayTranslationValues(display.title, storedTranslations["tasko:title"], primaryLanguage),
-    },
-    {
-      id: "tasko:description",
-      section: "Tasko Гид",
-      label: "Описание",
-      source: display.description,
-      values: publicDisplayTranslationValues(display.description, storedTranslations["tasko:description"], primaryLanguage),
+      values: publicDisplayTranslationValues(display.description, descriptionTranslations, primaryLanguage),
     },
   ];
-  return resolveMaterialFields("Мой ресторан в сети", 0, fields, resetLanguages);
+  return resolveMaterialFields("В сети", 0, fields, resetLanguages);
 }
 
 function positionMaterial(
@@ -1168,7 +1139,7 @@ export function buildTranslationMaterials(
     return [{
       id: "about:public-display",
       entityId: "public-display",
-      title: "Мой ресторан в сети",
+      title: "В сети",
       typeLabel: "Страница",
       kind: "about" as const,
       category: "about" as const,
@@ -1938,9 +1909,13 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           const current = {
             ...DEFAULT_PUBLIC_DISPLAY,
             ...workspace.publicDisplay,
+            title: workspace.publicDisplay?.title ?? DEFAULT_PUBLIC_DISPLAY.title,
+            description: workspace.publicDisplay?.description ?? DEFAULT_PUBLIC_DISPLAY.description,
             keywords: workspace.publicDisplay?.keywords ?? DEFAULT_PUBLIC_DISPLAY.keywords,
           };
-          const translations = { ...current.translations };
+          const translations = Object.fromEntries(
+            Object.entries(current.translations ?? {}).filter(([fieldId]) => fieldId === "title" || fieldId === "description"),
+          );
           translatedFields.forEach((field) => {
             translations[field.id] = withLanguageValue(
               translations[field.id] ?? {},

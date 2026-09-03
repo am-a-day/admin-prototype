@@ -135,7 +135,7 @@ describe("translation material structure", () => {
     expect(about?.fields[4].values).not.toHaveProperty("+7 777 123-45-67");
   });
 
-  it("builds the network page from its public text and keeps repeated sections independent", () => {
+  it("builds the network page from its shared public text fields", () => {
     const workspace = {
       name: "Tasko Cafe",
       description: "",
@@ -146,34 +146,28 @@ describe("translation material structure", () => {
         title: "Tasko Cafe — корейская кухня",
         description: "Авторские блюда с доставкой.",
         keywords: ["Доставка", "Завтраки"],
+        translations: {
+          "search:title": { kk: "Tasko Cafe — корей тағамдары" },
+          "search:description": { kk: "Жеткізумен авторлық тағамдар." },
+          "search:keyword:0": { kk: "Жеткізу" },
+        },
       },
     } as unknown as MockWorkspace;
 
     const network = buildTranslationMaterials([], [], [], [], workspace).find((material) => material.id === "about:public-display");
 
-    expect(network?.title).toBe("Мой ресторан в сети");
-    expect(network?.fields.map((field) => field.id)).toEqual([
-      "search:title",
-      "search:description",
-      "search:keyword:0",
-      "search:keyword:1",
-      "social:title",
-      "social:description",
-      "tasko:title",
-      "tasko:description",
+    expect(network?.title).toBe("В сети");
+    expect(network?.fields.map((field) => field.id)).toEqual(["title", "description"]);
+    expect(network?.fields.map((field) => field.label)).toEqual(["Заголовок", "Описание"]);
+    expect(network?.fields.map((field) => field.source)).toEqual([
+      "Tasko Cafe — корейская кухня",
+      "Авторские блюда с доставкой.",
     ]);
-    expect(network?.fields.map((field) => field.section)).toEqual([
-      "В поиске",
-      "В поиске",
-      "В поиске",
-      "В поиске",
-      "В соцсетях",
-      "В соцсетях",
-      "Tasko Гид",
-      "Tasko Гид",
+    expect(network?.fields.map((field) => field.values.kk)).toEqual([
+      "Tasko Cafe — корей тағамдары",
+      "Жеткізумен авторлық тағамдар.",
     ]);
-    expect(network?.fields[0].values).not.toBe(network?.fields[4].values);
-    expect(network?.fields[0].values).not.toBe(network?.fields[6].values);
+    expect(network?.fields.some((field) => field.label === "Ключевое слово")).toBe(false);
   });
 
   it("uses the selected primary language as the source while preserving Russian values", () => {

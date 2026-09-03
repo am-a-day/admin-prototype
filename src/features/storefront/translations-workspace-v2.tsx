@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   CaretDown,
@@ -49,7 +49,7 @@ import { CatalogThumbnail } from "@/features/storefront/catalog/ui/catalog-thumb
 import { catalogStorageKey } from "@/lib/catalog-preview";
 import { cn } from "@/lib/utils";
 
-type TranslationContentType = TranslationCategory | "options";
+type TranslationContentType = TranslationCategory | "options" | "my-restaurant";
 
 const CONTENT_TYPES: Array<{ id: TranslationContentType; label: string }> = [
   { id: "positions", label: "Позиции" },
@@ -58,8 +58,7 @@ const CONTENT_TYPES: Array<{ id: TranslationContentType; label: string }> = [
   { id: "tags", label: "Теги" },
   { id: "stickers", label: "Стикеры" },
   { id: "banners", label: "Баннеры" },
-  { id: "about", label: "О заведении" },
-  { id: "interface", label: "Заголовки и кнопки" },
+  { id: "my-restaurant", label: "Мой ресторан" },
 ];
 
 const TRANSLATION_LANGUAGE_LABELS: Record<TranslationLanguageCode, string> = {
@@ -455,6 +454,22 @@ function LanguageActionsPopover({ language }: { language: TranslationLanguage })
 }
 
 function entitiesForType(materials: TranslationMaterial[], type: TranslationContentType): TranslationEntity[] {
+  if (type === "my-restaurant") {
+    const pageTitles: Record<string, string> = {
+      "about:venue": "Профиль",
+      "about:public-display": "В сети",
+      "interface:recommendations": "Заголовки и кнопки",
+    };
+    return materials
+      .filter((material) => Object.hasOwn(pageTitles, material.id))
+      .map((material) => ({
+        key: material.id,
+        material,
+        title: pageTitles[material.id],
+        fields: material.fields,
+      }));
+  }
+
   if (type !== "options") {
     return materials.filter((material) => material.category === type).map((material) => ({
       key: material.id,
@@ -746,9 +761,9 @@ function TranslationSidebar({
                 })}
               </DropdownMenuContent>
             </DropdownMenu>
-            {contentType !== "about" && <Tooltip label="Поиск" side="top" delayDuration={250}><Button type="button" variant="ghost" size="icon" aria-label="Открыть поиск" aria-expanded={searchOpen} onClick={() => { if (searchOpen) searchInputRef.current?.focus(); else setSearchOpen(true); }} className={cn("size-5 rounded-[6px] text-[#666] hover:bg-[#f5f5f4] hover:text-[#333]", searchOpen && "bg-[#f5f5f4] text-[#333]")}><MagnifyingGlass size={14} /></Button></Tooltip>}
+            {contentType !== "my-restaurant" && <Tooltip label="Поиск" side="top" delayDuration={250}><Button type="button" variant="ghost" size="icon" aria-label="Открыть поиск" aria-expanded={searchOpen} onClick={() => { if (searchOpen) searchInputRef.current?.focus(); else setSearchOpen(true); }} className={cn("size-5 rounded-[6px] text-[#666] hover:bg-[#f5f5f4] hover:text-[#333]", searchOpen && "bg-[#f5f5f4] text-[#333]")}><MagnifyingGlass size={14} /></Button></Tooltip>}
           </div>
-          {searchOpen && contentType !== "about" && (
+          {searchOpen && contentType !== "my-restaurant" && (
             <div className="flex h-9 items-center gap-1.5 border-b border-[#e7e5e4] px-1">
               <Input ref={searchInputRef} size="compact" autoFocus aria-label={`Поиск: ${typeLabel}`} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} placeholder="Найти..." className="h-7 min-w-0 flex-1 rounded-[7px] border-[#4f39f6] px-2 text-[13px] text-[#333] placeholder:text-[#a8a29e] focus-visible:ring-0" />
               <Tooltip label="Закрыть поиск" side="top" delayDuration={250}>
@@ -921,20 +936,9 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
       <div data-translations-table-header className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] bg-white text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f5f4]">
         <div data-translations-table className="border-b border-stone-200">
-          {entity.fields.map((field, index) => {
+          {entity.fields.map((field) => {
             const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
-            const previousField = entity.fields[index - 1];
-            const showSection = Boolean(field.section) && field.section !== previousField?.section;
-            return (
-              <Fragment key={fieldKey}>
-                {showSection && (
-                  <div data-translation-section={field.section} className="flex h-8 items-center border-b border-[#eeeeec] bg-[#f5f5f4] px-3 text-[12px] font-medium text-[#57534d]">
-                    {field.section}
-                  </div>
-                )}
-                <TranslationFieldRow field={field} language={language.code} material={entity.material} />
-              </Fragment>
-            );
+            return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
           })}
         </div>
       </div>
@@ -1009,7 +1013,11 @@ function LanguageWorkspace({
           initialQuery={initialViewState?.query ?? ""}
           initialSearchOpen={initialViewState?.searchOpen ?? false}
           initialScrollTop={initialViewState?.scrollTop ?? 0}
-          onContentTypeChange={(type) => { setContentType(type); setSelectedKey(null); setActiveCategory(type === "options" ? "positions" : type); }}
+          onContentTypeChange={(type) => {
+            setContentType(type);
+            setSelectedKey(null);
+            setActiveCategory(type === "options" ? "positions" : type === "my-restaurant" ? "about" : type);
+          }}
           onLanguageChange={setActiveLanguage}
           onOpenCatalog={onOpenOriginal}
           openCatalogActionRef={openCatalogActionRef}
@@ -1028,7 +1036,9 @@ export function TranslationsWorkspace({ onOpenOriginal = () => {} }: { onOpenOri
   if (languages.length === 0) return <EmptyTranslations />;
   return (
     <LanguageWorkspace
-      initialContentType={initialViewState?.contentType ?? (workspaceRequested ? activeCategory : "positions")}
+      initialContentType={initialViewState?.contentType ?? (workspaceRequested
+        ? activeCategory === "about" || activeCategory === "interface" ? "my-restaurant" : activeCategory
+        : "positions")}
       initialViewState={initialViewState}
       onOpenOriginal={onOpenOriginal}
     />

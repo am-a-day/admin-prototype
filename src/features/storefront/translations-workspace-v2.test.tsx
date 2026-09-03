@@ -572,8 +572,7 @@ describe("translations workspace v2", () => {
       "Теги",
       "Стикеры",
       "Баннеры",
-      "О заведении",
-      "Заголовки и кнопки",
+      "Мой ресторан",
     ]);
     const positionsItem = within(typeMenu).getByRole("menuitem", { name: "Позиции" });
     const tagsItem = within(typeMenu).getByRole("menuitem", { name: "Теги" });
@@ -1002,22 +1001,21 @@ describe("translations workspace v2", () => {
     expect(screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ })).toBeEnabled();
   });
 
-  it("selects the network page and renders its grouped translation fields", async () => {
+  it("selects the My restaurant group and renders shared network fields", async () => {
     const user = userEvent.setup();
     renderWorkspace({ sections: [], items: [] });
 
     await user.click(screen.getByRole("button", { name: "Выбрать тип контента" }));
-    await user.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "О заведении" }));
+    await user.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Мой ресторан" }));
 
-    expect(screen.getByRole("button", { name: "Мой ресторан в сети" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Мой ресторан в сети" }));
+    expect(screen.getByRole("button", { name: "Профиль" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "В сети" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Заголовки и кнопки" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "В сети" }));
 
-    expect(screen.getByText("В поиске", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getByText("В соцсетях", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getByText("Tasko Гид", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: "Казахский: Заголовок" })).toHaveLength(3);
-    expect(screen.getAllByRole("textbox", { name: "Казахский: Описание" })).toHaveLength(3);
-    expect(screen.getAllByRole("textbox", { name: "Казахский: Ключевое слово" })).toHaveLength(2);
+    expect(screen.getAllByRole("textbox", { name: "Казахский: Заголовок" })).toHaveLength(1);
+    expect(screen.getAllByRole("textbox", { name: "Казахский: Описание" })).toHaveLength(1);
+    expect(screen.queryByRole("textbox", { name: "Казахский: Ключевое слово" })).not.toBeInTheDocument();
     expect(screen.queryByText("Фото для ссылки")).not.toBeInTheDocument();
     expect(screen.queryByText("Город в Tasko Get")).not.toBeInTheDocument();
   });
