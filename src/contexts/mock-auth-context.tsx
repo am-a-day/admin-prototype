@@ -70,6 +70,21 @@ export type PublishedMenuSnapshot = {
   localizedNames: Partial<Record<LanguageCode, string>>;
 };
 
+export type WorkspaceChannelEntry = {
+  id: number;
+  channel: string;
+  link: string;
+  text: string;
+  localizedTexts?: Partial<Record<LanguageCode, string>>;
+};
+
+export type WorkspacePublicDisplay = {
+  title: string;
+  description: string;
+  keywords: string[];
+  translations?: Record<string, Partial<Record<LanguageCode, string>>>;
+};
+
 export type MockWorkspace = {
   name: string;
   address?: string;
@@ -88,6 +103,9 @@ export type MockWorkspace = {
   localizedNames: Partial<Record<LanguageCode, string>>;
   localizedAddresses?: Partial<Record<LanguageCode, string>>;
   localizedDescriptions?: Partial<Record<LanguageCode, string>>;
+  socialEntries?: WorkspaceChannelEntry[];
+  contactEntries?: WorkspaceChannelEntry[];
+  publicDisplay?: WorkspacePublicDisplay;
   currency: string;
   timezone: string;
   market: "Kazakhstan" | "Serbia";
@@ -257,6 +275,14 @@ const createWorkspace = (firstEntry: boolean, seed: string, setupCompleted = tru
   localizedNames: setupCompleted ? { ru: firstEntry ? "Новое меню" : "Kimchi Astana" } : {},
   localizedAddresses: setupCompleted && !firstEntry ? { ru: DEFAULT_WORKSPACE_ADDRESS } : {},
   localizedDescriptions: {},
+  socialEntries: [],
+  contactEntries: [],
+  publicDisplay: {
+    title: "Kimchi Astana — корейская кухня",
+    description: "Авторские корейские блюда с доставкой и самовывозом. Заказывайте онлайн.",
+    keywords: ["Доставка", "Клубника в шоколаде"],
+    translations: {},
+  },
   currency: "KZT",
   timezone: getBrowserTimezone(),
   market: "Kazakhstan",
@@ -779,6 +805,12 @@ export function MockAuthProvider({
         const localizedNames = { ...workspace.localizedNames };
         const localizedAddresses = { ...workspace.localizedAddresses };
         const localizedDescriptions = { ...workspace.localizedDescriptions };
+        const clearEntryLanguage = (entry: WorkspaceChannelEntry): WorkspaceChannelEntry => ({
+          ...entry,
+          localizedTexts: Object.fromEntries(
+            Object.entries(entry.localizedTexts ?? {}).filter(([code]) => code !== language),
+          ),
+        });
         delete localizedNames[language];
         delete localizedAddresses[language];
         delete localizedDescriptions[language];
@@ -789,6 +821,19 @@ export function MockAuthProvider({
           localizedNames,
           localizedAddresses,
           localizedDescriptions,
+          socialEntries: workspace.socialEntries?.map(clearEntryLanguage),
+          contactEntries: workspace.contactEntries?.map(clearEntryLanguage),
+          publicDisplay: workspace.publicDisplay
+            ? {
+                ...workspace.publicDisplay,
+                translations: Object.fromEntries(
+                  Object.entries(workspace.publicDisplay.translations ?? {}).map(([fieldId, values]) => [
+                    fieldId,
+                    Object.fromEntries(Object.entries(values).filter(([code]) => code !== language)),
+                  ]),
+                ),
+              }
+            : workspace.publicDisplay,
           languages: workspace.languages.filter(({ code }) => code !== language),
           publishedSnapshot: workspace.publishedSnapshot
             ? {

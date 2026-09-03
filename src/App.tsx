@@ -669,6 +669,16 @@ function AuthenticatedShell() {
   const [seoDescription, setSeoDescription] = useState(
     "Авторские корейские блюда с доставкой и самовывозом. Заказывайте онлайн.",
   );
+  useEffect(() => {
+    const publicDisplay = account?.workspace.publicDisplay;
+    if (!publicDisplay) return;
+    setSeoTitle(publicDisplay.title);
+    setSeoDescription(publicDisplay.description);
+  }, [
+    account?.id,
+    account?.workspace.publicDisplay?.description,
+    account?.workspace.publicDisplay?.title,
+  ]);
   const [upsellFocused, setUpsellFocused] = useState(false);
   const [homeFocus, setHomeFocus] = useState<"hero" | "sections" | null>(null);
 

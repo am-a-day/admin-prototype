@@ -19,11 +19,13 @@ import { useAppSettings } from "@/contexts/app-settings-context";
 import {
   DEFAULT_WORKSPACE_ADDRESS,
   useMockAuth,
+  type WorkspaceChannelEntry,
   type VenueType,
 } from "@/contexts/mock-auth-context";
 import { usePublish } from "@/contexts/publish-context";
 import { CURRENT_VITRINE_ID, MOCK_VITRINES, type PreviewScenario } from "@/data/mock-data";
 import { cn } from "@/lib/utils";
+import type { LanguageCode } from "@/data/languages";
 
 export type AboutTab =
   | "info"
@@ -205,6 +207,8 @@ const PUBLIC_FIELD_TOOLTIPS = {
   taskoCity:
     "Город используется для отображения заведения в Tasko Get. Выберите город, чтобы гости могли найти вас в нужном каталоге.",
 } as const;
+
+const DEFAULT_PUBLIC_DISPLAY_KEYWORDS = ["Доставка", "Клубника в шоколаде"];
 
 function DottedLabelWithTooltip({
   id,
@@ -471,16 +475,36 @@ function PublicDisplayWorkspace({
   setDescription: (value: string) => void;
   onChange: () => void;
 }) {
+  const { account, updateWorkspace } = useMockAuth();
   const [previewTab, setPreviewTab] = useState<PublicPreviewTab>("search");
   const [city, setCity] = useState("");
-  const keywords = ["Доставка", "Клубника в шоколаде"];
+  const keywords = account?.workspace.publicDisplay?.keywords ?? DEFAULT_PUBLIC_DISPLAY_KEYWORDS;
+
+  const persistPublicDisplay = (patch: { title?: string; description?: string }) => {
+    if (!account) return;
+    const current = account.workspace.publicDisplay ?? {
+      title,
+      description,
+      keywords,
+      translations: {},
+    };
+    updateWorkspace({
+      publicDisplay: {
+        ...current,
+        ...patch,
+        keywords: current.keywords ?? keywords,
+      },
+    });
+  };
 
   const updateTitle = (value: string) => {
     setTitle(value);
+    persistPublicDisplay({ title: value });
     onChange();
   };
   const updateDescription = (value: string) => {
     setDescription(value);
+    persistPublicDisplay({ description: value });
     onChange();
   };
 
@@ -1119,15 +1143,41 @@ function ScheduleCard({ onChange, onRemove }: { onChange: () => void; onRemove: 
 
 // ── Ссылки по каналам (соцсети, контакты) ─────────────────────────────────────
 
-type ChannelEntry = { id: number; channel: string; link: string; text: string };
+type ChannelEntry = {
+  id: number;
+  channel: string;
+  link: string;
+  text: string;
+  localizedTexts?: Partial<Record<LanguageCode, string>>;
+};
 type ChannelGroup = "social" | "contact";
 type ChannelEntryError = { link?: string };
 type TouchedRows = Record<number, boolean>;
 
 // ponytail: модульный счётчик id — бэкенда нет, коллизии невозможны в рамках сессии
 let nextEntryId = 1;
-function createChannelEntry(channel: string): ChannelEntry {
+function createChannelEntry(channel: string, stored?: WorkspaceChannelEntry): ChannelEntry {
+  if (stored) {
+    nextEntryId = Math.max(nextEntryId, stored.id + 1);
+    return {
+      id: stored.id,
+      channel: stored.channel,
+      link: stored.link,
+      text: stored.text,
+      localizedTexts: stored.localizedTexts,
+    };
+  }
   return { id: nextEntryId++, channel, link: "", text: "" };
+}
+
+function serializeChannelEntries(entries: ChannelEntry[]): WorkspaceChannelEntry[] {
+  return entries.map(({ id, channel, link, text, localizedTexts }) => ({
+    id,
+    channel,
+    link,
+    text,
+    ...(localizedTexts && Object.keys(localizedTexts).length > 0 ? { localizedTexts } : {}),
+  }));
 }
 
 const SOCIAL_DOMAIN_RULES: Record<string, { label: string; hosts: string[] }> = {
@@ -1961,8 +2011,28 @@ function BasicInfoWorkspace({
   });
   // Один пустой ряд по умолчанию: показывает форму данных и экономит клик.
   // Пустые ряды инертны — на витрину не попадают и нигде не считаются «незаполненными».
-  const [socialEntries, setSocialEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("instagram")]);
-  const [contactEntries, setContactEntries] = useState<ChannelEntry[]>(() => [createChannelEntry("phone")]);
+  const [socialEntries, setSocialEntries] = useState<ChannelEntry[]>(() => (
+    account?.workspace.socialEntries?.length
+      ? account.workspace.socialEntries.map((entry) => createChannelEntry(entry.channel, entry))
+      : [createChannelEntry("instagram")]
+  ));
+  const [contactEntries, setContactEntries] = useState<ChannelEntry[]>(() => (
+    account?.workspace.contactEntries?.length
+      ? account.workspace.contactEntries.map((entry) => createChannelEntry(entry.channel, entry))
+      : [createChannelEntry("phone")]
+  ));
+
+  useEffect(() => {
+    if (!account) return;
+    const storedSocialEntries = JSON.stringify(account.workspace.socialEntries ?? []);
+    const storedContactEntries = JSON.stringify(account.workspace.contactEntries ?? []);
+    const nextSocialEntries = JSON.stringify(serializeChannelEntries(socialEntries));
+    const nextContactEntries = JSON.stringify(serializeChannelEntries(contactEntries));
+    const patch: Partial<typeof account.workspace> = {};
+    if (storedSocialEntries !== nextSocialEntries) patch.socialEntries = serializeChannelEntries(socialEntries);
+    if (storedContactEntries !== nextContactEntries) patch.contactEntries = serializeChannelEntries(contactEntries);
+    if (Object.keys(patch).length > 0) updateWorkspace(patch);
+  }, [account?.id, contactEntries, socialEntries, updateWorkspace]);
 
   useEffect(() => {
     if (account?.workspace.name) setName(account.workspace.name);

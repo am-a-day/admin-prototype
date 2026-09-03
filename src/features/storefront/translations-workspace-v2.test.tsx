@@ -1001,4 +1001,24 @@ describe("translations workspace v2", () => {
     await waitFor(() => expect(screen.getByRole("alert", { name: "Ошибка перевода: Описание" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /Перевести автоматически: Описание|Перевести: Описание/ })).toBeEnabled();
   });
+
+  it("selects the network page and renders its grouped translation fields", async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ sections: [], items: [] });
+
+    await user.click(screen.getByRole("button", { name: "Выбрать тип контента" }));
+    await user.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "О заведении" }));
+
+    expect(screen.getByRole("button", { name: "Мой ресторан в сети" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Мой ресторан в сети" }));
+
+    expect(screen.getByText("В поиске", { selector: "div" })).toBeInTheDocument();
+    expect(screen.getByText("В соцсетях", { selector: "div" })).toBeInTheDocument();
+    expect(screen.getByText("Tasko Гид", { selector: "div" })).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: "Казахский: Заголовок" })).toHaveLength(3);
+    expect(screen.getAllByRole("textbox", { name: "Казахский: Описание" })).toHaveLength(3);
+    expect(screen.getAllByRole("textbox", { name: "Казахский: Ключевое слово" })).toHaveLength(2);
+    expect(screen.queryByText("Фото для ссылки")).not.toBeInTheDocument();
+    expect(screen.queryByText("Город в Tasko Get")).not.toBeInTheDocument();
+  });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   CaretDown,
@@ -758,8 +758,7 @@ function TranslationSidebar({
           )}
         </div>
 
-        {contentType !== "about" && (
-          <div ref={entityListRef} data-translations-entity-list className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
+        <div ref={entityListRef} data-translations-entity-list className="scrollbar-subtle flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 pb-3 pt-0.5 [scrollbar-gutter:stable]">
             {visibleEntities.map((entity) => {
               const selected = entity.key === selectedKey;
               const complete = entityComplete(entity, language.code);
@@ -803,7 +802,6 @@ function TranslationSidebar({
             })}
             {visibleEntities.length === 0 && <p className="px-2 py-2 text-[13px] leading-4 text-[#666]">Ничего не найдено</p>}
           </div>
-        )}
       </div>
     </aside>
   );
@@ -923,9 +921,20 @@ function TranslationEditor({ entity, language, onOpenCatalog }: {
       <div data-translations-table-header className="grid h-[34px] shrink-0 grid-cols-[116px_minmax(0,1fr)_minmax(0,1fr)] border-b border-[#eeeeec] bg-white text-[13px] font-medium text-[#292524]"><div className="border-r border-[#eeeeec]" /><div className="flex min-w-0 items-center truncate border-r border-[#eeeeec] px-1.5">{languageLabel(primaryCode)} · оригинал</div><div className="flex min-w-0 items-center truncate px-1.5">{languageLabel(language.code)}</div></div>
       <div data-translations-table-body className="scrollbar-subtle min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f5f4]">
         <div data-translations-table className="border-b border-stone-200">
-          {entity.fields.map((field) => {
+          {entity.fields.map((field, index) => {
             const fieldKey = `${entity.material.kind}:${entity.material.entityId}:${language.code}:${field.id}`;
-            return <TranslationFieldRow key={fieldKey} field={field} language={language.code} material={entity.material} />;
+            const previousField = entity.fields[index - 1];
+            const showSection = Boolean(field.section) && field.section !== previousField?.section;
+            return (
+              <Fragment key={fieldKey}>
+                {showSection && (
+                  <div data-translation-section={field.section} className="flex h-8 items-center border-b border-[#eeeeec] bg-[#f5f5f4] px-3 text-[12px] font-medium text-[#57534d]">
+                    {field.section}
+                  </div>
+                )}
+                <TranslationFieldRow field={field} language={language.code} material={entity.material} />
+              </Fragment>
+            );
           })}
         </div>
       </div>

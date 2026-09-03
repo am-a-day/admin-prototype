@@ -106,6 +106,76 @@ describe("translation material structure", () => {
     expect(material.fields[2]).toMatchObject({ source: "", values: { kk: "", en: "", sr: "" } });
   });
 
+  it("keeps channel URLs and phone numbers as row context while translating only labels", () => {
+    const workspace = {
+      name: "Tasko Cafe",
+      description: "",
+      localizedNames: {},
+      localizedAddresses: {},
+      localizedDescriptions: {},
+      socialEntries: [{ id: 11, channel: "instagram", link: "instagram.com/taskocafe", text: "Написать нам" }],
+      contactEntries: [{ id: 12, channel: "phone", link: "+7 777 123-45-67", text: "Позвонить" }],
+    } as unknown as MockWorkspace;
+
+    const about = buildTranslationMaterials([], [], [], [], workspace).find((material) => material.id === "about:venue");
+
+    expect(about?.fields.slice(3).map((field) => field.id)).toEqual([
+      "channel:social:11:label",
+      "channel:contact:12:label",
+    ]);
+    expect(about?.fields[3]).toMatchObject({
+      label: "Instagram — instagram.com/taskocafe — подпись",
+      source: "Написать нам",
+    });
+    expect(about?.fields[4]).toMatchObject({
+      label: "Телефон +7 777 123-45-67 — подпись",
+      source: "Позвонить",
+    });
+    expect(about?.fields[3].values).not.toHaveProperty("instagram.com/taskocafe");
+    expect(about?.fields[4].values).not.toHaveProperty("+7 777 123-45-67");
+  });
+
+  it("builds the network page from its public text and keeps repeated sections independent", () => {
+    const workspace = {
+      name: "Tasko Cafe",
+      description: "",
+      localizedNames: {},
+      localizedAddresses: {},
+      localizedDescriptions: {},
+      publicDisplay: {
+        title: "Tasko Cafe — корейская кухня",
+        description: "Авторские блюда с доставкой.",
+        keywords: ["Доставка", "Завтраки"],
+      },
+    } as unknown as MockWorkspace;
+
+    const network = buildTranslationMaterials([], [], [], [], workspace).find((material) => material.id === "about:public-display");
+
+    expect(network?.title).toBe("Мой ресторан в сети");
+    expect(network?.fields.map((field) => field.id)).toEqual([
+      "search:title",
+      "search:description",
+      "search:keyword:0",
+      "search:keyword:1",
+      "social:title",
+      "social:description",
+      "tasko:title",
+      "tasko:description",
+    ]);
+    expect(network?.fields.map((field) => field.section)).toEqual([
+      "В поиске",
+      "В поиске",
+      "В поиске",
+      "В поиске",
+      "В соцсетях",
+      "В соцсетях",
+      "Tasko Гид",
+      "Tasko Гид",
+    ]);
+    expect(network?.fields[0].values).not.toBe(network?.fields[4].values);
+    expect(network?.fields[0].values).not.toBe(network?.fields[6].values);
+  });
+
   it("uses the selected primary language as the source while preserving Russian values", () => {
     const workspace = {
       primaryLanguage: "en",

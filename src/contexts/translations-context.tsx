@@ -12,6 +12,8 @@ import { useCatalogStore } from "@/contexts/catalog-store-context";
 import {
   DEFAULT_WORKSPACE_ADDRESS,
   useMockAuth,
+  type WorkspaceChannelEntry,
+  type WorkspacePublicDisplay,
   type MockWorkspace,
 } from "@/contexts/mock-auth-context";
 import type { CatalogItem, CatalogLocalizedValue, CatalogSection, CatalogTranslations } from "@/data/catalog";
@@ -42,6 +44,7 @@ export type TranslationFieldKind = "standard" | "option-group" | "option" | "ban
 export type TranslationField = {
   id: string;
   label: string;
+  section?: string;
   source: string;
   previousSource?: string;
   kind?: TranslationFieldKind;
@@ -675,6 +678,132 @@ function localizedSource(
     : translations?.[primaryLanguage]?.trim() || baseValue;
 }
 
+const DEFAULT_PUBLIC_DISPLAY: WorkspacePublicDisplay = {
+  title: "Kimchi Astana — корейская кухня",
+  description: "Авторские корейские блюда с доставкой и самовывозом. Заказывайте онлайн.",
+  keywords: ["Доставка", "Клубника в шоколаде"],
+  translations: {},
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  instagram: "Instagram",
+  "2gis": "2GIS",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+  website: "Сайт",
+  youtube: "YouTube",
+  telegram: "Telegram",
+  whatsapp: "WhatsApp",
+  phone: "Телефон",
+};
+
+function channelTranslationLabel(entry: WorkspaceChannelEntry) {
+  const channelLabel = CHANNEL_LABELS[entry.channel] ?? entry.channel;
+  const context = entry.link.trim();
+  if (channelLabel === "Телефон" && context) return `${channelLabel} ${context} — подпись`;
+  return context
+    ? `${channelLabel} — ${context} — подпись`
+    : `${channelLabel} — подпись`;
+}
+
+function channelTranslationFieldId(group: "social" | "contact", entryId: number) {
+  return `channel:${group}:${entryId}:label`;
+}
+
+function channelTranslationValues(
+  entry: WorkspaceChannelEntry,
+  primaryLanguage: TranslationLanguageCode,
+) {
+  return Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [
+    language,
+    language === primaryLanguage
+      ? entry.localizedTexts?.[primaryLanguage]?.trim() || entry.text
+      : language === "ru"
+        ? entry.text
+        : entry.localizedTexts?.[language] ?? "",
+  ]));
+}
+
+function publicDisplayTranslationValues(
+  source: string,
+  translations: Partial<Record<TranslationLanguageCode, string>> | undefined,
+  primaryLanguage: TranslationLanguageCode,
+) {
+  return Object.fromEntries(TRANSLATION_LANGUAGE_CODES.map((language) => [
+    language,
+    language === primaryLanguage
+      ? source
+      : language === "ru"
+        ? translations?.ru ?? source
+        : translations?.[language] ?? "",
+  ]));
+}
+
+function publicDisplayFields(
+  workspace: MockWorkspace,
+  primaryLanguage: TranslationLanguageCode,
+  resetLanguages: ReadonlySet<TranslationLanguageCode>,
+) {
+  const display = {
+    ...DEFAULT_PUBLIC_DISPLAY,
+    ...workspace.publicDisplay,
+    keywords: workspace.publicDisplay?.keywords ?? DEFAULT_PUBLIC_DISPLAY.keywords,
+  };
+  const storedTranslations = display.translations ?? {};
+  const fields: TranslationField[] = [
+    {
+      id: "search:title",
+      section: "В поиске",
+      label: "Заголовок",
+      source: display.title,
+      values: publicDisplayTranslationValues(display.title, storedTranslations["search:title"], primaryLanguage),
+    },
+    {
+      id: "search:description",
+      section: "В поиске",
+      label: "Описание",
+      source: display.description,
+      values: publicDisplayTranslationValues(display.description, storedTranslations["search:description"], primaryLanguage),
+    },
+    ...display.keywords.filter((keyword) => keyword.trim()).map((keyword, index) => ({
+      id: `search:keyword:${index}`,
+      section: "В поиске",
+      label: "Ключевое слово",
+      source: keyword,
+      values: publicDisplayTranslationValues(keyword, storedTranslations[`search:keyword:${index}`], primaryLanguage),
+    })),
+    {
+      id: "social:title",
+      section: "В соцсетях",
+      label: "Заголовок",
+      source: display.title,
+      values: publicDisplayTranslationValues(display.title, storedTranslations["social:title"], primaryLanguage),
+    },
+    {
+      id: "social:description",
+      section: "В соцсетях",
+      label: "Описание",
+      source: display.description,
+      values: publicDisplayTranslationValues(display.description, storedTranslations["social:description"], primaryLanguage),
+    },
+    {
+      id: "tasko:title",
+      section: "Tasko Гид",
+      label: "Заголовок",
+      source: display.title,
+      values: publicDisplayTranslationValues(display.title, storedTranslations["tasko:title"], primaryLanguage),
+    },
+    {
+      id: "tasko:description",
+      section: "Tasko Гид",
+      label: "Описание",
+      source: display.description,
+      values: publicDisplayTranslationValues(display.description, storedTranslations["tasko:description"], primaryLanguage),
+    },
+  ];
+  return resolveMaterialFields("Мой ресторан в сети", 0, fields, resetLanguages);
+}
+
 function positionMaterial(
   item: CatalogItem,
   index: number,
@@ -981,6 +1110,17 @@ export function buildTranslationMaterials(
     const aboutName = workspace.name?.trim() ?? "";
     const address = workspace.address ?? DEFAULT_WORKSPACE_ADDRESS;
     const description = workspace.description ?? "";
+    const channelFields = [
+      ...(workspace.socialEntries ?? []).map((entry) => ({ entry, group: "social" as const })),
+      ...(workspace.contactEntries ?? []).map((entry) => ({ entry, group: "contact" as const })),
+    ]
+      .filter(({ entry }) => entry.link.trim() || entry.text.trim())
+      .map(({ entry, group }) => ({
+        id: channelTranslationFieldId(group, entry.id),
+        label: channelTranslationLabel(entry),
+        source: localizedSource(entry.text, entry.localizedTexts, primaryLanguage),
+        values: channelTranslationValues(entry, primaryLanguage),
+      }));
     const { fields, statuses } = resolveMaterialFields("О заведении", 0, [{
       id: "name",
       label: "Название заведения",
@@ -1011,7 +1151,7 @@ export function buildTranslationMaterials(
         en: workspace.localizedDescriptions?.en ?? "",
         sr: workspace.localizedDescriptions?.sr ?? "",
       },
-    }], resetLanguages);
+    }, ...channelFields], resetLanguages);
     return [{
       id: "about:venue",
       entityId: "venue",
@@ -1021,6 +1161,19 @@ export function buildTranslationMaterials(
       category: "about" as const,
       statuses,
       fields,
+    }];
+  })() : [];
+  const publicDisplayMaterial: TranslationMaterial[] = workspace ? (() => {
+    const resolved = publicDisplayFields(workspace, primaryLanguage, resetLanguages);
+    return [{
+      id: "about:public-display",
+      entityId: "public-display",
+      title: "Мой ресторан в сети",
+      typeLabel: "Страница",
+      kind: "about" as const,
+      category: "about" as const,
+      statuses: resolved.statuses,
+      fields: resolved.fields,
     }];
   })() : [];
   const interfaceSource = DEFAULT_RECOMMENDATION_TEXTS;
@@ -1047,7 +1200,7 @@ export function buildTranslationMaterials(
     statuses: resolvedInterface.statuses,
     fields: resolvedInterface.fields,
   }];
-  return [...positionMaterials, ...sectionMaterials, ...labelMaterials, ...bannerMaterials, ...aboutMaterials, ...interfaceMaterials];
+  return [...positionMaterials, ...sectionMaterials, ...labelMaterials, ...bannerMaterials, ...aboutMaterials, ...publicDisplayMaterial, ...interfaceMaterials];
 }
 
 function translationStatusForFields(
@@ -1780,6 +1933,31 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
     }
 
     if (material.kind === "about") {
+      if (material.entityId === "public-display") {
+        commitWorkspacePatch((workspace) => {
+          const current = {
+            ...DEFAULT_PUBLIC_DISPLAY,
+            ...workspace.publicDisplay,
+            keywords: workspace.publicDisplay?.keywords ?? DEFAULT_PUBLIC_DISPLAY.keywords,
+          };
+          const translations = { ...current.translations };
+          translatedFields.forEach((field) => {
+            translations[field.id] = withLanguageValue(
+              translations[field.id] ?? {},
+              language,
+              valueFor(field.id),
+            );
+          });
+          return {
+            publicDisplay: {
+              ...current,
+              translations,
+            },
+          };
+        });
+        return;
+      }
+
       commitWorkspacePatch((workspace) => ({
         localizedNames: withLanguageValue(
           { ...workspace.localizedNames, ru: workspace.name },
@@ -1796,6 +1974,26 @@ export function TranslationsProvider({ children }: { children: ReactNode }) {
           language,
           valueFor("description"),
         ),
+        socialEntries: workspace.socialEntries?.map((entry) => {
+          const fieldId = channelTranslationFieldId("social", entry.id);
+          const translatedValue = valueFor(fieldId);
+          return translatedFields.some((field) => field.id === fieldId)
+            ? {
+                ...entry,
+                localizedTexts: withLanguageValue(entry.localizedTexts ?? {}, language, translatedValue),
+              }
+            : entry;
+        }),
+        contactEntries: workspace.contactEntries?.map((entry) => {
+          const fieldId = channelTranslationFieldId("contact", entry.id);
+          const translatedValue = valueFor(fieldId);
+          return translatedFields.some((field) => field.id === fieldId)
+            ? {
+                ...entry,
+                localizedTexts: withLanguageValue(entry.localizedTexts ?? {}, language, translatedValue),
+              }
+            : entry;
+        }),
       }));
     }
   }, [account?.id, account?.workspace.primaryLanguage, commitCatalogItemPatch, commitSectionPatch, commitWorkspacePatch, labelDirectory]);
